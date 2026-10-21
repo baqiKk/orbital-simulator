@@ -151,7 +151,11 @@ function addBody(k) {
   const key = k || (S.bodies.some(b => b.key === 'sun') ? 'custom' : 'sun');
   const root = S.bodies.findIndex(b => b.parent < 0);
   S.bodies.push(bodyFromPreset(key, { parent: root >= 0 ? root : 0 }));
-  applyPreset(S.bodies.length - 1, key);
+  const nb = S.bodies.length - 1;
+  applyPreset(nb, key);
+  const b = S.bodies[nb], pk = BODY_PRESETS[key].parentKey;
+  // preset orbit only fits around the natural parent; otherwise pick a fitting radius
+  if (b.parent >= 0 && !(pk && S.bodies[b.parent].key === pk)) b.a = defaultOrbitRadius(sysList().slice(0, nb), b.parent, b.radius * 1e3) / 1e3;
   renderBodies(); rebuild({ fit: true });
 }
 

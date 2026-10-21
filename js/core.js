@@ -51,6 +51,32 @@ function buildSystem(list) {
   return s;
 }
 
+// Default orbit radius (m) for a new body of the given radius (m) around list[parent]:
+// above 2x the radius sum, inside the parent's SOI (when it has one), and as far
+// as possible (in log distance) from the sibling orbits and from both limits.
+// list entries: { mass, radius, parent, a } in SI units.
+function defaultOrbitRadius(list, parent, radius) {
+  const P = list[parent], lo = 2 * (P.radius + radius);
+  let hi;
+  const sib = [];
+  for (let i = 0; i < list.length; i++) if (i !== parent && list[i].parent === parent) sib.push(list[i].a);
+  if (P.parent >= 0) {
+    let Mf = P.mass;
+    for (let i = 0; i < list.length; i++) if (list[i].parent === parent) Mf += list[i].mass;
+    hi = P.a * Math.pow(Mf / list[P.parent].mass, 0.4);
+  } else hi = sib.length ? 2 * Math.max(...sib) : lo * 1000;
+  if (!(hi > lo)) return lo;
+  const l0 = Math.log(lo), l1 = Math.log(hi);
+  let best = Math.sqrt(lo * hi), bestScore = -1;
+  for (let k = 1; k < 200; k++) {
+    const l = l0 + (l1 - l0) * k / 200;
+    let sc = Math.min(l - l0, l1 - l);
+    for (const a of sib) sc = Math.min(sc, Math.abs(l - Math.log(a)));
+    if (sc > bestScore) { bestScore = sc; best = Math.exp(l); }
+  }
+  return best;
+}
+
 // Positions & velocities of all bodies at time t (seconds, absolute epoch)
 function states(s, t, P, V) {
   const { N, rx, ry, rvx, rvy, bx, by, bvx, bvy } = s;
@@ -412,4 +438,4 @@ async function optimize(s, M, opt = {}) {
   return { theta: ((m.theta % 360) + 540) % 360 - 180, dv: m.dv, t0: m.t0, f: best.f, evals };
 }
 
-if (typeof module !== 'undefined') module.exports = { G, DAY, buildSystem, states, simulate, hohmannGuess, optimize, residuals };
+if (typeof module !== 'undefined') module.exports = { G, DAY, buildSystem, defaultOrbitRadius, states, simulate, hohmannGuess, optimize, residuals };
