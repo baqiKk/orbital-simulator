@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Tarayıcıda çalışan yörünge transfer simülatörü: Dünya–Ay serbest dönüş, Dünya–Mars Hohmann transferi ve daha fazlası.">
+<meta name="theme-color" content="#070a12">
+<title>Yörünge Transfer Simülatörü</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app" lang="tr">
+  <aside class="panel" aria-label="Parametreler">
+    <div class="brand">
+      <span class="eyebrow">Kısıtlı N-cisim · düzlemsel</span>
+      <h1>Yörünge Transfer Simülatörü</h1>
+      <p class="lede">Gök cisimlerini ve yanmayı seç; araç yolunu tarayıcıda hesaplar ve oynatır.</p>
+    </div>
+
+    <section>
+      <h2>Senaryo</h2>
+      <label class="field"><span>Hazır görev</span>
+        <select id="scenario"></select>
+      </label>
+      <p class="note" id="scNote"></p>
+    </section>
+
+    <section>
+      <h2>Gök cisimleri</h2>
+      <div class="bodies" id="bodies"></div>
+      <button class="btn add" id="addBody" type="button">+ Cisim ekle</button>
+      <p class="err" id="err" hidden></p>
+    </section>
+
+    <section>
+      <h2>Görev</h2>
+      <div class="field"><span>Görev tipi</span>
+        <div class="seg full" id="modeSeg" role="group" aria-label="Görev tipi">
+          <button type="button" data-v="flyby">Geçiş</button>
+          <button type="button" data-v="capture">Yörüngeye giriş</button>
+          <button type="button" data-v="free">Serbest dönüş</button>
+        </div>
+      </div>
+      <div class="field"><span>Hedef etrafında geçiş yönü</span>
+        <div class="seg full" id="sideSeg" role="group" aria-label="Geçiş yönü">
+          <button type="button" data-v="0">Fark etmez</button>
+          <button type="button" data-v="1">Prograd</button>
+          <button type="button" data-v="-1">Retrograd</button>
+        </div>
+        <small id="sideHint">Serbest dönüşte retrograd geçiş dönen çerçevede 8 (S) biçimini verir.</small>
+      </div>
+      <div class="grid2">
+        <label class="field"><span>Park irtifası (km)</span><input type="number" id="m-h0" step="any"></label>
+        <label class="field"><span id="lbl-hB">Hedef periapsis (km)</span><input type="number" id="m-hB" step="any"></label>
+        <label class="field" id="retWrap"><span id="lbl-hRet">Dönüş perigee (km)</span><input type="number" id="m-hRet" step="any"></label>
+        <label class="field"><span>Kalkış anı t₀ (gün)</span><input type="number" id="m-t0" step="any"></label>
+      </div>
+      <div class="field"><span>Yanma açısı θ (°) · kalkış→hedef doğrultusuna göre</span>
+        <div class="combo"><input type="range" id="m-theta-r" min="-180" max="180" step="0.01" aria-label="Yanma açısı kaydırıcı"><input type="number" id="m-theta" step="any" aria-label="Yanma açısı"></div>
+      </div>
+      <div class="field"><span>Kalkış Δv (m/s) · teğetsel, prograd</span>
+        <div class="combo"><input type="range" id="m-dv-r" step="0.1" aria-label="Δv kaydırıcı"><input type="number" id="m-dv" step="any" aria-label="Δv"></div>
+      </div>
+      <div class="grid2">
+        <label class="field"><span>Simülasyon süresi (gün)</span><input type="number" id="m-dur" step="any" min="0.01"></label>
+        <label class="chk" style="align-self:end;padding-bottom:9px"><input type="checkbox" id="m-auto"> Otomatik süre</label>
+      </div>
+      <div class="actions">
+        <button class="btn" id="hohmann" type="button">Hohmann tahmini</button>
+        <button class="btn primary" id="solve" type="button">Hedefe göre çöz</button>
+      </div>
+      <p class="status" id="status" aria-live="polite"></p>
+    </section>
+
+    <section>
+      <h2>Sonuçlar</h2>
+      <span class="chip warn" id="chip">—</span>
+      <div class="res" id="res"></div>
+    </section>
+
+    <section class="model">
+      <h2>Model</h2>
+      <p>Gök cisimleri seçilen ebeveynleri etrafında dairesel Kepler yörüngelerinde analitik olarak ilerler; ağırlık merkezleri korunur. Yalnızca araç sayısal olarak entegre edilir (Dormand–Prince 5(4), uyarlamalı adım), tüm cisimlerin çekimi hesaba katılır.</p>
+      <p>Yanmalar anlıktır. Çözücü önce yanma açısını tarar, ardından Levenberg–Marquardt ile Δv, θ ve gerekirse t₀ değerini hedef irtifalara oturtur.</p>
+    </section>
+  </aside>
+
+  <main class="stage" id="stage">
+    <canvas id="cv" aria-label="Yörünge görselleştirmesi"></canvas>
+    <div class="msg" id="msg" hidden></div>
+    <div class="hud-top">
+      <div class="glass readout" id="readout">
+        <div class="big" id="r-t">T+ 0g 00:00:00</div>
+        <span class="lbl" id="r-l1">İrtifa</span><b id="r-v1">—</b>
+        <span class="lbl" id="r-l2">Uzaklık</span><b id="r-v2">—</b>
+        <span class="lbl" id="r-l3">Bağıl hız</span><b id="r-v3">—</b>
+      </div>
+      <div class="ctrls">
+        <div class="row">
+          <div class="seg" id="frameSeg" role="group" aria-label="Görünüm çerçevesi"></div>
+          <button class="help-btn" id="helpBtn" type="button" aria-label="Terimler sözlüğü" aria-expanded="false" aria-controls="gloss">?</button>
+        </div>
+        <div class="row">
+          <div class="seg" id="followSeg" role="group" aria-label="Kamera takibi"></div>
+          <button class="ghost" id="fit" type="button">Sığdır</button>
+        </div>
+        <div class="glass toggles">
+          <label class="chk"><input type="checkbox" id="tSoi"> Etki küreleri</label>
+          <label class="chk"><input type="checkbox" id="tTracks" checked> Cisim izleri</label>
+        </div>
+      </div>
+    </div>
+    <div class="glass timeline">
+      <button class="play" id="play" type="button" aria-label="Duraklat"></button>
+      <div class="tl-time"><span id="tplus">T+ 0g 00:00:00</span><span id="tend">/ —</span></div>
+      <div class="scrub"><input type="range" id="scrub" min="0" max="10000" value="0" aria-label="Zaman çizelgesi"><div class="ticks" id="ticks"></div></div>
+      <div class="tl-opts">
+        <select id="speed" aria-label="Oynatma hızı">
+          <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
+        </select>
+        <label class="chk" title="Yakın geçişlerde yavaşlar, boş yolculukta hızlanır"><input type="checkbox" id="focus" checked> Olay odaklı</label>
+        <label class="chk" title="Açıksa sonda baştan başlar; kapalıyken yakalanan araç yörüngede dönmeye devam eder"><input type="checkbox" id="loop"> Döngü</label>
+      </div>
+    </div>
+    <div class="glass gloss" id="gloss" role="dialog" aria-label="Terimler sözlüğü" hidden>
+      <div class="gloss-head">
+        <div><span class="eyebrow">Sözlük</span><h3>Yörünge terimleri</h3></div>
+        <button class="xbtn" id="glossClose" type="button" aria-label="Kapat">✕</button>
+      </div>
+      <input type="text" id="glossQ" placeholder="Terim ara: SOI, aphelion, Δv…" aria-label="Terim ara" autocomplete="off">
+      <div class="gloss-body" id="glossBody"></div>
+    </div>
+  </main>
+</div>
+<script id="core" src="js/core.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
