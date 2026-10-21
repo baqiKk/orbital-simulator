@@ -42,6 +42,16 @@ let needFit = true, solving = false, cancelSolve = false;
 const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 if (reduceMotion) S.playing = false;
 
+// View-mode quality profiles. sub: Hermite sub-samples per integrator step; trackK: body-track points;
+// hudMs: HUD text refresh period (0 = every 4th frame); fpsCap: 0 = display rate.
+const QUALITY = {
+  normal: { stars: true, glow: true, dprMax: 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0 },
+  low:    { stars: false, glow: false, dprMax: 1, fpsCap: 30, sub: 2, trackK: 140, hudMs: 250 },
+};
+let MODE = 'normal', Q = QUALITY.normal;
+const LS = (() => { try { return window.localStorage; } catch (e) { return null; } })();
+const SS = (() => { try { return window.sessionStorage; } catch (e) { return null; } })();
+
 const $ = s => document.querySelector(s);
 const APSIS = DICT['apsis'];
 const peri = i => (S.bodies[i] && APSIS[S.bodies[i].key] && APSIS[S.bodies[i].key][0]) || _('apsis.generic');
@@ -85,6 +95,7 @@ function loadScenario(id) {
   S.bodies = sc.bodies.map(b => bodyFromPreset(b.k, { parent: b.parent, ...(b.a != null ? { a: b.a } : {}), phase: b.phase || 0 }));
   S.M = { ...sc.M };
   S.frame = sc.frame; S.follow = 'free';
+  openRows.clear();
   $('#scenario').value = sc.id;
   $('#scNote').textContent = _('sc.' + sc.id + '.note');
   renderBodies(); syncMission(); renderFrameSeg();
@@ -94,7 +105,11 @@ function loadScenario(id) {
   setPlayIcon();
 }
 
-// ===================== Body cards =====================
+// ===================== Body rows =====================
+// Overview-style rows (colour, preset, role, parent); the editable fields fold out per row.
+const openRows = new Set();
+const ICON_CHEV = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5"/></svg>';
+const ICON_X = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg>';
 function renderBodies() {
   const box = $('#bodies');
   const N = S.bodies.length;
@@ -103,6 +118,8 @@ function renderBodies() {
     const opts = PRESET_ORDER.map(k => `<option value="${k}" ${k === b.key ? 'selected' : ''}>${_('body.' + k)}</option>`).join('');
     const pOpts = `<option value="-1" ${b.parent < 0 ? 'selected' : ''}>${_('body.parentRoot')}</option>` +
       S.bodies.map((o, j) => j === i ? '' : `<option value="${j}" ${b.parent === j ? 'selected' : ''}>${esc(o.name)}</option>`).join('');
+    const par = esc(b.parent < 0 ? _('body.parentRoot') : _('body.orbits', { parent: S.bodies[b.parent].name }));
+    const open = openRows.has(i);
     // natural-parent hint (only for orbiting bodies placed around a non-natural parent)
     const pk = BODY_PRESETS[b.key].parentKey;
     let hint = '';
@@ -110,17 +127,21 @@ function renderBodies() {
       const pn = _('body.' + pk);
       hint = `<p class="hint">${_('body.hint', { name: esc(b.name), parent: pn })}${N < 4 ? ` <button type="button" class="linkbtn" data-act="addparent" data-k="${pk}">${_('body.hintAdd', { parent: pn })}</button>` : ''}</p>`;
     }
-    return `<div class="bcard" data-i="${i}">
-      <div class="bhead"><span class="dot" style="background:${b.color}"></span>${role}
-        <select data-f="key" aria-label="${_('body.select')}">${opts}</select>
-        ${i >= 2 ? `<button type="button" class="xbtn" data-act="remove" aria-label="${_('body.remove')}">✕</button>` : ''}</div>
-      ${b.key === 'custom' ? `<label class="field"><span>${_('body.name')}</span><input type="text" data-f="name" value="${esc(b.name)}"></label>` : ''}
-      <div class="grid2">
-        <label class="field"><span>${_('body.mass')}</span><input type="text" inputmode="decimal" data-f="mass" value="${fmtMass(b.mass)}"><small data-hint="mass">${massHint(b.mass)}</small></label>
-        <label class="field"><span>${_('body.radius')}</span><input type="number" step="any" data-f="radius" value="${b.radius}"></label>
-        <label class="field"><span>${_('body.parent')}</span><select data-f="parent">${pOpts}</select></label>
-        <label class="field"><span>${_('body.a')}</span><input type="number" step="any" data-f="a" value="${b.a}" ${b.parent < 0 ? 'disabled' : ''}></label>
-        <label class="field"><span>${_('body.phase')}</span><input type="number" step="any" data-f="phase" value="${b.phase}" ${b.parent < 0 ? 'disabled' : ''}></label>
+    return `<div class="brow" data-i="${i}">
+      <div class="brow-h"><span class="dot" style="background:${b.color}"></span>
+        <select data-f="key" aria-label="${_('body.select')}">${opts}</select>${role}
+        <span class="par" title="${par}">${par}</span>
+        <button type="button" class="ibtn" data-act="toggle" aria-expanded="${open}" aria-controls="brow-b${i}" aria-label="${esc(_('body.details', { name: b.name }))}">${ICON_CHEV}</button>
+        ${i >= 2 ? `<button type="button" class="ibtn x" data-act="remove" aria-label="${_('body.remove')}">${ICON_X}</button>` : '<span></span>'}</div>
+      <div class="brow-b" id="brow-b${i}" ${open ? '' : 'hidden'}>
+        ${b.key === 'custom' ? `<label class="field"><span>${_('body.name')}</span><input type="text" data-f="name" value="${esc(b.name)}"></label>` : ''}
+        <div class="grid2">
+          <label class="field"><span>${_('body.mass')}</span><input type="text" inputmode="decimal" data-f="mass" value="${fmtMass(b.mass)}"><small data-hint="mass">${massHint(b.mass)}</small></label>
+          <label class="field"><span>${_('body.radius')}</span><input type="number" step="any" data-f="radius" value="${b.radius}"></label>
+          <label class="field"><span>${_('body.parent')}</span><select data-f="parent">${pOpts}</select></label>
+          <label class="field"><span>${_('body.a')}</span><input type="number" step="any" data-f="a" value="${b.a}" ${b.parent < 0 ? 'disabled' : ''}></label>
+          <label class="field"><span>${_('body.phase')}</span><input type="number" step="any" data-f="phase" value="${b.phase}" ${b.parent < 0 ? 'disabled' : ''}></label>
+        </div>
       </div>${hint}
     </div>`;
   }).join('');
@@ -152,6 +173,7 @@ function addBody(k) {
   const root = S.bodies.findIndex(b => b.parent < 0);
   S.bodies.push(bodyFromPreset(key, { parent: root >= 0 ? root : 0 }));
   const nb = S.bodies.length - 1;
+  openRows.add(nb);
   applyPreset(nb, key);
   const b = S.bodies[nb], pk = BODY_PRESETS[key].parentKey;
   // preset orbit only fits around the natural parent; otherwise pick a fitting radius
@@ -174,6 +196,7 @@ function addParentFor(i, k) {
 function removeBody(i) {
   const gone = S.bodies[i];
   S.bodies.splice(i, 1);
+  openRows.clear();
   for (const b of S.bodies) {
     if (b.parent === i) b.parent = gone.parent > i ? gone.parent - 1 : gone.parent;
     else if (b.parent > i) b.parent--;
@@ -182,13 +205,13 @@ function removeBody(i) {
 }
 
 $('#bodies').addEventListener('change', e => {
-  const card = e.target.closest('.bcard'); if (!card) return;
+  const card = e.target.closest('.brow'); if (!card) return;
   const i = +card.dataset.i, f = e.target.dataset.f;
   if (f === 'key') { applyPreset(i, e.target.value); renderBodies(); renderFrameSeg(); rebuild({ fit: true }); }
   else if (f === 'parent') { S.bodies[i].parent = +e.target.value; renderBodies(); rebuild({ fit: true }); }
 });
 $('#bodies').addEventListener('input', e => {
-  const card = e.target.closest('.bcard'); if (!card) return;
+  const card = e.target.closest('.brow'); if (!card) return;
   const i = +card.dataset.i, f = e.target.dataset.f, b = S.bodies[i];
   if (!f || f === 'key' || f === 'parent') return;
   if (f === 'name') { b.name = e.target.value || _('body.default'); renderFrameSeg(); scheduleRebuild(); return; }
@@ -202,8 +225,14 @@ $('#bodies').addEventListener('input', e => {
 });
 $('#bodies').addEventListener('click', e => {
   const btn = e.target.closest('[data-act]'); if (!btn) return;
-  if (btn.dataset.act === 'remove') removeBody(+btn.closest('.bcard').dataset.i);
-  if (btn.dataset.act === 'addparent') addParentFor(+btn.closest('.bcard').dataset.i, btn.dataset.k);
+  if (btn.dataset.act === 'toggle') {
+    const i = +btn.closest('.brow').dataset.i, open = !openRows.has(i);
+    open ? openRows.add(i) : openRows.delete(i);
+    btn.setAttribute('aria-expanded', String(open)); $('#brow-b' + i).hidden = !open;
+    clampWins();
+  }
+  if (btn.dataset.act === 'remove') removeBody(+btn.closest('.brow').dataset.i);
+  if (btn.dataset.act === 'addparent') addParentFor(+btn.closest('.brow').dataset.i, btn.dataset.k);
 });
 $('#addBody').addEventListener('click', () => addBody());
 
@@ -296,7 +325,7 @@ function posAtTime(t, out) {
   return herm(i, clamp((t - simR.t[i]) / h, 0, 1), out);
 }
 
-const SUB = 5;
+let SUB = Q.sub;
 function buildCache() {
   const r = simR, n = r.t.length;
   const px = [], py = [], pt = [], segStart = new Int32Array(n);
@@ -373,13 +402,16 @@ function frameCache() {
   const n = C.pt.length; C.fx = new Float64Array(n); C.fy = new Float64Array(n);
   const o = [0, 0];
   for (let i = 0; i < n; i++) { frameAt(C.pt[i]); tf(C.px[i], C.py[i], o); C.fx[i] = o[0]; C.fy[i] = o[1]; }
-  const K = 420, NB = sys.N; C.tracks = [];
+  const K = Q.trackK, NB = sys.N; C.tracks = [];
   for (let b = 0; b < NB; b++) C.tracks.push(new Float64Array(2 * (K + 1)));
   for (let k = 0; k <= K; k++) {
     const t = C.T * k / K; frameAt(t);
     for (let b = 0; b < NB; b++) { tf(SP[2 * b], SP[2 * b + 1], o); C.tracks[b][2 * k] = o[0]; C.tracks[b][2 * k + 1] = o[1]; }
   }
-  for (const m of C.markers) { frameAt(m.t); tf(m.x, m.y, o); m.fx = o[0]; m.fy = o[1]; }
+  for (const m of C.markers) {
+    frameAt(m.t); tf(m.x, m.y, o); m.fx = o[0]; m.fy = o[1];
+    const bb = m.body || 0; tf(SP[2 * bb], SP[2 * bb + 1], o); m.bfx = o[0]; m.bfy = o[1];
+  }
 }
 
 // ===================== Canvas =====================
@@ -390,11 +422,12 @@ const COL = { traj: css.getPropertyValue('--traj').trim() || '#ffb547', orbit: c
 
 function resize() {
   const r = stage.getBoundingClientRect();
-  W = Math.max(1, r.width); H = Math.max(1, r.height); DPR = (typeof lowQ !== 'undefined' && lowQ) ? 1 : Math.min(1.5, window.devicePixelRatio || 1);
+  W = Math.max(1, r.width); H = Math.max(1, r.height); DPR = lowQ ? 1 : Math.min(Q.dprMax, window.devicePixelRatio || 1);
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
   makeStars();
 }
 function makeStars() {
+  if (!Q.stars) { stars = null; return; }
   stars = document.createElement('canvas'); stars.width = cv.width; stars.height = cv.height;
   const g = stars.getContext('2d'); g.scale(DPR, DPR);
   let seed = 1234567; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -408,27 +441,68 @@ function makeStars() {
     g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill();
   }
 }
-const ro = new ResizeObserver(() => { resize(); INS = null; }); ro.observe(stage); ro.observe(document.querySelector('.hud-top')); ro.observe(document.querySelector('.timeline'));
+const ro = new ResizeObserver(() => {
+  resize();
+  $('#wins').style.setProperty('--tl-h', Math.ceil(stage.getBoundingClientRect().bottom - $('#timeline').getBoundingClientRect().top + 8) + 'px');
+  clampWins(); INS = null;
+});
+for (const el of [stage, $('#ctrls'), $('#hudBot'), $('#wins')]) ro.observe(el);
 
+const MARK_FONT = '500 11px "IBM Plex Mono", ui-monospace, monospace';
 const sx = x => W / 2 + (x - cam.cx) * cam.scale;
 const sy = y => H / 2 - (y - cam.cy) * cam.scale;
+// Free area of the plot not covered by floating windows and HUD: { l, r, t, b } in px from each edge.
 let INS = null;
 function insets() { if (!INS) INS = measureInsets(); return INS; }
-function measureInsets() { const top = document.querySelector('.hud-top').getBoundingClientRect().height + 24; const bot = document.querySelector('.timeline').getBoundingClientRect().height + 28; return { top: Math.min(top, H * 0.45), bot: Math.min(bot, H * 0.35) }; }
+function measureInsets() {
+  const sr = stage.getBoundingClientRect(), gap = 12;
+  const rel = el => { const r = el.getBoundingClientRect(); return { x0: r.left - sr.left, x1: r.right - sr.left, y0: r.top - sr.top, y1: r.bottom - sr.top }; };
+  let l = 0, r = 0, t = 0, b = 0;
+  // windows hug the left or right edge
+  if (floating()) for (const el of document.querySelectorAll('.win:not([hidden])')) {
+    const o = rel(el);
+    if ((o.x0 + o.x1) / 2 < W / 2) l = Math.max(l, o.x1 + gap); else r = Math.max(r, W - o.x0 + gap);
+  }
+  if (W - l - r < Math.max(260, W * 0.35)) l = r = 0; // too narrow: let windows overlap instead
+  // HUD blocks the top or bottom where it reaches into the free columns
+  for (const el of [$('#ctrls'), $('#readout'), $('#timeline')]) {
+    const o = rel(el);
+    if (o.x1 <= l || o.x0 >= W - r || o.y1 <= o.y0) continue;
+    if ((o.y0 + o.y1) / 2 < H / 2) t = Math.max(t, o.y1 + gap); else b = Math.max(b, H - o.y0 + gap);
+  }
+  return { l, r, t: Math.min(t, H * 0.45), b: Math.min(b, H * 0.4) };
+}
 
 function fit() {
-  if (!C) return; frameCache();
+  if (!C || W < 50 || H < 50) return; // stage not laid out yet (hidden tab/pane): keep needFit for later
+  frameCache();
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   const add = (x, y) => { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; };
   for (let i = 0; i < C.fx.length; i++) add(C.fx[i], C.fy[i]);
   for (const b of [0, 1]) { const tr = C.tracks[b]; for (let k = 0; k < tr.length; k += 2) add(tr[k], tr[k + 1]); }
   const pad = Math.max(sys.R[0], sys.R[1]) * 2;
   x0 -= pad; x1 += pad; y0 -= pad; y1 += pad;
-  const { top, bot } = insets();
-  const uh = Math.max(80, H - top - bot), uw = Math.max(80, W - 40);
-  cam.scale = Math.min(uw / (x1 - x0), uh / (y1 - y0)) * 0.9;
-  cam.cx = (x0 + x1) / 2;
-  cam.cy = (y0 + y1) / 2 + ((top - bot) / 2) / cam.scale;
+  const { l, r, t, b } = insets();
+  const uh = Math.max(80, H - t - b), uw = Math.max(80, W - l - r - 20);
+  const scaleFor = w => Math.min(w / (x1 - x0), uh / (y1 - y0)) * 0.9;
+  // marker labels stick out sideways past the path's bounding box: reserve their overhang (px) on each side
+  ctx.font = MARK_FONT;
+  const overhang = s => {
+    let L = 0, R = 0;
+    for (const m of C.markers) {
+      const dx = m.fx - m.bfx, dy = m.fy - m.bfy, d = Math.hypot(dx, dy) * s;
+      const ux = d < 1 ? Math.SQRT1_2 : dx * s / d, tw = ctx.measureText(m.txt).width;
+      const a = 14 * ux + (ux < -0.3 ? -tw : ux < 0.3 ? -tw / 2 : 0);
+      L = Math.max(L, -((m.fx - x0) * s + a)); R = Math.max(R, (m.fx - x1) * s + a + tw);
+    }
+    const k = Math.min(1, uw * 0.4 / (L + R || 1)); // never give labels more than 40% of the width
+    return [L * k, R * k];
+  };
+  let s = scaleFor(uw), L = 0, R = 0;
+  for (let k = 0; k < 2; k++) { [L, R] = overhang(s); s = scaleFor(Math.max(80, uw - L - R)); }
+  cam.scale = s;
+  cam.cx = (x0 + x1) / 2 - ((l + L - r - R) / 2) / s;
+  cam.cy = (y0 + y1) / 2 + ((t - b) / 2) / s;
   needFit = false;
 }
 function zoomAt(px, py, k) {
@@ -471,7 +545,7 @@ $('#followSeg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return; S.follow = b.dataset.v; renderFrameSeg();
   if ((S.follow === 'A' || S.follow === 'B') && sys) {
     const k = S.follow === 'A' ? 0 : 1, R = sys.R[k], rad = Math.min(sys.soi[k], 45 * R);
-    const { top, bot } = insets(); cam.scale = Math.min(W, H - top - bot) * 0.42 / rad;
+    const { l, r, t, b } = insets(); cam.scale = Math.min(W - l - r, H - t - b) * 0.42 / rad;
   }
   if (S.follow === 'free') needFit = true;
 });
@@ -493,7 +567,7 @@ window.addEventListener('pointerup', () => { scrubbing = false; });
 $('#speed').addEventListener('change', e => { S.speed = +e.target.value; });
 $('#focus').addEventListener('change', e => { S.focus = e.target.checked; rebuildCum(); renderTicks(); });
 document.addEventListener('keydown', e => {
-  if (e.code === 'Space' && !/INPUT|SELECT|TEXTAREA|BUTTON/.test(document.activeElement.tagName)) { e.preventDefault(); $('#play').click(); }
+  if (e.code === 'Space' && !/INPUT|SELECT|TEXTAREA|BUTTON|SUMMARY/.test(document.activeElement.tagName)) { e.preventDefault(); $('#play').click(); }
 });
 function renderTicks() {
   const box = $('#ticks'); if (!C) { box.innerHTML = ''; return; }
@@ -535,7 +609,7 @@ function updateResults() {
   if (M.mode === 'free') rows.push([_('res.retPeri', { peri: peri(0) }), r.aRet ? nf1.format((r.aRet.d - sys.R[0]) / 1e3) : '—', r.aRet ? 'km · ' + _('hud.tplus', { t: fmtDur(r.aRet.t) }) : _('res.noReturn')]);
   if (guess && Number.isFinite(guess.dv)) rows.push([_('res.hohmann'), nf1.format(guess.dv), _('res.hohmannUnit', { days: nf1.format(guess.tof / DAY) })]);
   rows.push([_('res.integration'), nf0.format(r.steps), _('res.steps')]);
-  res.innerHTML = rows.map(([l, v, u]) => `<div><span class="lbl">${esc(l)}</span><b>${v}${u ? `<em>${esc(u)}</em>` : ''}</b></div>`).join('');
+  res.innerHTML = rows.map(([l, v, u]) => `<tr><th scope="row">${esc(l)}</th><td>${v}${u ? `<em>${esc(u)}</em>` : ''}</td></tr>`).join('');
 }
 function setStatus(t) { $('#status').textContent = t; }
 
@@ -614,7 +688,7 @@ function orbitPos(t, out) {
   const o = C.orbit, a = o.w * (t - C.T), c = Math.cos(a), s = Math.sin(a);
   out[0] = SPo[2] + o.rx * c - o.ry * s; out[1] = SPo[3] + o.rx * s + o.ry * c; return out;
 }
-let last = performance.now(), hold = 0, hudTick = 0, frameAvg = 1 / 60, slowFrames = 0, lowQ = false;
+let last = performance.now(), hold = 0, hudTick = 0, hudLast = 0, frameAvg = 1 / 60, slowFrames = 0, lowQ = false;
 const tmp = [0, 0], tmp2 = [0, 0];
 
 // Clip each segment to the viewport (no giant coordinates reach the rasterizer)
@@ -656,10 +730,15 @@ function hexA(hex, a) { const k = hex + a; let v = _hx.get(k); if (!v) { v = hex
 function hexA0(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
 
 function draw(now) {
+  // frame cap (low-resource mode); the small slack keeps 60 Hz displays at an even 30 fps
+  if (Q.fpsCap && now - last < 1000 / Q.fpsCap - 4) { requestAnimationFrame(draw); return; }
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
-  // adaptive quality: if frames stay slow, drop glow and render at 1x pixel ratio
-  frameAvg = frameAvg * 0.95 + dt * 0.05;
-  if (!lowQ && frameAvg > 0.03 && ++slowFrames > 90) { lowQ = true; resize(); }
+  // adaptive quality (normal mode): if frames stay slow, drop glow, render at 1x pixel ratio and suggest low mode
+  if (MODE === 'normal') {
+    frameAvg = frameAvg * 0.95 + dt * 0.05;
+    if (!lowQ && frameAvg > 0.03 && ++slowFrames > 90) { lowQ = true; resize(); showPerfTip(); }
+  }
+  const glow = Q.glow && !lowQ;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H);
   if (stars) ctx.drawImage(stars, 0, 0, W, H);
@@ -739,7 +818,7 @@ function draw(now) {
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   ctx.strokeStyle = hexA(COL.traj, 0.26); ctx.lineWidth = 1.2;
   strokePath(C.fx, C.fy, 0, C.fx.length - 1);
-  for (const [lw, col] of (lowQ ? [[1.8, COL.traj]] : [[6, hexA(COL.traj, 0.16)], [1.8, COL.traj]])) {
+  for (const [lw, col] of (glow ? [[6, hexA(COL.traj, 0.16)], [1.8, COL.traj]] : [[1.8, COL.traj]])) {
     ctx.strokeStyle = col; ctx.lineWidth = lw;
     strokePath(C.fx, C.fy, 0, pathIdx);
     ctx.beginPath(); ctx.moveTo(sx(C.fx[pathIdx]), sy(C.fy[pathIdx])); ctx.lineTo(sx(cpos[0]), sy(cpos[1])); ctx.stroke();
@@ -750,7 +829,7 @@ function draw(now) {
     if (rr > 2 && rr < 1e5) { ctx.strokeStyle = hexA(COL.traj, 0.55); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(sx(bpos[1][0]), sy(bpos[1][1]), rr, 0, 6.2832); ctx.stroke(); }
   }
   // markers
-  ctx.font = '500 11px "IBM Plex Mono", ui-monospace, monospace';
+  ctx.font = MARK_FONT;
   const placed = [];
   for (const m of C.markers) {
     const x = sx(m.fx), y = sy(m.fy), reached = m.t <= tNow + 1e-6;
@@ -785,7 +864,9 @@ function draw(now) {
     const r = Math.max(minR, sys.R[b] * cam.scale);
     if (x + r < -60 || x - r > W + 60 || y + r < -60 || y - r > H + 60) continue;
     const col = S.bodies[b].color;
-    if (isSun) {
+    if (!Q.glow) { // low-resource: flat discs, no gradients
+      ctx.fillStyle = isSun ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+    } else if (isSun) {
       const g = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 4.5);
       g.addColorStop(0, hexA(col, 0.55)); g.addColorStop(0.25, hexA(col, 0.18)); g.addColorStop(1, hexA(col, 0));
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 4.5, 0, 6.2832); ctx.fill();
@@ -806,9 +887,11 @@ function draw(now) {
   // spacecraft
   {
     const x = sx(cpos[0]), y = sy(cpos[1]);
-    const g = ctx.createRadialGradient(x, y, 0, x, y, 16);
-    g.addColorStop(0, hexA(COL.traj, 0.6)); g.addColorStop(1, hexA(COL.traj, 0));
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 16, 0, 6.2832); ctx.fill();
+    if (Q.glow) {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 16);
+      g.addColorStop(0, hexA(COL.traj, 0.6)); g.addColorStop(1, hexA(COL.traj, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 16, 0, 6.2832); ctx.fill();
+    } else { ctx.strokeStyle = COL.traj; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, 6, 0, 6.2832); ctx.stroke(); }
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
     const vx = sx(cpos2[0]) - x, vy = sy(cpos2[1]) - y, vl = Math.hypot(vx, vy);
     if (vl > 1e-6) {
@@ -820,10 +903,10 @@ function draw(now) {
 
   // scale bar
   {
-    const { bot } = insets();
+    const { l, b: bot } = insets();
     const target = 110 / cam.scale; const p = Math.pow(10, Math.floor(Math.log10(target)));
     const nice = [1, 2, 5, 10].map(k => k * p).reduce((a, b) => Math.abs(b - target) < Math.abs(a - target) ? b : a);
-    const px = nice * cam.scale, x0 = 20, y0 = H - bot - 4;
+    const px = nice * cam.scale, x0 = l + 8, y0 = H - bot - 4;
     ctx.strokeStyle = hexA(COL.dim, 0.9); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x0, y0 - 5); ctx.lineTo(x0, y0); ctx.lineTo(x0 + px, y0); ctx.lineTo(x0 + px, y0 - 5); ctx.stroke();
     ctx.fillStyle = COL.dim; ctx.font = '500 11px "IBM Plex Mono", ui-monospace, monospace';
@@ -831,7 +914,8 @@ function draw(now) {
   }
 
   // HUD text
-  if ((hudTick++ & 3) === 0) {
+  if (Q.hudMs ? now - hudLast >= Q.hudMs : (hudTick++ & 3) === 0) {
+    hudLast = now;
     const absX = craft[0], absY = craft[1];
     states(sys, S.M.t0 * DAY + tNow, SP, SV);
     const dA = Math.hypot(absX - SP[0], absY - SP[1]), dB = Math.hypot(absX - SP[2], absY - SP[3]);
@@ -870,21 +954,162 @@ function renderGloss(q) {
   }
   $('#glossBody').innerHTML = html || `<p class="none">${_('gloss.none')}</p>`;
 }
-function setGloss(open) {
-  $('#gloss').hidden = !open; $('#helpBtn').setAttribute('aria-expanded', String(open));
-  if (open) { renderGloss($('#glossQ').value); $('#glossQ').focus({ preventScroll: true }); }
-}
-$('#helpBtn').addEventListener('click', () => setGloss($('#gloss').hidden));
-$('#glossClose').addEventListener('click', () => { setGloss(false); $('#helpBtn').focus(); });
 $('#glossQ').addEventListener('input', e => renderGloss(e.target.value));
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#gloss').hidden) { setGloss(false); $('#helpBtn').focus(); } });
-document.addEventListener('pointerdown', e => { if (!$('#gloss').hidden && !e.target.closest('#gloss') && !e.target.closest('#helpBtn')) setGloss(false); });
+
+// ===================== Windows =====================
+// Floating, draggable, collapsible windows on wide screens; stacked panels under the plot on narrow ones.
+// Layout persists in localStorage. A null x/y means "default spot", recomputed on every layout change.
+const mqFloat = window.matchMedia('(min-width: 861px)');
+function floating() { return mqFloat.matches; }
+const WINS = parseWins(readPref(LS, PREF_KEYS.wins));
+const ICON_MINUS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7"/></svg>';
+const ICON_PLUS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7M6 2.5v7"/></svg>';
+let zTop = 10;
+const winEl = id => $('#w-' + id);
+const railBtn = id => $(`.rail-btn[data-win="${id}"]`);
+function saveWins() { writePref(LS, PREF_KEYS.wins, JSON.stringify(WINS)); }
+
+// Default spots: mission top-left, results under the view controls on the right, so the centre stays clear.
+function defaultWinPos(id, el) {
+  const box = $('#wins'), cw = box.clientWidth, ch = box.clientHeight, m = 12, w = el.offsetWidth;
+  const cssW = k => parseFloat(getComputedStyle(winEl(k)).width) || 0;
+  const below = $('#ctrls').getBoundingClientRect().bottom - box.getBoundingClientRect().top + 10;
+  switch (id) {
+    case 'mission': return [m, m];
+    case 'bodies': return [m + cssW('mission') + 10, m];
+    case 'results': return [cw - w - m, below];
+    case 'gloss': return [cw - w - m - cssW('results') - 10, below];
+    default: return [(cw - w) / 2, ch * 0.16];
+  }
+}
+function placeWin(id) {
+  const st = WINS[id], el = winEl(id), box = $('#wins');
+  if (!st.open || !floating()) return;
+  let [x, y] = st.x == null || st.y == null ? defaultWinPos(id, el) : [st.x, st.y];
+  // pull inside the visible area; the saved spot is kept, so it comes back when the screen grows again
+  [x, y] = clampWin(x, y, el.offsetWidth, el.offsetHeight, box.clientWidth, box.clientHeight);
+  el.style.left = x + 'px'; el.style.top = y + 'px';
+}
+function clampWins() { for (const id of WIN_IDS) placeWin(id); INS = null; }
+function applyWin(id) {
+  const st = WINS[id], el = winEl(id), cb = el.querySelector('[data-act=collapse]');
+  el.hidden = !st.open;
+  el.classList.toggle('collapsed', st.collapsed);
+  cb.innerHTML = st.collapsed ? ICON_PLUS : ICON_MINUS;
+  cb.setAttribute('aria-label', _(st.collapsed ? 'win.expand' : 'win.collapse'));
+  cb.setAttribute('aria-expanded', String(!st.collapsed));
+  railBtn(id).setAttribute('aria-pressed', String(st.open));
+  if (id === 'gloss' && st.open) renderGloss($('#glossQ').value);
+  placeWin(id);
+}
+function setWin(id, patch) {
+  const wasOpen = WINS[id].open;
+  Object.assign(WINS[id], patch);
+  applyWin(id); saveWins(); INS = null;
+  if (WINS[id].open && !wasOpen) {
+    bringFront(winEl(id));
+    if (id === 'gloss') $('#glossQ').focus({ preventScroll: true });
+  }
+}
+function bringFront(el) { el.style.zIndex = ++zTop; }
+
+document.querySelector('.rail').addEventListener('click', e => {
+  const b = e.target.closest('[data-win]'); if (!b) return;
+  setWin(b.dataset.win, { open: !WINS[b.dataset.win].open, collapsed: false });
+});
+$('#wins').addEventListener('click', e => {
+  const b = e.target.closest('.wbtn'); if (!b) return;
+  const id = b.closest('.win').dataset.win;
+  if (b.dataset.act === 'collapse') setWin(id, { collapsed: !WINS[id].collapsed });
+  else { setWin(id, { open: false }); railBtn(id).focus(); }
+});
+// drag by the title bar
+$('#wins').addEventListener('pointerdown', e => {
+  const win = e.target.closest('.win'); if (!win) return;
+  if (floating()) bringFront(win);
+  const head = e.target.closest('.win-h');
+  if (!head || e.target.closest('button') || !floating() || e.button !== 0) return;
+  e.preventDefault();
+  const id = win.dataset.win, box = $('#wins');
+  const ox = e.clientX - win.offsetLeft, oy = e.clientY - win.offsetTop;
+  head.setPointerCapture(e.pointerId); win.classList.add('drag');
+  const move = ev => {
+    const [x, y] = clampWin(ev.clientX - ox, ev.clientY - oy, win.offsetWidth, win.offsetHeight, box.clientWidth, box.clientHeight);
+    win.style.left = x + 'px'; win.style.top = y + 'px'; WINS[id].x = x; WINS[id].y = y;
+  };
+  const up = () => {
+    head.removeEventListener('pointermove', move); head.removeEventListener('pointerup', up); head.removeEventListener('pointercancel', up);
+    win.classList.remove('drag'); saveWins(); INS = null;
+  };
+  head.addEventListener('pointermove', move); head.addEventListener('pointerup', up); head.addEventListener('pointercancel', up);
+});
+$('#resetWins').addEventListener('click', () => {
+  clearPref(LS, PREF_KEYS.wins);
+  Object.assign(WINS, defaultWins());
+  for (const id of WIN_IDS) applyWin(id);
+  INS = null; S.follow = 'free'; renderFrameSeg(); needFit = true;
+});
+// Esc closes the reference windows (glossary, model) when focus is inside them
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const win = document.activeElement && document.activeElement.closest('.win');
+  if (win && (win.dataset.win === 'gloss' || win.dataset.win === 'model')) { setWin(win.dataset.win, { open: false }); railBtn(win.dataset.win).focus(); }
+});
+mqFloat.addEventListener('change', () => { for (const id of WIN_IDS) applyWin(id); INS = null; needFit = true; });
+
+// ===================== View mode =====================
+function setMode(m, save) {
+  if (!QUALITY[m]) return;
+  MODE = m; Q = QUALITY[m]; SUB = Q.sub;
+  document.documentElement.dataset.q = m;
+  if (m === 'normal') { lowQ = false; slowFrames = 0; frameAvg = 1 / 60; }
+  resize();
+  if (sys && simR) { buildCache(); renderTicks(); }
+  document.querySelectorAll('#viewMode button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === m)));
+  if (save) writePref(LS, PREF_KEYS.mode, m);
+  if (m === 'low') $('#perfTip').hidden = true;
+}
+$('#viewMode').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b || b.getAttribute('aria-disabled') === 'true') return;
+  setMode(b.dataset.v, true);
+});
+
+// First visit: start in normal mode and ask once; either answer is remembered.
+let perfTipPending = false, perfTipShown = false;
+function askMode() {
+  const d = $('#askDlg');
+  const done = m => {
+    setMode(m, true);
+    if (d.open) d.close();
+    if (perfTipPending && m === 'normal') showPerfTip();
+  };
+  $('#askLow').addEventListener('click', () => done('low'));
+  $('#askNormal').addEventListener('click', () => done('normal'));
+  d.addEventListener('cancel', e => { e.preventDefault(); done('normal'); });
+  if (typeof d.showModal === 'function') d.showModal(); else d.setAttribute('open', '');
+  $('#askNormal').focus();
+}
+
+// Non-modal suggestion when adaptive quality kicks in; at most once per session.
+function showPerfTip() {
+  if ($('#askDlg').open) { perfTipPending = true; return; }
+  perfTipPending = false;
+  if (MODE !== 'normal' || perfTipShown || readPref(SS, PREF_KEYS.perfTip)) return;
+  perfTipShown = true; writePref(SS, PREF_KEYS.perfTip, '1');
+  $('#perfTip').hidden = false;
+}
+$('#perfGo').addEventListener('click', () => setMode('low', true));
+$('#perfX').addEventListener('click', () => { $('#perfTip').hidden = true; });
 
 // ===================== Init =====================
 applyI18n();
 $('#scenario').innerHTML = SCENARIOS.map(s => `<option value="${s.id}">${esc(_('sc.' + s.id + '.name'))}</option>`).join('');
 $('#scenario').addEventListener('change', e => loadScenario(e.target.value));
-resize();
+const start = startupMode(LS);
+setMode(start.mode, false);
 loadScenario('em_free');
 setPlayIcon();
+for (const id of WIN_IDS) applyWin(id);
+if (start.ask) askMode();
 requestAnimationFrame(t => { last = t; draw(t); });

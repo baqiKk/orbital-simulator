@@ -8,15 +8,18 @@ Tarayıcıda çalışan, düzlemsel (2B) yörünge transfer simülatörü. Kulla
   - **İstisna:** `index.html`'deki `<title>`, `<meta name="description">` ve Open Graph etiketlerinde (`og:title`, `og:description`) varsayılan Türkçe değer HTML'de doğrudan bulunur; arama motorları ve link önizleyicileri (WhatsApp, Discord) JS çalıştırmaz. i18n bunları dil değişince yine günceller (`meta.title`, `meta.description`). Bu metinleri değiştirirsen sözlük ile HTML'i birlikte güncelle.
 - **Build adımı yok.** Saf HTML/CSS/vanilla JS. Framework, bundler, npm bağımlılığı ekleme. Dış kaynak olarak sadece Google Fonts var.
 - Fizik `js/core.js` içinde kalır ve **DOM'a dokunmaz**: hem sayfada, hem Web Worker'da (`importScripts`), hem Node testlerinde çalışmalı.
-- Fizikte değişiklik yaptıktan sonra `node tests/core.test.js` çalıştır; yeni davranış için test ekle.
+- Fizikte değişiklik yaptıktan sonra `node tests/core.test.js` çalıştır; yeni davranış için test ekle. Arayüz/metin değişikliğinden sonra `node tests/ui.test.js` (sözlük kapsamı, tercihler).
+- localStorage/sessionStorage yalnızca `js/prefs.js` yardımcılarıyla (try/catch'li) kullanılır; depolama yoksa sayfa yine çalışmalı.
+- Görünüm modları: `app.js` içindeki `QUALITY` profilleri (normal / low). Yeni çizim efekti eklerken düşük kaynak modunda kapalı olmalı (`Q.glow`, `Q.stars`); CSS tarafında `html[data-q=low]`.
 - Tarayıcı yükü düşük kalmalı: kare başına iş O(çizilen nokta). Ağır hesap (çözücü) Web Worker'da.
 - Yörünge noktası adları cisme göre: Dünya perigee/apogee, Ay perilune/apolune, Güneş perihelion/aphelion, Mars periareion, Venüs pericytherion, Jüpiter perijove; diğerleri periapsis. `app.js` içindeki `APSIS` tablosunu kullan (veri `i18n.js` içindeki `apsis` girdisinden gelir).
 - Tek tema: koyu uzay. Renkler `css/style.css` başındaki `:root` token'larında; yeni renk ekleme, token kullan.
 - Mobil (≈400 px) genişlikte de çalışmalı; yatay sayfa kaydırması olmamalı.
 
 ## Dosyalar
-- `index.html` — işaretleme (panel, sahne, HUD, zaman çizelgesi, sözlük paneli). Metinler yazılmaz; `data-i18n="anahtar"` (metin) ya da `data-i18n-<öznitelik>="anahtar"` (aria-label, title, placeholder, content) kullanılır.
+- `index.html` — işaretleme (sol ikon çubuğu, sahne, HUD + mod seçici, zaman çizelgesi, pencereler: Görev / Gök cisimleri / Sonuçlar / Sözlük / Model, ilk açılış uyarısı, performans önerisi). Metinler yazılmaz; `data-i18n="anahtar"` (metin) ya da `data-i18n-<öznitelik>="anahtar"` (aria-label, title, placeholder, content) kullanılır.
 - `js/i18n.js` — tek metin sözlüğü (`I18N.tr`), `_(anahtar, {param})` ve `applyI18n()`. `core.js`'ten önce yüklenir. Yeni metin = yeni anahtar buraya; sözlük/APSIS gibi yapısal veri de burada. Dil eklemek için `I18N.en` ekleyip `LANG`'ı değiştirmek yeter.
+- `js/prefs.js` — DOM'suz tercih yardımcıları: kayıtlı görünüm modu (`startupMode`), pencere düzeni (`parseWins`, `clampWin`), güvenli `readPref`/`writePref`.
 - `css/style.css` — tüm stiller.
 - `js/core.js` — fizik (metin içermez: hatalar ve olay etiketleri `err.*` / `ev.*` i18n anahtarı olarak döner, çevirisini arayüz yapar):
   - `buildSystem(list)`: cisim hiyerarşisi (her cisim bir ebeveyn etrafında dairesel Kepler yörüngesinde; tek kök sabit merkez). Ağırlık merkezleri korunur. SOI = a·(m/M)^0.4.
@@ -24,8 +27,9 @@ Tarayıcıda çalışan, düzlemsel (2B) yörünge transfer simülatörü. Kulla
   - `simulate(s, M, opts)`: araç için Dormand–Prince 5(4) uyarlamalı entegrasyon. Olaylar: kalkış yanması, hedef periapsisi (SOI içinde), yakalama yanması (capture modunda), dönüş periapsisi, çarpma. Serbest dönüşte dönüş periapsisinde durur (atmosfer girişi varsayımı).
   - `hohmannGuess(s, M)`: patched-conic başlangıç tahmini (iç hedef / ebeveyne dönüş / kardeş cisimler, iç içe kalkış).
   - `optimize(s, M, opt)`: açı taraması + Levenberg–Marquardt; θ, Δv ve (gezegenler arası ise) t₀ üzerinde. Hedefler: hedef periapsis irtifası (isteğe bağlı prograd/retrograd), serbest dönüşte dönüş irtifası.
-- `js/app.js` — arayüz, hazır senaryolar (`SCENARIOS`), cisim önayarları (`BODY_PRESETS`), görünüm çerçeveleri (eylemsiz / A / B / dönen A–B), canvas çizimi, zaman çizelgesi, sözlük (`GLOSS`), çözücü worker'ı.
+- `js/app.js` — arayüz, hazır senaryolar (`SCENARIOS`), cisim önayarları (`BODY_PRESETS`), görünüm çerçeveleri (eylemsiz / A / B / dönen A–B), canvas çizimi, zaman çizelgesi, sözlük (`GLOSS`), çözücü worker'ı, pencere yöneticisi, görünüm modları (`QUALITY`). `fit()` açık pencereleri ve HUD'u (`measureInsets`) hesaba katar.
 - `tests/core.test.js` — fizik regresyon testleri (Node, bağımlılıksız).
+- `tests/ui.test.js` — sözlük kapsamı (HTML ve JS'teki anahtarlar), HTML varsayılan meta metinleri, tercih yardımcıları.
 
 ## Model varsayımları
 Düzlemsel, dairesel cisim yörüngeleri, anlık yanmalar, kısıtlı N-cisim (araç cisimleri çekmez), atmosfer yok. Yakalamadan sonraki tur animasyonu analitik dairesel iki-cisimdir.

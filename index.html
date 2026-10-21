@@ -8,7 +8,7 @@
 <meta property="og:description" data-i18n-content="meta.description" content="Tarayıcıda çalışan yörünge transfer simülatörü: Dünya–Ay serbest dönüş, Dünya–Mars Hohmann transferi ve daha fazlası.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://baqikk.github.io/orbital-simulator/">
-<meta name="theme-color" content="#070a12">
+<meta name="theme-color" content="#05080b">
 <title>Yörünge Transfer Simülatörü</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,97 +16,30 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<div class="app" lang="tr">
-  <aside class="panel" data-i18n-aria-label="ui.aria.params">
-    <div class="brand">
-      <span class="eyebrow" data-i18n="ui.eyebrow"></span>
-      <h1 data-i18n="ui.title"></h1>
-      <p class="lede" data-i18n="ui.lede"></p>
-    </div>
-
-    <section>
-      <h2 data-i18n="ui.sec.scenario"></h2>
-      <label class="field"><span data-i18n="ui.scenario"></span>
-        <select id="scenario"></select>
-      </label>
-      <p class="note" id="scNote"></p>
-    </section>
-
-    <section>
-      <h2 data-i18n="ui.sec.bodies"></h2>
-      <div class="bodies" id="bodies"></div>
-      <button class="btn add" id="addBody" type="button" data-i18n="ui.addBody"></button>
-      <p class="err" id="err" hidden></p>
-    </section>
-
-    <section>
-      <h2 data-i18n="ui.sec.mission"></h2>
-      <div class="field"><span data-i18n="ui.missionType"></span>
-        <div class="seg full" id="modeSeg" role="group" data-i18n-aria-label="ui.missionType">
-          <button type="button" data-v="flyby" data-i18n="ui.mode.flyby"></button>
-          <button type="button" data-v="capture" data-i18n="ui.mode.capture"></button>
-          <button type="button" data-v="free" data-i18n="ui.mode.free"></button>
-        </div>
-      </div>
-      <div class="field"><span data-i18n="ui.side"></span>
-        <div class="seg full" id="sideSeg" role="group" data-i18n-aria-label="ui.sideAria">
-          <button type="button" data-v="0" data-i18n="ui.side.any"></button>
-          <button type="button" data-v="1" data-i18n="ui.side.pro"></button>
-          <button type="button" data-v="-1" data-i18n="ui.side.retro"></button>
-        </div>
-        <small id="sideHint" data-i18n="ui.sideHint"></small>
-      </div>
-      <div class="grid2">
-        <label class="field"><span data-i18n="ui.park"></span><input type="number" id="m-h0" step="any"></label>
-        <label class="field"><span id="lbl-hB"></span><input type="number" id="m-hB" step="any"></label>
-        <label class="field" id="retWrap"><span id="lbl-hRet"></span><input type="number" id="m-hRet" step="any"></label>
-        <label class="field"><span data-i18n="ui.t0"></span><input type="number" id="m-t0" step="any"></label>
-      </div>
-      <div class="field"><span data-i18n="ui.theta"></span>
-        <div class="combo"><input type="range" id="m-theta-r" min="-180" max="180" step="0.01" data-i18n-aria-label="ui.thetaRange"><input type="number" id="m-theta" step="any" data-i18n-aria-label="ui.thetaNum"></div>
-      </div>
-      <div class="field"><span data-i18n="ui.dv"></span>
-        <div class="combo"><input type="range" id="m-dv-r" step="0.1" data-i18n-aria-label="ui.dvRange"><input type="number" id="m-dv" step="any" data-i18n-aria-label="ui.dvNum"></div>
-      </div>
-      <div class="grid2">
-        <label class="field"><span data-i18n="ui.dur"></span><input type="number" id="m-dur" step="any" min="0.01"></label>
-        <label class="chk" style="align-self:end;padding-bottom:9px"><input type="checkbox" id="m-auto"><span data-i18n="ui.auto"></span></label>
-      </div>
-      <div class="actions">
-        <button class="btn" id="hohmann" type="button" data-i18n="ui.hohmann"></button>
-        <button class="btn primary" id="solve" type="button" data-i18n="ui.solve"></button>
-      </div>
-      <p class="status" id="status" aria-live="polite"></p>
-    </section>
-
-    <section>
-      <h2 data-i18n="ui.sec.results"></h2>
-      <span class="chip warn" id="chip">—</span>
-      <div class="res" id="res"></div>
-    </section>
-
-    <section class="model">
-      <h2 data-i18n="ui.sec.model"></h2>
-      <p data-i18n="ui.model1"></p>
-      <p data-i18n="ui.model2"></p>
-    </section>
-  </aside>
+<h1 class="sr" data-i18n="ui.title"></h1>
+<div class="app">
+  <nav class="rail" data-i18n-aria-label="ui.rail">
+    <span class="rail-mark" aria-hidden="true"><svg viewBox="0 0 20 20"><ellipse cx="10" cy="10" rx="8.5" ry="4" transform="rotate(-24 10 10)"/><circle cx="10" cy="10" r="2.4" class="fill"/><circle cx="17" cy="6.6" r="1.3" class="fill acc"/></svg></span>
+    <button class="rail-btn" type="button" data-win="mission" data-i18n-aria-label="win.mission" data-i18n-title="win.mission" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="14.5" r="2"/><path d="M6.6 13.2C9 8.5 12.5 5.6 17 4.5"/><path d="M13.6 3.4 17 4.5l-1.6 3.1"/></svg></button>
+    <button class="rail-btn" type="button" data-win="bodies" data-i18n-aria-label="win.bodies" data-i18n-title="win.bodies" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="11.5" r="4.6"/><circle cx="15.6" cy="5" r="1.8"/><path d="M2.5 13.6c3.4 1.6 8.7 1 12.6-1.6" class="thin"/></svg></button>
+    <button class="rail-btn" type="button" data-win="results" data-i18n-aria-label="win.results" data-i18n-title="win.results" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4.5h14M3 8.5h14M3 12.5h14M3 16.5h8"/><path d="M8 2.5v16" class="thin"/></svg></button>
+    <button class="rail-btn" type="button" data-win="gloss" data-i18n-aria-label="win.gloss" data-i18n-title="win.gloss" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h5a2 2 0 0 1 2 2v10.5a2 2 0 0 0-2-2H3z"/><path d="M17 4h-5a2 2 0 0 0-2 2v10.5a2 2 0 0 1 2-2h5z"/></svg></button>
+    <button class="rail-btn" type="button" data-win="model" data-i18n-aria-label="win.model" data-i18n-title="win.model" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 17 6.5v7L10 17.5 3 13.5v-7z"/><path d="M10 10v7.5M10 10l7-3.5M10 10 3 6.5" class="thin"/></svg></button>
+    <span class="rail-sp"></span>
+    <button class="rail-btn" type="button" id="resetWins" data-i18n-aria-label="win.reset" data-i18n-title="win.reset"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6"/><rect x="11" y="3" width="6" height="6"/><rect x="3" y="11" width="6" height="6"/><path d="M11.5 14a3 3 0 1 0 1-2.2" class="thin"/><path d="M11.4 10.6v2h2" class="thin"/></svg></button>
+  </nav>
 
   <main class="stage" id="stage">
     <canvas id="cv" data-i18n-aria-label="ui.canvas"></canvas>
     <div class="msg" id="msg" hidden></div>
     <div class="hud-top">
-      <div class="glass readout" id="readout">
-        <div class="big" id="r-t" data-i18n="ui.tplusInit"></div>
-        <span class="lbl" id="r-l1"></span><b id="r-v1">—</b>
-        <span class="lbl" id="r-l2"></span><b id="r-v2">—</b>
-        <span class="lbl" id="r-l3"></span><b id="r-v3">—</b>
-      </div>
-      <div class="ctrls">
-        <div class="row">
-          <div class="seg" id="frameSeg" role="group" data-i18n-aria-label="ui.frameAria"></div>
-          <button class="help-btn" id="helpBtn" type="button" data-i18n-aria-label="ui.glossTitle" aria-expanded="false" aria-controls="gloss">?</button>
+      <div class="ctrls" id="ctrls">
+        <div class="seg vmode" id="viewMode" role="group" data-i18n-aria-label="mode.aria">
+          <button type="button" data-v="low" data-i18n="mode.low"></button>
+          <button type="button" data-v="normal" data-i18n="mode.normal"></button>
+          <button type="button" data-v="3d" aria-disabled="true" data-i18n-title="mode.soonTip"><span data-i18n="mode.3d"></span><em data-i18n="mode.soon"></em></button>
         </div>
+        <div class="seg" id="frameSeg" role="group" data-i18n-aria-label="ui.frameAria"></div>
         <div class="row">
           <div class="seg" id="followSeg" role="group" data-i18n-aria-label="ui.followAria"></div>
           <button class="ghost" id="fit" type="button" data-i18n="ui.fit"></button>
@@ -117,29 +50,131 @@
         </div>
       </div>
     </div>
-    <div class="glass timeline">
-      <button class="play" id="play" type="button"></button>
-      <div class="tl-time"><span id="tplus" data-i18n="ui.tplusInit"></span><span id="tend">/ —</span></div>
-      <div class="scrub"><input type="range" id="scrub" min="0" max="10000" value="0" data-i18n-aria-label="ui.scrub"><div class="ticks" id="ticks"></div></div>
-      <div class="tl-opts">
-        <select id="speed" data-i18n-aria-label="ui.speed">
-          <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
-        </select>
-        <label class="chk" data-i18n-title="ui.focusTip"><input type="checkbox" id="focus" checked><span data-i18n="ui.focus"></span></label>
-        <label class="chk" data-i18n-title="ui.loopTip"><input type="checkbox" id="loop"><span data-i18n="ui.loop"></span></label>
+    <div class="hud-bot" id="hudBot">
+      <div class="glass readout" id="readout">
+        <div class="big" id="r-t" data-i18n="ui.tplusInit"></div>
+        <span class="lbl" id="r-l1"></span><b id="r-v1">—</b>
+        <span class="lbl" id="r-l2"></span><b id="r-v2">—</b>
+        <span class="lbl" id="r-l3"></span><b id="r-v3">—</b>
       </div>
-    </div>
-    <div class="glass gloss" id="gloss" role="dialog" data-i18n-aria-label="ui.glossTitle" hidden>
-      <div class="gloss-head">
-        <div><span class="eyebrow" data-i18n="ui.glossEyebrow"></span><h3 data-i18n="ui.glossHead"></h3></div>
-        <button class="xbtn" id="glossClose" type="button" data-i18n-aria-label="ui.close">✕</button>
+      <div class="glass timeline" id="timeline">
+        <button class="play" id="play" type="button"></button>
+        <div class="tl-time"><span id="tplus" data-i18n="ui.tplusInit"></span><span id="tend">/ —</span></div>
+        <div class="scrub"><input type="range" id="scrub" min="0" max="10000" value="0" data-i18n-aria-label="ui.scrub"><div class="ticks" id="ticks"></div></div>
+        <div class="tl-opts">
+          <select id="speed" data-i18n-aria-label="ui.speed">
+            <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
+          </select>
+          <label class="chk" data-i18n-title="ui.focusTip"><input type="checkbox" id="focus" checked><span data-i18n="ui.focus"></span></label>
+          <label class="chk" data-i18n-title="ui.loopTip"><input type="checkbox" id="loop"><span data-i18n="ui.loop"></span></label>
+        </div>
       </div>
-      <input type="text" id="glossQ" data-i18n-placeholder="ui.glossPlaceholder" data-i18n-aria-label="ui.glossSearch" autocomplete="off">
-      <div class="gloss-body" id="glossBody"></div>
     </div>
   </main>
+
+  <div class="wins" id="wins">
+    <section class="win" id="w-mission" data-win="mission" aria-labelledby="wt-mission" hidden>
+      <header class="win-h"><h2 id="wt-mission" data-i18n="win.mission"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b">
+        <label class="field row-field"><span data-i18n="ui.scenario"></span><select id="scenario"></select></label>
+        <p class="note" id="scNote"></p>
+        <div class="field"><span data-i18n="ui.missionType"></span>
+          <div class="seg full" id="modeSeg" role="group" data-i18n-aria-label="ui.missionType">
+            <button type="button" data-v="flyby" data-i18n="ui.mode.flyby"></button>
+            <button type="button" data-v="capture" data-i18n="ui.mode.capture"></button>
+            <button type="button" data-v="free" data-i18n="ui.mode.free"></button>
+          </div>
+        </div>
+        <div class="grid2">
+          <label class="field"><span data-i18n="ui.park"></span><input type="number" id="m-h0" step="any"></label>
+          <label class="field"><span id="lbl-hB"></span><input type="number" id="m-hB" step="any"></label>
+          <label class="field" id="retWrap"><span id="lbl-hRet"></span><input type="number" id="m-hRet" step="any"></label>
+        </div>
+        <div class="field"><span data-i18n="ui.theta"></span>
+          <div class="combo"><input type="range" id="m-theta-r" min="-180" max="180" step="0.01" data-i18n-aria-label="ui.thetaRange"><input type="number" id="m-theta" step="any" data-i18n-aria-label="ui.thetaNum"></div>
+        </div>
+        <div class="field"><span data-i18n="ui.dv"></span>
+          <div class="combo"><input type="range" id="m-dv-r" step="0.1" data-i18n-aria-label="ui.dvRange"><input type="number" id="m-dv" step="any" data-i18n-aria-label="ui.dvNum"></div>
+        </div>
+        <details class="adv">
+          <summary data-i18n="ui.advanced"></summary>
+          <div class="adv-b">
+            <div class="field"><span data-i18n="ui.side"></span>
+              <div class="seg full" id="sideSeg" role="group" data-i18n-aria-label="ui.sideAria">
+                <button type="button" data-v="0" data-i18n="ui.side.any"></button>
+                <button type="button" data-v="1" data-i18n="ui.side.pro"></button>
+                <button type="button" data-v="-1" data-i18n="ui.side.retro"></button>
+              </div>
+              <small id="sideHint" data-i18n="ui.sideHint"></small>
+            </div>
+            <div class="grid2">
+              <label class="field"><span data-i18n="ui.t0"></span><input type="number" id="m-t0" step="any"></label>
+              <label class="field"><span data-i18n="ui.dur"></span><input type="number" id="m-dur" step="any" min="0.01"></label>
+            </div>
+            <label class="chk"><input type="checkbox" id="m-auto"><span data-i18n="ui.auto"></span></label>
+          </div>
+        </details>
+        <div class="actions">
+          <button class="btn" id="hohmann" type="button" data-i18n="ui.hohmann"></button>
+          <button class="btn primary" id="solve" type="button" data-i18n="ui.solve"></button>
+        </div>
+        <p class="status" id="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="win" id="w-bodies" data-win="bodies" aria-labelledby="wt-bodies" hidden>
+      <header class="win-h"><h2 id="wt-bodies" data-i18n="win.bodies"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b">
+        <div class="bodies" id="bodies"></div>
+        <button class="btn add" id="addBody" type="button" data-i18n="ui.addBody"></button>
+        <p class="err" id="err" hidden></p>
+      </div>
+    </section>
+
+    <section class="win" id="w-results" data-win="results" aria-labelledby="wt-results" hidden>
+      <header class="win-h"><h2 id="wt-results" data-i18n="win.results"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b">
+        <span class="chip warn" id="chip">—</span>
+        <table class="ov"><tbody id="res"></tbody></table>
+      </div>
+    </section>
+
+    <section class="win" id="w-gloss" data-win="gloss" aria-labelledby="wt-gloss" hidden>
+      <header class="win-h"><h2 id="wt-gloss" data-i18n="win.gloss"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b gloss">
+        <input type="text" id="glossQ" data-i18n-placeholder="ui.glossPlaceholder" data-i18n-aria-label="ui.glossSearch" autocomplete="off">
+        <div class="gloss-body" id="glossBody"></div>
+      </div>
+    </section>
+
+    <section class="win" id="w-model" data-win="model" aria-labelledby="wt-model" hidden>
+      <header class="win-h"><h2 id="wt-model" data-i18n="win.model"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b model">
+        <p data-i18n="ui.model1"></p>
+        <p data-i18n="ui.model2"></p>
+      </div>
+    </section>
+  </div>
+</div>
+
+<dialog class="ask" id="askDlg" aria-labelledby="askT" aria-describedby="askB">
+  <h2 id="askT" data-i18n="ask.title"></h2>
+  <p id="askB" data-i18n="ask.body"></p>
+  <div class="ask-act">
+    <button class="btn" type="button" id="askLow" data-i18n="ask.low"></button>
+    <button class="btn primary" type="button" id="askNormal" data-i18n="ask.normal"></button>
+  </div>
+</dialog>
+
+<div class="toast" id="perfTip" role="status" hidden>
+  <p data-i18n="perf.text"></p>
+  <div class="toast-act">
+    <button class="btn sm primary" type="button" id="perfGo" data-i18n="perf.switch"></button>
+    <button class="btn sm" type="button" id="perfX" data-i18n="perf.close"></button>
+  </div>
 </div>
 <script src="js/i18n.js"></script>
+<script src="js/prefs.js"></script>
 <script id="core" src="js/core.js"></script>
 <script src="js/app.js"></script>
 </body>

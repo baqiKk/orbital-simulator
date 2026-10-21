@@ -15,6 +15,7 @@ VS Code kullanıyorsan "Live Server" eklentisi de olur.
 ## Testler
 ```bash
 node tests/core.test.js
+node tests/ui.test.js
 ```
 
 ## Yayına alma (GitHub Pages)

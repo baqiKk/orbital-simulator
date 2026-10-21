@@ -7,12 +7,14 @@
 - Görsel dil EVE Online arayüzlerinden esinlenir ama özgündür: yarı saydam koyu paneller, ince 1px kenarlar, keskin köşeler, küçük büyük harfli başlıklar, soluk camgöbeği/beyaz tonlar ve tek bir vurgu rengi; solda dar dikey ikon çubuğu, sürüklenebilir/katlanabilir pencereler, "overview" tarzı tablolar. EVE'ye ait logo, ikon, font dosyası veya görsel varlık kullanılmaz.
 - Her fazda: önce plan sun ve onay bekle; bitince test ekle, `node tests/core.test.js` çalıştır, sayfayı yerelde aç ve konsolu kontrol et, commit at ve pushla.
 
-## Faz 1 — Arayüz yeniden tasarımı ve mod sistemi
+## Faz 1 — Arayüz yeniden tasarımı ve mod sistemi ✅ tamamlandı (2026-10-21)
 - Yukarıdaki görsel dille yeniden tasarım; mevcut tüm özellikler korunur.
 - Sağ üstte veya ekranın uygun bir köşesinde mod seçici: Düşük kaynak 2B / Normal 2B / 3B (3B şimdilik "yakında" olarak pasif).
-- İlk açılışta Normal 2B yüklenir ve bir uyarı penceresi çıkar: "Düşük kaynak moduna geçmek ister misin?" [Düşük kaynak moduna geç] [Devam et] [Bir daha sorma]. Seçim localStorage'da hatırlanır (try/catch ile).
+- İlk açılışta Normal 2B yüklenir ve bir uyarı penceresi çıkar: "Düşük kaynak moduna geçmek ister misin?" [Düşük kaynak moduna geç] [Normal modda devam et]. İkisi de seçimi localStorage'da hatırlar (try/catch ile), bir daha sorulmaz.
+- Normal modda otomatik kalite düşürme devreye girerse köşede kapatılabilir, modal olmayan öneri: "Performans düşük görünüyor. Düşük kaynak moduna geç?" [Geç] [Kapat]; oturum başına en fazla bir kez.
+- Varsayılan açık pencereler: Görev (üstte kompakt senaryo seçici) ve Sonuçlar; Dünya–Ay serbest dönüşte yörüngeyi örtmez. İkon çubuğunda "Pencereleri sıfırla"; ekran boyutu değişince pencereler görünür alana çekilir.
 - Düşük kaynak 2B: yıldız arka planı yok, parlama/gradyan/gölge/bulanıklık yok, piksel oranı 1, kare hızı 30 fps ile sınırlı, yörünge çizgisinde daha az nokta, HUD metni seyrek güncellenir, animasyonlu geçişler kapalı.
-- Varsa önceki hata: Güneş merkezli senaryoda "Cisim ekle" ile eklenen özel cisim Güneş'in içine düşüyor; varsayılan yörünge yarıçapını makul yap.
+- Varsa önceki hata: Güneş merkezli senaryoda "Cisim ekle" ile eklenen özel cisim Güneş'in içine düşüyor; varsayılan yörünge yarıçapını makul yap. (3f95ac7'de düzeltilmişti; Faz 1'de tarayıcıda yeniden doğrulandı.)
 
 ## Faz 2 — Gerçek güneş sistemi çekirdeği (3B fizik)
 - Durum vektörleri 3B. Gezegenler için JPL "Approximate Positions of the Planets" Kepler elemanları (J2000 + yüzyıllık değişim oranları): a, e, i, Ω, ϖ, L. Kepler denklemi çözümüyle tarih → konum/hız. Büyük uydular (Ay, Phobos, Deimos, Galile uyduları, Titan) için uygun ortalama elemanlar.
