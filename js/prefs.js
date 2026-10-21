@@ -4,7 +4,7 @@
 const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip' };
 const VIEW_MODES = ['low', 'normal'];
 // placement order: overview's default spot sits under Results, so it comes after it
-const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'gloss', 'model'];
+const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'gloss', 'model'];
 const WIN_DEFAULT_OPEN = { mission: true, results: true };
 
 function readPref(store, key) { try { return store ? store.getItem(key) : null; } catch (e) { return null; } }

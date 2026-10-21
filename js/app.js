@@ -148,10 +148,11 @@ function setModel(m) {
     S.bodies = S.bodies.filter(b => BODIES[b.key].gm);
     S.model = 'real'; linkReal();
     S.M.t0 = utcToDays(Math.floor(Date.now() / 60000) * 60000); S.M.beta = 0;
+    S.M.dep = 'burn'; S.M.tof = 0;
   } else {
     S.model = 'simple';
     for (const b of S.bodies) Object.assign(b, simpleData(b.key), { phase: 0 });
-    S.M.t0 = 0;
+    S.M.t0 = 0; S.M.dep = 'burn'; S.M.tof = 0;
   }
   S.scenario = ''; $('#scenario').value = ''; $('#scNote').textContent = _('sc.custom.note');
   openRows.clear();
@@ -339,7 +340,36 @@ function syncMission() {
   }
   setSeg('#modeSeg', M.mode); setSeg('#sideSeg', String(M.side));
   $('#retWrap').hidden = M.mode !== 'free';
+  // departure type: burn point (θ, β) or, for missions set up from the porkchop, the asymptote (λ∞, δ∞)
+  const asym = M.dep === 'asym';
+  $('#lbl-theta').textContent = _(asym ? 'ui.lam' : 'ui.theta'); $('#lbl-beta').textContent = _(asym ? 'ui.dec' : 'ui.beta');
+  $('#m-theta-r').setAttribute('aria-label', _(asym ? 'ui.lamRange' : 'ui.thetaRange')); $('#m-theta').setAttribute('aria-label', _(asym ? 'ui.lamNum' : 'ui.thetaNum'));
+  $('#betaWrap').title = _(asym ? 'ui.decTip' : 'ui.betaTip');
+  syncAero();
 }
+// Aerocapture: offered in capture mode for targets with atmosphere data (js/bodies.js atm = [h_low, h_skip]);
+// the pass altitude starts at h_low for each new target and is editable up to h_skip.
+const tgtAtm = () => (S.bodies[1] && BODIES[S.bodies[1].key] && BODIES[S.bodies[1].key].atm) || null;
+function syncAero() {
+  const M = S.M, atm = tgtAtm(), key = S.bodies[1] && S.bodies[1].key;
+  if (!atm) M.aero = false;
+  else if (M.atmFor !== key || !Number.isFinite(M.hAtm)) { M.hAtm = atm[0]; M.atmFor = key; }
+  $('#aeroWrap').hidden = M.mode !== 'capture' || !atm;
+  $('#m-aero').checked = !!M.aero; $('#atmWrap').hidden = !M.aero;
+  if (!atm) return;
+  const inp = $('#m-hAtm');
+  if (document.activeElement !== inp) inp.value = +M.hAtm.toFixed(3);
+  const ok = M.hAtm >= 0 && M.hAtm <= atm[1] && M.hAtm < M.hB;
+  inp.setAttribute('aria-invalid', String(!ok));
+  const h = $('#atmHint'); h.hidden = !M.aero; h.classList.toggle('warn', !ok);
+  h.textContent = _(ok ? 'ui.atmHint' : 'ui.atmBad', { top: atm[1], hB: nf0.format(M.hB) });
+}
+$('#m-aero').addEventListener('change', e => { S.M.aero = e.target.checked; syncAero(); scheduleRebuild(); });
+$('#m-hAtm').addEventListener('input', e => {
+  const v = parseNum(e.target.value);
+  if (!Number.isFinite(v)) { e.target.setAttribute('aria-invalid', 'true'); return; }
+  S.M.hAtm = v; syncAero(); scheduleRebuild();
+});
 // date limits of the planet table
 $('#m-date').min = `${EPHEM_YEARS[0]}-01-01T00:00`; $('#m-date').max = `${EPHEM_YEARS[1]}-12-31T23:59`;
 function setDeparture(ms) {
@@ -414,9 +444,11 @@ function rebuild(o = {}) {
   sys = s;
   try { guess = hohmannGuess(sys, S.M); } catch (e) { guess = null; }
   if (S.M.autoDur) {
-    S.M.duration = autoDuration(guess, S.M.mode);
+    // a mission from the porkchop runs for its own time of flight, not the Hohmann one
+    S.M.duration = autoDuration(S.M.dep === 'asym' && S.M.tof > 0 ? { tof: S.M.tof * DAY } : guess, S.M.mode);
     $('#m-dur').value = +S.M.duration.toFixed(2);
   }
+  syncAero(); pcSync();
   simR = simulate(sys, S.M, { tol: 1e-10, hmaxDiv: 500, maxSteps: 120000 });
   PLANE = planeBasis(simR.normal);
   if (o.resetU) { S.u = 0; S.ext = 0; }
@@ -478,7 +510,8 @@ function buildCache() {
   C.markers = r.events.filter(e => e.type !== 'impact' || true).map(e => {
     const p = posAtTime(e.t, [0, 0, 0]);
     let txt = '';
-    if (e.type === 'burn') txt = _(e.body === 0 ? 'mk.dv' : 'mk.capDv', { v: nf0.format(e.dv) });
+    if (e.type === 'burn') txt = _(e.body === 0 ? 'mk.dv' : e.label === 'ev.raise' ? 'mk.raiseDv' : 'mk.capDv', { v: nf0.format(e.dv) });
+    else if (e.type === 'aero') txt = _('mk.aero', { v: nf0.format(e.dv) });
     else if (e.type === 'peri') txt = (e.body === 1 ? Peri(1) : _('ev.returnPeri', { peri: peri(0) })) + ' ' + nf1.format(e.alt / 1e3) + ' km' + (e.body === 0 && e.alt < 150e3 ? _('mk.entry') : '');
     else txt = _('mk.impact', { name: S.bodies[e.body].name });
     const label = e.type === 'peri' ? (e.body === 1 ? S.bodies[1].name + ' ' + peri(1) : _('ev.returnPeri', { peri: peri(0) })) : _(e.label);
@@ -571,7 +604,7 @@ function frameCache() {
 const cv = $('#cv'), ctx = cv.getContext('2d'), stage = $('#stage');
 let W = 0, H = 0, DPR = 1, stars = null;
 const css = getComputedStyle(document.documentElement);
-const COL = { traj: css.getPropertyValue('--traj').trim() || '#ffb547', orbit: css.getPropertyValue('--orbit').trim() || '#6b9be0', burn: css.getPropertyValue('--burn').trim() || '#ff7a52', dim: css.getPropertyValue('--dim').trim() || '#8a96ae', faint: css.getPropertyValue('--faint').trim() || '#56637d', void: css.getPropertyValue('--void').trim() || '#04060b', ink: css.getPropertyValue('--ink').trim() || '#e2e8f3', bad: css.getPropertyValue('--bad').trim() || '#ff6f6f' };
+const COL = { traj: css.getPropertyValue('--traj').trim() || '#ffb547', orbit: css.getPropertyValue('--orbit').trim() || '#6b9be0', burn: css.getPropertyValue('--burn').trim() || '#ff7a52', dim: css.getPropertyValue('--dim').trim() || '#8a96ae', faint: css.getPropertyValue('--faint').trim() || '#56637d', void: css.getPropertyValue('--void').trim() || '#04060b', ink: css.getPropertyValue('--ink').trim() || '#e2e8f3', bad: css.getPropertyValue('--bad').trim() || '#ff6f6f', warn: css.getPropertyValue('--warn').trim() || '#f2c85b', accent: css.getPropertyValue('--accent').trim() || '#ffb547', solid: css.getPropertyValue('--solid').trim() || '#080c10', line: css.getPropertyValue('--line2').trim() || 'rgba(140,196,212,.28)' };
 
 function resize() {
   const r = stage.getBoundingClientRect();
@@ -840,10 +873,15 @@ function updateResults() {
   const real = S.model === 'real';
   if (real) rows.push([_('res.depDate'), esc(fmtDate(dateAt(0))), '']);
   rows.push([_('res.dv'), nf1.format(M.dv), 'm/s']);
-  if (real && M.beta) rows.push([_('res.beta'), nf2.format(M.beta), '°']);
-  if (M.mode === 'capture') rows.push([_('res.capDv'), r.captured ? nf1.format(dv2) : '—', 'm/s']);
-  if (M.mode === 'capture') rows.push([_('res.totDv'), nf1.format(M.dv + dv2), 'm/s']);
+  if (M.dep === 'asym') rows.push([_('res.asym'), nf2.format(M.theta) + ' / ' + nf2.format(real ? M.beta || 0 : 0), _('res.asymUnit')]);
+  else if (real && M.beta) rows.push([_('res.beta'), nf2.format(M.beta), '°']);
+  if (c3 > 0) rows.push([_('res.vinfDep'), nf3.format(Math.sqrt(c3)), 'km/s']);
   rows.push([_('res.c3', { name: A }), nf2.format(c3), 'km²/s²']);
+  if (M.mode === 'capture' && r.aero) {
+    rows.push([_('res.aero'), nf0.format(r.aero.dv), _('res.aeroUnit')]);
+    rows.push([_('res.raiseDv'), r.captured ? nf1.format(dv2) : '—', 'm/s']);
+  } else if (M.mode === 'capture') rows.push([_('res.capDv'), r.captured ? nf1.format(dv2) : '—', 'm/s']);
+  if (M.mode === 'capture') rows.push([_('res.totDv'), nf1.format(M.dv + dv2), 'm/s']);
   if (r.bPeri) {
     rows.push([_('res.arrival', { name: B }), fmtDur(r.bPeri.t), '']);
     if (real) rows.push([_('res.arrDate', { name: B }), esc(fmtDate(dateAt(r.bPeri.t))), '']);
@@ -858,7 +896,20 @@ function updateResults() {
   if (M.mode === 'free') rows.push([_('res.retPeri', { peri: peri(0) }), r.aRet ? nf1.format((r.aRet.d - sys.R[0]) / 1e3) : '—', r.aRet ? 'km · ' + _('hud.tplus', { t: fmtDur(r.aRet.t) }) : _('res.noReturn')]);
   if (guess && Number.isFinite(guess.dv)) rows.push([_('res.hohmann'), nf1.format(guess.dv), _('res.hohmannUnit', { days: nf1.format(guess.tof / DAY) })]);
   rows.push([_('res.integration'), nf0.format(r.steps), _('res.steps')]);
-  res.innerHTML = rows.map(([l, v, u]) => `<tr><th scope="row">${esc(l)}</th><td>${v}${u ? `<em>${esc(u)}</em>` : ''}</td></tr>`).join('');
+  // sibling transfers: the patched-conic (Lambert) estimate for the same departure and arrival times; the plane
+  // change is part of its Δv, shown as information only
+  const tArr = r.bPeri ? r.bPeri.t : M.dep === 'asym' && M.tof > 0 ? M.tof * DAY : r.tmin[1];
+  const tr = isSibling(sys) && tArr > 0 ? lambertTransfer(sys, M.t0 * DAY, tArr, M) : null;
+  if (tr) {
+    rows.push([_('res.sec.lambert')]);
+    rows.push([_('res.lambert'), nf1.format(tr.dv), _('res.lambertUnit', { type: tr.type === 1 ? 'I' : 'II' })]);
+    rows.push([_('res.incl'), nf2.format(tr.incl), _('res.inclUnit', { name: A })]);
+    rows.push([_('res.dec'), nf2.format(tr.dec), '°']);
+    rows.push([_('res.oop'), nf0.format(tr.oop), _('res.oopUnit')]);
+    if (tr.vEntry) rows.push([_('res.vEntry'), nf3.format(tr.vEntry / 1e3), 'km/s']);
+  }
+  res.innerHTML = rows.map(([l, v, u]) => v == null ? `<tr class="sec"><th scope="rowgroup" colspan="2">${esc(l)}</th></tr>`
+    : `<tr><th scope="row">${esc(l)}</th><td>${v}${u ? `<em>${esc(u)}</em>` : ''}</td></tr>`).join('');
 }
 // the overview window repeats the mission status, so picks and solver progress show where the user clicked
 function setStatus(t) { $('#status').textContent = t; $('#ovStatus').textContent = t; }
@@ -869,7 +920,7 @@ function applyHohmann() {
   let g;
   try { g = hohmannGuess(sys, S.M); } catch (e) { return null; }
   if (!Number.isFinite(g.dv)) return null;
-  Object.assign(S.M, { theta: g.theta, dv: g.dv, t0: g.t0, beta: 0 });
+  Object.assign(S.M, { dep: 'burn', tof: 0, theta: g.theta, dv: g.dv, t0: g.t0, beta: 0 });
   syncMission(); rebuild({ resetU: true, fit: true });
   const when = g.case !== 'sibling' ? '' : S.model === 'real' ? _('st.hohmannDate', { date: fmtDate(daysToUtc(g.t0)) }) : _('st.hohmannT0', { t0: nf1.format(g.t0) });
   return _('st.hohmann', { dv: nf1.format(g.dv), days: nf2.format(g.tof / DAY) }) + when;
@@ -882,10 +933,15 @@ $('#hohmann').addEventListener('click', () => {
 $('#solve').addEventListener('click', solve);
 // Solver runs in a Web Worker so the animation never stalls; falls back to the main thread.
 let solverWorker = null, rejectSolve = null;
+// The same worker code serves the porkchop grid (pc: grid spec; progress = rows done).
 const WORKER_BODY = `
 onmessage = async (e) => {
-  const { list, M, opt } = e.data;
-  try { const s = buildSystem(list); const r = await optimize(s, M, { ...opt, onProgress: n => postMessage({ p: n }) }); postMessage({ done: r }); }
+  const { list, M, opt, pc } = e.data;
+  try {
+    const s = buildSystem(list);
+    if (pc) { const g = porkchop(s, M, { ...pc, onRow: j => { if (j % 8 === 0) postMessage({ p: j }); } }); postMessage({ done: g }, [g.dv.buffer, g.c3.buffer, g.va.buffer]); return; }
+    const r = await (opt.refine ? refineSeed : optimize)(s, M, { ...opt, onProgress: n => postMessage({ p: n }) }); postMessage({ done: r });
+  }
   catch (err) { postMessage({ error: String(err) }); }
 };`;
 function makeWorker() {
@@ -898,7 +954,7 @@ function makeWorker() {
 function runSolver(list, M, opt, prog, sysLocal) {
   let w = null;
   try { w = makeWorker(); } catch (e) { w = null; }
-  if (!w) return optimize(sysLocal, M, { ...opt, onProgress: prog, cancelled: () => cancelSolve });
+  if (!w) return (opt.refine ? refineSeed : optimize)(sysLocal, M, { ...opt, onProgress: prog, cancelled: () => cancelSolve });
   solverWorker = w;
   return new Promise((res, rej) => {
     rejectSolve = rej;
@@ -915,28 +971,411 @@ async function solve() {
   solving = true; cancelSolve = false;
   btn.textContent = _('ui.stop'); btn.classList.add('busy');
   const s2 = buildSystem(sysList());
-  const g = hohmannGuess(s2, S.M);
-  const M0 = { ...S.M, theta: g.theta, dv: g.dv, t0: g.t0, beta: 0 };
-  if (M0.autoDur) M0.duration = autoDuration(g, M0.mode);
-  const varyT0 = g.case === 'sibling';
+  // a mission from the porkchop keeps its date and time of flight: Lambert seed, then N-body refinement;
+  // anything else starts from the Hohmann guess
+  const seed = S.M.dep === 'asym' && S.M.tof > 0 ? lambertSeed(s2, S.M.t0 * DAY, S.M.tof * DAY, S.M) : null;
+  let M0, opt;
+  if (seed) {
+    M0 = { ...S.M, dep: 'asym', theta: seed.theta, beta: seed.beta, dv: seed.dv, t0: seed.t0, tof: seed.tof };
+    if (M0.autoDur) M0.duration = autoDuration({ tof: seed.tof * DAY }, M0.mode);
+    opt = { refine: true };
+  } else {
+    const g = hohmannGuess(s2, S.M);
+    M0 = { ...S.M, dep: 'burn', tof: 0, theta: g.theta, dv: g.dv, t0: g.t0, beta: 0 };
+    if (M0.autoDur) M0.duration = autoDuration(g, M0.mode);
+    const varyT0 = g.case === 'sibling';
+    opt = { varyT0, varyBeta: varyT0, t0Grid: g.nested ? [-12, -9, -6, -3, 0, 3, 6, 9, 12] : [-4, -2, 0, 2, 4] };
+  }
   const t1 = performance.now();
-  setStatus(_('st.solving'));
+  setStatus(seed ? _('st.pcSeed', { date: S.model === 'real' ? fmtDate(daysToUtc(seed.t0)) : _('pc.i.day', { d: nf1.format(seed.t0) }), days: nf1.format(seed.tof), dv: nf1.format(seed.dv) }) : _('st.solving'));
   try {
-    const opt = { varyT0, varyBeta: varyT0, t0Grid: g.nested ? [-12, -9, -6, -3, 0, 3, 6, 9, 12] : [-4, -2, 0, 2, 4] };
     const prog = n => setStatus(_('st.progress', { n: nf0.format(n) }));
     const r = await runSolver(sysList(), M0, opt, prog, s2);
-    Object.assign(S.M, { theta: r.theta, dv: r.dv, t0: r.t0, beta: r.beta != null ? r.beta : M0.beta });
+    Object.assign(S.M, { dep: M0.dep, tof: M0.tof, theta: r.theta, dv: r.dv, t0: r.t0, beta: r.beta != null ? r.beta : M0.beta });
     syncMission(); rebuild({ resetU: true, fit: true });
     if (!reduceMotion) { S.playing = true; setPlayIcon(); }
     const secs = (performance.now() - t1) / 1000;
     const okv = r.f < 1e-4;
-    setStatus(_(okv ? 'st.solved' : 'st.nearest') + _('st.solvedInfo', { evals: nf0.format(r.evals), secs: nf1.format(secs) }));
+    const info = _('st.solvedInfo', { evals: nf0.format(r.evals), secs: nf1.format(secs) });
+    if (seed && okv) setStatus(_('st.refined', { lam: nf1.format(seed.tr.dv), nb: nf1.format(S.M.dv + (simR && simR.captured ? simR.captured.dv : 0)) }) + info);
+    else setStatus(_(okv ? 'st.solved' : 'st.nearest') + info);
   } catch (e) {
     if (e === 'cancel') setStatus(_('st.cancelled')); else { setStatus(_('st.solverErr', { e })); console.error(e); }
   } finally {
     solving = false; btn.textContent = _('ui.solve'); btn.classList.remove('busy');
   }
 }
+
+// ===================== Transfer window: porkchop =====================
+// Departure × time-of-flight grid of Lambert transfers (core.js porkchop) for sibling bodies, computed in a worker
+// while the window is open, whenever the pair, the Δv definition (h0, hB, mission type, aerocapture), the range or
+// the view mode changes. Colour: one-hue ramp from the solid panel colour to the accent (OKLab), cheapest =
+// brightest, saturating at twice the minimum; contour lines (labelled in normal mode). The plot and its contours
+// are drawn once into an offscreen canvas; pointer moves only redraw the markers.
+const PC = { pair: '', key: '', rng: null, res: null, metric: 'dv', worker: null, timer: 0, cur: null, base: null, baseKey: '' };
+const PC_GRID = { normal: [200, 150], low: [100, 75] };
+const EPH_T = [utcToDays(Date.UTC(EPHEM_YEARS[0], 0, 1)), utcToDays(Date.UTC(EPHEM_YEARS[1] + 1, 0, 1))];
+const PCDATE = new Intl.DateTimeFormat(DICT['meta.locale'], { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' });
+const PCMON = new Intl.DateTimeFormat(DICT['meta.locale'], { timeZone: 'UTC', month: 'short', year: '2-digit' });
+const PCDAY = new Intl.DateTimeFormat(DICT['meta.locale'], { timeZone: 'UTC', month: 'short', day: 'numeric' });
+const pcCv = $('#pcCv'), pcCtx = pcCv.getContext('2d');
+const pcStatus = t => { $('#pcStatus').textContent = t; };
+const pcOpen = () => WINS.transfer.open && !WINS.transfer.collapsed;
+const pcM = () => ({ mode: S.M.mode, h0: S.M.h0, hB: S.M.hB, aero: aeroOn(S.M), hAtm: S.M.hAtm });
+
+// Default range: the Hohmann window ± 0.2 synodic periods, 0.4–1.6 Hohmann transfer times.
+function pcDefaults() {
+  let g = null;
+  try { g = hohmannGuess(sys, S.M); } catch (e) { g = null; }
+  const syn = 2 * Math.PI / Math.abs(sys.n[0] - sys.n[1]) / DAY, th = g && g.tof > 0 ? g.tof / DAY : 100;
+  const c = g && Number.isFinite(g.t0) ? g.t0 : S.M.t0, half = Number.isFinite(syn) ? 0.2 * syn : 0.5 * th;
+  return pcClamp({ d0: c - half, d1: c + half, f0: 0.4 * th, f1: 1.6 * th, syn });
+}
+function pcClamp(r) {
+  if (S.model === 'real') { r.d0 = Math.max(r.d0, EPH_T[0]); r.d1 = Math.min(r.d1, EPH_T[1] - 1); }
+  return r;
+}
+function pcFields() {
+  const r = PC.rng, real = S.model === 'real';
+  for (const [id, v] of [['pc-d0', r.d0], ['pc-d1', r.d1]]) {
+    const el = $('#' + id);
+    el.type = real ? 'date' : 'number'; el.step = real ? '1' : 'any';
+    el.min = real ? `${EPHEM_YEARS[0]}-01-01` : ''; el.max = real ? `${EPHEM_YEARS[1]}-12-31` : '';
+    el.value = real ? new Date(daysToUtc(v)).toISOString().slice(0, 10) : +v.toFixed(2);
+  }
+  $('#pc-f0').value = +r.f0.toFixed(1); $('#pc-f1').value = +r.f1.toFixed(1);
+  for (const id of ['pc-d0', 'pc-d1', 'pc-f0', 'pc-f1']) $('#' + id).setAttribute('aria-invalid', 'false');
+}
+function pcReadFields() {
+  const real = S.model === 'real', rd = id => { const v = $('#' + id).value; return real ? utcToDays(Date.parse(v + 'T00:00Z')) : parseNum(v); };
+  const r = { ...PC.rng, d0: rd('pc-d0'), d1: rd('pc-d1'), f0: parseNum($('#pc-f0').value), f1: parseNum($('#pc-f1').value) };
+  const ok = [r.d0, r.d1, r.f0, r.f1].every(Number.isFinite) && r.d1 > r.d0 && r.f0 > 0 && r.f1 > r.f0;
+  for (const id of ['pc-d0', 'pc-d1', 'pc-f0', 'pc-f1']) $('#' + id).setAttribute('aria-invalid', String(!ok));
+  if (!ok) { pcStatus(_('pc.badRange')); return; }
+  PC.rng = pcClamp(r); pcSync();
+}
+for (const id of ['pc-d0', 'pc-d1', 'pc-f0', 'pc-f1']) $('#' + id).addEventListener('change', pcReadFields);
+function pcShift(k) {
+  const r = PC.rng, d = k * r.syn;
+  if (!r || !Number.isFinite(d)) return;
+  const n = pcClamp({ ...r, d0: r.d0 + d, d1: r.d1 + d });
+  if (n.d1 - n.d0 < 0.5 * (r.d1 - r.d0)) return; // ran into the end of the ephemeris
+  PC.rng = n; pcFields(); pcSync();
+}
+$('#pcPrev').addEventListener('click', () => pcShift(-1));
+$('#pcNext').addEventListener('click', () => pcShift(1));
+$('#pcReset').addEventListener('click', () => { if (!sys || !isSibling(sys)) return; PC.rng = pcDefaults(); pcFields(); pcSync(); });
+$('#pcMetric').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  PC.metric = b.dataset.v; setSeg('#pcMetric', PC.metric); PC.base = null; pcDraw(); pcInfo();
+});
+
+// Called after every rebuild and when the window opens: pair label, range reset for a new pair, recompute when
+// anything the grid depends on changed (debounced), else just redraw the mission marker.
+function pcSync() {
+  if (!sys || !pcOpen()) return;
+  const sib = isSibling(sys), A = S.bodies[0].name, B = S.bodies[1].name;
+  $('#pcBody').hidden = !sib;
+  if (!sib) {
+    $('#pcPair').textContent = _('pc.none', { a: A, b: B });
+    pcStop(); PC.res = null; PC.pair = ''; PC.key = ''; pcStatus(''); return;
+  }
+  $('#pcPair').textContent = _('pc.pair', { a: A, b: B, parent: S.bodies[sys.parent[0]].name });
+  const pair = S.model + '|' + JSON.stringify(sysList());
+  if (pair !== PC.pair) { PC.pair = pair; PC.rng = pcDefaults(); PC.res = null; PC.cur = null; pcFields(); }
+  const key = pair + JSON.stringify([pcM(), PC.rng, MODE]);
+  if (key !== PC.key) { PC.key = key; clearTimeout(PC.timer); PC.timer = setTimeout(pcRun, 120); }
+  else { pcDraw(); pcInfo(); }
+}
+function pcStop() { if (PC.worker) { PC.worker.terminate(); PC.worker = null; } }
+function pcRun() {
+  if (!sys || !isSibling(sys) || !PC.rng) return;
+  pcStop();
+  const [nd, nt] = PC_GRID[MODE] || PC_GRID.normal, r = PC.rng, M = pcM(), key = PC.key, t = performance.now();
+  const g = { t1a: r.d0, t1b: r.d1, fa: r.f0, fb: r.f1, nd, nt };
+  if (S.model === 'real') { g.tMin = EPH_T[0]; g.tMax = EPH_T[1]; }
+  const done = res => {
+    PC.worker = null;
+    if (key !== PC.key) return; // superseded while computing
+    PC.res = { ...res, g }; PC.base = null;
+    pcStatus(_('pc.done', { n: nf0.format(nd * nt), ms: nf0.format(performance.now() - t) }));
+    pcDraw(); pcInfo();
+  };
+  const fail = e => { PC.worker = null; pcStatus(_('pc.err', { e })); };
+  pcStatus(_('pc.busy', { p: 0 }));
+  let w = null;
+  try { w = makeWorker(); } catch (e) { w = null; }
+  if (!w) { try { done(porkchop(buildSystem(sysList()), M, g)); } catch (e) { fail(e); } return; }
+  PC.worker = w;
+  w.onmessage = e => {
+    const d = e.data;
+    if (d.p != null) pcStatus(_('pc.busy', { p: Math.round(100 * d.p / nt) }));
+    else { w.terminate(); d.done ? done(d.done) : fail(d.error); }
+  };
+  w.onerror = e => { w.terminate(); fail(e.message || 'worker'); };
+  w.postMessage({ list: sysList(), M, pc: g });
+}
+
+// Values of the current metric in display units (km/s; C3 in km²/s²), their minimum and the colour range.
+function pcVals() {
+  const r = PC.res;
+  if (r.vals && r.valsFor === PC.metric) return r.vals;
+  const src = PC.metric === 'c3' ? r.c3 : PC.metric === 'va' ? r.va : r.dv, k = PC.metric === 'c3' ? 1 : 1e-3, v = new Float32Array(src.length);
+  let lo = Infinity, at = -1;
+  for (let i = 0; i < v.length; i++) { v[i] = src[i] * k; if (v[i] < lo) { lo = v[i]; at = i; } }
+  Object.assign(r, { vals: v, valsFor: PC.metric, lo, at, hi: lo > 0 ? 2 * lo : lo + 1 });
+  return v;
+}
+const pcUnit = () => (PC.metric === 'c3' ? 'km²/s²' : 'km/s');
+// colour ramp: 256 steps from --solid (index 0) to --accent (255), interpolated in OKLab
+let PC_LUT = null;
+const toLin = c => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+const toSrgb = c => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+function oklab(hex) {
+  const n = parseInt(hex.slice(1), 16), [r, g, b] = [n >> 16 & 255, n >> 8 & 255, n & 255].map(x => toLin(x / 255));
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+}
+function oklabRgb([L, a, b]) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3, m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3, s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+  return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s]
+    .map(x => Math.round(255 * toSrgb(clamp(x, 0, 1))));
+}
+function pcLut() {
+  if (PC_LUT) return PC_LUT;
+  const a = oklab(COL.solid), b = oklab(COL.accent);
+  PC_LUT = new Uint8ClampedArray(256 * 3);
+  for (let k = 0; k < 256; k++) PC_LUT.set(oklabRgb(a.map((x, j) => x + (b[j] - x) * k / 255)), 3 * k);
+  return PC_LUT;
+}
+const pcIdx = x => Math.round((1 - clamp((x - PC.res.lo) / (PC.res.hi - PC.res.lo), 0, 1)) * 255);
+const niceStep = x => { const p = Math.pow(10, Math.floor(Math.log10(x))), m = x / p; return (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p; };
+const niceTicks = (a, b, n) => { const st = niceStep((b - a) / n), out = []; for (let v = Math.ceil(a / st - 1e-9) * st; v <= b + 1e-9 * st; v += st) out.push(v); return out; };
+
+// Marching squares: segments (grid coordinates i, j; 4 numbers each) where the field crosses level L.
+function contourSegs(v, nd, nt, L, out) {
+  const e = new Float64Array(8);
+  for (let j = 0; j < nt - 1; j++) for (let i = 0; i < nd - 1; i++) {
+    const a = v[j * nd + i], b = v[j * nd + i + 1], c = v[(j + 1) * nd + i + 1], d = v[(j + 1) * nd + i];
+    if (!(a === a && b === b && c === c && d === d)) continue; // NaN corner
+    let n = 0;
+    const edge = (p, q, pi, pj, qi, qj) => { if ((p < L) !== (q < L)) { const t = (L - p) / (q - p); e[n++] = pi + (qi - pi) * t; e[n++] = pj + (qj - pj) * t; } };
+    edge(a, b, i, j, i + 1, j); edge(b, c, i + 1, j, i + 1, j + 1); edge(c, d, i + 1, j + 1, i, j + 1); edge(d, a, i, j + 1, i, j);
+    if (n === 4) out.push(e[0], e[1], e[2], e[3]);
+    else if (n === 8) { // saddle: the centre decides which corners connect
+      if (((a + b + c + d) / 4 < L) === (a < L)) out.push(e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7]);
+      else out.push(e[6], e[7], e[0], e[1], e[2], e[3], e[4], e[5]);
+    }
+  }
+}
+
+function pcLayout() {
+  const w = pcCv.clientWidth, h = pcCv.clientHeight;
+  if (w < 60 || h < 60) return null;
+  return { w, h, dpr: MODE === 'low' ? 1 : Math.min(Q.dprMax, window.devicePixelRatio || 1), x0: 40, x1: w - 10, y0: 18, y1: h - 32 };
+}
+const pcX = (L, t1) => { const g = PC.res.g; return L.x0 + (t1 - g.t1a) / (g.t1b - g.t1a) * (L.x1 - L.x0); };
+const pcY = (L, tof) => { const g = PC.res.g; return L.y1 - (tof - g.fa) / (g.fb - g.fa) * (L.y1 - L.y0); };
+function pcAt(px, py) {
+  const L = pcLayout(); if (!L || !PC.res) return null;
+  if (px < L.x0 - 2 || px > L.x1 + 2 || py < L.y0 - 2 || py > L.y1 + 2) return null;
+  const g = PC.res.g;
+  return { t1: g.t1a + clamp((px - L.x0) / (L.x1 - L.x0), 0, 1) * (g.t1b - g.t1a), tof: g.fa + clamp((L.y1 - py) / (L.y1 - L.y0), 0, 1) * (g.fb - g.fa) };
+}
+function pcMinPoint() {
+  const r = PC.res; if (!r) return null;
+  pcVals(); if (r.at < 0) return null;
+  const g = r.g, i = r.at % g.nd, j = Math.floor(r.at / g.nd);
+  return { t1: g.t1a + (g.t1b - g.t1a) * i / (g.nd - 1), tof: g.fa + (g.fb - g.fa) * j / (g.nt - 1) };
+}
+const pcFmtV = v => NF(PC.metric === 'c3' ? 1 : 2).format(v);
+
+// heat map, contours and axes into an offscreen canvas
+function pcBase(L) {
+  const r = PC.res, v = pcVals(), g = r.g, nd = g.nd, nt = g.nt, lut = pcLut();
+  const img = new ImageData(nd, nt);
+  for (let j = 0; j < nt; j++) for (let i = 0; i < nd; i++) {
+    const x = v[j * nd + i];
+    if (!(x === x)) continue; // no arc or outside the ephemeris: transparent
+    const p = 4 * ((nt - 1 - j) * nd + i), k = 3 * pcIdx(x);
+    img.data[p] = lut[k]; img.data[p + 1] = lut[k + 1]; img.data[p + 2] = lut[k + 2]; img.data[p + 3] = 255;
+  }
+  const heat = document.createElement('canvas'); heat.width = nd; heat.height = nt; heat.getContext('2d').putImageData(img, 0, 0);
+  const c = document.createElement('canvas'); c.width = Math.round(L.w * L.dpr); c.height = Math.round(L.h * L.dpr);
+  const x = c.getContext('2d'); x.scale(L.dpr, L.dpr);
+  const cw = (L.x1 - L.x0) / (nd - 1), ch = (L.y1 - L.y0) / (nt - 1), X = i => L.x0 + i * cw, Y = j => L.y1 - j * ch;
+  x.save(); x.beginPath(); x.rect(L.x0, L.y0, L.x1 - L.x0, L.y1 - L.y0); x.clip();
+  x.imageSmoothingEnabled = MODE !== 'low';
+  x.drawImage(heat, L.x0 - cw / 2, L.y0 - ch / 2, cw * nd, ch * nt); // grid nodes at pixel centres
+  const levels = niceTicks(r.lo, r.hi, 6).filter(l => l > r.lo), segs = [];
+  x.lineWidth = 1; x.strokeStyle = hexA(COL.ink, 0.3);
+  for (const lev of levels) {
+    const seg = []; contourSegs(v, nd, nt, lev, seg); segs.push(seg);
+    x.beginPath();
+    for (let k = 0; k < seg.length; k += 4) { x.moveTo(X(seg[k]), Y(seg[k + 1])); x.lineTo(X(seg[k + 2]), Y(seg[k + 3])); }
+    x.stroke();
+  }
+  x.restore();
+  // labels on every other level, where the contour crosses the column above the minimum (they stack there in
+  // order); a label that would leave the plot or overlap another one moves along its contour or is dropped
+  if (MODE !== 'low' && r.at >= 0) {
+    x.font = '500 10px "IBM Plex Mono", ui-monospace, monospace'; x.textBaseline = 'middle'; x.textAlign = 'center';
+    const mx = X(r.at % nd), my = Y(Math.floor(r.at / nd)), boxes = [[mx - 9, my - 19, mx + 120, my + 9]]; // the minimum and its label
+    const dec = levels.length > 1 && levels[1] - levels[0] < 1 ? 1 : 0;
+    segs.forEach((seg, n) => {
+      if (n % 2) return;
+      const t = NF(dec).format(levels[n]), tw = x.measureText(t).width + 6, pts = [];
+      for (let k = 0; k < seg.length; k += 2) { const px = X(seg[k]), py = Y(seg[k + 1]); pts.push([Math.abs(px - mx) + (py < my ? 0 : 400), px, py]); }
+      pts.sort((a, b) => a[0] - b[0]);
+      for (const [, px, py] of pts) {
+        const b = [px - tw / 2, py - 7, px + tw / 2, py + 7];
+        if (b[0] < L.x0 + 2 || b[2] > L.x1 - 2 || b[1] < L.y0 + 2 || b[3] > L.y1 - 2) continue;
+        if (boxes.some(q => b[0] < q[2] + 4 && b[2] > q[0] - 4 && b[1] < q[3] + 2 && b[3] > q[1] - 2)) continue;
+        boxes.push(b);
+        x.fillStyle = hexA(COL.solid, 0.8); x.fillRect(b[0], b[1], tw, 14);
+        x.fillStyle = COL.ink; x.fillText(t, px, py);
+        break;
+      }
+    });
+  }
+  // axes: departure (dates in the real model, days in the simplified one) and time of flight
+  x.strokeStyle = COL.line; x.lineWidth = 1; x.beginPath();
+  x.moveTo(L.x0 - 0.5, L.y0); x.lineTo(L.x0 - 0.5, L.y1 + 0.5); x.lineTo(L.x1, L.y1 + 0.5); x.stroke();
+  x.fillStyle = COL.dim; x.textAlign = 'center'; x.textBaseline = 'top';
+  const tick = (px, py, qx, qy) => { x.beginPath(); x.moveTo(px, py); x.lineTo(qx, qy); x.stroke(); };
+  const room = Math.max(2, Math.floor((L.x1 - L.x0) / 62));
+  if (S.model === 'real' && g.t1b - g.t1a < 60) { // short window (moons): days at UTC midnight
+    const st = Math.max(1, niceStep((g.t1b - g.t1a) / room)), a = daysToUtc(g.t1a), end = daysToUtc(g.t1b);
+    for (let dn = Math.ceil(a / 864e5 / st) * st; dn * 864e5 <= end; dn += st) {
+      const ms = dn * 864e5, px = pcX(L, utcToDays(ms)); tick(px, L.y1, px, L.y1 + 4); x.fillText(PCDAY.format(ms), px, L.y1 + 6);
+    }
+  } else if (S.model === 'real') {
+    const a = new Date(daysToUtc(g.t1a)), end = daysToUtc(g.t1b), months = (g.t1b - g.t1a) / 30.44;
+    const st = [1, 2, 3, 6, 12, 24, 60, 120].find(q => months / q <= room) || 240;
+    for (let m = a.getUTCFullYear() * 12 + a.getUTCMonth() + 1; ; m++) {
+      if (m % st) continue;
+      const ms = Date.UTC(Math.floor(m / 12), m % 12, 1); if (ms > end) break;
+      const px = pcX(L, utcToDays(ms)); tick(px, L.y1, px, L.y1 + 4); x.fillText(PCMON.format(ms), px, L.y1 + 6);
+    }
+  } else for (const d of niceTicks(g.t1a, g.t1b, Math.max(2, Math.floor((L.x1 - L.x0) / 56)))) { const px = pcX(L, d); tick(px, L.y1, px, L.y1 + 4); x.fillText(nf0.format(d), px, L.y1 + 6); }
+  x.textAlign = 'right'; x.textBaseline = 'middle';
+  for (const d of niceTicks(g.fa, g.fb, Math.max(2, Math.floor((L.y1 - L.y0) / 34)))) { const py = pcY(L, d); tick(L.x0 - 4, py, L.x0, py); x.fillText(nf0.format(d), L.x0 - 6, py); }
+  x.font = '500 9.5px "Chakra Petch", system-ui, sans-serif'; x.fillStyle = COL.faint;
+  x.textAlign = 'left'; x.textBaseline = 'alphabetic'; x.fillText(_('pc.axisY').toLocaleUpperCase(DICT['meta.locale']), 4, 11);
+  x.textAlign = 'right'; x.fillText(_(S.model === 'real' ? 'pc.axisX' : 'pc.axisXd').toLocaleUpperCase(DICT['meta.locale']), L.x1, L.h - 3);
+  return c;
+}
+
+// one marker with a label that stays inside the plot (above the marker, or below it: the mission's square)
+function pcMark(L, px, py, txt, col, square) {
+  const x = pcCtx;
+  x.strokeStyle = col; x.lineWidth = 1.5;
+  if (square) x.strokeRect(px - 4, py - 4, 8, 8);
+  else { x.beginPath(); x.arc(px, py, 5, 0, 6.2832); x.stroke(); x.beginPath(); x.moveTo(px - 9, py); x.lineTo(px - 6, py); x.moveTo(px + 6, py); x.lineTo(px + 9, py); x.moveTo(px, py - 9); x.lineTo(px, py - 6); x.moveTo(px, py + 6); x.lineTo(px, py + 9); x.stroke(); }
+  x.font = '500 10.5px "IBM Plex Mono", ui-monospace, monospace'; x.textBaseline = 'middle';
+  const tw = x.measureText(txt).width, right = px + 12 + tw < L.x1, lx = right ? px + 12 : px - 12 - tw, ly = clamp(py + (square ? 11 : -11), L.y0 + 7, L.y1 - 7);
+  x.fillStyle = hexA(COL.solid, 0.8); x.fillRect(lx - 3, ly - 7, tw + 6, 14);
+  x.fillStyle = COL.ink; x.textAlign = 'left'; x.fillText(txt, lx, ly);
+}
+function pcDraw() {
+  if (!pcOpen()) return;
+  const L = pcLayout(); if (!L) return;
+  const W2 = Math.round(L.w * L.dpr), H2 = Math.round(L.h * L.dpr);
+  if (pcCv.width !== W2 || pcCv.height !== H2) { pcCv.width = W2; pcCv.height = H2; }
+  const x = pcCtx;
+  x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, W2, H2);
+  if (!PC.res) { pcScale(); return; }
+  const bk = [L.w, L.h, L.dpr, PC.metric, MODE].join('|');
+  if (!PC.base || PC.baseKey !== bk) { PC.base = pcBase(L); PC.baseKey = bk; }
+  x.drawImage(PC.base, 0, 0);
+  x.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
+  pcScale();
+  const inside = (px, py) => px >= L.x0 - 1 && px <= L.x1 + 1 && py >= L.y0 - 1 && py <= L.y1 + 1;
+  // the current mission (departure, arrival at the target periapsis or the chosen time of flight)
+  const m = pcMinPoint();
+  if (m) pcMark(L, pcX(L, m.t1), pcY(L, m.tof), _('pc.lblMin', { v: pcFmtV(PC.res.lo) + ' ' + pcUnit() }), COL.ink, false);
+  const tof = simR && simR.bPeri ? simR.bPeri.t / DAY : S.M.dep === 'asym' ? S.M.tof : 0;
+  if (tof > 0) { const px = pcX(L, S.M.t0), py = pcY(L, tof); if (inside(px, py)) pcMark(L, px, py, _('pc.lblMission'), COL.orbit, true); }
+  if (PC.cur) { // crosshair
+    const px = pcX(L, PC.cur.t1), py = pcY(L, PC.cur.tof);
+    x.strokeStyle = hexA(COL.ink, 0.45); x.lineWidth = 1; x.setLineDash([3, 3]);
+    x.beginPath(); x.moveTo(px, L.y0); x.lineTo(px, L.y1); x.moveTo(L.x0, py); x.lineTo(L.x1, py); x.stroke(); x.setLineDash([]);
+    x.strokeStyle = COL.ink; x.beginPath(); x.arc(px, py, 4, 0, 6.2832); x.stroke();
+  }
+}
+function pcScale() {
+  const r = PC.res;
+  if (!r) { $('#pcLo').textContent = ''; $('#pcHi').textContent = ''; $('#pcRamp').style.background = ''; return; }
+  const lut = pcLut(), stop = k => `rgb(${lut[3 * k]},${lut[3 * k + 1]},${lut[3 * k + 2]})`;
+  $('#pcRamp').style.background = `linear-gradient(90deg, ${[255, 191, 128, 64, 0].map((k, n) => `${stop(k)} ${n * 25}%`).join(', ')})`;
+  $('#pcLo').textContent = pcFmtV(r.lo) + ' ' + pcUnit(); $('#pcHi').textContent = '≥ ' + pcFmtV(r.hi);
+}
+// details of the point under the pointer (or the keyboard cursor), else of the minimum
+function pcInfo() {
+  const box = $('#pcInfo'), cap = $('#pcInfoCap');
+  const p = PC.res && sys && isSibling(sys) ? PC.cur || pcMinPoint() : null;
+  if (!p) { box.innerHTML = ''; cap.textContent = ''; return; }
+  cap.textContent = PC.cur ? _('pc.capCursor') : _('pc.capMin', { m: _('pc.m.' + PC.metric) });
+  const tr = lambertTransfer(sys, p.t1 * DAY, p.tof * DAY, S.M);
+  if (!tr) { box.innerHTML = `<tr><td colspan="2">${esc(_('pc.noArc'))}</td></tr>`; return; }
+  const dd = d => S.model === 'real' ? PCDATE.format(daysToUtc(d)) : _('pc.i.day', { d: nf1.format(d) });
+  const rows = [
+    [_('pc.i.dates'), esc(dd(p.t1) + ' → ' + dd(p.t1 + p.tof)), ''],
+    [_('pc.i.tof'), esc(_('pc.i.days', { d: nf1.format(p.tof), type: tr.type === 1 ? 'I' : 'II' })), ''],
+    [_('pc.i.c3'), nf2.format(tr.c3 / 1e6), 'km²/s²'],
+    [_('pc.i.vinf'), nf2.format(tr.vd / 1e3) + ' / ' + nf2.format(tr.va / 1e3), 'km/s'],
+    [_('pc.i.dv'), nf0.format(tr.dvD) + ' + ' + nf0.format(tr.dvA), 'm/s'],
+    [_('pc.i.tot'), nf0.format(tr.dv), 'm/s'],
+    [_('pc.i.incl'), nf1.format(tr.incl), '°'],
+  ];
+  box.innerHTML = rows.map(([l, v, u]) => `<tr><th scope="row">${esc(l)}</th><td>${v}${u ? `<em>${esc(u)}</em>` : ''}</td></tr>`).join('');
+}
+// Set the mission up from a porkchop point: Lambert seed (departure asymptote), then the N-body refinement.
+function pcPick(p) {
+  if (!sys || !isSibling(sys) || !p) return;
+  const seed = lambertSeed(sys, p.t1 * DAY, p.tof * DAY, S.M);
+  if (!seed) { pcStatus(_('pc.noArc')); return; }
+  Object.assign(S.M, { dep: 'asym', theta: seed.theta, beta: seed.beta, dv: seed.dv, t0: seed.t0, tof: seed.tof, autoDur: true });
+  S.scenario = ''; $('#scenario').value = ''; $('#scNote').textContent = _('sc.pc.note');
+  syncMission(); rebuild({ resetU: true, fit: true });
+  if (!reduceMotion) { S.playing = true; setPlayIcon(); }
+  startSolve();
+}
+// start the solver, cancelling a running one first
+function startSolve() {
+  if (!solving) { solve(); return; }
+  if (!cancelSolve) $('#solve').click();
+  setTimeout(startSolve, 20);
+}
+let pcDown = null;
+pcCv.addEventListener('pointerdown', e => { pcDown = { x: e.offsetX, y: e.offsetY, touch: e.pointerType !== 'mouse' }; });
+pcCv.addEventListener('pointercancel', () => { pcDown = null; });
+pcCv.addEventListener('pointerup', e => {
+  const d = pcDown; pcDown = null;
+  if (!d || Math.hypot(e.offsetX - d.x, e.offsetY - d.y) > TAP_PX[d.touch ? 'touch' : 'mouse']) return;
+  const p = pcAt(e.offsetX, e.offsetY);
+  if (p) { PC.cur = p; pcDraw(); pcInfo(); pcPick(p); }
+});
+pcCv.addEventListener('pointermove', e => {
+  if (e.pointerType !== 'mouse' || !PC.res) return;
+  const p = pcAt(e.offsetX, e.offsetY);
+  if (!p && !PC.cur) return;
+  PC.cur = p; pcDraw(); pcInfo();
+});
+pcCv.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && PC.cur && document.activeElement !== pcCv) { PC.cur = null; pcDraw(); pcInfo(); } });
+// keyboard: arrows move a cursor over the grid (Shift: 10 cells), Enter sets the mission up
+pcCv.addEventListener('keydown', e => {
+  if (!PC.res) return;
+  const g = PC.res.g, p = PC.cur || pcMinPoint(), k = e.shiftKey ? 10 : 1;
+  const mv = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key];
+  if (mv && p) {
+    e.preventDefault();
+    PC.cur = { t1: clamp(p.t1 + mv[0] * k * (g.t1b - g.t1a) / (g.nd - 1), g.t1a, g.t1b), tof: clamp(p.tof + mv[1] * k * (g.fb - g.fa) / (g.nt - 1), g.fa, g.fb) };
+    pcDraw(); pcInfo();
+  } else if ((e.key === 'Enter' || e.key === ' ') && p) { e.preventDefault(); pcPick(p); }
+});
+pcCv.addEventListener('blur', () => { if (PC.cur) { PC.cur = null; pcDraw(); pcInfo(); } });
+new ResizeObserver(() => { PC.base = null; pcDraw(); }).observe($('#pcPlot'));
 
 // ===================== Solar system map =====================
 // Always the real solar system (JPL elements), heliocentric, projected on the ecliptic. Date: the mission
@@ -1191,7 +1630,7 @@ function pickBody(k, role) {
   if (ch.error) { setStatus(_(ch.error, { ...ch.params, a: _('body.' + a), b: _('body.' + b) })); return; }
   const switched = S.model !== 'real';
   if (switched) { S.model = 'real'; S.M.t0 = utcToDays(Math.floor(Date.now() / 60000) * 60000); }
-  S.M.beta = 0;
+  S.M.beta = 0; S.M.dep = 'burn'; S.M.tof = 0;
   S.bodies = ch.keys.map(q => bodyFromPreset(q)); linkReal();
   S.scenario = ''; $('#scenario').value = ''; $('#scNote').textContent = _('sc.pick.note');
   // a body and its own moon: rotating view (A–B line fixed); anything else: inertial, and a free return
@@ -1204,7 +1643,7 @@ function pickBody(k, role) {
   rebuild({ fit: true, resetU: true });
   if (MAP.follow == null) MAP.needFit = true;
   const st = sys ? applyHohmann() : null;
-  setStatus((switched ? _('st.pickReal') : '') + _('st.picked', { a: S.bodies[0].name, b: S.bodies[1].name }) + (st ? st + _('st.pickTail') : _('st.noHohmann')));
+  setStatus((switched ? _('st.pickReal') : '') + _('st.picked', { a: S.bodies[0].name, b: S.bodies[1].name }) + (st ? st + _('st.pickTail') : _('st.noHohmann')) + (sys && isSibling(sys) ? _('st.pickPc') : ''));
   if (!reduceMotion) S.playing = true;
   setPlayIcon();
 }
@@ -1385,7 +1824,7 @@ function draw(now) {
     for (const m of C.markers) {
       const x = sx(m.fx), y = sy(m.fy), reached = m.t <= tNow + 1e-6;
       if (x < -50 || x > W + 50 || y < -50 || y > H + 50) continue;
-      const col = m.type === 'burn' ? COL.burn : m.type === 'impact' ? COL.bad : COL.orbit;
+      const col = m.type === 'burn' ? COL.burn : m.type === 'impact' ? COL.bad : m.type === 'aero' ? COL.warn : COL.orbit;
       ctx.globalAlpha = reached ? 1 : 0.55;
       ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1.4;
       if (m.type === 'burn') { ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y); ctx.closePath(); ctx.fill(); }
@@ -1543,7 +1982,7 @@ function defaultWinPos(id, el) {
   const below = $('#ctrls').getBoundingClientRect().bottom - box.getBoundingClientRect().top + 10;
   switch (id) {
     case 'mission': return [m, m];
-    case 'bodies': return [m + cssW('mission') + 10, m];
+    case 'bodies': case 'transfer': return [m + cssW('mission') + 10, m];
     case 'results': return [cw - w - m, below];
     case 'overview': { const r = winEl('results'); return [cw - w - m, WINS.results.open && floating() ? r.offsetTop + r.offsetHeight + 10 : below]; }
     case 'gloss': return [cw - w - m - cssW('results') - 10, below];
@@ -1573,6 +2012,7 @@ function applyWin(id) {
   if (id === 'gloss' && st.open) renderGloss($('#glossQ').value);
   if (id === 'overview' && st.open) ovDist(true);
   placeWin(id);
+  if (id === 'transfer' && st.open && !st.collapsed) pcSync();
 }
 function setWin(id, patch) {
   const wasOpen = WINS[id].open;
@@ -1639,6 +2079,7 @@ function setMode(m, save) {
   if (m === 'normal') { lowQ = false; slowFrames = 0; frameAvg = 1 / 60; }
   resize();
   if (sys && simR) { buildCache(); renderTicks(); }
+  PC.base = null; pcSync(); // grid resolution and drawing follow the mode
   document.querySelectorAll('#viewMode button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === m)));
   if (save) writePref(LS, PREF_KEYS.mode, m);
   if (m === 'low') $('#perfTip').hidden = true;
@@ -1688,6 +2129,7 @@ setMode(start.mode, false);
 loadScenario('em_free');
 setPlayIcon();
 syncMapUI();
+setSeg('#pcMetric', PC.metric);
 for (const id of WIN_IDS) applyWin(id);
 if (start.ask) askMode();
 requestAnimationFrame(t => { last = t; draw(t); });

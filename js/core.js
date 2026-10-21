@@ -316,13 +316,31 @@ function spin(P, V, y, i, n) {
 // Initial spacecraft state from mission: circular parking orbit around A in the mission plane, burn point at
 // angle θ from the A→B direction, tangential prograde burn. Real model: the parking orbit is tilted by β
 // about the burn point's radius (so the burn leaves the mission plane by β).
+// Departure type 'asym' (missions set up from a Lambert transfer): θ and β are the departure asymptote's
+// longitude λ∞ and latitude δ∞ in A's departure frame (depFrame; β stays 0 in the simplified model). The
+// hyperbola lies in the plane through the asymptote closest to A's orbit plane (inclined to it by |δ∞|);
+// the burn is at its periapsis, the true anomaly ν∞ = arccos(−1/e) behind the asymptote.
 function initialState(s, M) {
   const A = 0, B = 1, t0 = M.t0 * DAY;
   const P = new Float64Array(3 * s.N), V = new Float64Array(3 * s.N);
   const pb = planeBasis(missionPlane(s, t0)), n = pb.n, X = pb.x, Y = pb.y;
   states(s, t0, P, V);
-  const al = planeAngle(pb, P[3 * B] - P[3 * A], P[3 * B + 1] - P[3 * A + 1], P[3 * B + 2] - P[3 * A + 2]) + M.theta * Math.PI / 180;
   const r = s.R[A] + M.h0 * 1e3, vc = Math.sqrt(s.mu[A] / r), v = vc + M.dv;
+  const f = M.dep === 'asym' ? depFrame(s, P, V) : null;
+  if (f) {
+    const la = M.theta * D2R, de = s.real ? (M.beta || 0) * D2R : 0, cd = Math.cos(de), sd = Math.sin(de);
+    const sh = [0, 1, 2].map(j => cd * (Math.cos(la) * f.x[j] + Math.sin(la) * f.y[j]) + sd * f.z[j]);
+    let hh = [0, 1, 2].map(j => f.z[j] - sd * sh[j]), hl = Math.hypot(...hh);
+    if (hl < 1e-9) { hh = f.y; hl = 1; } // asymptote along the pole: any plane through it
+    hh = hh.map(q => q / hl);
+    const e = r * v * v / s.mu[A] - 1, cn = e > 1 ? -1 / e : -1, sn = Math.sqrt(1 - cn * cn);
+    const w = [hh[1] * sh[2] - hh[2] * sh[1], hh[2] * sh[0] - hh[0] * sh[2], hh[0] * sh[1] - hh[1] * sh[0]];
+    const p = [0, 1, 2].map(j => cn * sh[j] - sn * w[j]);
+    const q = [hh[1] * p[2] - hh[2] * p[1], hh[2] * p[0] - hh[0] * p[2], hh[0] * p[1] - hh[1] * p[0]];
+    const y = [0, 1, 2, 3, 4, 5].map(j => j < 3 ? P[3 * A + j] + r * p[j] : V[3 * A + j - 3] + v * q[j - 3]);
+    return { y, vc, r, n };
+  }
+  const al = planeAngle(pb, P[3 * B] - P[3 * A], P[3 * B + 1] - P[3 * A + 1], P[3 * B + 2] - P[3 * A + 2]) + M.theta * Math.PI / 180;
   const c = Math.cos(al), sn = Math.sin(al);
   const be = s.real ? (M.beta || 0) * Math.PI / 180 : 0, cb = Math.cos(be), sb = Math.sin(be);
   const y = [0, 0, 0, 0, 0, 0];
@@ -359,6 +377,7 @@ function simulate(s, M, opts = {}) {
   let aRet = null;  // first periapsis at A after B periapsis
   let dAafterB = Infinity;
   let captured = null;
+  let aero = null; // aerocapture pass at B's periapsis (capture mode with aerocapture)
   let Tend = T;
   let g0 = [radialRate(s, t0, y, 0), radialRate(s, t0, y, 1)];
   deriv(s, t0, y, K[0]);
@@ -391,20 +410,47 @@ function simulate(s, M, opts = {}) {
       if (d < s.R[i]) hit = i;
     }
     if (bPeri && !aRet) { const dA = Math.hypot(y1[0] - P[0], y1[1] - P[1], y1[2] - P[2]); if (dA < dAafterB) dAafterB = dA; }
-    // periapsis events for A and B
+    // periapsis events for A and B (and B's apoapsis after an aerocapture pass)
     let eventHandled = false;
+    // refine a sign change of the radial rate to body i inside the step by bisection on the step fraction
+    // (sg = 1: − to + at periapsis, sg = −1: + to − at apoapsis)
+    const refine = (i, sg) => {
+      let lo = 0, hi = 1; const ym = new Float64Array(6);
+      for (let it = 0; it < 40; it++) {
+        const mid = 0.5 * (lo + hi);
+        K[0].set(k0); dpStep(s, t0 + t, yStart, h * mid, ym, null);
+        if (sg * radialRate(s, t0 + t + h * mid, ym, i) < 0) lo = mid; else hi = mid;
+      }
+      const tau = 0.5 * (lo + hi); K[0].set(k0); dpStep(s, t0 + t, yStart, h * tau, ym, null);
+      const te = t + h * tau;
+      return { ym, te, de: distTo(s, t0 + te, ym, i) };
+    };
+    // replace the velocity relative to B by speed vn along it; continue from there for at most tMax
+    const setSpeed = (ym, te, vn, tMax, hNew) => {
+      states(s, t0 + te, P, V);
+      const rvx = ym[3] - V[3], rvy = ym[4] - V[4], rvz = ym[5] - V[5], vrel = Math.hypot(rvx, rvy, rvz);
+      const ny = Float64Array.from(ym);
+      ny[3] = V[3] + rvx / vrel * vn; ny[4] = V[4] + rvy / vrel * vn; ny[5] = V[5] + rvz / vrel * vn;
+      if (record) { push(te, ym); push(te, ny); }
+      y = ny; t = te;
+      Tend = Math.min(T, te + tMax);
+      h = hNew;
+      deriv(s, t0 + t, y, K[0]);
+      g0 = [radialRate(s, t0 + t, y, 0), radialRate(s, t0 + t, y, 1)];
+      return vrel;
+    };
     for (const i of [1, 0]) {
       const g1 = radialRate(s, t0 + tn, y1, i);
+      if (i === 1 && aero && !captured && g0[1] > 0 && g1 <= 0 && hit < 0) {
+        // apoapsis after the aerocapture pass: raise the periapsis out of the atmosphere (circular orbit)
+        const { ym, te, de } = refine(1, -1), vcirc = Math.sqrt(s.mu[1] / de), Pc = 2 * Math.PI * Math.sqrt(de * de * de / s.mu[1]);
+        const vrel = setSpeed(ym, te, vcirc, 3 * Pc, Pc / 200);
+        captured = { t: te, dv: vcirc - vrel, d: de, aero };
+        out.events.push({ type: 'burn', body: 1, t: te, dv: vcirc - vrel, label: 'ev.raise' });
+        eventHandled = true; break;
+      }
       if (g0[i] < 0 && g1 >= 0 && hit < 0) {
-        // refine by bisection on fraction of step
-        let lo = 0, hi = 1; const ym = new Float64Array(6);
-        for (let it = 0; it < 40; it++) {
-          const mid = 0.5 * (lo + hi);
-          K[0].set(k0); dpStep(s, t0 + t, yStart, h * mid, ym, null);
-          if (radialRate(s, t0 + t + h * mid, ym, i) < 0) lo = mid; else hi = mid;
-        }
-        const tau = 0.5 * (lo + hi); K[0].set(k0); dpStep(s, t0 + t, yStart, h * tau, ym, null);
-        const te = t + h * tau, de = distTo(s, t0 + te, ym, i);
+        const { ym, te, de } = refine(i, 1);
         if (de < dmin[i]) { dmin[i] = de; tmin[i] = te; }
         const inSoi = de < s.soi[i];
         if (i === 1 && !bPeri && inSoi) {
@@ -412,6 +458,16 @@ function simulate(s, M, opts = {}) {
           const hz = spin(P, V, ym, 1, nrm);
           bPeri = { t: te, d: de, dir: hz >= 0 ? 1 : -1, v: Math.hypot(ym[3] - V[3], ym[4] - V[4], ym[5] - V[5]) };
           out.events.push({ type: 'peri', body: 1, t: te, d: de, alt: de - s.R[1], label: 'ev.targetPeri' });
+          const ra = s.R[1] + M.hB * 1e3;
+          if (M.mode === 'capture' && !fast && !captured && aeroOn(M) && ra > de) {
+            // aerocapture: the atmosphere takes the excess speed at periapsis (no fuel), leaving an ellipse
+            // with its apoapsis on the final orbit
+            const vpe = Math.sqrt(s.mu[1] * (2 / de - 2 / (de + ra))), Pe = 2 * Math.PI * Math.sqrt(Math.pow((de + ra) / 2, 3) / s.mu[1]);
+            const vrel = setSpeed(ym, te, vpe, Pe, Pe / 400);
+            aero = { t: te, dv: vrel - vpe, d: de };
+            out.events.push({ type: 'aero', body: 1, t: te, dv: vrel - vpe, label: 'ev.aero' });
+            eventHandled = true; break;
+          }
           if (M.mode === 'capture' && !fast && !captured) {
             states(s, t0 + te, P, V);
             const rvx = ym[3] - V[3], rvy = ym[4] - V[4], rvz = ym[5] - V[5], vrel = Math.hypot(rvx, rvy, rvz), vcirc = Math.sqrt(s.mu[1] / de);
@@ -428,7 +484,7 @@ function simulate(s, M, opts = {}) {
             g0 = [radialRate(s, t0 + t, y, 0), radialRate(s, t0 + t, y, 1)];
             eventHandled = true; break;
           }
-        } else if (i === 0 && bPeri && !aRet && !captured && te > bPeri.t) {
+        } else if (i === 0 && bPeri && !aRet && !captured && !aero && te > bPeri.t) {
           aRet = { t: te, d: de };
           if (de < dAafterB) dAafterB = de;
           out.events.push({ type: 'peri', body: 0, t: te, d: de, alt: de - s.R[0], label: 'ev.returnPeri' });
@@ -465,7 +521,7 @@ function simulate(s, M, opts = {}) {
   }
   out.steps = steps; out.tEnd = t;
   out.dmin = Array.from(dmin); out.tmin = Array.from(tmin);
-  out.bPeri = bPeri; out.aRet = aRet; out.dAafterB = dAafterB; out.captured = captured; out.hzMin = hzMin;
+  out.bPeri = bPeri; out.aRet = aRet; out.dAafterB = dAafterB; out.captured = captured; out.aero = aero; out.hzMin = hzMin;
   out.vc = init.vc; out.r0 = init.r;
   return out;
 }
@@ -601,10 +657,217 @@ function autoDuration(g, mode) {
   return Math.max(0.2, Math.min(5000, tof * k / DAY));
 }
 
+// ===== Lambert's problem =====
+// D. Izzo, "Revisiting Lambert's problem", Celest. Mech. Dyn. Astr. 121 (2015) 1–15: non-dimensional λ from
+// the chord geometry and T from the time of flight, initial guess for x (with the later correction of the
+// T₁ < T < T₀ branch), Householder iterations on T(x) = T, Battin's hypergeometric series near x = 1.
+const hyp2f1b = z => { // ₂F₁(3, 1; 5/2; z), |z| < 1
+  let res = 1, term = 1;
+  for (let k = 0; k < 300; k++) { term *= (3 + k) * (1 + k) / (2.5 + k) * z / (k + 1); const nr = res + term; if (nr === res) break; res = nr; }
+  return res;
+};
+// non-dimensional time of flight at x (y = √(1 − λ²(1 − x²))), M full revolutions
+function lambertT(x, y, ll, M) {
+  if (M === 0 && x > 0.7745966692414834 && x < 1.1832159566199232) { // √0.6 < x < √1.4: series
+    const eta = y - ll * x;
+    return (eta * eta * eta * 4 / 3 * hyp2f1b((1 - ll - x * eta) / 2) + 4 * ll * eta) / 2;
+  }
+  const q = 1 - x * x;
+  const psi = x < 1 ? Math.acos(Math.max(-1, Math.min(1, x * y + ll * q))) : Math.asinh((y - x * ll) * Math.sqrt(-q));
+  return ((psi + M * Math.PI) / Math.sqrt(Math.abs(q)) - x + ll * y) / q;
+}
+const LD = new Float64Array(3);
+function lambertD(x, y, T, ll) { // dT/dx, d²T/dx², d³T/dx³ into LD
+  const q = 1 - x * x, l2 = ll * ll, l3 = l2 * ll, y3 = y * y * y;
+  LD[0] = (3 * T * x - 2 + 2 * l3 * x / y) / q;
+  LD[1] = (3 * T + 5 * x * LD[0] + 2 * (1 - l2) * l3 / y3) / q;
+  LD[2] = (7 * x * LD[1] + 8 * LD[0] - 6 * (1 - l2) * l3 * l2 * x / (y3 * y * y)) / q;
+}
+const lambertY = (x, ll) => Math.sqrt(1 - ll * ll * (1 - x * x));
+// x solving T(x) = T; NaN when M revolutions do not fit into T or the iteration fails
+function lambertX(ll, T, M, right) {
+  const T00 = Math.acos(ll) + ll * Math.sqrt(1 - ll * ll);
+  let x;
+  if (M === 0) {
+    const T1 = 2 * (1 - ll * ll * ll) / 3;
+    x = T >= T00 ? Math.pow(T00 / T, 2 / 3) - 1
+      : T < T1 ? 2.5 * T1 / T * (T1 - T) / (1 - Math.pow(ll, 5)) + 1
+        : Math.pow(T / T00, Math.LN2 / Math.log(T1 / T00)) - 1;
+  } else {
+    // T(0) = T00 + Mπ; below it T may be shorter than the least time with M revolutions (dT/dx = 0, Halley)
+    if (T < T00 + M * Math.PI) {
+      let xm = 0.1, ok = false;
+      for (let k = 0; k < 40; k++) {
+        const y = lambertY(xm, ll); lambertD(xm, y, lambertT(xm, y, ll, M), ll);
+        const st = 2 * LD[0] * LD[1] / (2 * LD[1] * LD[1] - LD[0] * LD[2]);
+        xm -= st;
+        if (Math.abs(st) < 1e-13) { ok = true; break; }
+      }
+      if (!ok || !(T >= lambertT(xm, lambertY(xm, ll), ll, M))) return NaN;
+    }
+    const a = Math.pow((M + 1) * Math.PI / (8 * T), 2 / 3), b = Math.pow(8 * T / (M * Math.PI), 2 / 3);
+    x = right ? (b - 1) / (b + 1) : (a - 1) / (a + 1);
+  }
+  let st = Infinity;
+  for (let k = 0; k < 40; k++) {
+    if (Math.abs(1 - x * x) < 1e-14) x -= 1e-9; // the derivatives divide by 1 − x² (parabola)
+    const y = lambertY(x, ll), Tx = lambertT(x, y, ll, M), f = Tx - T;
+    lambertD(x, y, Tx, ll);
+    const d1 = LD[0], d2 = LD[1], d3 = LD[2];
+    st = f * (d1 * d1 - f * d2 / 2) / (d1 * (d1 * d1 - f * d2) + d3 * f * f / 6);
+    x -= st;
+    if (Math.abs(st) < 1e-13 * Math.max(1, Math.abs(x))) return x;
+  }
+  return Math.abs(st) < 1e-7 ? x : NaN;
+}
+
+// Arc from r1 to r2 (m) in time tof (s) around a body with μ (m³/s²); returns { v1, v2 (m/s), type, h } or null.
+// Prograde about the reference normal n: the arc's angular momentum h points to n's side, so the transfer
+// angle is below 180° (short way, type 1) when (r1 × r2)·n ≥ 0 and above it (long way, type 2) otherwise.
+// M ≥ 1 full revolutions have two arcs: right = the larger x. Near 180° r1 × r2 vanishes and the arc's
+// plane is undefined; there its normal is n made perpendicular to r1 (a coplanar problem keeps its plane).
+function lambert(mu, r1, r2, tof, n, M = 0, right = false) {
+  const R1 = Math.hypot(r1[0], r1[1], r1[2]), R2 = Math.hypot(r2[0], r2[1], r2[2]);
+  const c = Math.hypot(r2[0] - r1[0], r2[1] - r1[1], r2[2] - r1[2]), s = (R1 + R2 + c) / 2;
+  if (!(c > 1e-12 * s) || !(tof > 0)) return null;
+  const u1x = r1[0] / R1, u1y = r1[1] / R1, u1z = r1[2] / R1, u2x = r2[0] / R2, u2y = r2[1] / R2, u2z = r2[2] / R2;
+  let hx = u1y * u2z - u1z * u2y, hy = u1z * u2x - u1x * u2z, hz = u1x * u2y - u1y * u2x;
+  let hl = Math.hypot(hx, hy, hz), ll = Math.sqrt(Math.max(0, 1 - c / s));
+  if (hl < 1e-10) {
+    const d = n[0] * u1x + n[1] * u1y + n[2] * u1z;
+    hx = n[0] - d * u1x; hy = n[1] - d * u1y; hz = n[2] - d * u1z; hl = Math.hypot(hx, hy, hz);
+    if (!(hl > 0)) return null;
+  } else if (hx * n[0] + hy * n[1] + hz * n[2] < 0) { hx = -hx; hy = -hy; hz = -hz; ll = -ll; }
+  hx /= hl; hy /= hl; hz /= hl;
+  const x = lambertX(ll, Math.sqrt(2 * mu / (s * s * s)) * tof, M, right);
+  if (!Number.isFinite(x)) return null;
+  const y = lambertY(x, ll), g = Math.sqrt(mu * s / 2), rho = (R1 - R2) / c, sig = Math.sqrt(Math.max(0, 1 - rho * rho));
+  const vr1 = g * ((ll * y - x) - rho * (ll * y + x)) / R1, vr2 = -g * ((ll * y - x) + rho * (ll * y + x)) / R2;
+  const vt = g * sig * (y + ll * x), vt1 = vt / R1, vt2 = vt / R2;
+  // tangential directions h × u
+  return {
+    v1: [vr1 * u1x + vt1 * (hy * u1z - hz * u1y), vr1 * u1y + vt1 * (hz * u1x - hx * u1z), vr1 * u1z + vt1 * (hx * u1y - hy * u1x)],
+    v2: [vr2 * u2x + vt2 * (hy * u2z - hz * u2y), vr2 * u2y + vt2 * (hz * u2x - hx * u2z), vr2 * u2z + vt2 * (hx * u2y - hy * u2x)],
+    type: ll < 0 ? 2 : 1, h: [hx, hy, hz],
+  };
+}
+
+// ----- Patched-conic transfers between sibling bodies (departure 0 and target 1 orbit the same parent) -----
+// Aerocapture is active in capture mode when the pass altitude lies below the final orbit (hAtm < hB, km).
+const aeroOn = M => M.mode === 'capture' && !!M.aero && M.hAtm < M.hB;
+// apoapsis raise after an aerocapture pass: ellipse rp × ra -> circle at ra (m/s)
+const aeroRaise = (mu, rp, ra) => Math.sqrt(mu / ra) - Math.sqrt(2 * mu * rp / (ra * (ra + rp)));
+// Δv for the arc's end velocities v1, v2 and the bodies' velocities vA, vB (all relative to the parent):
+// escape from a circular parking orbit at h0 into the departure v∞; arrival into a circular orbit at hB
+// (capture), the raise burn after an aerocapture pass at hAtm, or nothing (flyby, free return).
+function arcDv(s, M, v1, v2, vA, vB) {
+  const vd = Math.hypot(v1[0] - vA[0], v1[1] - vA[1], v1[2] - vA[2]), va = Math.hypot(v2[0] - vB[0], v2[1] - vB[1], v2[2] - vB[2]);
+  const muA = s.mu[0], rp = s.R[0] + M.h0 * 1e3;
+  const dvD = Math.sqrt(vd * vd + 2 * muA / rp) - Math.sqrt(muA / rp);
+  let dvA = 0;
+  if (M.mode === 'capture') {
+    const muB = s.mu[1], rB = s.R[1] + M.hB * 1e3;
+    dvA = aeroOn(M) ? aeroRaise(muB, s.R[1] + M.hAtm * 1e3, rB) : Math.sqrt(va * va + 2 * muB / rB) - Math.sqrt(muB / rB);
+  }
+  return { vd, va, dvD, dvA };
+}
+const isSibling = s => s.parent[0] >= 0 && s.parent[0] === s.parent[1];
+// body i relative to body j after states(): r and v written to out[0..5]
+function relState(P, V, i, j, out) {
+  for (let k = 0; k < 3; k++) { out[k] = P[3 * i + k] - P[3 * j + k]; out[3 + k] = V[3 * i + k] - V[3 * j + k]; }
+  return out;
+}
+// Departure frame of body 0 (after states()): x along its velocity relative to its parent, z along its orbit
+// normal there, y = z × x. The departure asymptote's longitude λ∞ and latitude δ∞ are measured in it.
+function depFrame(s, P, V) {
+  const p = s.parent[0];
+  if (p < 0) return null;
+  const st = relState(P, V, 0, p, new Float64Array(6));
+  const n = [st[1] * st[5] - st[2] * st[4], st[2] * st[3] - st[0] * st[5], st[0] * st[4] - st[1] * st[3]];
+  const nl = Math.hypot(n[0], n[1], n[2]), vl = Math.hypot(st[3], st[4], st[5]);
+  if (!(nl > 0)) return null;
+  const z = [n[0] / nl, n[1] / nl, n[2] / nl], x = [st[3] / vl, st[4] / vl, st[5] / vl];
+  return { x, y: [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]], z };
+}
+// λ∞, δ∞ (deg) of a departure v∞ vector in the departure frame f
+function asymAngles(f, v) {
+  const a = v[0] * f.x[0] + v[1] * f.x[1] + v[2] * f.x[2], b = v[0] * f.y[0] + v[1] * f.y[1] + v[2] * f.y[2], c = v[0] * f.z[0] + v[1] * f.z[1] + v[2] * f.z[2];
+  return { lam: Math.atan2(b, a) / D2R, dec: Math.asin(Math.max(-1, Math.min(1, c / Math.hypot(a, b, c)))) / D2R };
+}
+
+// Lambert transfer leaving body 0 at t1 and reaching body 1 after tof (s), between the bodies' centres around
+// their common parent. Returns null for non-siblings or when no arc exists. Angles in degrees: lam/dec =
+// departure asymptote in the departure frame; incl = transfer plane against the departure body's orbit
+// plane; oop = out-of-plane part of the departure v∞ (m/s, already inside the Δv). c3 in m²/s².
+function lambertTransfer(s, t1, tof, M) {
+  if (!isSibling(s)) return null;
+  const L = s.parent[0], P = s.P, V = s.V, a = new Float64Array(6), b = new Float64Array(6);
+  states(s, t1, P, V); relState(P, V, 0, L, a);
+  const f = depFrame(s, P, V);
+  states(s, t1 + tof, P, V); relState(P, V, 1, L, b);
+  const sol = lambert(s.mu[L], [a[0], a[1], a[2]], [b[0], b[1], b[2]], tof, f.z);
+  if (!sol) return null;
+  const vA = [a[3], a[4], a[5]], vB = [b[3], b[4], b[5]], d = arcDv(s, M, sol.v1, sol.v2, vA, vB);
+  const vinfD = [sol.v1[0] - vA[0], sol.v1[1] - vA[1], sol.v1[2] - vA[2]], vinfA = [sol.v2[0] - vB[0], sol.v2[1] - vB[1], sol.v2[2] - vB[2]];
+  const ang = asymAngles(f, vinfD), h = sol.h, z = f.z;
+  const res = {
+    ...d, dv: d.dvD + d.dvA, c3: d.vd * d.vd, vinfD, vinfA, v1: sol.v1, v2: sol.v2, type: sol.type, lam: ang.lam, dec: ang.dec,
+    incl: Math.acos(Math.max(-1, Math.min(1, h[0] * z[0] + h[1] * z[1] + h[2] * z[2]))) / D2R,
+    oop: Math.abs(vinfD[0] * z[0] + vinfD[1] * z[1] + vinfD[2] * z[2]),
+  };
+  if (aeroOn(M)) res.vEntry = Math.sqrt(d.va * d.va + 2 * s.mu[1] / (s.R[1] + M.hAtm * 1e3));
+  return res;
+}
+// Mission seed from a Lambert transfer: departure asymptote (dep 'asym': θ = λ∞, β = δ∞), escape Δv, t₀ (days).
+function lambertSeed(s, t1, tof, M) {
+  const tr = lambertTransfer(s, t1, tof, M);
+  if (!tr) return null;
+  return { dep: 'asym', theta: tr.lam, beta: s.real ? tr.dec : 0, dv: tr.dvD, t0: t1 / DAY, tof: tof / DAY, tr };
+}
+
+// ----- Porkchop -----
+// Grid of Lambert transfers from body 0 to body 1 around their common parent: departure t₁ from g.t1a to g.t1b
+// (days), time of flight from g.fa to g.fb (days), g.nd × g.nt cells, stored row by row (k = j·nd + i,
+// j = time of flight). Per cell: total Δv (m/s, as arcDv), departure C3 (km²/s²) and arrival v∞ (m/s);
+// NaN where no arc exists or a date falls outside [g.tMin, g.tMax] (days). min = index of the lowest Δv.
+// g.onRow(j) reports progress.
+function porkchop(s, M, g) {
+  const nd = g.nd, nt = g.nt, n = nd * nt;
+  const dv = new Float32Array(n).fill(NaN), c3 = new Float32Array(n).fill(NaN), va = new Float32Array(n).fill(NaN);
+  const out = { nd, nt, dv, c3, va, min: -1 };
+  if (!isSibling(s)) return out;
+  const L = s.parent[0], mu = s.mu[L], P = s.P, V = s.V, tMin = g.tMin != null ? g.tMin : -Infinity, tMax = g.tMax != null ? g.tMax : Infinity;
+  const t1 = i => g.t1a + (g.t1b - g.t1a) * i / Math.max(1, nd - 1), tf = j => g.fa + (g.fb - g.fa) * j / Math.max(1, nt - 1);
+  const A = [], st = new Float64Array(6);
+  for (let i = 0; i < nd; i++) {
+    states(s, t1(i) * DAY, P, V); relState(P, V, 0, L, st);
+    A.push({ r: [st[0], st[1], st[2]], v: [st[3], st[4], st[5]], z: depFrame(s, P, V).z });
+  }
+  let best = Infinity;
+  const rB = [0, 0, 0], vB = [0, 0, 0];
+  for (let j = 0; j < nt; j++) {
+    const tof = tf(j);
+    for (let i = 0; i < nd; i++) {
+      const ta = t1(i), tb = ta + tof;
+      if (ta < tMin || tb > tMax) continue;
+      states(s, tb * DAY, P, V); relState(P, V, 1, L, st);
+      rB[0] = st[0]; rB[1] = st[1]; rB[2] = st[2]; vB[0] = st[3]; vB[1] = st[4]; vB[2] = st[5];
+      const a = A[i], sol = lambert(mu, a.r, rB, tof * DAY, a.z);
+      if (!sol) continue;
+      const d = arcDv(s, M, sol.v1, sol.v2, a.v, vB), k = j * nd + i, tot = d.dvD + d.dvA;
+      dv[k] = tot; c3[k] = d.vd * d.vd / 1e6; va[k] = d.va;
+      if (tot < best) { best = tot; out.min = k; }
+    }
+    if (g.onRow) g.onRow(j);
+  }
+  return out;
+}
+
 // ===== Optimizer: coarse scan + Levenberg–Marquardt =====
 // side: 0 any, 1 prograde, -1 retrograde around target
 function residuals(s, M, sim) {
-  const rB = s.R[1] + M.hB * 1e3;
+  // aerocapture aims the approach at the atmosphere pass altitude instead of the final orbit
+  const rB = s.R[1] + (aeroOn(M) ? M.hAtm : M.hB) * 1e3;
   let dB, dir;
   if (sim.bPeri) { dB = sim.bPeri.d; dir = sim.bPeri.dir; } else { dB = sim.rpB != null ? sim.rpB : sim.dmin[1]; dir = sim.hzMin; }
   const r = [];
@@ -634,6 +897,8 @@ function solveLin(A, b) {
 // model, where the target's orbit plane differs from the departure body's). For a target orbiting the
 // departure body (or the other way round) the mission plane is the target's own orbit plane, the
 // residuals barely depend on β, and β stays where it is.
+// opt.seeded: start Levenberg–Marquardt from M itself (a Lambert seed) without the angle scan.
+// opt.tof (s): also aim the arrival (target periapsis) at this time after departure, in units of 2% of it.
 async function optimize(s, M, opt = {}) {
   const onProgress = opt.onProgress || (() => { });
   const varyT0 = !!opt.varyT0, varyBeta = !!opt.varyBeta && s.real;
@@ -646,6 +911,7 @@ async function optimize(s, M, opt = {}) {
     evals++;
     const sim = simulate(s, m, { tol: tol || 1e-10, record: false, fast: true, hmaxDiv: 200, maxSteps: 30000 });
     const r = residuals(s, m, sim);
+    if (opt.tof) r.push(((sim.bPeri ? sim.bPeri.t : sim.tmin[1]) - opt.tof) / (0.02 * opt.tof));
     if (sim.impact === 0 && !(m.mode === 'free' && sim.bPeri)) r.push(3);
     return r;
   };
@@ -653,16 +919,19 @@ async function optimize(s, M, opt = {}) {
   const tick = async () => { if (evals % 6 === 0) { if (opt.cancelled && opt.cancelled()) throw 'cancel'; onProgress(evals); await new Promise(r => setTimeout(r, 0)); } };
   // Stage 1: coarse scan of burn angle (flyby distance only)
   const u0 = [M.theta / scale[0], M.dv / scale[1], M.t0 / scale[2], (M.beta || 0) / scale[3]];
-  const cands = [];
-  const tShifts = varyT0 ? (opt.t0Grid || [-4, -2, 0, 2, 4]) : [0];
-  for (let th = -180; th < 180; th += 5) for (const ts of tShifts) {
-    const u = [th, u0[1], u0[2] + ts, u0[3]];
-    const r = R(u, M.mode === 'free' ? 'flyby' : M.mode, 1e-9);
-    cands.push({ u, f: nrm([r[0]]) + (r.length > 1 && r[r.length - 1] === 3 ? 9 : 0) }); await tick();
-  }
-  cands.sort((a, b) => a.f - b.f);
   const seeds = [];
-  for (const c of cands) { if (seeds.every(q => Math.abs(q.u[0] - c.u[0]) > 8 || Math.abs(q.u[2] - c.u[2]) > 1)) seeds.push(c); if (seeds.length >= (opt.seeds || 5)) break; }
+  if (opt.seeded) seeds.push({ u: u0 });
+  else {
+    const cands = [];
+    const tShifts = varyT0 ? (opt.t0Grid || [-4, -2, 0, 2, 4]) : [0];
+    for (let th = -180; th < 180; th += 5) for (const ts of tShifts) {
+      const u = [th, u0[1], u0[2] + ts, u0[3]];
+      const r = R(u, M.mode === 'free' ? 'flyby' : M.mode, 1e-9);
+      cands.push({ u, f: nrm([r[0]]) + (r.length > 1 && r[r.length - 1] === 3 ? 9 : 0) }); await tick();
+    }
+    cands.sort((a, b) => a.f - b.f);
+    for (const c of cands) { if (seeds.every(q => Math.abs(q.u[0] - c.u[0]) > 8 || Math.abs(q.u[2] - c.u[2]) > 1)) seeds.push(c); if (seeds.length >= (opt.seeds || 5)) break; }
+  }
   // Stage 2: LM
   const hstep = [1e-4, 1e-3, 1e-4, 1e-4];
   const maxStep = [15, Math.max(2, M.dv * 0.03 / scale[1]), 8, 3];
@@ -696,7 +965,90 @@ async function optimize(s, M, opt = {}) {
   return res;
 }
 
+// Spacecraft state (absolute r, v) at time T (s) after departure: the simulate() integrator without events.
+function propagateTo(s, M, T, tol = 1e-10) {
+  const t0 = M.t0 * DAY, init = initialState(s, M), y = Float64Array.from(init.y), y1 = new Float64Array(6), err = new Float64Array(6);
+  const P = s.P, V = s.V, hmax = T / 200;
+  let t = 0, h = 2 * Math.PI * Math.sqrt(Math.pow(init.r, 3) / s.mu[0]) / 400;
+  deriv(s, t0, y, K[0]);
+  for (let n = 0; n < 50000 && t < T; n++) {
+    if (t + h > T) h = T - t;
+    states(s, t0 + t, P, V);
+    let dn = Infinity, vn = 0;
+    for (let i = 0; i < s.N; i++) {
+      const k = 3 * i, d = Math.hypot(y[0] - P[k], y[1] - P[k + 1], y[2] - P[k + 2]);
+      if (d < dn) { dn = d; vn = Math.hypot(y[3] - V[k], y[4] - V[k + 1], y[5] - V[k + 2]); }
+    }
+    const k0 = Float64Array.from(K[0]);
+    dpStep(s, t0 + t, y, h, y1, err);
+    const sp = tol * dn + 1e-3, sv = tol * vn + 1e-6;
+    const en = Math.max(Math.abs(err[0]) / sp, Math.abs(err[1]) / sp, Math.abs(err[2]) / sp, Math.abs(err[3]) / sv, Math.abs(err[4]) / sv, Math.abs(err[5]) / sv);
+    if (en > 1 && h > 1e-3) { h *= Math.max(0.2, 0.9 * Math.pow(en, -0.2)); K[0].set(k0); continue; }
+    y.set(y1); t += h; K[0].set(K[6]);
+    h = Math.min(hmax, h * Math.min(4, Math.max(0.2, 0.9 * Math.pow(Math.max(en, 1e-10), -0.2))));
+  }
+  return y;
+}
+
+// N-body refinement of a Lambert seed (M.dep 'asym', M.tof in days): λ∞ (θ), Δv and in the real model δ∞ (β)
+// vary, t₀ stays. B-plane targeting with differential correction: with the target made massless, aim the
+// craft at the point b·ê from the target's centre at time T after departure (Gauss–Newton on the position
+// offset in units of the target's SOI, finite-difference Jacobian). ê ⟂ v∞ picks the side (retrograde for
+// side −1, else prograde about the mission plane normal); b starts as the impact parameter
+// b = rp·√(1 + 2μ_B/(rp·v∞²)) of the arrival hyperbola with periapsis rp, T as tof. The real target's gravity
+// then moves the periapsis and its time a little: rescale b by the same relation and shift T by the time
+// error, and aim again (a few rounds). Finally optimize() polishes the periapsis and arrival time.
+async function refineSeed(s, M, opt = {}) {
+  const onProgress = opt.onProgress || (() => { });
+  const tof = M.tof * DAY, real = s.real, act = real ? [0, 1, 2] : [0, 1];
+  const tr = lambertTransfer(s, M.t0 * DAY, tof, M);
+  let evals = 0;
+  const tick = async () => { if (opt.cancelled && opt.cancelled()) throw 'cancel'; onProgress(evals); await new Promise(r => setTimeout(r, 0)); };
+  const withU = q => ({ ...M, theta: q[0], dv: q[1], beta: q[2] });
+  let u = [M.theta, M.dv, real ? M.beta || 0 : 0];
+  if (tr) {
+    const s0 = { ...s, mu: Float64Array.from(s.mu) }; s0.mu[1] = 0;
+    const rp = s.R[1] + (aeroOn(M) ? M.hAtm : M.hB) * 1e3, va = Math.hypot(...tr.vinfA);
+    const imp = r => r * Math.sqrt(1 + 2 * s.mu[1] / (r * va * va));
+    const n = missionPlane(s, M.t0 * DAY), w = tr.vinfA.map(q => q / va);
+    let e = [w[1] * n[2] - w[2] * n[1], w[2] * n[0] - w[0] * n[2], w[0] * n[1] - w[1] * n[0]];
+    const el = Math.hypot(...e); e = e.map(q => q / el * (M.side === -1 ? -1 : 1));
+    const sc = s.soi[1], nrm = r => r.reduce((a, c) => a + c * c, 0), hs = [1e-4, 1e-3, 1e-4], cap = [10, 100, 10];
+    let b = imp(rp), T = tof;
+    for (let round = 0; round < 6; round++) {
+      states(s, M.t0 * DAY + T, s.P, s.V);
+      const aim = [0, 1, 2].map(j => s.P[3 + j] + b * e[j]);
+      const F = q => { evals++; const y = propagateTo(s0, withU(q), T); return [0, 1, 2].map(j => (y[j] - aim[j]) / sc); };
+      let r = F(u), f = nrm(r);
+      for (let it = 0; it < 25 && f > 1e-14; it++) {
+        const J = act.map(k => { const q = u.slice(); q[k] += hs[k]; return F(q).map((v, i) => (v - r[i]) / hs[k]); });
+        await tick();
+        const A = act.map((_, a) => act.map((__, c) => J[a].reduce((acc, v, i) => acc + v * J[c][i], 0) + (a === c ? 1e-12 : 0)));
+        const d = solveLin(A, act.map((_, a) => -J[a].reduce((acc, v, i) => acc + v * r[i], 0)));
+        if (!d) break;
+        let k = 1, ok = false;
+        for (let tries = 0; tries < 8 && !ok; tries++, k /= 3) { // backtracking line search
+          const q = u.slice(); act.forEach((m, j) => { q[m] += Math.max(-cap[m], Math.min(cap[m], d[j] * k)); });
+          const rq = F(q), fq = nrm(rq);
+          if (fq < f) { u = q; r = rq; f = fq; ok = true; }
+        }
+        if (!ok) break;
+      }
+      evals++;
+      const sim = simulate(s, { ...withU(u), mode: 'flyby' }, { tol: 1e-10, record: false, fast: true, hmaxDiv: 200, maxSteps: 30000 });
+      if (!sim.bPeri || sim.impact >= 0) break;
+      const dt = sim.bPeri.t - tof;
+      if (Math.abs(sim.bPeri.d - rp) < 1e-5 * rp && Math.abs(dt) < 1e-6 * tof) break;
+      b *= imp(rp) / imp(sim.bPeri.d); T -= dt;
+    }
+  }
+  const r2 = await optimize(s, withU(u), { ...opt, seeded: true, varyT0: false, varyBeta: real, tof });
+  r2.evals += evals;
+  return r2;
+}
+
 if (typeof module !== 'undefined') module.exports = {
   G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, keplerE, laplaceFrame, orbitElements, orbitState, orbitPath,
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
+  lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed,
 };

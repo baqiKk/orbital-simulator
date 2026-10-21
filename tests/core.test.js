@@ -218,7 +218,173 @@ for (const k of Object.keys(BODIES).filter(q => BODIES[q].orb)) {
   assert.ok(Math.abs(best / AU - 0.98330) < 1e-4, `Earth perihelion distance ${(best / AU).toFixed(5)} AU ≈ 0.98330`);
 }
 
+// ===== Phase 4: Lambert, porkchop, aerocapture =====
+const add = (a, b) => a.map((x, i) => x + b[i]), scl = (a, k) => a.map(x => x * k), dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const relErr = (a, b) => norm(add(a, scl(b, -1))) / norm(b);
+// Independent two-body propagation for checking Lambert arcs: classical RK4, step 1e-3 of the local
+// dynamical time r^1.5/√μ (does not use any of the Lambert formulas).
+function propagate2(mu, r, v, T) {
+  let t = 0;
+  const acc = p => { const d = norm(p); return scl(p, -mu / (d * d * d)); };
+  while (t < T) {
+    const h = Math.min(T - t, 1e-3 * Math.pow(norm(r), 1.5) / Math.sqrt(mu));
+    const k1r = v, k1v = acc(r), k2r = add(v, scl(k1v, h / 2)), k2v = acc(add(r, scl(k1r, h / 2)));
+    const k3r = add(v, scl(k2v, h / 2)), k3v = acc(add(r, scl(k2r, h / 2))), k4r = add(v, scl(k3v, h)), k4v = acc(add(r, scl(k3r, h)));
+    r = r.map((x, i) => x + h / 6 * (k1r[i] + 2 * k2r[i] + 2 * k3r[i] + k4r[i]));
+    v = v.map((x, i) => x + h / 6 * (k1v[i] + 2 * k2v[i] + 2 * k3v[i] + k4v[i]));
+    t += h;
+  }
+  return { r, v };
+}
+const reaches = (mu, r1, v1, r2, T) => relErr(propagate2(mu, r1, v1, T).r, r2);
+
+// 17) Lambert, textbook examples. Book values, verified with an independent Curtis universal-variable solution.
+{
+  const km = v => v.map(x => x / 1e3), close = (v, ref, tol) => v.every((x, i) => Math.abs(x - ref[i]) < tol);
+  // H. D. Curtis, Orbital Mechanics for Engineering Students, Example 5.2 (μ = 398600 km³/s², prograde, 1 h)
+  const r1 = [5000e3, 10000e3, 2100e3], r2 = [-14600e3, 2500e3, 7000e3], c = C.lambert(398600e9, r1, r2, 3600, [0, 0, 1]);
+  assert.ok(close(km(c.v1), [-5.99249, 1.92536, 3.24564], 1e-4) && close(km(c.v2), [-3.31246, -4.19662, -0.385288], 1e-4), `Curtis 5.2: v1 = ${km(c.v1)}, v2 = ${km(c.v2)}`);
+  assert.ok(reaches(398600e9, r1, c.v1, r2, 3600) < 1e-7, 'Curtis 5.2 arc reaches r2 (two-body propagation)');
+  // D. A. Vallado, Fundamentals of Astrodynamics and Applications, Example 7-5 (μ = 398600.4418 km³/s², short way, 76 min)
+  const v = C.lambert(398600.4418e9, [15945.34e3, 0, 0], [12214.83899e3, 10249.46731e3, 0], 76 * 60, [0, 0, 1]);
+  assert.ok(close(km(v.v1), [2.058913, 2.915964, 0], 1e-5) && close(km(v.v2), [-3.451565, 0.910314, 0], 1e-5), `Vallado 7-5: v1 = ${km(v.v1)}, v2 = ${km(v.v2)}`);
+  assert.strictEqual(v.type, 1);
+}
+
+// 18) Lambert round trip: two points of a known orbit and the Kepler time between them give back the orbit's
+//     velocities (elliptic type 1 and 2, M = 1, 2 revolutions on both branches, hyperbolic); every arc reaches r2
+//     under independent two-body propagation.
+{
+  const mu = 398600.4418e9;
+  const kep = (a, e, inc, O, w, nu) => {
+    const cO = Math.cos(O), sO = Math.sin(O), ci = Math.cos(inc), si = Math.sin(inc), cw = Math.cos(w), sw = Math.sin(w);
+    const Px = [cO * cw - sO * sw * ci, sO * cw + cO * sw * ci, sw * si], Qx = [-cO * sw - sO * cw * ci, -sO * sw + cO * cw * ci, cw * si];
+    const p = a * (1 - e * e), r = p / (1 + e * Math.cos(nu)), k = Math.sqrt(mu / p);
+    return { r: add(scl(Px, r * Math.cos(nu)), scl(Qx, r * Math.sin(nu))), v: add(scl(Px, -k * Math.sin(nu)), scl(Qx, k * (e + Math.cos(nu)))), h: cross(Px, Qx) };
+  };
+  const tPeri = (a, e, nu) => { // time since periapsis
+    if (e < 1) { const E = 2 * Math.atan(Math.sqrt((1 - e) / (1 + e)) * Math.tan(nu / 2)); return (E - e * Math.sin(E)) / Math.sqrt(mu / (a * a * a)); }
+    const F = 2 * Math.atanh(Math.sqrt((e - 1) / (e + 1)) * Math.tan(nu / 2)); return (e * Math.sinh(F) - F) / Math.sqrt(mu / -(a * a * a));
+  };
+  const a = 12000e3, inc = 0.4, O = 0.7, w = 1.1, nu1 = -0.5, Per = 2 * Math.PI * Math.sqrt(a * a * a / mu);
+  for (const e of [0, 0.3, 0.7, 0.9]) for (const dnu of [40, 150, 200, 330]) for (const Mr of [0, 1, 2]) {
+    const nu2 = nu1 + dnu / DEG, s1 = kep(a, e, inc, O, w, nu1), s2 = kep(a, e, inc, O, w, nu2);
+    const tof = ((tPeri(a, e, nu2) - tPeri(a, e, nu1)) % Per + Per) % Per + Mr * Per, tag = `e=${e} Δν=${dnu}° M=${Mr}`;
+    if (Mr === 0) {
+      const sol = C.lambert(mu, s1.r, s2.r, tof, s1.h);
+      assert.ok(sol && relErr(sol.v1, s1.v) < 1e-9 && relErr(sol.v2, s2.v) < 1e-9, `round trip ${tag}`);
+      assert.strictEqual(sol.type, dnu < 180 ? 1 : 2, `transfer type ${tag}`);
+    } else {
+      const sols = [false, true].map(right => C.lambert(mu, s1.r, s2.r, tof, s1.h, Mr, right));
+      assert.ok(sols.every(q => q), `both ${Mr}-revolution arcs exist ${tag}`);
+      assert.ok(sols.some(q => relErr(q.v1, s1.v) < 1e-8 && relErr(q.v2, s2.v) < 1e-8), `one ${Mr}-revolution arc is the orbit ${tag}`);
+      for (const q of sols) assert.ok(reaches(mu, s1.r, q.v1, s2.r, tof) < 1e-7, `${Mr}-revolution arc reaches r2 ${tag}`);
+    }
+  }
+  assert.strictEqual(C.lambert(mu, kep(a, 0.1, inc, O, w, 0).r, kep(a, 0.1, inc, O, w, 1).r, 0.3 * Per, [0, 0, 1], 3, false), null, 'no arc with more revolutions than fit');
+  // hyperbola (x > 1)
+  const ah = -20000e3, eh = 1.6, h1 = kep(ah, eh, inc, O, w, -50 / DEG), h2 = kep(ah, eh, inc, O, w, 70 / DEG), th = tPeri(ah, eh, 70 / DEG) - tPeri(ah, eh, -50 / DEG);
+  const hs = C.lambert(mu, h1.r, h2.r, th, h1.h);
+  assert.ok(relErr(hs.v1, h1.v) < 1e-9 && relErr(hs.v2, h2.v) < 1e-9 && reaches(mu, h1.r, hs.v1, h2.r, th) < 1e-7, 'hyperbolic round trip');
+}
+
+// 19) 180° transfer: the arc's plane is undefined at exactly 180°. Coplanar: finite, in the reference plane and
+//     continuous across 180°; slightly out of plane: finite, with a nearly polar plane (the porkchop's ridge).
+{
+  const mu = BODIES.sun.gm * 1e9, r1 = [C.AU, 0, 0], at = d => [1.5 * C.AU * Math.cos(d / DEG), 1.5 * C.AU * Math.sin(d / DEG), 0], tof = 250 * DAY;
+  const [a, b, c] = [179.999, 180, 180.001].map(d => C.lambert(mu, r1, at(d), tof, [0, 0, 1]));
+  for (const q of [a, b, c]) assert.ok(q && [...q.v1, ...q.v2].every(Number.isFinite) && Math.abs(q.v1[2]) < 1e-9 * norm(q.v1), '180°: finite and in the plane');
+  assert.ok(relErr(a.v1, b.v1) < 1e-4 && relErr(c.v1, b.v1) < 1e-4 && relErr(a.v2, b.v2) < 1e-4, '180°: continuous across');
+  assert.ok(a.type === 1 && c.type === 2, 'type 1 below 180°, type 2 above');
+  const p = C.lambert(mu, r1, [-1.5 * C.AU, 0, 1.5e-3 * C.AU], tof, [0, 0, 1]);
+  assert.ok(p && p.v1.every(Number.isFinite) && Math.abs(p.h[2]) < 1e-6, 'near 180° out of plane: polar transfer plane');
+  assert.ok(reaches(mu, r1, p.v1, [-1.5 * C.AU, 0, 1.5e-3 * C.AU], tof) < 1e-7, 'near-180° arc reaches r2');
+}
+
+// 20) Simplified model: the porkchop minimum (escape + capture Δv) equals the patched-conic Hohmann transfer
+//     within 2% (Δv and time of flight); the escape and capture costs may shift the cheapest point slightly.
+{
+  const sc = SCENARIOS.find(q => q.id === 'e_mars');
+  const sy = C.buildSystem(sc.bodies.map(b => { const p = BODIES[b.k].simple; return { name: b.k, mass: p.mass, radius: p.radius * 1e3, parent: b.parent, a: p.a * 1e3, phase: 0 }; }));
+  const Mh = { mode: 'capture', h0: 185, hB: 300, t0: 0, theta: 0, dv: 3600 }, gH = C.hohmannGuess(sy, Mh), tofH = gH.tof / DAY;
+  const muS = sy.mu[2], r1 = sy.a[0], r2 = sy.a[1], rB = sy.R[1] + 300e3;
+  const vinfA = Math.sqrt(muS / r2) - Math.sqrt(muS * 2 * r1 / (r2 * (r1 + r2)));
+  const dvH = gH.dv + Math.sqrt(vinfA * vinfA + 2 * sy.mu[1] / rB) - Math.sqrt(sy.mu[1] / rB);
+  const g = C.porkchop(sy, Mh, { t1a: gH.t0 - 30, t1b: gH.t0 + 30, fa: tofH - 40, fb: tofH + 40, nd: 121, nt: 161 });
+  const tofMin = tofH - 40 + 80 * Math.floor(g.min / 121) / 160;
+  assert.ok(Math.abs(g.dv[g.min] / dvH - 1) < 0.02, `porkchop minimum ${g.dv[g.min].toFixed(1)} m/s ≈ Hohmann ${dvH.toFixed(1)} m/s`);
+  assert.ok(Math.abs(tofMin / tofH - 1) < 0.02, `minimum's time of flight ${tofMin.toFixed(1)} d ≈ Hohmann ${tofH.toFixed(1)} d`);
+}
+
+// 21) Real model, 2026 Mars window: the lowest departure C3 falls in Oct–Dec 2026; at the r_e_mars scenario's
+//     date and arrival time the Lambert departure Δv is within 3% of the N-body solution's; the 3D arc reaches
+//     Mars under two-body propagation about the Sun. Porkchop timing is printed.
+const sEM = realSys(['earth', 'mars', 'sun']);
+{
+  const Mm = { mode: 'capture', h0: 185, hB: 300 }, ta = C.utcToDays(Date.UTC(2026, 8, 1)), tb = C.utcToDays(Date.UTC(2027, 1, 1));
+  const g = C.porkchop(sEM, Mm, { t1a: ta, t1b: tb, fa: 100, fb: 420, nd: 100, nt: 75 });
+  let kc = -1; g.c3.forEach((x, k) => { if (Number.isFinite(x) && (kc < 0 || x < g.c3[kc])) kc = k; });
+  const dep = new Date(C.daysToUtc(ta + (tb - ta) * (kc % 100) / 99));
+  assert.ok(dep.getUTCFullYear() === 2026 && dep.getUTCMonth() >= 9 && dep.getUTCMonth() <= 11, `lowest C3 departs in Oct–Dec 2026 (${dep.toISOString().slice(0, 10)})`);
+  assert.ok(g.c3[kc] > 8 && g.c3[kc] < 11, `lowest C3 ${g.c3[kc].toFixed(2)} km²/s²`);
+  const sc = SCENARIOS.find(q => q.id === 'r_e_mars'), Ms = { ...sc.M };
+  Ms.duration = C.autoDuration(C.hohmannGuess(sEM, Ms), Ms.mode);
+  const sim = C.simulate(sEM, Ms, { tol: 1e-10, hmaxDiv: 500, maxSteps: 120000 }), tr = C.lambertTransfer(sEM, Ms.t0 * DAY, sim.bPeri.t, Ms);
+  assert.ok(Math.abs(tr.dvD / Ms.dv - 1) < 0.03, `Lambert departure Δv ${tr.dvD.toFixed(1)} m/s ≈ N-body ${Ms.dv.toFixed(1)} m/s`);
+  assert.ok(Math.abs(tr.dvA / sim.captured.dv - 1) < 0.03, `Lambert capture Δv ${tr.dvA.toFixed(1)} m/s ≈ N-body ${sim.captured.dv.toFixed(1)} m/s`);
+  const a = relState(sEM, 0, Ms.t0 * DAY), b = relState(sEM, 1, Ms.t0 * DAY + sim.bPeri.t);
+  assert.ok(reaches(sEM.mu[2], a.slice(0, 3), tr.v1, b.slice(0, 3), sim.bPeri.t) < 1e-7, 'Earth→Mars 3D arc reaches Mars');
+  const t = Date.now();
+  C.porkchop(sEM, Mm, { t1a: ta, t1b: tb, fa: 100, fb: 420, nd: 200, nt: 150 });
+  console.log(`porkchop 200×150 (Earth→Mars): ${Date.now() - t} ms`);
+}
+
+// 22) Asymptote departure: the initial state of a Lambert seed is the periapsis of a departure hyperbola whose
+//     excess velocity vector (from the eccentricity vector, independent of the construction) is the Lambert v∞.
+{
+  const t1 = C.utcToDays(Date.UTC(2026, 9, 30)) * DAY, M0 = { mode: 'capture', side: 0, h0: 185, hB: 300 };
+  for (const tofD of [310, 250, 260]) { // 250 d: δ∞ ≈ 56°, 260 d: ≈ −82° (beside the 180° ridge), out of the old θ/β reach
+    const seed = C.lambertSeed(sEM, t1, tofD * DAY, M0), Mx = { ...M0, ...seed, duration: tofD };
+    const y = C.initialState(sEM, Mx).y, mu = sEM.mu[0], P = new Float64Array(9), V = new Float64Array(9);
+    C.states(sEM, t1, P, V); // r, v relative to Earth
+    const r = [0, 1, 2].map(j => y[j] - P[j]), v = [0, 1, 2].map(j => y[3 + j] - V[j]);
+    const h = cross(r, v), ev = add(scl(cross(v, h), 1 / mu), scl(r, -1 / norm(r))), ecc = norm(ev), eh = scl(ev, 1 / ecc), qh = scl(cross(h, eh), 1 / norm(cross(h, eh)));
+    const vinf = Math.sqrt(dot(v, v) - 2 * mu / norm(r)), cn = -1 / ecc, sn = Math.sqrt(1 - cn * cn);
+    assert.ok(Math.abs(norm(r) - sEM.R[0] - 185e3) < 1e-3 && Math.abs(dot(r, v)) < 1e-6 * norm(r) * norm(v), `departure at the parking orbit's periapsis (${tofD} d)`);
+    assert.ok(relErr(scl(add(scl(eh, cn), scl(qh, sn)), vinf), seed.tr.vinfD) < 1e-9, `departure asymptote = Lambert v∞ (${tofD} d, δ∞ ${seed.beta.toFixed(1)}°)`);
+  }
+}
+
+// 23) Aerocapture bookkeeping: off unless capture mode and the pass is below the final orbit; the raise burn
+//     matches the vis-viva difference (Mars, 50 km pass, 300 km orbit ≈ 60 m/s).
+{
+  const mu = sEM.mu[1], R = sEM.R[1];
+  assert.ok(C.aeroOn({ mode: 'capture', aero: true, hAtm: 50, hB: 300 }) && !C.aeroOn({ mode: 'flyby', aero: true, hAtm: 50, hB: 300 }) && !C.aeroOn({ mode: 'capture', aero: true, hAtm: 400, hB: 300 }));
+  const dv = C.aeroRaise(mu, R + 50e3, R + 300e3), vp = Math.sqrt(mu * (2 / (R + 50e3) - 2 / (2 * R + 350e3)));
+  assert.ok(Math.abs(dv - (Math.sqrt(mu / (R + 300e3)) - vp * (R + 50e3) / (R + 300e3))) < 1e-9 && dv > 55 && dv < 65, `raise burn ${dv.toFixed(2)} m/s`);
+}
+
 (async () => {
+  // 24) Lambert seed -> N-body: the refinement reaches the target periapsis within 1 km and the chosen arrival
+  //     time within 1 day; with aerocapture the pass is at the atmosphere altitude, the raise burn at the final
+  //     orbit's apoapsis matches the vis-viva value.
+  for (const [Mx, d0, tofD] of [
+    [{ mode: 'capture', side: 0, h0: 185, hB: 300, hRet: 60 }, Date.UTC(2026, 10, 8, 10), 279],
+    [{ mode: 'capture', side: 0, h0: 185, hB: 300, hRet: 60, aero: true, hAtm: 50 }, Date.UTC(2026, 9, 30), 310],
+  ]) {
+    const t1 = C.utcToDays(d0) * DAY, seed = C.lambertSeed(sEM, t1, tofD * DAY, Mx), M0 = { ...Mx, ...seed, duration: C.autoDuration({ tof: tofD * DAY }, Mx.mode) };
+    const r = await C.refineSeed(sEM, M0), sim = C.simulate(sEM, { ...M0, theta: r.theta, dv: r.dv, beta: r.beta }, { tol: 1e-10, hmaxDiv: 500, maxSteps: 120000 });
+    const tag = Mx.aero ? 'aerocapture' : 'capture', alt = (sim.bPeri.d - sEM.R[1]) / 1e3;
+    assert.ok(Math.abs(alt - (Mx.aero ? Mx.hAtm : Mx.hB)) < 1, `${tag}: periareion ${alt.toFixed(3)} km`);
+    assert.ok(Math.abs(sim.bPeri.t / DAY - tofD) < 1, `${tag}: arrival after ${(sim.bPeri.t / DAY).toFixed(3)} d ≈ ${tofD} d`);
+    assert.ok(Math.abs(r.dv / seed.dv - 1) < 0.01, `${tag}: N-body departure Δv ${r.dv.toFixed(1)} m/s within 1% of Lambert ${seed.dv.toFixed(1)} m/s`);
+    if (Mx.aero) {
+      assert.deepStrictEqual(sim.events.map(e => e.label), ['ev.depart', 'ev.targetPeri', 'ev.aero', 'ev.raise']);
+      assert.ok(Math.abs((sim.captured.d - sEM.R[1]) / 1e3 - Mx.hB) < 1, 'aerocapture: apoapsis on the final orbit');
+      assert.ok(Math.abs(sim.captured.dv - C.aeroRaise(sEM.mu[1], sim.aero.d, sim.captured.d)) < 0.5, `aerocapture: raise burn ${sim.captured.dv.toFixed(2)} m/s`);
+    } else assert.ok(sim.captured && Math.abs(sim.captured.dv / seed.tr.dvA - 1) < 0.03, 'capture Δv ≈ Lambert');
+  }
+
   // 3) Solver converges for capture mode
   const Mc = { ...M, mode: 'capture', hB: 100, theta: g.theta, dv: g.dv };
   const o = await C.optimize(s, Mc);
