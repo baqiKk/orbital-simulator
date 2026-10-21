@@ -29,8 +29,5 @@ Tarayıcıda çalışan, düzlemsel (2B) yörünge transfer simülatörü. Kulla
 ## Model varsayımları
 Düzlemsel, dairesel cisim yörüngeleri, anlık yanmalar, kısıtlı N-cisim (araç cisimleri çekmez), atmosfer yok. Yakalamadan sonraki tur animasyonu analitik dairesel iki-cisimdir.
 
-## Yol haritası (sırayla)
-1. **"Atmosfer yok, devam et" seçeneği:** Dönüş periapsisi atmosferin üstündeyse simülasyon durmasın; sonraki (kaotik) karşılaşmalar görünsün. Süre sınırı ve çarpma/kaçış olayları korunmalı.
-2. **Dünya–Ay cycler senaryosu:** Çözücü, dönen çerçevede kendini tekrarlayan periyodik yörüngeyi bulsun (ör. başlangıç durumu = N tur sonraki durum). Gerekirse tur başına küçük düzeltme yanması, Δv bütçesi sonuçlarda gösterilsin.
-3. Yayın: GitHub Pages, `README.md` içindeki adımlar.
-Sonrası için fikirler: eliptik/eğik yörüngeler, gerçek efemeris tarihleri, sonlu süreli yanma (düşük itki), 3B görünüm, URL ile senaryo paylaşma.
+## Yol haritası
+Ayrıntılı plan ROADMAP.md'de; her oturumda ilgili fazı oku, bitince tamamlandı olarak işaretle.
