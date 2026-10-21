@@ -16,14 +16,16 @@ function startupMode(store) {
   return VIEW_MODES.includes(m) ? { mode: m, ask: false } : { mode: 'normal', ask: true };
 }
 
-function defaultWins() {
+// narrow: a narrow desktop (floating windows, little room) — Results starts collapsed so the plot stays clear.
+function defaultWins(opts = {}) {
   const o = {};
-  for (const id of WIN_IDS) o[id] = { open: !!WIN_DEFAULT_OPEN[id], collapsed: false, x: null, y: null };
+  for (const id of WIN_IDS) o[id] = { open: !!WIN_DEFAULT_OPEN[id], collapsed: !!opts.narrow && id === 'results', x: null, y: null };
   return o;
 }
 // Tolerates missing, corrupt or partial data; x/y null means "use the default position".
-function parseWins(raw) {
-  const out = defaultWins();
+// Saved entries always win over the defaults.
+function parseWins(raw, opts) {
+  const out = defaultWins(opts);
   if (!raw) return out;
   let d;
   try { d = JSON.parse(raw); } catch (e) { return out; }

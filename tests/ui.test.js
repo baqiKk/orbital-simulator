@@ -60,6 +60,13 @@ assert.strictEqual(w.mission.open, false);
 assert.strictEqual(w.results.open, true, 'missing entries keep defaults');
 assert.ok(!('bogus' in w));
 
+// 5b) Narrow desktop: Results starts collapsed, but a saved layout is left alone
+assert.strictEqual(P.defaultWins({ narrow: true }).results.collapsed, true);
+assert.strictEqual(P.defaultWins({ narrow: true }).mission.collapsed, false);
+assert.strictEqual(P.parseWins(null, { narrow: true }).results.collapsed, true);
+assert.strictEqual(P.parseWins(JSON.stringify({ results: { open: true, collapsed: false } }), { narrow: true }).results.collapsed, false);
+assert.strictEqual(P.parseWins(null, { narrow: false }).results.collapsed, false);
+
 // 6) Clamping pulls windows fully inside; oversize windows pin to the top-left
 assert.deepStrictEqual(P.clampWin(900, 700, 300, 200, 1000, 800), [700, 600]);
 assert.deepStrictEqual(P.clampWin(-50, -20, 300, 200, 1000, 800), [0, 0]);

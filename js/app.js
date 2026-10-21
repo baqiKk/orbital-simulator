@@ -458,14 +458,16 @@ function measureInsets() {
   const sr = stage.getBoundingClientRect(), gap = 12;
   const rel = el => { const r = el.getBoundingClientRect(); return { x0: r.left - sr.left, x1: r.right - sr.left, y0: r.top - sr.top, y1: r.bottom - sr.top }; };
   let l = 0, r = 0, t = 0, b = 0;
-  // windows hug the left or right edge
+  // tall windows hug the left or right edge; short ones (collapsed bars) act like HUD below
+  const bars = [];
   if (floating()) for (const el of document.querySelectorAll('.win:not([hidden])')) {
     const o = rel(el);
-    if ((o.x0 + o.x1) / 2 < W / 2) l = Math.max(l, o.x1 + gap); else r = Math.max(r, W - o.x0 + gap);
+    if (o.y1 - o.y0 < (o.x1 - o.x0) * 0.5) bars.push(el);
+    else if ((o.x0 + o.x1) / 2 < W / 2) l = Math.max(l, o.x1 + gap); else r = Math.max(r, W - o.x0 + gap);
   }
   if (W - l - r < Math.max(260, W * 0.35)) l = r = 0; // too narrow: let windows overlap instead
   // HUD blocks the top or bottom where it reaches into the free columns
-  for (const el of [$('#ctrls'), $('#readout'), $('#timeline')]) {
+  for (const el of [$('#ctrls'), $('#readout'), $('#timeline'), ...bars]) {
     const o = rel(el);
     if (o.x1 <= l || o.x0 >= W - r || o.y1 <= o.y0) continue;
     if ((o.y0 + o.y1) / 2 < H / 2) t = Math.max(t, o.y1 + gap); else b = Math.max(b, H - o.y0 + gap);
@@ -961,7 +963,9 @@ $('#glossQ').addEventListener('input', e => renderGloss(e.target.value));
 // Layout persists in localStorage. A null x/y means "default spot", recomputed on every layout change.
 const mqFloat = window.matchMedia('(min-width: 861px)');
 function floating() { return mqFloat.matches; }
-const WINS = parseWins(readPref(LS, PREF_KEYS.wins));
+// narrow desktop (~<1100 px): Results starts collapsed unless a saved layout says otherwise
+const narrowDesk = () => ({ narrow: window.matchMedia('(min-width: 861px) and (max-width: 1099px)').matches });
+const WINS = parseWins(readPref(LS, PREF_KEYS.wins), narrowDesk());
 const ICON_MINUS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7"/></svg>';
 const ICON_PLUS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7M6 2.5v7"/></svg>';
 let zTop = 10;
@@ -1045,7 +1049,7 @@ $('#wins').addEventListener('pointerdown', e => {
 });
 $('#resetWins').addEventListener('click', () => {
   clearPref(LS, PREF_KEYS.wins);
-  Object.assign(WINS, defaultWins());
+  Object.assign(WINS, defaultWins(narrowDesk()));
   for (const id of WIN_IDS) applyWin(id);
   INS = null; S.follow = 'free'; renderFrameSeg(); needFit = true;
 });

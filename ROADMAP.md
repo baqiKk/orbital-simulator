@@ -12,7 +12,7 @@
 - Sağ üstte veya ekranın uygun bir köşesinde mod seçici: Düşük kaynak 2B / Normal 2B / 3B (3B şimdilik "yakında" olarak pasif).
 - İlk açılışta Normal 2B yüklenir ve bir uyarı penceresi çıkar: "Düşük kaynak moduna geçmek ister misin?" [Düşük kaynak moduna geç] [Normal modda devam et]. İkisi de seçimi localStorage'da hatırlar (try/catch ile), bir daha sorulmaz.
 - Normal modda otomatik kalite düşürme devreye girerse köşede kapatılabilir, modal olmayan öneri: "Performans düşük görünüyor. Düşük kaynak moduna geç?" [Geç] [Kapat]; oturum başına en fazla bir kez.
-- Varsayılan açık pencereler: Görev (üstte kompakt senaryo seçici) ve Sonuçlar; Dünya–Ay serbest dönüşte yörüngeyi örtmez. İkon çubuğunda "Pencereleri sıfırla"; ekran boyutu değişince pencereler görünür alana çekilir.
+- Varsayılan açık pencereler: Görev (üstte kompakt senaryo seçici) ve Sonuçlar; Dünya–Ay serbest dönüşte yörüngeyi örtmez. İkon çubuğunda "Pencereleri sıfırla"; ekran boyutu değişince pencereler görünür alana çekilir. ~1100 px'ten dar masaüstünde Sonuçlar ilk açılışta katlı gelir (kayıtlı düzen varsa ona dokunulmaz).
 - Düşük kaynak 2B: yıldız arka planı yok, parlama/gradyan/gölge/bulanıklık yok, piksel oranı 1, kare hızı 30 fps ile sınırlı, yörünge çizgisinde daha az nokta, HUD metni seyrek güncellenir, animasyonlu geçişler kapalı.
 - Varsa önceki hata: Güneş merkezli senaryoda "Cisim ekle" ile eklenen özel cisim Güneş'in içine düşüyor; varsayılan yörünge yarıçapını makul yap. (3f95ac7'de düzeltilmişti; Faz 1'de tarayıcıda yeniden doğrulandı.)
 
