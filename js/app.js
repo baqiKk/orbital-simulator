@@ -667,25 +667,103 @@ function zoomAt(px, py, k) {
   cam.scale = ns; cam.cx = wx - (px - W / 2) / ns; cam.cy = wy + (py - H / 2) / ns;
 }
 
-// pointer controls
-const ptrs = new Map(); let pinch0 = null;
-cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY }); cv.classList.add('drag'); if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), s: cam.scale }; } });
+// pointer controls: a press that stays within TAP_PX is a tap (focus a body; two quick taps zoom onto it
+// or, on empty space, fit); moving further drags the view and drops the follow; wheel/pinch keep it
+const ptrs = new Map(); let pinch0 = null, gest = null, lastTap = null, hoverPt = null;
+const TAP_PX = { mouse: 5, touch: 10 }, HIT_PX = { mouse: 12, touch: 20 };
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+  if (ptrs.size === 1) gest = { x0: e.offsetX, y0: e.offsetY, moved: false, multi: false, touch: e.pointerType !== 'mouse' };
+  else if (gest) gest.multi = true;
+  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), s: cam.scale }; }
+});
 cv.addEventListener('pointermove', e => {
-  const p = ptrs.get(e.pointerId); if (!p) return;
-  const dx = e.offsetX - p.x, dy = e.offsetY - p.y; p.x = e.offsetX; p.y = e.offsetY;
+  const p = ptrs.get(e.pointerId);
+  if (!p) { hoverPt = e.pointerType === 'mouse' ? { x: e.offsetX, y: e.offsetY } : null; return; }
+  let dx = e.offsetX - p.x, dy = e.offsetY - p.y; p.x = e.offsetX; p.y = e.offsetY;
   if (ptrs.size === 1) {
-    if (MAP.on) MAP.follow = null;
-    else if (S.follow !== 'free' && Math.hypot(dx, dy) > 0) { S.follow = 'free'; renderFrameSeg(); }
+    if (!gest || gest.multi) return; // the finger left over from a pinch does not pan
+    if (!gest.moved) {
+      dx = e.offsetX - gest.x0; dy = e.offsetY - gest.y0;
+      if (Math.hypot(dx, dy) < TAP_PX[gest.touch ? 'touch' : 'mouse']) return;
+      gest.moved = true; cv.classList.add('drag'); hoverPt = null;
+      unfollow();
+    }
     cam.cx -= dx / cam.scale; cam.cy += dy / cam.scale;
   } else if (ptrs.size === 2 && pinch0) {
     const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y);
     zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, (pinch0.s * d / pinch0.d) / cam.scale);
   }
 });
-const endPtr = e => { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = null; if (!ptrs.size) cv.classList.remove('drag'); };
+const endPtr = e => {
+  if (!ptrs.delete(e.pointerId)) return;
+  if (ptrs.size < 2) pinch0 = null;
+  if (ptrs.size) return;
+  cv.classList.remove('drag');
+  const g = gest; gest = null;
+  if (e.type === 'pointerup' && g && !g.moved && !g.multi) tap(e.offsetX, e.offsetY, g.touch);
+};
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
+cv.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') hoverPt = null; });
 cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
-cv.addEventListener('dblclick', () => { if (MAP.on) { fitMap(); return; } S.follow = 'free'; renderFrameSeg(); fit(); });
+function tap(x, y, touch) {
+  const h = hitAt(x, y, HIT_PX[touch ? 'touch' : 'mouse']), now = performance.now();
+  const dbl = lastTap && now - lastTap.t < 350 && Math.hypot(x - lastTap.x, y - lastTap.y) < 24;
+  // the first tap re-centres the body it hit, so the second one acts on that body, not on where it landed
+  const tgt = dbl && lastTap.h ? lastTap.h : h;
+  lastTap = dbl ? null : { t: now, x, y, h };
+  if (tgt) focusHit(tgt, dbl);
+  else if (dbl) { if (MAP.on) fitMap(); else { S.follow = 'free'; renderFrameSeg(); fit(); } }
+}
+
+// ===================== Picking & focus =====================
+// screen positions of the bodies (and the craft) drawn in the current frame: kind 'b' mission body,
+// 'c' craft, 'm' map body; id is the body index in sys or mapSys
+let HITS = [], hoverHit = null, focusTxt = null;
+const addHit = (kind, id, x, y, r) => { HITS.push({ kind, id, x, y, r }); };
+// the target nearest the pointer among those whose (enlarged) disc contains it
+function hitAt(px, py, minR) {
+  let best = null, bd = Infinity;
+  for (const h of HITS) { const d = Math.hypot(px - h.x, py - h.y); if (d <= Math.max(minR, h.r + 4) && d < bd) { bd = d; best = h; } }
+  return best;
+}
+// single tap: follow at the current scale; double tap: also zoom onto the body's moons or its SOI
+function focusHit(h, zoom) {
+  if (h.kind === 'm') {
+    if (zoom) mapCenter(MAPK[h.id]);
+    MAP.needFit = false; MAP.follow = h.id;
+  } else {
+    S.follow = h.kind === 'c' ? 'craft' : h.id === 0 ? 'A' : h.id === 1 ? 'B' : 'b' + h.id;
+    renderFrameSeg();
+    if (zoom && h.kind === 'b') followZoom(h.id);
+  }
+}
+// drop the follow of the current view; the camera stays where it is
+function unfollow() {
+  if (MAP.on) MAP.follow = null;
+  else if (S.follow !== 'free') { S.follow = 'free'; renderFrameSeg(); }
+}
+$('#focusOff').addEventListener('click', unfollow);
+function focusName() {
+  if (MAP.on) return MAP.follow == null ? '' : _('body.' + MAPK[MAP.follow]);
+  if (S.follow === 'free') return '';
+  if (S.follow === 'craft') return _('fo.craft');
+  const b = S.bodies[S.follow === 'A' ? 0 : S.follow === 'B' ? 1 : +S.follow.slice(1)];
+  return b ? b.name : '';
+}
+// end of a frame: HUD focus tag, hover cursor and ring (rings are plain in the low-resource mode)
+function frameEnd() {
+  const n = focusName();
+  if (n !== focusTxt) { focusTxt = n; $('#focusName').textContent = n; $('#focusTag').hidden = !n; }
+  const h = hoverPt && !ptrs.size ? hitAt(hoverPt.x, hoverPt.y, HIT_PX.mouse) : null;
+  if (!!h !== !!hoverHit) cv.classList.toggle('hot', !!h);
+  hoverHit = h;
+  if (!h) return;
+  const r = Math.max(h.kind === 'c' ? 8 : 6, h.r + 5);
+  ctx.strokeStyle = hexA(COL.ink, 0.85); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(h.x, h.y, r, 0, 6.2832); ctx.stroke();
+  if (Q.glow) { ctx.strokeStyle = hexA(COL.ink, 0.22); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(h.x, h.y, r + 3, 0, 6.2832); ctx.stroke(); }
+}
 
 // ===================== HUD controls =====================
 function renderFrameSeg() {
@@ -702,10 +780,12 @@ $('#followSeg').addEventListener('click', e => {
   if (S.follow === 'A' || S.follow === 'B') followZoom(S.follow === 'A' ? 0 : 1);
   if (S.follow === 'free') needFit = true;
 });
-// zoom onto body k of the mission (its SOI, at most 45 radii)
+// zoom onto body k of the mission: its moons in the mission, else its SOI (at most 45 radii)
 function followZoom(k) {
   if (!sys || !(k < sys.N)) return;
-  const R = sys.R[k], rad = Math.min(sys.soi[k], 45 * R);
+  let rad = Math.min(sys.soi[k], 45 * sys.R[k]), moons = 0;
+  for (let b = 0; b < sys.N; b++) if (sys.parent[b] === k) moons = Math.max(moons, 1.25 * sys.a[b]);
+  if (moons) rad = moons;
   const { l, r, t, b } = insets(); cam.scale = Math.min(W - l - r, H - t - b) * 0.42 / rad;
 }
 // follow mission body i: A and B through the follow buttons, extra bodies as 'b<i>'
@@ -1020,6 +1100,7 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
     const k = MAPK[i], x = sx(pos[2 * i]), y = sy(pos[2 * i + 1]), col = BODIES[k].color, moon = isMoon(i);
     if (x < -40 || x > W + 40 || y < -40 || y > H + 40) continue;
     const r = Math.max(i === MSUN ? 4.5 : moon ? 1.6 : 2.6, MAP.log ? 0 : mapSys.R[i] * sc);
+    addHit('m', i, x, y, r);
     if (i === MSUN && glow) {
       const g = ctx.createRadialGradient(x, y, 0, x, y, r * 4);
       g.addColorStop(0, hexA(col, 0.5)); g.addColorStop(1, hexA(col, 0));
@@ -1189,10 +1270,11 @@ function draw(now) {
     if (!lowQ && frameAvg > 0.03 && ++slowFrames > 90) { lowQ = true; resize(); showPerfTip(); }
   }
   const glow = Q.glow && !lowQ;
+  HITS = [];
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H);
   if (stars) ctx.drawImage(stars, 0, 0, W, H);
-  if (!sys || !simR || !C) { if (MAP.on) { drawMap(mapTime(0), glow, null, 0, 0); if (!MAP.log) drawScale(); } requestAnimationFrame(draw); return; }
+  if (!sys || !simR || !C) { if (MAP.on) { drawMap(mapTime(0), glow, null, 0, 0); if (!MAP.log) drawScale(); } frameEnd(); requestAnimationFrame(draw); return; }
   frameCache();
   if (needFit && !MAP.on) fit();
 
@@ -1225,7 +1307,8 @@ function draw(now) {
   frameAt(t2); const cpos2 = tf(craft2[0], craft2[1], craft2[2], [0, 0]);
   frameAt(tNow);
 
-  if (S.follow === 'craft') { cam.cx = cpos[0]; cam.cy = cpos[1]; }
+  if (MAP.on) { /* the map has its own camera and follow */ }
+  else if (S.follow === 'craft') { cam.cx = cpos[0]; cam.cy = cpos[1]; }
   else if (S.follow === 'A') { cam.cx = bpos[0][0]; cam.cy = bpos[0][1]; }
   else if (S.follow === 'B') { cam.cx = bpos[1][0]; cam.cy = bpos[1][1]; }
   else if (S.follow[0] === 'b' && bpos[+S.follow.slice(1)]) { const p = bpos[+S.follow.slice(1)]; cam.cx = p[0]; cam.cy = p[1]; }
@@ -1331,6 +1414,7 @@ function draw(now) {
       const minR = b < 2 ? 5 : 4;
       const r = Math.max(minR, sys.R[b] * cam.scale);
       if (x + r < -60 || x - r > W + 60 || y + r < -60 || y - r > H + 60) continue;
+      addHit('b', b, x, y, r);
       const col = S.bodies[b].color;
       if (!Q.glow) { // low-resource: flat discs, no gradients
         ctx.fillStyle = isSun ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
@@ -1355,6 +1439,7 @@ function draw(now) {
     // spacecraft
     {
       const x = sx(cpos[0]), y = sy(cpos[1]);
+      addHit('c', 0, x, y, 3.2);
       if (Q.glow) {
         const g = ctx.createRadialGradient(x, y, 0, x, y, 16);
         g.addColorStop(0, hexA(COL.traj, 0.6)); g.addColorStop(1, hexA(COL.traj, 0));
@@ -1398,6 +1483,7 @@ function draw(now) {
     if (!scrubbing) scrub.value = Math.round(S.u * 10000);
   }
   if (now - ovLast > 500) { ovLast = now; ovDist(); }
+  frameEnd();
   requestAnimationFrame(draw);
 }
 

@@ -235,6 +235,8 @@ const I18N = {
     'fr.rot': 'Dönen {a}–{b}',
     'fo.free': 'Serbest',
     'fo.craft': 'Araç',
+    'focus.tag': 'Takip',
+    'focus.release': 'Takibi bırak',
 
     // ---- playback ----
     'play.pause': 'Duraklat',

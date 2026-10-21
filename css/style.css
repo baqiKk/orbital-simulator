@@ -45,7 +45,12 @@ button,.seg button,.rail-btn,.wbtn,.btn,.ghost{transition:color .12s,background-
 /* ---------- stage & HUD ---------- */
 .stage{grid-column:2;grid-row:1;position:relative;overflow:hidden;background:var(--void);min-width:0}
 #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#cv.hot{cursor:pointer}
 #cv.drag{cursor:grabbing}
+.focus-tag{display:flex;align-items:center;gap:8px;padding:2px 2px 2px 10px;max-width:100%}
+.focus-tag b{font:600 11.5px/1 var(--f-disp);letter-spacing:.06em;text-transform:uppercase;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.focus-tag .ibtn{flex:none}
+.focus-tag[hidden]{display:none}
 .hud-top{position:absolute;top:12px;right:max(12px,env(safe-area-inset-right,0px));left:12px;display:flex;justify-content:flex-end;pointer-events:none}
 .hud-top>*{pointer-events:auto}
 .glass{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
