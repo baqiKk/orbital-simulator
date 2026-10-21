@@ -5,6 +5,7 @@ Tarayıcıda çalışan, düzlemsel (2B) yörünge transfer simülatörü. Kulla
 ## Kurallar
 - Arayüz dili **Türkçe**. Kod, yorumlar ve commit mesajları İngilizce olabilir.
 - Site şimdilik Türkçe; ileride İngilizce de eklenecek. Kullanıcıya görünen tüm metinler js/i18n.js içindeki tek bir sözlükten gelsin, kod içine metin yazma.
+  - **İstisna:** `index.html`'deki `<title>`, `<meta name="description">` ve Open Graph etiketlerinde (`og:title`, `og:description`) varsayılan Türkçe değer HTML'de doğrudan bulunur; arama motorları ve link önizleyicileri (WhatsApp, Discord) JS çalıştırmaz. i18n bunları dil değişince yine günceller (`meta.title`, `meta.description`). Bu metinleri değiştirirsen sözlük ile HTML'i birlikte güncelle.
 - **Build adımı yok.** Saf HTML/CSS/vanilla JS. Framework, bundler, npm bağımlılığı ekleme. Dış kaynak olarak sadece Google Fonts var.
 - Fizik `js/core.js` içinde kalır ve **DOM'a dokunmaz**: hem sayfada, hem Web Worker'da (`importScripts`), hem Node testlerinde çalışmalı.
 - Fizikte değişiklik yaptıktan sonra `node tests/core.test.js` çalıştır; yeni davranış için test ekle.
