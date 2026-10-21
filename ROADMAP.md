@@ -16,11 +16,13 @@
 - Düşük kaynak 2B: yıldız arka planı yok, parlama/gradyan/gölge/bulanıklık yok, piksel oranı 1, kare hızı 30 fps ile sınırlı, yörünge çizgisinde daha az nokta, HUD metni seyrek güncellenir, animasyonlu geçişler kapalı.
 - Varsa önceki hata: Güneş merkezli senaryoda "Cisim ekle" ile eklenen özel cisim Güneş'in içine düşüyor; varsayılan yörünge yarıçapını makul yap. (3f95ac7'de düzeltilmişti; Faz 1'de tarayıcıda yeniden doğrulandı.)
 
-## Faz 2 — Gerçek güneş sistemi çekirdeği (3B fizik)
+## Faz 2 — Gerçek güneş sistemi çekirdeği (3B fizik) ✅ tamamlandı (2026-10-22)
 - Durum vektörleri 3B. Gezegenler için JPL "Approximate Positions of the Planets" Kepler elemanları (J2000 + yüzyıllık değişim oranları): a, e, i, Ω, ϖ, L. Kepler denklemi çözümüyle tarih → konum/hız. Büyük uydular (Ay, Phobos, Deimos, Galile uyduları, Titan) için uygun ortalama elemanlar.
 - Her cisim için eksen eğikliği, yarıçap, μ, renk; tek bir veri dosyası (js/bodies.js).
 - Zaman artık gerçek tarih: tarih seçici, "Şimdi" düğmesi, hız kontrolü.
 - Mevcut senaryolar "Basitleştirilmiş model (dairesel, düzlemsel)" seçeneğiyle aynen çalışmaya devam eder; mevcut testler geçer. Gerçek model için yeni testler: bilinen bir tarihte Dünya ve Mars'ın Güneş'e uzaklığı JPL değerleriyle birkaç binde bir içinde uyuşmalı.
+- Uygulananlar: Tablo 1 (1800–2050, Plüton yok) ve JPL uydu ortalama elemanları (Ay ekliptiğe, diğerleri yerel Laplace düzlemine göre; ω̇ = +360°/Papsis, Ω̇ = −360°/Pnode). Kepler denklemi Newton–Raphson ile çözülür; hız konumun tam türevi. Park yörüngesi A–B görev düzleminde; gezegenler arası transferlerde çözücü düzlem dışı açı β'yı da ayarlar. 2B izdüşüm: eylemsiz görünüm ekliptiğe, iki cisimli görünümler görev düzlemine. Basitleştirilmiş model Faz 1 sonuçlarını birebir üretir (aynı adım sayısı). Yeni senaryolar: gerçek Dünya–Ay serbest dönüş, 2026 Mars penceresi, Ganymede→Callisto.
+- **Bekleyen — Horizons karşılaştırması:** JPL Horizons'a bağlanılamadığı için "bilinen tarihte Dünya/Mars–Güneş uzaklığı JPL ile binde birkaç içinde" testi yerine bağımsız kontroller yapıldı (perihel/afel = a(1∓e), Mars 686,98 g ve Dünya–Ay ağırlık merkezi 365,256 g periyot, Mars 1,85° ve Ay ≈5,1° eğim, Ay 356–407 bin km, Ay ϖ periyodu 8,85 yıl, anomalistik/drakonik ay). Horizons erişimi olduğunda: birkaç tarihte Dünya ve Mars'ın Güneş uzaklığını (DE441) testlere sabit olarak ekle; aynı sırada `js/bodies.js`'teki uydu tablosunu https://ssd.jpl.nasa.gov/sats/elem/ ile, gm/yarıçap/eksen eğikliği değerlerini resmî tablolarla karşılaştır.
 
 ## Faz 3 — Güneş sistemi haritası ve gezegen seçici
 - Yan panelde "overview" tablosu: gezegenler ve uyduları, ağaç yapısında; satıra tıklayınca kalkış/hedef olarak seçilir veya görünüm o cisme ortalanır.

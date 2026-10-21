@@ -1,6 +1,6 @@
 # Yörünge Transfer Simülatörü
 
-Tarayıcıda çalışan, düzlemsel (2B) yörünge transfer simülatörü. Kullanıcı 2–4 gök cismi seçer (kütle, yarıçap, yörünge yarıçapı, faz), bir kalkış yanması tanımlar; araç yolu hesaplanır ve video gibi oynatılır. Herkese açık statik site olarak yayınlanır (GitHub Pages).
+Tarayıcıda çalışan yörünge transfer simülatörü. Fizik 3B, görünüm şimdilik 2B (izdüşüm). İki model: **gerçek güneş sistemi** (tarihli, JPL Kepler elemanları) ve **basitleştirilmiş** (dairesel, düzlemsel; kütle, yarıçap, yörünge yarıçapı, faz kullanıcıdan). Kullanıcı 2–4 gök cismi seçer, bir kalkış yanması tanımlar; araç yolu hesaplanır ve video gibi oynatılır. Herkese açık statik site olarak yayınlanır (GitHub Pages).
 
 ## Kurallar
 - Arayüz dili **Türkçe**. Kod, yorumlar ve commit mesajları İngilizce olabilir.
@@ -12,27 +12,31 @@ Tarayıcıda çalışan, düzlemsel (2B) yörünge transfer simülatörü. Kulla
 - localStorage/sessionStorage yalnızca `js/prefs.js` yardımcılarıyla (try/catch'li) kullanılır; depolama yoksa sayfa yine çalışmalı.
 - Görünüm modları: `app.js` içindeki `QUALITY` profilleri (normal / low). Yeni çizim efekti eklerken düşük kaynak modunda kapalı olmalı (`Q.glow`, `Q.stars`); CSS tarafında `html[data-q=low]`.
 - Tarayıcı yükü düşük kalmalı: kare başına iş O(çizilen nokta). Ağır hesap (çözücü) Web Worker'da.
+- Basitleştirilmiş model Faz 1 sonuçlarını birebir üretmeli (`core.test.js` 5. test: aynı adım sayısı, periapsisler ≤ 1 m). Fizikte değişiklik bu testi bozuyorsa, bilerek değiştirmiyorsan basit model yolunu (z ≡ 0, β yok) koru.
+- Cisim verisi yalnızca `js/bodies.js`'te, kaynağı yorumda; tablo değerleri kaynaktan aynen kopyalanır (ezberden yazılmaz).
 - Yörünge noktası adları cisme göre: Dünya perigee/apogee, Ay perilune/apolune, Güneş perihelion/aphelion, Mars periareion, Venüs pericytherion, Jüpiter perijove; diğerleri periapsis. `app.js` içindeki `APSIS` tablosunu kullan (veri `i18n.js` içindeki `apsis` girdisinden gelir).
 - Tek tema: koyu uzay. Renkler `css/style.css` başındaki `:root` token'larında; yeni renk ekleme, token kullan.
 - Mobil (≈400 px) genişlikte de çalışmalı; yatay sayfa kaydırması olmamalı.
 
 ## Dosyalar
 - `index.html` — işaretleme (sol ikon çubuğu, sahne, HUD + mod seçici, zaman çizelgesi, pencereler: Görev / Gök cisimleri / Sonuçlar / Sözlük / Model, ilk açılış uyarısı, performans önerisi). Metinler yazılmaz; `data-i18n="anahtar"` (metin) ya da `data-i18n-<öznitelik>="anahtar"` (aria-label, title, placeholder, content) kullanılır.
+- `js/bodies.js` — cisim verisi (metinsiz): `BODIES` (gerçek model için JPL Tablo 1 gezegen satırları `orb.jpl`, JPL uydu ortalama elemanları `orb.sat` + Laplace kutbu `lp`, `gm`, `radius`, `tilt`, renk; basit model için Faz 1 değerleri `simple`), `EPHEM_YEARS` (1800–2050). Kaynaklar dosya başında. `core.js` bunu okumaz; uygulama sayıları `buildSystem`'e verir.
 - `js/i18n.js` — tek metin sözlüğü (`I18N.tr`), `_(anahtar, {param})` ve `applyI18n()`. `core.js`'ten önce yüklenir. Yeni metin = yeni anahtar buraya; sözlük/APSIS gibi yapısal veri de burada. Dil eklemek için `I18N.en` ekleyip `LANG`'ı değiştirmek yeter.
 - `js/prefs.js` — DOM'suz tercih yardımcıları: kayıtlı görünüm modu (`startupMode`), pencere düzeni (`parseWins`, `clampWin`), güvenli `readPref`/`writePref`.
 - `css/style.css` — tüm stiller.
 - `js/core.js` — fizik (metin içermez: hatalar ve olay etiketleri `err.*` / `ev.*` i18n anahtarı olarak döner, çevirisini arayüz yapar):
-  - `buildSystem(list)`: cisim hiyerarşisi (her cisim bir ebeveyn etrafında dairesel Kepler yörüngesinde; tek kök sabit merkez). Ağırlık merkezleri korunur. SOI = a·(m/M)^0.4.
-  - `states(s, t, P, V)`: t anında tüm cisimlerin konum/hızı (analitik).
+  - `buildSystem(list)`: cisim hiyerarşisi (tek kök). `orb` taşıyan cisim Kepler elemanlarıyla (`orbitElements`: t'de doğrusal a, e, i, Ω, ω, M; uydu P'si yıldızıl periyot → Ṁ = 360°/P − ϖ̇; ω̇ = +360°/Papsis, Ω̇ = −360°/Pnode), taşımayan dairesel z = 0 yörüngede ilerler. Gerçek modelde zaman J2000 TDB'den beri saniye (`utcToDays`/`daysToUtc`, TT−UTC sabit 69,184 s). Her alt sistemin ağırlık merkezi ebeveyn etrafında döner (Dünya için tablo Dünya–Ay ağırlık merkezini verir). SOI = a·(m/M)^0.4.
+  - `states(s, t, P, V)`: t anında tüm cisimlerin 3B konum/hızı (analitik; P, V cisim başına 3 değer). `keplerE`: Newton–Raphson. `orbitState`: hız, konumun tam türevi.
+  - `missionPlane(s, t)` / `planeBasis(n)`: A–B görev düzlemi (B'nin A etrafındaki, A'nın B etrafındaki ya da B'nin ortak ebeveyn etrafındaki yörünge düzlemi; basit modelde +z). Park yörüngesi bu düzlemdedir; gerçek modelde β ile eğilir.
   - `simulate(s, M, opts)`: araç için Dormand–Prince 5(4) uyarlamalı entegrasyon. Olaylar: kalkış yanması, hedef periapsisi (SOI içinde), yakalama yanması (capture modunda), dönüş periapsisi, çarpma. Serbest dönüşte dönüş periapsisinde durur (atmosfer girişi varsayımı).
   - `hohmannGuess(s, M)`: patched-conic başlangıç tahmini (iç hedef / ebeveyne dönüş / kardeş cisimler, iç içe kalkış).
-  - `optimize(s, M, opt)`: açı taraması + Levenberg–Marquardt; θ, Δv ve (gezegenler arası ise) t₀ üzerinde. Hedefler: hedef periapsis irtifası (isteğe bağlı prograd/retrograd), serbest dönüşte dönüş irtifası.
-- `js/app.js` — arayüz, hazır senaryolar (`SCENARIOS`), cisim önayarları (`BODY_PRESETS`), görünüm çerçeveleri (eylemsiz / A / B / dönen A–B), canvas çizimi, zaman çizelgesi, sözlük (`GLOSS`), çözücü worker'ı, pencere yöneticisi, görünüm modları (`QUALITY`). `fit()` açık pencereleri ve HUD'u (`measureInsets`) hesaba katar.
-- `tests/core.test.js` — fizik regresyon testleri (Node, bağımlılıksız).
+  - `optimize(s, M, opt)`: açı taraması + Levenberg–Marquardt; θ, Δv ve kardeş cisimler arasında t₀ ile (gerçek modelde) β üzerinde. Hedefe çarpan denemelerde iki-cisim periapsisi kullanılır (kalan hata yüzeyde takılmaz). Hedefler: hedef periapsis irtifası (isteğe bağlı prograd/retrograd), serbest dönüşte dönüş irtifası.
+- `js/app.js` — arayüz, hazır senaryolar (`SCENARIOS`, her biri `model: 'real' | 'simple'`), model geçişi (`setModel`, gerçek modelde ebeveynler `linkReal`), görünüm çerçeveleri (eylemsiz = ekliptik; A / B / dönen A–B = görev düzlemi `PLANE`), canvas çizimi, zaman çizelgesi, sözlük (`GLOSS`), çözücü worker'ı, pencere yöneticisi, görünüm modları (`QUALITY`). `fit()` açık pencereleri ve HUD'u (`measureInsets`) hesaba katar.
+- `tests/core.test.js` — fizik regresyon testleri (Node, bağımlılıksız): basit modelin Faz 1 sonuçları, Kepler çözümü, perihel/afel = a(1∓e), periyotlar, eğimler, Ay uzaklığı ve devinim, hız = konumun türevi, Laplace çerçevesi, gerçek model çözümleri.
 - `tests/ui.test.js` — sözlük kapsamı (HTML ve JS'teki anahtarlar), HTML varsayılan meta metinleri, tercih yardımcıları.
 
 ## Model varsayımları
-Düzlemsel, dairesel cisim yörüngeleri, anlık yanmalar, kısıtlı N-cisim (araç cisimleri çekmez), atmosfer yok. Yakalamadan sonraki tur animasyonu analitik dairesel iki-cisimdir.
+Gerçek model: gezegenler JPL Tablo 1 ortalama elemanları (1800–2050), uydular JPL ortalama elemanları (periyodik terim yok; Ay birkaç bin km sapabilir). Basitleştirilmiş model: düzlemsel, dairesel cisim yörüngeleri. Her ikisinde: anlık yanmalar, kısıtlı N-cisim (araç cisimleri çekmez), atmosfer yok. Yakalamadan sonraki tur animasyonu analitik dairesel iki-cisimdir.
 
 ## Yol haritası
 Ayrıntılı plan ROADMAP.md'de; her oturumda ilgili fazı oku, bitince tamamlandı olarak işaretle.

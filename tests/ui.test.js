@@ -22,10 +22,16 @@ for (const f of ['js/app.js', 'js/core.js']) {
     if (spaces.has(m[1].split('.')[0])) assert.ok(has(m[1]), `${f} key missing from dictionary: ${m[1]}`);
   }
 }
-// dynamic keys: scenario names/notes, body presets
+// dynamic keys: scenario names/notes, body names (every key of js/bodies.js)
 const app = read('js/app.js');
 for (const m of app.matchAll(/\{ id: '(\w+)'/g)) for (const s of ['name', 'note']) assert.ok(has(`sc.${m[1]}.${s}`), `scenario text missing: sc.${m[1]}.${s}`);
-for (const k of app.match(/PRESET_ORDER = \[([^\]]+)\]/)[1].match(/\w+/g)) assert.ok(has('body.' + k), `body name missing: body.${k}`);
+const { BODIES } = require('../js/bodies.js');
+for (const k of Object.keys(BODIES)) assert.ok(has('body.' + k), `body name missing: body.${k}`);
+// scenario groups: every scenario names a model with a group label
+for (const m of app.matchAll(/\{ id: '\w+', model: '(\w+)'/g)) assert.ok(has('sc.group.' + m[1]), `scenario group missing: sc.group.${m[1]}`);
+assert.strictEqual([...app.matchAll(/\{ id: '\w+', model: /g)].length, [...app.matchAll(/\{ id: '/g)].length, 'every scenario names its model');
+// body data is text-free: no body carries a display name
+for (const [k, b] of Object.entries(BODIES)) assert.ok(!('name' in b), `bodies.js must not hold text: ${k}.name`);
 
 // 3) Static defaults in index.html match the dictionary (crawlers and link previews do not run JS)
 assert.ok(html.includes(`<title>${DICT['meta.title']}</title>`), '<title> matches meta.title');

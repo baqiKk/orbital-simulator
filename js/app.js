@@ -1,41 +1,55 @@
 // ===================== Data =====================
-const BODY_PRESETS = {
-  sun:     { mass: 1.98847e30, radius: 695700,  parentKey: null,      a: 0,         color: '#ffd27a' },
-  mercury: { mass: 3.3011e23,  radius: 2439.7,  parentKey: 'sun',     a: 57909050,  color: '#a9a49c' },
-  venus:   { mass: 4.8675e24,  radius: 6051.8,  parentKey: 'sun',     a: 108210000, color: '#e8c98f' },
-  earth:   { mass: 5.9722e24,  radius: 6371,    parentKey: 'sun',     a: 149598000, color: '#5b9cf0' },
-  moon:    { mass: 7.342e22,   radius: 1737.4,  parentKey: 'earth',   a: 384400,    color: '#cbc8bf' },
-  mars:    { mass: 6.4171e23,  radius: 3389.5,  parentKey: 'sun',     a: 227939000, color: '#e0703f' },
-  phobos:  { mass: 1.0659e16,  radius: 11.27,   parentKey: 'mars',    a: 9376,      color: '#a08f7e' },
-  jupiter: { mass: 1.89813e27, radius: 69911,   parentKey: 'sun',     a: 778570000, color: '#d9b48c' },
-  europa:  { mass: 4.7998e22,  radius: 1560.8,  parentKey: 'jupiter', a: 671034,    color: '#d4c7ad' },
-  custom:  { mass: 1e23,    radius: 2000,    parentKey: undefined, a: 500000,    color: '#b590f2' },
-};
-const PRESET_ORDER = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'phobos', 'jupiter', 'europa', 'custom'];
+// Body data lives in js/bodies.js (BODIES). Simplified model: every body plus a free-form custom one;
+// real model: the bodies with an ephemeris (the Sun and everything with orbit elements).
+const KEYS_SIMPLE = Object.keys(BODIES);
+const KEYS_REAL = KEYS_SIMPLE.filter(k => BODIES[k].gm);
+const AU_KM = AU / 1e3;
+// Simplified-model numbers (mass kg, radius km, circular orbit radius km): Phase 1 values where kept, else derived.
+function simpleData(k) {
+  const b = BODIES[k], s = b.simple;
+  if (s) return s;
+  const o = b.orb;
+  return { mass: b.gm * 1e9 / G, radius: b.radius, a: !o ? 0 : o.jpl ? o.jpl[0][0] * AU_KM : o.sat[0] };
+}
 
+// model 'simple': t0 in days from the model's epoch. model 'real': t0 in days since J2000 TDB
+// (date in the comment), β = out-of-plane burn angle found by the solver for sibling transfers.
 const SCENARIOS = [
-  { id: 'em_free', frame: 'rot',
+  { id: 'em_free', model: 'simple', frame: 'rot',
     bodies: [{ k: 'earth', parent: -1 }, { k: 'moon', parent: 0 }],
     M: { mode: 'free', side: -1, h0: 185, hB: 250, hRet: 60, t0: 0, theta: -132.26090326368262, dv: 3162.1420118609917, autoDur: true, duration: 12 } },
-  { id: 'em_cap', frame: 'A',
+  { id: 'em_cap', model: 'simple', frame: 'A',
     bodies: [{ k: 'earth', parent: -1 }, { k: 'moon', parent: 0 }],
     M: { mode: 'capture', side: -1, h0: 185, hB: 100, hRet: 60, t0: 0, theta: -122.6404245345841, dv: 3141.0061695917125, autoDur: true, duration: 7 } },
-  { id: 'em_sun', frame: 'rot',
+  { id: 'em_sun', model: 'simple', frame: 'rot',
     bodies: [{ k: 'earth', parent: -1 }, { k: 'moon', parent: 0 }, { k: 'sun', parent: 0, a: 149598000, phase: 90 }],
     M: { mode: 'free', side: -1, h0: 185, hB: 250, hRet: 60, t0: 0, theta: -132.31541604192466, dv: 3161.2744423190697, autoDur: true, duration: 12 } },
-  { id: 'e_mars', frame: 'inertial',
+  { id: 'e_mars', model: 'simple', frame: 'inertial',
     bodies: [{ k: 'earth', parent: 2 }, { k: 'mars', parent: 2 }, { k: 'sun', parent: -1 }],
     M: { mode: 'capture', side: 0, h0: 185, hB: 300, hRet: 60, t0: 685.7782603563348, theta: -150.0725460254747, dv: 3615.9489071591897, autoDur: true, duration: 336 } },
-  { id: 'moon_mars', frame: 'inertial',
+  { id: 'moon_mars', model: 'simple', frame: 'inertial',
     bodies: [{ k: 'moon', parent: 2 }, { k: 'mars', parent: 3 }, { k: 'earth', parent: 3 }, { k: 'sun', parent: -1 }],
     M: { mode: 'capture', side: 0, h0: 100, hB: 300, hRet: 60, t0: 677.8485252280739, theta: -103.79516935006063, dv: 1591.5641379638673, autoDur: true, duration: 336 } },
-  { id: 'e_venus', frame: 'inertial',
+  { id: 'e_venus', model: 'simple', frame: 'inertial',
     bodies: [{ k: 'earth', parent: 2 }, { k: 'venus', parent: 2 }, { k: 'sun', parent: -1 }],
     M: { mode: 'flyby', side: 0, h0: 185, hB: 500, hRet: 60, t0: 500.5162440898973, theta: -114.42780944038475, dv: 3508.1053919040405, autoDur: true, duration: 220 } },
+  // 2026-11-15 00:00 UTC
+  { id: 'r_em_free', model: 'real', frame: 'rot',
+    bodies: [{ k: 'earth', parent: -1 }, { k: 'moon', parent: 0 }],
+    M: { mode: 'free', side: -1, h0: 185, hB: 250, hRet: 60, t0: 9814.500800740741, theta: -133.53427594294783, dv: 3161.142486126646, beta: 0, autoDur: true, duration: 12 } },
+  // 2026-11-08 10:07 UTC
+  { id: 'r_e_mars', model: 'real', frame: 'inertial',
+    bodies: [{ k: 'earth', parent: 2 }, { k: 'mars', parent: 2 }, { k: 'sun', parent: -1 }],
+    M: { mode: 'capture', side: 0, h0: 185, hB: 300, hRet: 60, t0: 9807.922656497507, theta: -171.3206731748794, dv: 3658.9015727828582, beta: 6.2686864976017125, autoDur: true, duration: 300 } },
+  // 2026-11-01 06:48 UTC
+  { id: 'r_gan_cal', model: 'real', frame: 'inertial',
+    bodies: [{ k: 'ganymede', parent: 2 }, { k: 'callisto', parent: 2 }, { k: 'jupiter', parent: -1 }],
+    M: { mode: 'capture', side: 0, h0: 100, hB: 200, hRet: 60, t0: 9800.78452933949, theta: -115.32101579869845, dv: 1133.8633422404118, beta: -2.9268533075196106, autoDur: true, duration: 10 } },
 ];
 
 // ===================== State =====================
-const S = { loop: false, ext: 0, bodies: [], M: {}, frame: 'rot', follow: 'free', soi: false, tracks: true, focus: true, speed: 1, playing: true, u: 0, scenario: 'em_free' };
+// speed: playback relative to the mission length; rate: real-time playback (simulated s per s, 0 = off)
+const S = { model: 'simple', loop: false, ext: 0, bodies: [], M: {}, frame: 'rot', follow: 'free', soi: false, tracks: true, focus: true, speed: 1, rate: 0, playing: true, u: 0, scenario: 'em_free' };
 let sys = null, simR = null, guess = null, C = null;
 const cam = { cx: 0, cy: 0, scale: 1e-6 };
 let needFit = true, solving = false, cancelSolve = false;
@@ -43,10 +57,10 @@ const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-mo
 if (reduceMotion) S.playing = false;
 
 // View-mode quality profiles. sub: Hermite sub-samples per integrator step; trackK: body-track points;
-// hudMs: HUD text refresh period (0 = every 4th frame); fpsCap: 0 = display rate.
+// hudMs: HUD text refresh period (0 = every 4th frame); fpsCap: 0 = display rate; ellK: points per orbit ellipse.
 const QUALITY = {
-  normal: { stars: true, glow: true, dprMax: 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0 },
-  low:    { stars: false, glow: false, dprMax: 1, fpsCap: 30, sub: 2, trackK: 140, hudMs: 250 },
+  normal: { stars: true, glow: true, dprMax: 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0, ellK: 180 },
+  low:    { stars: false, glow: false, dprMax: 1, fpsCap: 30, sub: 2, trackK: 140, hudMs: 250, ellK: 72 },
 };
 let MODE = 'normal', Q = QUALITY.normal;
 const LS = (() => { try { return window.localStorage; } catch (e) { return null; } })();
@@ -75,6 +89,18 @@ function fmtDur(sec, withSec) {
   const p = n => String(n).padStart(2, '0');
   return `${d}${_('unit.d')} ${p(h)}:${p(mi)}` + (withSec ? `:${p(s)}` : '');
 }
+function fmtPeriod(sec) {
+  const d = sec / DAY;
+  if (d < 2) return nf2.format(sec / 3600) + ' ' + _('unit.h');
+  if (d < 1000) return nf2.format(d) + ' ' + _('unit.d');
+  return nf2.format(sec / JYR) + ' ' + _('unit.yr');
+}
+// real-model calendar: departure date and the date at mission time t (s)
+const DATEF = new Intl.DateTimeFormat(DICT['meta.locale'], { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const fmtDate = ms => _('hud.date', { d: DATEF.format(ms) });
+const dateAt = t => daysToUtc(S.M.t0) + t * 1000;
+const isoMinute = ms => new Date(ms).toISOString().slice(0, 16);
+const inEphem = d => { const y = new Date(daysToUtc(d)).getUTCFullYear(); return y >= EPHEM_YEARS[0] && y <= EPHEM_YEARS[1]; };
 function fmtMass(m) { return m.toExponential(4).replace('e+', 'e'); }
 function massHint(m) {
   const e = m / 5.9722e24;
@@ -83,27 +109,62 @@ function massHint(m) {
   return '≈ ' + e.toExponential(2) + ' M⊕';
 }
 
+// mass, radius and orbit radius are the simplified model's; the real model reads BODIES directly
 function bodyFromPreset(k, over = {}) {
-  const p = BODY_PRESETS[k];
-  return { key: k, name: _('body.' + k), mass: p.mass, radius: p.radius, parent: -1, a: p.a, phase: 0, color: p.color, ...over };
+  const p = simpleData(k);
+  return { key: k, name: _('body.' + k), mass: p.mass, radius: p.radius, parent: -1, a: p.a, phase: 0, color: BODIES[k].color, ...over };
 }
+
+// Real model: every body orbits its natural parent when that parent is in the list, else it is a root.
+function linkReal() {
+  for (const b of S.bodies) b.parent = S.bodies.findIndex(o => o.key === BODIES[b.key].parent);
+}
+const depth = k => { let d = 0; while (BODIES[k].parent) { k = BODIES[k].parent; d++; } return d; };
 
 // ===================== Scenario =====================
 function loadScenario(id) {
   const sc = SCENARIOS.find(s => s.id === id) || SCENARIOS[0];
-  S.scenario = sc.id;
+  S.scenario = sc.id; S.model = sc.model;
   S.bodies = sc.bodies.map(b => bodyFromPreset(b.k, { parent: b.parent, ...(b.a != null ? { a: b.a } : {}), phase: b.phase || 0 }));
+  if (S.model === 'real') linkReal();
   S.M = { ...sc.M };
   S.frame = sc.frame; S.follow = 'free';
   openRows.clear();
   $('#scenario').value = sc.id;
   $('#scNote').textContent = _('sc.' + sc.id + '.note');
-  renderBodies(); syncMission(); renderFrameSeg();
+  syncModel(); renderBodies(); syncMission(); renderFrameSeg();
   rebuild({ fit: true, resetU: true });
   setStatus('');
   if (!reduceMotion) S.playing = true;
   setPlayIcon();
 }
+
+// Switch the current setup to the other model. Custom bodies have no ephemeris: if one is the departure
+// or target body, the real model starts from its first scenario instead.
+function setModel(m) {
+  if (m === S.model) return;
+  if (m === 'real') {
+    if (S.bodies.slice(0, 2).some(b => !BODIES[b.key].gm)) { loadScenario(SCENARIOS.find(s => s.model === 'real').id); return; }
+    S.bodies = S.bodies.filter(b => BODIES[b.key].gm);
+    S.model = 'real'; linkReal();
+    S.M.t0 = utcToDays(Math.floor(Date.now() / 60000) * 60000); S.M.beta = 0;
+  } else {
+    S.model = 'simple';
+    for (const b of S.bodies) Object.assign(b, simpleData(b.key), { phase: 0 });
+    S.M.t0 = 0;
+  }
+  S.scenario = ''; $('#scenario').value = ''; $('#scNote').textContent = _('sc.custom.note');
+  openRows.clear();
+  syncModel(); renderBodies(); syncMission(); renderFrameSeg();
+  rebuild({ fit: true, resetU: true });
+}
+function syncModel() {
+  const real = S.model === 'real';
+  setSeg('#modelSeg', S.model);
+  $('#dateWrap').hidden = !real; $('#betaWrap').hidden = !real; $('#t0Wrap').hidden = real;
+  $('#r-date').hidden = !real;
+}
+$('#modelSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setModel(b.dataset.v); });
 
 // ===================== Body rows =====================
 // Overview-style rows (colour, preset, role, parent); the editable fields fold out per row.
@@ -112,18 +173,18 @@ const ICON_CHEV = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6
 const ICON_X = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg>';
 function renderBodies() {
   const box = $('#bodies');
-  const N = S.bodies.length;
+  const N = S.bodies.length, real = S.model === 'real';
+  const roots = S.bodies.filter(b => b.parent < 0).length;
   box.innerHTML = S.bodies.map((b, i) => {
     const role = i === 0 ? `<span class="role dep">${_('body.role.dep')}</span>` : i === 1 ? `<span class="role tgt">${_('body.role.tgt')}</span>` : `<span class="role">${_('body.role.extra')}</span>`;
-    const opts = PRESET_ORDER.map(k => `<option value="${k}" ${k === b.key ? 'selected' : ''}>${_('body.' + k)}</option>`).join('');
-    const pOpts = `<option value="-1" ${b.parent < 0 ? 'selected' : ''}>${_('body.parentRoot')}</option>` +
-      S.bodies.map((o, j) => j === i ? '' : `<option value="${j}" ${b.parent === j ? 'selected' : ''}>${esc(o.name)}</option>`).join('');
+    const opts = (real ? KEYS_REAL : KEYS_SIMPLE).map(k => `<option value="${k}" ${k === b.key ? 'selected' : ''}>${_('body.' + k)}</option>`).join('');
     const par = esc(b.parent < 0 ? _('body.parentRoot') : _('body.orbits', { parent: S.bodies[b.parent].name }));
     const open = openRows.has(i);
-    // natural-parent hint (only for orbiting bodies placed around a non-natural parent)
-    const pk = BODY_PRESETS[b.key].parentKey;
+    // natural-parent hint: simplified model, body placed around a non-natural parent;
+    // real model, body whose parent is missing while another body is the centre
+    const pk = BODIES[b.key].parent;
     let hint = '';
-    if (pk && b.parent >= 0 && S.bodies[b.parent].key !== pk && !S.bodies.some(o => o.key === pk)) {
+    if (pk && !S.bodies.some(o => o.key === pk) && (real ? b.parent < 0 && roots > 1 : b.parent >= 0 && S.bodies[b.parent].key !== pk)) {
       const pn = _('body.' + pk);
       hint = `<p class="hint">${_('body.hint', { name: esc(b.name), parent: pn })}${N < 4 ? ` <button type="button" class="linkbtn" data-act="addparent" data-k="${pk}">${_('body.hintAdd', { parent: pn })}</button>` : ''}</p>`;
     }
@@ -133,49 +194,74 @@ function renderBodies() {
         <span class="par" title="${par}">${par}</span>
         <button type="button" class="ibtn" data-act="toggle" aria-expanded="${open}" aria-controls="brow-b${i}" aria-label="${esc(_('body.details', { name: b.name }))}">${ICON_CHEV}</button>
         ${i >= 2 ? `<button type="button" class="ibtn x" data-act="remove" aria-label="${_('body.remove')}">${ICON_X}</button>` : '<span></span>'}</div>
-      <div class="brow-b" id="brow-b${i}" ${open ? '' : 'hidden'}>
-        ${b.key === 'custom' ? `<label class="field"><span>${_('body.name')}</span><input type="text" data-f="name" value="${esc(b.name)}"></label>` : ''}
+      <div class="brow-b" id="brow-b${i}" ${open ? '' : 'hidden'}>${real ? realInfo(b) : simpleFields(b, i)}</div>${hint}
+    </div>`;
+  }).join('');
+  $('#addBody').hidden = N >= 4;
+}
+function simpleFields(b, i) {
+  const pOpts = `<option value="-1" ${b.parent < 0 ? 'selected' : ''}>${_('body.parentRoot')}</option>` +
+    S.bodies.map((o, j) => j === i ? '' : `<option value="${j}" ${b.parent === j ? 'selected' : ''}>${esc(o.name)}</option>`).join('');
+  return `${b.key === 'custom' ? `<label class="field"><span>${_('body.name')}</span><input type="text" data-f="name" value="${esc(b.name)}"></label>` : ''}
         <div class="grid2">
           <label class="field"><span>${_('body.mass')}</span><input type="text" inputmode="decimal" data-f="mass" value="${fmtMass(b.mass)}"><small data-hint="mass">${massHint(b.mass)}</small></label>
           <label class="field"><span>${_('body.radius')}</span><input type="number" step="any" data-f="radius" value="${b.radius}"></label>
           <label class="field"><span>${_('body.parent')}</span><select data-f="parent">${pOpts}</select></label>
           <label class="field"><span>${_('body.a')}</span><input type="number" step="any" data-f="a" value="${b.a}" ${b.parent < 0 ? 'disabled' : ''}></label>
           <label class="field"><span>${_('body.phase')}</span><input type="number" step="any" data-f="phase" value="${b.phase}" ${b.parent < 0 ? 'disabled' : ''}></label>
-        </div>
-      </div>${hint}
-    </div>`;
-  }).join('');
-  $('#addBody').hidden = N >= 4;
+        </div>`;
+}
+// Real model: read-only physical data and the orbit elements at the departure date.
+function realInfo(b) {
+  const d = BODIES[b.key], rows = [
+    [_('body.mu'), nf1.format(d.gm), 'km³/s²'], [_('body.size'), nf1.format(d.radius), 'km'], [_('body.tilt'), nf2.format(d.tilt), '°']];
+  if (b.parent >= 0 && d.orb) {
+    const o = orbitElements(d.orb), t = S.M.t0 * DAY, inc = (o.i0 + o.i1 * t) * 180 / Math.PI;
+    rows.push([_('body.sma'), fmtDist(o.a0 + o.a1 * t), ''], [_('body.ecc'), nf3.format(o.e0 + o.e1 * t), ''],
+      [_('body.inc'), nf2.format(Math.abs(inc) < 0.005 ? 0 : inc), '°'], [_('body.period'), fmtPeriod(2 * Math.PI / (o.O1 + o.w1 + o.M1)), ''],
+      [_('body.ref'), _(d.orb.jpl || !d.orb.lp ? 'body.ref.ecl' : 'body.ref.laplace'), '']);
+  } else rows.push([_('body.parent'), _('body.parentRoot'), '']);
+  return `<table class="ov binfo"><tbody>${rows.map(([l, v, u]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(v)}${u ? `<em>${esc(u)}</em>` : ''}</td></tr>`).join('')}</tbody></table>`;
 }
 
 function applyPreset(i, k) {
-  const p = BODY_PRESETS[k], b = S.bodies[i];
-  Object.assign(b, { key: k, name: _('body.' + k), mass: p.mass, radius: p.radius, color: p.color });
-  if (p.parentKey === null) {
+  const p = BODIES[k], d = simpleData(k), b = S.bodies[i];
+  Object.assign(b, { key: k, name: _('body.' + k), mass: d.mass, radius: d.radius, color: p.color });
+  if (S.model === 'real') { linkReal(); return; }
+  if (p.parent === null) {
     // a star: becomes the fixed centre; previous centre now orbits it
     const r = S.bodies.findIndex((o, j) => j !== i && o.parent < 0);
     if (r >= 0) {
       const rb = S.bodies[r];
       rb.parent = i;
-      rb.a = BODY_PRESETS[rb.key].parentKey === k || BODY_PRESETS[rb.key].parentKey === 'sun' ? BODY_PRESETS[rb.key].a : 149598000;
+      rb.a = BODIES[rb.key].parent === k || BODIES[rb.key].parent === 'sun' ? simpleData(rb.key).a : 149598000;
     }
     b.parent = -1;
-  } else if (p.parentKey) {
-    const j = S.bodies.findIndex((o, jj) => jj !== i && o.key === p.parentKey);
+  } else if (p.parent) {
+    const j = S.bodies.findIndex((o, jj) => jj !== i && o.key === p.parent);
     if (j >= 0 && S.bodies[j].parent !== i) b.parent = j;
-    if (b.parent >= 0) b.a = p.a;
+    if (b.parent >= 0) b.a = d.a;
   }
 }
 
 function addBody(k) {
   if (S.bodies.length >= 4) return;
+  if (S.model === 'real') {
+    // the Sun first, then the next body whose parent is already there
+    const has = key => S.bodies.some(b => b.key === key);
+    const key = k || (has('sun') ? KEYS_REAL.find(q => !has(q) && has(BODIES[q].parent)) || KEYS_REAL.find(q => !has(q)) : 'sun');
+    S.bodies.push(bodyFromPreset(key)); linkReal();
+    openRows.add(S.bodies.length - 1);
+    renderBodies(); rebuild({ fit: true });
+    return;
+  }
   const key = k || (S.bodies.some(b => b.key === 'sun') ? 'custom' : 'sun');
   const root = S.bodies.findIndex(b => b.parent < 0);
   S.bodies.push(bodyFromPreset(key, { parent: root >= 0 ? root : 0 }));
   const nb = S.bodies.length - 1;
   openRows.add(nb);
   applyPreset(nb, key);
-  const b = S.bodies[nb], pk = BODY_PRESETS[key].parentKey;
+  const b = S.bodies[nb], pk = BODIES[key].parent;
   // preset orbit only fits around the natural parent; otherwise pick a fitting radius
   if (b.parent >= 0 && !(pk && S.bodies[b.parent].key === pk)) b.a = defaultOrbitRadius(sysList().slice(0, nb), b.parent, b.radius * 1e3) / 1e3;
   renderBodies(); rebuild({ fit: true });
@@ -184,12 +270,13 @@ function addBody(k) {
 // insert natural parent k between body i and its current parent
 function addParentFor(i, k) {
   if (S.bodies.length >= 4) return;
-  const child = S.bodies[i], P = BODY_PRESETS[k];
+  if (S.model === 'real') { S.bodies.push(bodyFromPreset(k)); linkReal(); renderBodies(); rebuild({ fit: true }); return; }
+  const child = S.bodies[i], P = BODIES[k];
   const nb = bodyFromPreset(k, { parent: child.parent });
-  if (nb.parent >= 0) nb.a = S.bodies[nb.parent].key === P.parentKey ? P.a : child.a;
+  if (nb.parent >= 0) nb.a = S.bodies[nb.parent].key === P.parent ? simpleData(k).a : child.a;
   S.bodies.push(nb);
   child.parent = S.bodies.length - 1;
-  child.a = BODY_PRESETS[child.key].a;
+  child.a = simpleData(child.key).a;
   renderBodies(); rebuild({ fit: true });
 }
 
@@ -197,7 +284,8 @@ function removeBody(i) {
   const gone = S.bodies[i];
   S.bodies.splice(i, 1);
   openRows.clear();
-  for (const b of S.bodies) {
+  if (S.model === 'real') linkReal();
+  else for (const b of S.bodies) {
     if (b.parent === i) b.parent = gone.parent > i ? gone.parent - 1 : gone.parent;
     else if (b.parent > i) b.parent--;
   }
@@ -244,9 +332,29 @@ function syncMission() {
   $('#m-t0').value = +M.t0.toFixed(4); $('#m-theta').value = +M.theta.toFixed(4); $('#m-dv').value = +M.dv.toFixed(2);
   $('#m-theta-r').value = M.theta; $('#m-dur').value = +M.duration.toFixed(2); $('#m-auto').checked = M.autoDur;
   $('#m-dur').disabled = M.autoDur;
+  if (S.model === 'real') {
+    const d = $('#m-date'); d.value = isoMinute(daysToUtc(M.t0)); d.setAttribute('aria-invalid', 'false');
+    $('#m-beta').value = +(M.beta || 0).toFixed(4);
+  }
   setSeg('#modeSeg', M.mode); setSeg('#sideSeg', String(M.side));
   $('#retWrap').hidden = M.mode !== 'free';
 }
+// date limits of the planet table
+$('#m-date').min = `${EPHEM_YEARS[0]}-01-01T00:00`; $('#m-date').max = `${EPHEM_YEARS[1]}-12-31T23:59`;
+function setDeparture(ms) {
+  const d = utcToDays(ms), ok = Number.isFinite(d) && inEphem(d);
+  $('#m-date').setAttribute('aria-invalid', ok ? 'false' : 'true');
+  if (!ok) { setStatus(_('err.dateRange', { from: EPHEM_YEARS[0], to: EPHEM_YEARS[1] })); return; }
+  S.M.t0 = d; setStatus('');
+  rebuild({ resetU: true, fit: true });
+}
+$('#m-date').addEventListener('change', e => setDeparture(Date.parse(e.target.value + 'Z')));
+$('#m-now').addEventListener('click', () => { setDeparture(Math.floor(Date.now() / 60000) * 60000); syncMission(); });
+$('#m-beta').addEventListener('input', e => {
+  const v = parseNum(e.target.value), bad = !Number.isFinite(v) || Math.abs(v) > 90;
+  e.target.setAttribute('aria-invalid', bad ? 'true' : 'false');
+  if (!bad) { S.M.beta = v; scheduleRebuild(); }
+});
 function setSeg(sel, v) { document.querySelectorAll(sel + ' button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === v ? 'true' : 'false')); }
 function setDvRange() {
   const c = guess && Number.isFinite(guess.dv) && guess.dv > 0 ? guess.dv : S.M.dv || 1000;
@@ -277,28 +385,43 @@ let rebuildQueued = false;
 function scheduleRebuild() { if (rebuildQueued) return; rebuildQueued = true; requestAnimationFrame(() => { rebuildQueued = false; rebuild({}); }); }
 
 // ===================== Build & simulate =====================
-function sysList() { return S.bodies.map(b => ({ name: b.name, mass: b.mass, radius: b.radius * 1e3, parent: b.parent, a: b.a * 1e3, phase: b.phase })); }
+function sysList() {
+  if (S.model === 'real') return S.bodies.map(b => { const d = BODIES[b.key]; return { name: b.name, mu: d.gm * 1e9, radius: d.radius * 1e3, parent: b.parent, a: 0, orb: d.orb }; });
+  return S.bodies.map(b => ({ name: b.name, mass: b.mass, radius: b.radius * 1e3, parent: b.parent, a: b.a * 1e3, phase: b.phase }));
+}
 
 function showErr(t) { const e = $('#err'); e.textContent = t || ''; e.hidden = !t; const m = $('#msg'); m.textContent = t ? _('err.fix', { e: t }) : ''; m.hidden = !t; }
 const errText = r => _(r.error, { ...r.params, name: (r.params && r.params.name) || _('body.default') });
+// Real model: the hierarchy is fixed, so name the body whose parent is missing instead of the generic error.
+function realErr() {
+  const seen = new Set();
+  for (const b of S.bodies) { if (seen.has(b.key)) return _('err.dup', { name: b.name }); seen.add(b.key); }
+  const roots = S.bodies.filter(b => b.parent < 0);
+  if (roots.length < 2) return '';
+  const b = roots.reduce((p, q) => depth(q.key) > depth(p.key) ? q : p);
+  return _('err.realParent', { name: b.name, parent: _('body.' + BODIES[b.key].parent) });
+}
 
+// mission plane at departure: the two-body views (A, B, rotating A–B) project onto it
+let PLANE = planeBasis([0, 0, 1]);
 function rebuild(o = {}) {
-  const s = buildSystem(sysList());
-  if (s.error) { showErr(errText(s)); sys = null; simR = null; C = null; updateResults(); return; }
+  const pre = S.model === 'real' ? realErr() : '';
+  const s = pre ? { error: true } : buildSystem(sysList());
+  if (s.error) { showErr(pre || errText(s)); sys = null; simR = null; C = null; updateResults(); return; }
   if (!(S.M.h0 >= 0)) { showErr(_('err.parkNeg')); return; }
   showErr('');
   sys = s;
   try { guess = hohmannGuess(sys, S.M); } catch (e) { guess = null; }
   if (S.M.autoDur) {
-    const k = S.M.mode === 'free' ? 2.4 : S.M.mode === 'capture' ? 1.3 : 1.5;
-    const tof = guess && Number.isFinite(guess.tof) ? guess.tof : 10 * DAY;
-    S.M.duration = clamp(tof * k / DAY, 0.2, 5000);
+    S.M.duration = autoDuration(guess, S.M.mode);
     $('#m-dur').value = +S.M.duration.toFixed(2);
   }
   simR = simulate(sys, S.M, { tol: 1e-10, hmaxDiv: 500, maxSteps: 120000 });
+  PLANE = planeBasis(simR.normal);
   if (o.resetU) { S.u = 0; S.ext = 0; }
   buildCache();
   if (o.fit) needFit = true;
+  $('#dateWarn').hidden = S.model !== 'real' || inEphem(S.M.t0);
   setDvRange(); updateResults(); renderTicks(); renderFrameSeg();
 }
 
@@ -309,6 +432,7 @@ function herm(i, f, out) {
   const h00 = 2 * f3 - 3 * f2 + 1, h10 = f3 - 2 * f2 + f, h01 = -2 * f3 + 3 * f2, h11 = f3 - f2;
   out[0] = h00 * r.x[i] + h10 * h * r.vx[i] + h01 * r.x[i + 1] + h11 * h * r.vx[i + 1];
   out[1] = h00 * r.y[i] + h10 * h * r.vy[i] + h01 * r.y[i + 1] + h11 * h * r.vy[i + 1];
+  out[2] = h00 * r.z[i] + h10 * h * r.vz[i] + h01 * r.z[i + 1] + h11 * h * r.vz[i + 1];
   return out;
 }
 function segAtTime(t) { // last i with t_i <= t, skipping zero-length segments forward
@@ -321,42 +445,43 @@ function segAtTime(t) { // last i with t_i <= t, skipping zero-length segments f
 }
 function posAtTime(t, out) {
   const i = segAtTime(t), h = simR.t[i + 1] - simR.t[i];
-  if (!(h > 0)) { out[0] = simR.x[i + 1]; out[1] = simR.y[i + 1]; return out; }
+  if (!(h > 0)) { out[0] = simR.x[i + 1]; out[1] = simR.y[i + 1]; out[2] = simR.z[i + 1]; return out; }
   return herm(i, clamp((t - simR.t[i]) / h, 0, 1), out);
 }
 
 let SUB = Q.sub;
 function buildCache() {
   const r = simR, n = r.t.length;
-  const px = [], py = [], pt = [], segStart = new Int32Array(n);
-  const o = [0, 0];
+  const px = [], py = [], pz = [], pt = [], segStart = new Int32Array(n);
+  const o = [0, 0, 0];
   for (let i = 0; i < n - 1; i++) {
     segStart[i] = px.length;
     const h = r.t[i + 1] - r.t[i];
     if (!(h > 0)) continue;
-    for (let k = 0; k < SUB; k++) { herm(i, k / SUB, o); px.push(o[0]); py.push(o[1]); pt.push(r.t[i] + h * k / SUB); }
+    for (let k = 0; k < SUB; k++) { herm(i, k / SUB, o); px.push(o[0]); py.push(o[1]); pz.push(o[2]); pt.push(r.t[i] + h * k / SUB); }
   }
-  segStart[n - 1] = px.length; px.push(r.x[n - 1]); py.push(r.y[n - 1]); pt.push(r.t[n - 1]);
+  segStart[n - 1] = px.length; px.push(r.x[n - 1]); py.push(r.y[n - 1]); pz.push(r.z[n - 1]); pt.push(r.t[n - 1]);
   const T = r.t[n - 1] || 1;
-  // captured: keep orbiting analytically after the integrated span
+  // captured: keep orbiting analytically after the integrated span (circle about the orbit normal ax)
   let orbit = null;
   if (r.captured && r.impact < 0) {
     states(sys, S.M.t0 * DAY + T, SP, SV);
-    const rx = r.x[n - 1] - SP[2], ry = r.y[n - 1] - SP[3], vx = r.vx[n - 1] - SV[2], vy = r.vy[n - 1] - SV[3];
-    const rr = Math.hypot(rx, ry), w = (rx * vy - ry * vx) / (rr * rr);
-    orbit = { rx, ry, w, r: rr, P: 2 * Math.PI / Math.abs(w) };
+    const rv = [r.x[n - 1] - SP[3], r.y[n - 1] - SP[4], r.z[n - 1] - SP[5]], vv = [r.vx[n - 1] - SV[3], r.vy[n - 1] - SV[4], r.vz[n - 1] - SV[5]];
+    const h = [rv[1] * vv[2] - rv[2] * vv[1], rv[2] * vv[0] - rv[0] * vv[2], rv[0] * vv[1] - rv[1] * vv[0]];
+    const hl = Math.hypot(...h), rr = Math.hypot(...rv), w = hl / (rr * rr);
+    orbit = { r0: rv, ax: h.map(x => x / hl), w, r: rr, P: 2 * Math.PI / w };
   }
   const cum = new Float64Array(n);
-  C = { orbit, px: Float64Array.from(px), py: Float64Array.from(py), pt: Float64Array.from(pt), segStart, cum, T, n, fx: null, fy: null, frameKey: '' };
+  C = { orbit, px: Float64Array.from(px), py: Float64Array.from(py), pz: Float64Array.from(pz), pt: Float64Array.from(pt), segStart, cum, T, n, fx: null, fy: null, frameKey: '' };
   rebuildCum();
   C.markers = r.events.filter(e => e.type !== 'impact' || true).map(e => {
-    const p = posAtTime(e.t, [0, 0]);
+    const p = posAtTime(e.t, [0, 0, 0]);
     let txt = '';
     if (e.type === 'burn') txt = _(e.body === 0 ? 'mk.dv' : 'mk.capDv', { v: nf0.format(e.dv) });
     else if (e.type === 'peri') txt = (e.body === 1 ? Peri(1) : _('ev.returnPeri', { peri: peri(0) })) + ' ' + nf1.format(e.alt / 1e3) + ' km' + (e.body === 0 && e.alt < 150e3 ? _('mk.entry') : '');
     else txt = _('mk.impact', { name: S.bodies[e.body].name });
     const label = e.type === 'peri' ? (e.body === 1 ? S.bodies[1].name + ' ' + peri(1) : _('ev.returnPeri', { peri: peri(0) })) : _(e.label);
-    return { ...e, label, x: p[0], y: p[1], txt };
+    return { ...e, label, x: p[0], y: p[1], z: p[2], txt };
   });
 }
 function rebuildCum() {
@@ -377,23 +502,35 @@ function tToU(t) {
   const f = h > 0 ? clamp((t - simR.t[i]) / h, 0, 1) : 1;
   return C.cum[i] + f * (C.cum[i + 1] - C.cum[i]);
 }
+function uToT(u) { const [i, f] = uToSeg(u), h = simR.t[i + 1] - simR.t[i]; return simR.t[i] + (h > 0 ? f * h : 0); }
 
 // ===================== Frames =====================
-const SP = new Float64Array(8), SV = new Float64Array(8);
-const FP = { cx: 0, cy: 0, c: 1, s: 0, vx: 0, vy: 0 };
+// 3D -> view plane. Inertial: the ecliptic (x, y). A- and B-centred: the mission plane at departure
+// (PLANE: for Earth–Moon the Moon's orbit plane, so its 5° tilt does not skew the view).
+// Rotating A–B: the same plane, x axis turning with the A→B direction.
+const SP = new Float64Array(12), SV = new Float64Array(12);
+const EX = [1, 0, 0], EY = [0, 1, 0], RX = [1, 0, 0], RY = [0, 1, 0];
+const FP = { cx: 0, cy: 0, cz: 0, X: EX, Y: EY };
 function frameAt(t) { // t: sim time (relative to t0)
   states(sys, S.M.t0 * DAY + t, SP, SV);
   const f = S.frame;
-  if (f === 'inertial') { FP.cx = 0; FP.cy = 0; FP.c = 1; FP.s = 0; }
-  else if (f === 'A' || f === 'B') { const k = f === 'A' ? 0 : 1; FP.cx = SP[2 * k]; FP.cy = SP[2 * k + 1]; FP.c = 1; FP.s = 0; }
+  if (f === 'inertial') { FP.cx = 0; FP.cy = 0; FP.cz = 0; FP.X = EX; FP.Y = EY; }
+  else if (f === 'A' || f === 'B') { const k = f === 'A' ? 0 : 3; FP.cx = SP[k]; FP.cy = SP[k + 1]; FP.cz = SP[k + 2]; FP.X = PLANE.x; FP.Y = PLANE.y; }
   else {
-    const mA = sys.m[0], mB = sys.m[1];
-    FP.cx = (mA * SP[0] + mB * SP[2]) / (mA + mB); FP.cy = (mA * SP[1] + mB * SP[3]) / (mA + mB);
-    const ang = Math.atan2(SP[3] - SP[1], SP[2] - SP[0]); FP.c = Math.cos(ang); FP.s = Math.sin(ang);
+    const mA = sys.m[0], mB = sys.m[1], n = PLANE.n;
+    FP.cx = (mA * SP[0] + mB * SP[3]) / (mA + mB); FP.cy = (mA * SP[1] + mB * SP[4]) / (mA + mB); FP.cz = (mA * SP[2] + mB * SP[5]) / (mA + mB);
+    let ux = SP[3] - SP[0], uy = SP[4] - SP[1], uz = SP[5] - SP[2];
+    const d = ux * n[0] + uy * n[1] + uz * n[2]; ux -= d * n[0]; uy -= d * n[1]; uz -= d * n[2];
+    const l = Math.hypot(ux, uy, uz); RX[0] = ux / l; RX[1] = uy / l; RX[2] = uz / l;
+    RY[0] = n[1] * RX[2] - n[2] * RX[1]; RY[1] = n[2] * RX[0] - n[0] * RX[2]; RY[2] = n[0] * RX[1] - n[1] * RX[0];
+    FP.X = RX; FP.Y = RY;
   }
   return FP;
 }
-function tf(x, y, out) { const dx = x - FP.cx, dy = y - FP.cy; out[0] = dx * FP.c + dy * FP.s; out[1] = -dx * FP.s + dy * FP.c; return out; }
+function tf(x, y, z, out) {
+  const dx = x - FP.cx, dy = y - FP.cy, dz = z - FP.cz, X = FP.X, Y = FP.Y;
+  out[0] = dx * X[0] + dy * X[1] + dz * X[2]; out[1] = dx * Y[0] + dy * Y[1] + dz * Y[2]; return out;
+}
 
 function frameCache() {
   const key = S.frame + '|' + C.pt.length;
@@ -401,16 +538,31 @@ function frameCache() {
   C.frameKey = key;
   const n = C.pt.length; C.fx = new Float64Array(n); C.fy = new Float64Array(n);
   const o = [0, 0];
-  for (let i = 0; i < n; i++) { frameAt(C.pt[i]); tf(C.px[i], C.py[i], o); C.fx[i] = o[0]; C.fy[i] = o[1]; }
+  for (let i = 0; i < n; i++) { frameAt(C.pt[i]); tf(C.px[i], C.py[i], C.pz[i], o); C.fx[i] = o[0]; C.fy[i] = o[1]; }
   const K = Q.trackK, NB = sys.N; C.tracks = [];
   for (let b = 0; b < NB; b++) C.tracks.push(new Float64Array(2 * (K + 1)));
   for (let k = 0; k <= K; k++) {
     const t = C.T * k / K; frameAt(t);
-    for (let b = 0; b < NB; b++) { tf(SP[2 * b], SP[2 * b + 1], o); C.tracks[b][2 * k] = o[0]; C.tracks[b][2 * k + 1] = o[1]; }
+    for (let b = 0; b < NB; b++) { tf(SP[3 * b], SP[3 * b + 1], SP[3 * b + 2], o); C.tracks[b][2 * k] = o[0]; C.tracks[b][2 * k + 1] = o[1]; }
   }
   for (const m of C.markers) {
-    frameAt(m.t); tf(m.x, m.y, o); m.fx = o[0]; m.fy = o[1];
-    const bb = m.body || 0; tf(SP[2 * bb], SP[2 * bb + 1], o); m.bfx = o[0]; m.bfy = o[1];
+    frameAt(m.t); tf(m.x, m.y, m.z, o); m.fx = o[0]; m.fy = o[1];
+    const bb = m.body || 0; tf(SP[3 * bb], SP[3 * bb + 1], SP[3 * bb + 2], o); m.bfx = o[0]; m.bfy = o[1];
+  }
+  // real model, non-rotating views: each orbit's ellipse (relative to its parent) in the view plane
+  C.ell = [];
+  if (sys.real && S.frame !== 'rot') {
+    frameAt(0);
+    const X = FP.X, Y = FP.Y, K2 = Q.ellK;
+    for (let b = 0; b < NB; b++) {
+      if (!sys.orb[b]) { C.ell.push(null); continue; }
+      const p = orbitPath(sys, b, S.M.t0 * DAY, K2), e = new Float64Array(2 * K2);
+      for (let k = 0; k < K2; k++) {
+        const x = p[3 * k], y = p[3 * k + 1], z = p[3 * k + 2];
+        e[2 * k] = x * X[0] + y * X[1] + z * X[2]; e[2 * k + 1] = x * Y[0] + y * Y[1] + z * Y[2];
+      }
+      C.ell.push(e);
+    }
   }
 }
 
@@ -566,7 +718,8 @@ const scrub = $('#scrub');
 scrub.addEventListener('input', () => { S.u = +scrub.value / 10000; S.ext = 0; });
 scrub.addEventListener('pointerdown', () => { scrubbing = true; });
 window.addEventListener('pointerup', () => { scrubbing = false; });
-$('#speed').addEventListener('change', e => { S.speed = +e.target.value; });
+// "r<seconds>" values play in real time (simulated seconds per second); the others scale the whole mission
+$('#speed').addEventListener('change', e => { const v = e.target.value; S.rate = v[0] === 'r' ? +v.slice(1) : 0; if (!S.rate) S.speed = +v; });
 $('#focus').addEventListener('change', e => { S.focus = e.target.checked; rebuildCum(); renderTicks(); });
 document.addEventListener('keydown', e => {
   if (e.code === 'Space' && !/INPUT|SELECT|TEXTAREA|BUTTON|SUMMARY/.test(document.activeElement.tagName)) { e.preventDefault(); $('#play').click(); }
@@ -594,12 +747,16 @@ function updateResults() {
   const rows = [];
   const dv2 = r.captured ? r.captured.dv : 0;
   const vdep = r.vc + M.dv, c3 = (vdep * vdep - 2 * sys.mu[0] / r.r0) / 1e6;
+  const real = S.model === 'real';
+  if (real) rows.push([_('res.depDate'), esc(fmtDate(dateAt(0))), '']);
   rows.push([_('res.dv'), nf1.format(M.dv), 'm/s']);
+  if (real && M.beta) rows.push([_('res.beta'), nf2.format(M.beta), '°']);
   if (M.mode === 'capture') rows.push([_('res.capDv'), r.captured ? nf1.format(dv2) : '—', 'm/s']);
   if (M.mode === 'capture') rows.push([_('res.totDv'), nf1.format(M.dv + dv2), 'm/s']);
   rows.push([_('res.c3', { name: A }), nf2.format(c3), 'km²/s²']);
   if (r.bPeri) {
     rows.push([_('res.arrival', { name: B }), fmtDur(r.bPeri.t), '']);
+    if (real) rows.push([_('res.arrDate', { name: B }), esc(fmtDate(dateAt(r.bPeri.t))), '']);
     rows.push([_('res.periAlt', { peri: Peri(1) }), nf1.format((r.bPeri.d - sys.R[1]) / 1e3), 'km · ' + _(r.bPeri.dir > 0 ? 'res.pro' : 'res.retro')]);
     const vinf2 = r.bPeri.v * r.bPeri.v - 2 * sys.mu[1] / r.bPeri.d;
     rows.push([_('res.periSpeed', { peri: Peri(1) }), nf3.format(r.bPeri.v / 1e3), 'km/s']);
@@ -620,9 +777,10 @@ $('#hohmann').addEventListener('click', () => {
   if (!sys) return;
   const g = hohmannGuess(sys, S.M);
   if (!Number.isFinite(g.dv)) { setStatus(_('st.noHohmann')); return; }
-  Object.assign(S.M, { theta: g.theta, dv: g.dv, t0: g.t0 });
+  Object.assign(S.M, { theta: g.theta, dv: g.dv, t0: g.t0, beta: 0 });
   syncMission(); rebuild({ resetU: true, fit: true });
-  setStatus(_('st.hohmann', { dv: nf1.format(g.dv), days: nf2.format(g.tof / DAY) }) + (g.case === 'sibling' ? _('st.hohmannT0', { t0: nf1.format(g.t0) }) : '') + _('st.hohmannTail'));
+  const when = g.case !== 'sibling' ? '' : S.model === 'real' ? _('st.hohmannDate', { date: fmtDate(daysToUtc(g.t0)) }) : _('st.hohmannT0', { t0: nf1.format(g.t0) });
+  setStatus(_('st.hohmann', { dv: nf1.format(g.dv), days: nf2.format(g.tof / DAY) }) + when + _('st.hohmannTail'));
 });
 $('#solve').addEventListener('click', solve);
 // Solver runs in a Web Worker so the animation never stalls; falls back to the main thread.
@@ -661,16 +819,16 @@ async function solve() {
   btn.textContent = _('ui.stop'); btn.classList.add('busy');
   const s2 = buildSystem(sysList());
   const g = hohmannGuess(s2, S.M);
-  const M0 = { ...S.M, theta: g.theta, dv: g.dv, t0: g.t0 };
-  if (M0.autoDur) { const k = M0.mode === 'free' ? 2.4 : M0.mode === 'capture' ? 1.3 : 1.5; M0.duration = clamp(g.tof * k / DAY, 0.2, 5000); }
+  const M0 = { ...S.M, theta: g.theta, dv: g.dv, t0: g.t0, beta: 0 };
+  if (M0.autoDur) M0.duration = autoDuration(g, M0.mode);
   const varyT0 = g.case === 'sibling';
   const t1 = performance.now();
   setStatus(_('st.solving'));
   try {
-    const opt = { varyT0, t0Grid: g.nested ? [-12, -9, -6, -3, 0, 3, 6, 9, 12] : [-4, -2, 0, 2, 4] };
+    const opt = { varyT0, varyBeta: varyT0, t0Grid: g.nested ? [-12, -9, -6, -3, 0, 3, 6, 9, 12] : [-4, -2, 0, 2, 4] };
     const prog = n => setStatus(_('st.progress', { n: nf0.format(n) }));
     const r = await runSolver(sysList(), M0, opt, prog, s2);
-    Object.assign(S.M, { theta: r.theta, dv: r.dv, t0: r.t0 });
+    Object.assign(S.M, { theta: r.theta, dv: r.dv, t0: r.t0, beta: r.beta != null ? r.beta : M0.beta });
     syncMission(); rebuild({ resetU: true, fit: true });
     if (!reduceMotion) { S.playing = true; setPlayIcon(); }
     const secs = (performance.now() - t1) / 1000;
@@ -684,11 +842,14 @@ async function solve() {
 }
 
 // ===================== Render loop =====================
-const SPo = new Float64Array(8), SVo = new Float64Array(8);
+const SPo = new Float64Array(12), SVo = new Float64Array(12);
 function orbitPos(t, out) {
   states(sys, S.M.t0 * DAY + t, SPo, SVo);
-  const o = C.orbit, a = o.w * (t - C.T), c = Math.cos(a), s = Math.sin(a);
-  out[0] = SPo[2] + o.rx * c - o.ry * s; out[1] = SPo[3] + o.rx * s + o.ry * c; return out;
+  // rotate r0 about the orbit normal k (r0 ⟂ k)
+  const o = C.orbit, a = o.w * (t - C.T), c = Math.cos(a), s = Math.sin(a), r = o.r0, k = o.ax;
+  out[0] = SPo[3] + r[0] * c + (k[1] * r[2] - k[2] * r[1]) * s;
+  out[1] = SPo[4] + r[1] * c + (k[2] * r[0] - k[0] * r[2]) * s;
+  out[2] = SPo[5] + r[2] * c + (k[0] * r[1] - k[1] * r[0]) * s; return out;
 }
 let last = performance.now(), hold = 0, hudTick = 0, hudLast = 0, frameAvg = 1 / 60, slowFrames = 0, lowQ = false;
 const tmp = [0, 0], tmp2 = [0, 0];
@@ -751,47 +912,52 @@ function draw(now) {
   if (S.playing && !scrubbing) {
     if (S.u >= 1) {
       if (S.loop) { hold += dt; if (hold > 1.6) { S.u = 0; S.ext = 0; hold = 0; } }
-      else if (C.orbit) S.ext += dt * S.speed * C.orbit.P / 8;
+      else if (C.orbit) S.ext += dt * (S.rate || S.speed * C.orbit.P / 8);
       else { S.playing = false; setPlayIcon(); }
-    } else S.u = Math.min(1, S.u + dt * S.speed / 30);
+    } else if (S.rate) { const tn = uToT(S.u) + dt * S.rate; S.u = tn >= C.T ? 1 : Math.max(S.u, tToU(tn)); }
+    else S.u = Math.min(1, S.u + dt * S.speed / 30);
   }
   if (S.u < 1) S.ext = 0;
   const ext = S.ext > 0 && C.orbit;
   const [si, sf] = uToSeg(S.u);
   const segH = simR.t[si + 1] - simR.t[si];
   const tNow = ext ? C.T + S.ext : simR.t[si] + (segH > 0 ? sf * segH : 0);
-  const craft = ext ? orbitPos(tNow, [0, 0]) : segH > 0 ? herm(si, sf, [0, 0]) : [simR.x[si + 1], simR.y[si + 1]];
+  const craft = ext ? orbitPos(tNow, [0, 0, 0]) : segH > 0 ? herm(si, sf, [0, 0, 0]) : [simR.x[si + 1], simR.y[si + 1], simR.z[si + 1]];
   const pathIdx = ext ? C.fx.length - 1 : Math.min(C.fx.length - 1, C.segStart[si] + Math.floor(sf * (segH > 0 ? SUB : 0)));
 
   // body states & frame at current time
   frameAt(tNow);
   const N = sys.N, bpos = [];
-  for (let b = 0; b < N; b++) { tf(SP[2 * b], SP[2 * b + 1], tmp); bpos.push([tmp[0], tmp[1]]); }
-  const cpos = tf(craft[0], craft[1], [0, 0]);
+  for (let b = 0; b < N; b++) { tf(SP[3 * b], SP[3 * b + 1], SP[3 * b + 2], tmp); bpos.push([tmp[0], tmp[1]]); }
+  const cpos = tf(craft[0], craft[1], craft[2], [0, 0]);
   // velocity direction in frame (finite diff)
   const dtv = ext ? C.orbit.P / 300 : Math.max(1, (segH > 0 ? segH : 60) * 0.02);
   const t2 = ext ? tNow + dtv : Math.min(C.T, tNow + dtv);
-  const craft2 = ext ? orbitPos(t2, [0, 0]) : posAtTime(t2, [0, 0]);
-  frameAt(t2); const cpos2 = tf(craft2[0], craft2[1], [0, 0]);
+  const craft2 = ext ? orbitPos(t2, [0, 0, 0]) : posAtTime(t2, [0, 0, 0]);
+  frameAt(t2); const cpos2 = tf(craft2[0], craft2[1], craft2[2], [0, 0]);
   frameAt(tNow);
 
   if (S.follow === 'craft') { cam.cx = cpos[0]; cam.cy = cpos[1]; }
   else if (S.follow === 'A') { cam.cx = bpos[0][0]; cam.cy = bpos[0][1]; }
   else if (S.follow === 'B') { cam.cx = bpos[1][0]; cam.cy = bpos[1][1]; }
 
-  // orbit circles (non-rotating frames)
+  // orbits (non-rotating frames): circles in the simplified model, projected ellipses in the real one
   ctx.lineWidth = 1;
   if (S.frame !== 'rot') {
     const diag = Math.hypot(W, H);
     for (let b = 0; b < N; b++) {
       const p = sys.parent[b]; if (p < 0) continue;
-      const r = Math.hypot(bpos[b][0] - bpos[p][0], bpos[b][1] - bpos[p][1]) * cam.scale;
+      const ell = C.ell[b];
+      const r = (ell ? sys.a[b] : Math.hypot(bpos[b][0] - bpos[p][0], bpos[b][1] - bpos[p][1])) * cam.scale;
       if (r < 4 || r > 1e5) continue;
-      const cx0 = sx(bpos[p][0]), cy0 = sy(bpos[p][1]), dc = Math.hypot(cx0 - W / 2, cy0 - H / 2);
-      if (dc - r > diag / 2 || r - dc > diag / 2) continue; // circle entirely off-screen
+      const cx0 = sx(bpos[p][0]), cy0 = sy(bpos[p][1]), dc = Math.hypot(cx0 - W / 2, cy0 - H / 2), ro = ell ? r * 1.3 : r;
+      if (dc - ro > diag / 2 || (ell ? r * 0.7 : r) - dc > diag / 2) continue; // entirely off-screen
       ctx.setLineDash(r < 1500 ? [3, 5] : []);
       ctx.strokeStyle = hexA(S.bodies[b].color, r < 1500 ? 0.2 : 0.12);
-      ctx.beginPath(); ctx.arc(cx0, cy0, r, 0, 6.2832); ctx.stroke();
+      ctx.beginPath();
+      if (ell) { for (let k = 0; k < ell.length; k += 2) { const x = cx0 + ell[k] * cam.scale, y = cy0 - ell[k + 1] * cam.scale; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.closePath(); }
+      else ctx.arc(cx0, cy0, r, 0, 6.2832);
+      ctx.stroke();
     }
     ctx.setLineDash([]);
   }
@@ -827,8 +993,17 @@ function draw(now) {
   }
 
   if (ext) {
+    // the parking orbit around B, projected (an ellipse when its plane is tilted to the view)
     const rr = C.orbit.r * cam.scale;
-    if (rr > 2 && rr < 1e5) { ctx.strokeStyle = hexA(COL.traj, 0.55); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(sx(bpos[1][0]), sy(bpos[1][1]), rr, 0, 6.2832); ctx.stroke(); }
+    if (rr > 2 && rr < 1e5) {
+      const o = C.orbit, r = o.r0, k = o.ax, q = [k[1] * r[2] - k[2] * r[1], k[2] * r[0] - k[0] * r[2], k[0] * r[1] - k[1] * r[0]];
+      const X = FP.X, Y = FP.Y, ux = r[0] * X[0] + r[1] * X[1] + r[2] * X[2], uy = r[0] * Y[0] + r[1] * Y[1] + r[2] * Y[2];
+      const vx = q[0] * X[0] + q[1] * X[1] + q[2] * X[2], vy = q[0] * Y[0] + q[1] * Y[1] + q[2] * Y[2];
+      const cx0 = sx(bpos[1][0]), cy0 = sy(bpos[1][1]), s = cam.scale;
+      ctx.strokeStyle = hexA(COL.traj, 0.55); ctx.lineWidth = 1.4; ctx.beginPath();
+      for (let j = 0; j <= 64; j++) { const a = j * Math.PI / 32, c = Math.cos(a), sn = Math.sin(a), x = cx0 + (ux * c + vx * sn) * s, y = cy0 - (uy * c + vy * sn) * s; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.stroke();
+    }
   }
   // markers
   ctx.font = MARK_FONT;
@@ -918,20 +1093,25 @@ function draw(now) {
   // HUD text
   if (Q.hudMs ? now - hudLast >= Q.hudMs : (hudTick++ & 3) === 0) {
     hudLast = now;
-    const absX = craft[0], absY = craft[1];
+    const absX = craft[0], absY = craft[1], absZ = craft[2];
     states(sys, S.M.t0 * DAY + tNow, SP, SV);
-    const dA = Math.hypot(absX - SP[0], absY - SP[1]), dB = Math.hypot(absX - SP[2], absY - SP[3]);
+    const dA = Math.hypot(absX - SP[0], absY - SP[1], absZ - SP[2]), dB = Math.hypot(absX - SP[3], absY - SP[4], absZ - SP[5]);
     const i2 = segAtTime(tNow), h2 = simR.t[i2 + 1] - simR.t[i2], f2 = h2 > 0 ? clamp((tNow - simR.t[i2]) / h2, 0, 1) : 1;
-    let vx = simR.vx[i2] + (simR.vx[i2 + 1] - simR.vx[i2]) * f2, vy = simR.vy[i2] + (simR.vy[i2 + 1] - simR.vy[i2]) * f2;
+    const lerp = a => a[i2] + (a[i2 + 1] - a[i2]) * f2;
+    let vx = lerp(simR.vx), vy = lerp(simR.vy), vz = lerp(simR.vz);
     const near = dB - sys.R[1] < dA - sys.R[0] ? 1 : 0;
-    if (ext) { const rx = absX - SP[2], ry = absY - SP[3]; vx = SV[2] - C.orbit.w * ry; vy = SV[3] + C.orbit.w * rx; }
+    if (ext) { // circular orbit about B: v = V_B + w·(k × r)
+      const rx = absX - SP[3], ry = absY - SP[4], rz = absZ - SP[5], k = C.orbit.ax, w = C.orbit.w;
+      vx = SV[3] + w * (k[1] * rz - k[2] * ry); vy = SV[4] + w * (k[2] * rx - k[0] * rz); vz = SV[5] + w * (k[0] * ry - k[1] * rx);
+    }
     const A = S.bodies[0].name, B = S.bodies[1].name;
     setT('#r-t', _('hud.tplus', { t: fmtDur(tNow, true) }));
     setT('#tplus', _('hud.tplus', { t: fmtDur(tNow, true) }));
+    if (S.model === 'real') setT('#r-date', fmtDate(dateAt(tNow)));
     setT('#r-l1', _('hud.alt', { name: A })); setT('#r-v1', fmtDist(Math.max(0, dA - sys.R[0])));
     setT('#r-l2', _('hud.alt', { name: B })); setT('#r-v2', fmtDist(Math.max(0, dB - sys.R[1])));
     setT('#r-l3', _('hud.rel', { name: near ? B : A }));
-    setT('#r-v3', fmtSpeed(Math.hypot(vx - SV[2 * near], vy - SV[2 * near + 1])));
+    setT('#r-v3', fmtSpeed(Math.hypot(vx - SV[3 * near], vy - SV[3 * near + 1], vz - SV[3 * near + 2])));
     setT('#tend', '/ ' + fmtDur(C.T) + (ext ? _('hud.lap', { n: 1 + Math.floor(S.ext / C.orbit.P) }) : ''));
     if (!scrubbing) scrub.value = Math.round(S.u * 10000);
   }
@@ -1108,8 +1288,11 @@ $('#perfX').addEventListener('click', () => { $('#perfTip').hidden = true; });
 
 // ===================== Init =====================
 applyI18n();
-$('#scenario').innerHTML = SCENARIOS.map(s => `<option value="${s.id}">${esc(_('sc.' + s.id + '.name'))}</option>`).join('');
-$('#scenario').addEventListener('change', e => loadScenario(e.target.value));
+// scenarios grouped by model; the hidden empty option stands for a setup changed by switching the model
+const scGroup = (m, key) => `<optgroup label="${esc(_(key))}">${SCENARIOS.filter(s => s.model === m).map(s => `<option value="${s.id}">${esc(_('sc.' + s.id + '.name'))}</option>`).join('')}</optgroup>`;
+$('#scenario').innerHTML = `<option value="" hidden>${esc(_('sc.custom.name'))}</option>` + scGroup('simple', 'sc.group.simple') + scGroup('real', 'sc.group.real');
+$('#scenario').addEventListener('change', e => { if (e.target.value) loadScenario(e.target.value); });
+$('#dateWarn').textContent = _('err.dateRange', { from: EPHEM_YEARS[0], to: EPHEM_YEARS[1] });
 const start = startupMode(LS);
 setMode(start.mode, false);
 loadScenario('em_free');

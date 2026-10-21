@@ -53,6 +53,7 @@
     <div class="hud-bot" id="hudBot">
       <div class="glass readout" id="readout">
         <div class="big" id="r-t" data-i18n="ui.tplusInit"></div>
+        <div class="date" id="r-date" hidden></div>
         <span class="lbl" id="r-l1"></span><b id="r-v1">—</b>
         <span class="lbl" id="r-l2"></span><b id="r-v2">—</b>
         <span class="lbl" id="r-l3"></span><b id="r-v3">—</b>
@@ -63,7 +64,12 @@
         <div class="scrub"><input type="range" id="scrub" min="0" max="10000" value="0" data-i18n-aria-label="ui.scrub"><div class="ticks" id="ticks"></div></div>
         <div class="tl-opts">
           <select id="speed" data-i18n-aria-label="ui.speed">
-            <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
+            <optgroup data-i18n-label="speed.rel">
+              <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
+            </optgroup>
+            <optgroup data-i18n-label="speed.real">
+              <option value="r3600" data-i18n="speed.1h"></option><option value="r21600" data-i18n="speed.6h"></option><option value="r86400" data-i18n="speed.1d"></option><option value="r864000" data-i18n="speed.10d"></option><option value="r2592000" data-i18n="speed.30d"></option>
+            </optgroup>
           </select>
           <label class="chk" data-i18n-title="ui.focusTip"><input type="checkbox" id="focus" checked><span data-i18n="ui.focus"></span></label>
           <label class="chk" data-i18n-title="ui.loopTip"><input type="checkbox" id="loop"><span data-i18n="ui.loop"></span></label>
@@ -76,8 +82,16 @@
     <section class="win" id="w-mission" data-win="mission" aria-labelledby="wt-mission" hidden>
       <header class="win-h"><h2 id="wt-mission" data-i18n="win.mission"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
       <div class="win-b">
+        <div class="seg full" id="modelSeg" role="group" data-i18n-aria-label="ui.model">
+          <button type="button" data-v="real" data-i18n="model.real" data-i18n-title="model.realTip"></button>
+          <button type="button" data-v="simple" data-i18n="model.simple" data-i18n-title="model.simpleTip"></button>
+        </div>
         <label class="field row-field"><span data-i18n="ui.scenario"></span><select id="scenario"></select></label>
         <p class="note" id="scNote"></p>
+        <div class="field" id="dateWrap" hidden><span id="lbl-date" data-i18n="ui.date"></span>
+          <div class="date-row"><input type="datetime-local" id="m-date" step="60" aria-labelledby="lbl-date"><button class="btn sm" type="button" id="m-now" data-i18n="ui.now" data-i18n-title="ui.nowTip"></button></div>
+          <small class="warn" id="dateWarn" hidden></small>
+        </div>
         <div class="field"><span data-i18n="ui.missionType"></span>
           <div class="seg full" id="modeSeg" role="group" data-i18n-aria-label="ui.missionType">
             <button type="button" data-v="flyby" data-i18n="ui.mode.flyby"></button>
@@ -108,7 +122,8 @@
               <small id="sideHint" data-i18n="ui.sideHint"></small>
             </div>
             <div class="grid2">
-              <label class="field"><span data-i18n="ui.t0"></span><input type="number" id="m-t0" step="any"></label>
+              <label class="field" id="t0Wrap"><span data-i18n="ui.t0"></span><input type="number" id="m-t0" step="any"></label>
+              <label class="field" id="betaWrap" hidden data-i18n-title="ui.betaTip"><span data-i18n="ui.beta"></span><input type="number" id="m-beta" step="any" min="-90" max="90"></label>
               <label class="field"><span data-i18n="ui.dur"></span><input type="number" id="m-dur" step="any" min="0.01"></label>
             </div>
             <label class="chk"><input type="checkbox" id="m-auto"><span data-i18n="ui.auto"></span></label>
@@ -152,6 +167,8 @@
       <div class="win-b model">
         <p data-i18n="ui.model1"></p>
         <p data-i18n="ui.model2"></p>
+        <p data-i18n="ui.model3"></p>
+        <p data-i18n="ui.model4"></p>
       </div>
     </section>
   </div>
@@ -175,6 +192,7 @@
 </div>
 <script src="js/i18n.js"></script>
 <script src="js/prefs.js"></script>
+<script src="js/bodies.js"></script>
 <script id="core" src="js/core.js"></script>
 <script src="js/app.js"></script>
 </body>
