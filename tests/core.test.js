@@ -158,6 +158,26 @@ for (const k of Object.keys(BODIES).filter(q => BODIES[q].orb)) {
   assert.deepStrictEqual(C.missionPlane(s, 0), [0, 0, 1]);
 }
 
+// 12b) Dated ephemeris check (known sky events, independent check in place of Horizons): at opposition (and at
+//      Venus's inferior conjunction) the planet and the Earth–Moon barycentre have equal heliocentric ecliptic longitudes
+{
+  const sy = realSys(['sun', 'earth', 'venus', 'mars', 'jupiter', 'saturn']), idx = k => ['sun', 'earth', 'venus', 'mars', 'jupiter', 'saturn'].indexOf(k);
+  const tAt = (y, mo, d, h) => C.utcToDays(Date.UTC(y, mo - 1, d, h)) * DAY;
+  const lon = (i, t) => { const st = relState(sy, i, t); return Math.atan2(st[1], st[0]) * DEG; };
+  const dLon = (k, t) => { let a = lon(idx(k), t) - lon(idx('earth'), t); a = ((a % 360) + 540) % 360 - 180; return Math.abs(a); };
+  for (const [k, y, mo, d, h, tol] of [
+    ['mars', 2025, 1, 16, 2, 0.2], ['venus', 2025, 3, 23, 1, 0.2], ['saturn', 2025, 9, 21, 4, 0.3],
+    ['jupiter', 2026, 1, 10, 8, 0.2], ['mars', 2027, 2, 19, 15, 0.2]])
+    assert.ok(dLon(k, tAt(y, mo, d, h)) < tol, `${k} ${y}-${mo}-${d}: heliocentric longitude equals Earth's within ${tol}° (${dLon(k, tAt(y, mo, d, h)).toFixed(3)}°)`);
+  // Earth–Moon barycentre perihelion falls on 2026-01-03 at 0.98330 ± 0.0001 AU
+  const AU = 149597870.7e3, ie = idx('earth');
+  let best = Infinity, tBest = 0;
+  for (let t = tAt(2026, 1, 1, 0); t < tAt(2026, 1, 7, 0); t += 600) { const dd = norm(relState(sy, ie, t)); if (dd < best) { best = dd; tBest = t; } }
+  const pd = new Date(C.daysToUtc(tBest / DAY));
+  assert.ok(pd.getUTCFullYear() === 2026 && pd.getUTCMonth() === 0 && pd.getUTCDate() === 3, `Earth perihelion on 2026-01-03 (${pd.toISOString()})`);
+  assert.ok(Math.abs(best / AU - 0.98330) < 1e-4, `Earth perihelion distance ${(best / AU).toFixed(5)} AU ≈ 0.98330`);
+}
+
 (async () => {
   // 3) Solver converges for capture mode
   const Mc = { ...M, mode: 'capture', hB: 100, theta: g.theta, dv: g.dv };
