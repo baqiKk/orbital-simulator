@@ -20,21 +20,22 @@ function buildSystem(list) {
     s.m[i] = b.mass; s.mu[i] = G * b.mass; s.R[i] = b.radius;
     s.parent[i] = b.parent; s.a[i] = b.a; s.ph[i] = (b.phase || 0) * Math.PI / 180;
     s.children.push([]);
-    if (!(b.mass > 0)) return { error: `${b.name || 'Cisim'}: kütle pozitif olmalı.` };
-    if (!(b.radius > 0)) return { error: `${b.name || 'Cisim'}: yarıçap pozitif olmalı.` };
+    // Errors are i18n keys (see js/i18n.js); the UI turns them into text.
+    if (!(b.mass > 0)) return { error: 'err.mass', params: { name: b.name } };
+    if (!(b.radius > 0)) return { error: 'err.radius', params: { name: b.name } };
   }
   const roots = [];
   for (let i = 0; i < N; i++) {
     const p = s.parent[i];
     if (p < 0) roots.push(i);
-    else if (p >= N || p === i) return { error: 'Geçersiz yörünge ebeveyni.' };
+    else if (p >= N || p === i) return { error: 'err.parent' };
     else s.children[p].push(i);
   }
-  if (roots.length !== 1) return { error: roots.length === 0 ? 'Bir cisim merkezde sabit olmalı ("Merkez" seçin).' : 'Yalnızca bir cisim merkezde olabilir; diğerleri bir cismin etrafında dönmeli.' };
+  if (roots.length !== 1) return { error: roots.length === 0 ? 'err.noRoot' : 'err.multiRoot' };
   s.root = roots[0];
   const q = [s.root];
   while (q.length) { const x = q.shift(); s.order.push(x); for (const c of s.children[x]) q.push(c); }
-  if (s.order.length !== N) return { error: 'Yörünge zinciri döngüsel; ebeveyn seçimlerini kontrol edin.' };
+  if (s.order.length !== N) return { error: 'err.cycle' };
   for (let k = N - 1; k >= 0; k--) {
     const x = s.order[k]; let M = s.m[x];
     for (const c of s.children[x]) M += s.Mf[c];
@@ -43,7 +44,7 @@ function buildSystem(list) {
   for (let i = 0; i < N; i++) {
     const p = s.parent[i];
     if (p < 0) { s.soi[i] = Infinity; continue; }
-    if (!(s.a[i] > s.R[i] + s.R[p])) return { error: `${list[i].name || 'Cisim'}: yörünge yarıçapı iki cismin yarıçap toplamından büyük olmalı.` };
+    if (!(s.a[i] > s.R[i] + s.R[p])) return { error: 'err.orbit', params: { name: list[i].name } };
     s.n[i] = Math.sqrt(G * (s.m[p] + s.Mf[i]) / Math.pow(s.a[i], 3));
     s.soi[i] = s.a[i] * Math.pow(s.Mf[i] / s.m[p], 0.4);
   }
@@ -142,7 +143,7 @@ function simulate(s, M, opts = {}) {
   const out = { t: [], x: [], y: [], vx: [], vy: [], events: [], impact: -1, ok: true };
   const push = (tt, yy) => { out.t.push(tt); out.x.push(yy[0]); out.y.push(yy[1]); out.vx.push(yy[2]); out.vy.push(yy[3]); };
   if (record) push(0, y);
-  out.events.push({ type: 'burn', t: 0, dv: M.dv, body: 0, label: 'Kalkış yanması' });
+  out.events.push({ type: 'burn', t: 0, dv: M.dv, body: 0, label: 'ev.depart' });
   // track closest approaches
   const dmin = new Float64Array(s.N).fill(Infinity), tmin = new Float64Array(s.N);
   let hzMin = 1, stopNow = false;
@@ -202,14 +203,14 @@ function simulate(s, M, opts = {}) {
           states(s, t0 + te, P, V);
           const hz = (ym[0] - P[2]) * (ym[3] - V[3]) - (ym[1] - P[3]) * (ym[2] - V[2]);
           bPeri = { t: te, d: de, dir: hz >= 0 ? 1 : -1, v: Math.hypot(ym[2] - V[2], ym[3] - V[3]) };
-          out.events.push({ type: 'peri', body: 1, t: te, d: de, alt: de - s.R[1], label: 'Hedef periapsis' });
+          out.events.push({ type: 'peri', body: 1, t: te, d: de, alt: de - s.R[1], label: 'ev.targetPeri' });
           if (M.mode === 'capture' && !fast && !captured) {
             states(s, t0 + te, P, V);
             const rvx = ym[2] - V[2], rvy = ym[3] - V[3], vrel = Math.hypot(rvx, rvy), vcirc = Math.sqrt(s.mu[1] / de);
             const ny = Float64Array.from(ym);
             ny[2] = V[2] + rvx / vrel * vcirc; ny[3] = V[3] + rvy / vrel * vcirc;
             captured = { t: te, dv: vrel - vcirc, d: de };
-            out.events.push({ type: 'burn', body: 1, t: te, dv: vrel - vcirc, label: 'Yörüngeye giriş yanması' });
+            out.events.push({ type: 'burn', body: 1, t: te, dv: vrel - vcirc, label: 'ev.capture' });
             if (record) { push(te, ym); push(te, ny); }
             y = ny; t = te;
             const Pc = 2 * Math.PI * Math.sqrt(de * de * de / s.mu[1]);
@@ -222,7 +223,7 @@ function simulate(s, M, opts = {}) {
         } else if (i === 0 && bPeri && !aRet && !captured && te > bPeri.t) {
           aRet = { t: te, d: de };
           if (de < dAafterB) dAafterB = de;
-          out.events.push({ type: 'peri', body: 0, t: te, d: de, alt: de - s.R[0], label: 'Dönüş perigee' });
+          out.events.push({ type: 'peri', body: 0, t: te, d: de, alt: de - s.R[0], label: 'ev.returnPeri' });
           if (!fast) { if (record) push(te, ym); y.set(ym); t = te; stopNow = true; break; }
         }
       }
@@ -232,7 +233,7 @@ function simulate(s, M, opts = {}) {
     if (eventHandled) continue;
     y.set(y1); t = tn;
     if (record) push(t, y);
-    if (hit >= 0) { out.impact = hit; out.events.push({ type: 'impact', body: hit, t, label: 'Çarpma' }); break; }
+    if (hit >= 0) { out.impact = hit; out.events.push({ type: 'impact', body: hit, t, label: 'ev.impact' }); break; }
     if (fast) {
       if (M.mode !== 'free' && bPeri && t > bPeri.t * 1.15) break;
       if (M.mode === 'free' && aRet) break;

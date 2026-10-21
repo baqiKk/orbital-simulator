@@ -1,41 +1,35 @@
 // ===================== Data =====================
 const BODY_PRESETS = {
-  sun:     { name: 'Güneş',   mass: 1.98847e30, radius: 695700,  parentKey: null,      a: 0,         color: '#ffd27a' },
-  mercury: { name: 'Merkür',  mass: 3.3011e23,  radius: 2439.7,  parentKey: 'sun',     a: 57909050,  color: '#a9a49c' },
-  venus:   { name: 'Venüs',   mass: 4.8675e24,  radius: 6051.8,  parentKey: 'sun',     a: 108210000, color: '#e8c98f' },
-  earth:   { name: 'Dünya',   mass: 5.9722e24,  radius: 6371,    parentKey: 'sun',     a: 149598000, color: '#5b9cf0' },
-  moon:    { name: 'Ay',      mass: 7.342e22,   radius: 1737.4,  parentKey: 'earth',   a: 384400,    color: '#cbc8bf' },
-  mars:    { name: 'Mars',    mass: 6.4171e23,  radius: 3389.5,  parentKey: 'sun',     a: 227939000, color: '#e0703f' },
-  phobos:  { name: 'Phobos',  mass: 1.0659e16,  radius: 11.27,   parentKey: 'mars',    a: 9376,      color: '#a08f7e' },
-  jupiter: { name: 'Jüpiter', mass: 1.89813e27, radius: 69911,   parentKey: 'sun',     a: 778570000, color: '#d9b48c' },
-  europa:  { name: 'Europa',  mass: 4.7998e22,  radius: 1560.8,  parentKey: 'jupiter', a: 671034,    color: '#d4c7ad' },
-  custom:  { name: 'Özel cisim', mass: 1e23,    radius: 2000,    parentKey: undefined, a: 500000,    color: '#b590f2' },
+  sun:     { mass: 1.98847e30, radius: 695700,  parentKey: null,      a: 0,         color: '#ffd27a' },
+  mercury: { mass: 3.3011e23,  radius: 2439.7,  parentKey: 'sun',     a: 57909050,  color: '#a9a49c' },
+  venus:   { mass: 4.8675e24,  radius: 6051.8,  parentKey: 'sun',     a: 108210000, color: '#e8c98f' },
+  earth:   { mass: 5.9722e24,  radius: 6371,    parentKey: 'sun',     a: 149598000, color: '#5b9cf0' },
+  moon:    { mass: 7.342e22,   radius: 1737.4,  parentKey: 'earth',   a: 384400,    color: '#cbc8bf' },
+  mars:    { mass: 6.4171e23,  radius: 3389.5,  parentKey: 'sun',     a: 227939000, color: '#e0703f' },
+  phobos:  { mass: 1.0659e16,  radius: 11.27,   parentKey: 'mars',    a: 9376,      color: '#a08f7e' },
+  jupiter: { mass: 1.89813e27, radius: 69911,   parentKey: 'sun',     a: 778570000, color: '#d9b48c' },
+  europa:  { mass: 4.7998e22,  radius: 1560.8,  parentKey: 'jupiter', a: 671034,    color: '#d4c7ad' },
+  custom:  { mass: 1e23,    radius: 2000,    parentKey: undefined, a: 500000,    color: '#b590f2' },
 };
 const PRESET_ORDER = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'phobos', 'jupiter', 'europa', 'custom'];
 
 const SCENARIOS = [
-  { id: 'em_free', name: 'Dünya → Ay · Serbest dönüş (8 / S)', frame: 'rot',
-    note: 'Apollo tipi serbest dönüş: Ay\'ın arkasından retrograd geçip motor yakmadan Dünya\'ya döner. Dönen çerçevede 8 biçimi görünür.',
+  { id: 'em_free', frame: 'rot',
     bodies: [{ k: 'earth', parent: -1 }, { k: 'moon', parent: 0 }],
     M: { mode: 'free', side: -1, h0: 185, hB: 250, hRet: 60, t0: 0, theta: -132.26090326368262, dv: 3162.1420118609917, autoDur: true, duration: 12 } },
-  { id: 'em_cap', name: 'Dünya → Ay · Yörüngeye giriş', frame: 'A',
-    note: 'Translunar enjeksiyon, ardından 100 km dairesel Ay yörüngesine giriş yanması.',
+  { id: 'em_cap', frame: 'A',
     bodies: [{ k: 'earth', parent: -1 }, { k: 'moon', parent: 0 }],
     M: { mode: 'capture', side: -1, h0: 185, hB: 100, hRet: 60, t0: 0, theta: -122.6404245345841, dv: 3141.0061695917125, autoDur: true, duration: 7 } },
-  { id: 'em_sun', name: 'Dünya → Ay · Güneş etkisiyle (3 cisim)', frame: 'rot',
-    note: 'Aynı serbest dönüş, üçüncü cisim olarak Güneş\'in çekimi eklenmiş. Güneş, Dünya merkezli tanımda 1 AU yörüngede görünür.',
+  { id: 'em_sun', frame: 'rot',
     bodies: [{ k: 'earth', parent: -1 }, { k: 'moon', parent: 0 }, { k: 'sun', parent: 0, a: 149598000, phase: 90 }],
     M: { mode: 'free', side: -1, h0: 185, hB: 250, hRet: 60, t0: 0, theta: -132.31541604192466, dv: 3161.2744423190697, autoDur: true, duration: 12 } },
-  { id: 'e_mars', name: 'Dünya → Mars · Hohmann + yakalama', frame: 'inertial',
-    note: 'Güneş merkezli Hohmann transferi. Kalkış anı, Mars\'ın doğru faz açısında olduğu pencereye ayarlı.',
+  { id: 'e_mars', frame: 'inertial',
     bodies: [{ k: 'earth', parent: 2 }, { k: 'mars', parent: 2 }, { k: 'sun', parent: -1 }],
     M: { mode: 'capture', side: 0, h0: 185, hB: 300, hRet: 60, t0: 685.7782603563348, theta: -150.0725460254747, dv: 3615.9489071591897, autoDur: true, duration: 336 } },
-  { id: 'moon_mars', name: 'Ay → Mars · 4 cisim', frame: 'inertial',
-    note: 'Alçak Ay yörüngesinden kalkış: önce Ay\'dan, sonra Dünya\'nın kuyusundan kaçış, ardından Mars.',
+  { id: 'moon_mars', frame: 'inertial',
     bodies: [{ k: 'moon', parent: 2 }, { k: 'mars', parent: 3 }, { k: 'earth', parent: 3 }, { k: 'sun', parent: -1 }],
     M: { mode: 'capture', side: 0, h0: 100, hB: 300, hRet: 60, t0: 677.8485252280739, theta: -103.79516935006063, dv: 1591.5641379638673, autoDur: true, duration: 336 } },
-  { id: 'e_venus', name: 'Dünya → Venüs · Geçiş', frame: 'inertial',
-    note: 'İçe doğru Hohmann transferi ve 500 km irtifada Venüs yakın geçişi.',
+  { id: 'e_venus', frame: 'inertial',
     bodies: [{ k: 'earth', parent: 2 }, { k: 'venus', parent: 2 }, { k: 'sun', parent: -1 }],
     M: { mode: 'flyby', side: 0, h0: 185, hB: 500, hRet: 60, t0: 500.5162440898973, theta: -114.42780944038475, dv: 3508.1053919040405, autoDur: true, duration: 220 } },
 ];
@@ -49,10 +43,10 @@ const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-mo
 if (reduceMotion) S.playing = false;
 
 const $ = s => document.querySelector(s);
-const APSIS = { earth: 'perigee', moon: 'perilune', sun: 'perihelion', mars: 'periareion', venus: 'pericytherion', mercury: 'perihermion', jupiter: 'perijove' };
-const peri = i => (S.bodies[i] && APSIS[S.bodies[i].key]) || 'periapsis';
+const APSIS = DICT['apsis'];
+const peri = i => (S.bodies[i] && APSIS[S.bodies[i].key] && APSIS[S.bodies[i].key][0]) || _('apsis.generic');
 const Peri = i => { const p = peri(i); return p[0].toUpperCase() + p.slice(1); };
-const NF = (d) => new Intl.NumberFormat('tr-TR', { maximumFractionDigits: d, minimumFractionDigits: d });
+const NF = (d) => new Intl.NumberFormat(DICT['meta.locale'], { maximumFractionDigits: d, minimumFractionDigits: d });
 const nf0 = NF(0), nf1 = NF(1), nf2 = NF(2), nf3 = NF(3);
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const parseNum = v => { const x = parseFloat(String(v).replace(',', '.').replace(/\s/g, '')); return Number.isFinite(x) ? x : NaN; };
@@ -62,14 +56,14 @@ function fmtDist(m) {
   const km = m / 1e3;
   if (km < 1000) return nf1.format(km) + ' km';
   if (km < 5e7) return nf0.format(km) + ' km';
-  return nf3.format(m / 1.495978707e11) + ' AU';
+  return nf3.format(m / 1.495978707e11) + ' ' + _('unit.au');
 }
 function fmtSpeed(v) { return v < 1000 ? nf0.format(v) + ' m/s' : nf3.format(v / 1000) + ' km/s'; }
 function fmtDur(sec, withSec) {
   const d = Math.floor(sec / DAY); let r = sec - d * DAY;
   const h = Math.floor(r / 3600); r -= h * 3600; const mi = Math.floor(r / 60); const s = Math.floor(r - mi * 60);
   const p = n => String(n).padStart(2, '0');
-  return `${d}g ${p(h)}:${p(mi)}` + (withSec ? `:${p(s)}` : '');
+  return `${d}${_('unit.d')} ${p(h)}:${p(mi)}` + (withSec ? `:${p(s)}` : '');
 }
 function fmtMass(m) { return m.toExponential(4).replace('e+', 'e'); }
 function massHint(m) {
@@ -81,7 +75,7 @@ function massHint(m) {
 
 function bodyFromPreset(k, over = {}) {
   const p = BODY_PRESETS[k];
-  return { key: k, name: p.name, mass: p.mass, radius: p.radius, parent: -1, a: p.a, phase: 0, color: p.color, ...over };
+  return { key: k, name: _('body.' + k), mass: p.mass, radius: p.radius, parent: -1, a: p.a, phase: 0, color: p.color, ...over };
 }
 
 // ===================== Scenario =====================
@@ -92,7 +86,7 @@ function loadScenario(id) {
   S.M = { ...sc.M };
   S.frame = sc.frame; S.follow = 'free';
   $('#scenario').value = sc.id;
-  $('#scNote').textContent = sc.note;
+  $('#scNote').textContent = _('sc.' + sc.id + '.note');
   renderBodies(); syncMission(); renderFrameSeg();
   rebuild({ fit: true, resetU: true });
   setStatus('');
@@ -105,28 +99,28 @@ function renderBodies() {
   const box = $('#bodies');
   const N = S.bodies.length;
   box.innerHTML = S.bodies.map((b, i) => {
-    const role = i === 0 ? '<span class="role dep">Kalkış</span>' : i === 1 ? '<span class="role tgt">Hedef</span>' : '<span class="role">Ek</span>';
-    const opts = PRESET_ORDER.map(k => `<option value="${k}" ${k === b.key ? 'selected' : ''}>${BODY_PRESETS[k].name}</option>`).join('');
-    const pOpts = `<option value="-1" ${b.parent < 0 ? 'selected' : ''}>Merkez (sabit)</option>` +
+    const role = i === 0 ? `<span class="role dep">${_('body.role.dep')}</span>` : i === 1 ? `<span class="role tgt">${_('body.role.tgt')}</span>` : `<span class="role">${_('body.role.extra')}</span>`;
+    const opts = PRESET_ORDER.map(k => `<option value="${k}" ${k === b.key ? 'selected' : ''}>${_('body.' + k)}</option>`).join('');
+    const pOpts = `<option value="-1" ${b.parent < 0 ? 'selected' : ''}>${_('body.parentRoot')}</option>` +
       S.bodies.map((o, j) => j === i ? '' : `<option value="${j}" ${b.parent === j ? 'selected' : ''}>${esc(o.name)}</option>`).join('');
     // natural-parent hint (only for orbiting bodies placed around a non-natural parent)
     const pk = BODY_PRESETS[b.key].parentKey;
     let hint = '';
     if (pk && b.parent >= 0 && S.bodies[b.parent].key !== pk && !S.bodies.some(o => o.key === pk)) {
-      const pn = BODY_PRESETS[pk].name;
-      hint = `<p class="hint">${esc(b.name)} normalde ${pn} etrafında döner.${N < 4 ? ` <button type="button" class="linkbtn" data-act="addparent" data-k="${pk}">Ekle: ${pn}</button>` : ''}</p>`;
+      const pn = _('body.' + pk);
+      hint = `<p class="hint">${_('body.hint', { name: esc(b.name), parent: pn })}${N < 4 ? ` <button type="button" class="linkbtn" data-act="addparent" data-k="${pk}">${_('body.hintAdd', { parent: pn })}</button>` : ''}</p>`;
     }
     return `<div class="bcard" data-i="${i}">
       <div class="bhead"><span class="dot" style="background:${b.color}"></span>${role}
-        <select data-f="key" aria-label="Cisim seçimi">${opts}</select>
-        ${i >= 2 ? `<button type="button" class="xbtn" data-act="remove" aria-label="Cismi kaldır">✕</button>` : ''}</div>
-      ${b.key === 'custom' ? `<label class="field"><span>Ad</span><input type="text" data-f="name" value="${esc(b.name)}"></label>` : ''}
+        <select data-f="key" aria-label="${_('body.select')}">${opts}</select>
+        ${i >= 2 ? `<button type="button" class="xbtn" data-act="remove" aria-label="${_('body.remove')}">✕</button>` : ''}</div>
+      ${b.key === 'custom' ? `<label class="field"><span>${_('body.name')}</span><input type="text" data-f="name" value="${esc(b.name)}"></label>` : ''}
       <div class="grid2">
-        <label class="field"><span>Kütle (kg)</span><input type="text" inputmode="decimal" data-f="mass" value="${fmtMass(b.mass)}"><small data-hint="mass">${massHint(b.mass)}</small></label>
-        <label class="field"><span>Yarıçap (km)</span><input type="number" step="any" data-f="radius" value="${b.radius}"></label>
-        <label class="field"><span>Etrafında döner</span><select data-f="parent">${pOpts}</select></label>
-        <label class="field"><span>Yörünge yarıçapı (km)</span><input type="number" step="any" data-f="a" value="${b.a}" ${b.parent < 0 ? 'disabled' : ''}></label>
-        <label class="field"><span>Başlangıç fazı (°)</span><input type="number" step="any" data-f="phase" value="${b.phase}" ${b.parent < 0 ? 'disabled' : ''}></label>
+        <label class="field"><span>${_('body.mass')}</span><input type="text" inputmode="decimal" data-f="mass" value="${fmtMass(b.mass)}"><small data-hint="mass">${massHint(b.mass)}</small></label>
+        <label class="field"><span>${_('body.radius')}</span><input type="number" step="any" data-f="radius" value="${b.radius}"></label>
+        <label class="field"><span>${_('body.parent')}</span><select data-f="parent">${pOpts}</select></label>
+        <label class="field"><span>${_('body.a')}</span><input type="number" step="any" data-f="a" value="${b.a}" ${b.parent < 0 ? 'disabled' : ''}></label>
+        <label class="field"><span>${_('body.phase')}</span><input type="number" step="any" data-f="phase" value="${b.phase}" ${b.parent < 0 ? 'disabled' : ''}></label>
       </div>${hint}
     </div>`;
   }).join('');
@@ -135,7 +129,7 @@ function renderBodies() {
 
 function applyPreset(i, k) {
   const p = BODY_PRESETS[k], b = S.bodies[i];
-  Object.assign(b, { key: k, name: p.name, mass: p.mass, radius: p.radius, color: p.color });
+  Object.assign(b, { key: k, name: _('body.' + k), mass: p.mass, radius: p.radius, color: p.color });
   if (p.parentKey === null) {
     // a star: becomes the fixed centre; previous centre now orbits it
     const r = S.bodies.findIndex((o, j) => j !== i && o.parent < 0);
@@ -193,7 +187,7 @@ $('#bodies').addEventListener('input', e => {
   const card = e.target.closest('.bcard'); if (!card) return;
   const i = +card.dataset.i, f = e.target.dataset.f, b = S.bodies[i];
   if (!f || f === 'key' || f === 'parent') return;
-  if (f === 'name') { b.name = e.target.value || 'Cisim'; renderFrameSeg(); scheduleRebuild(); return; }
+  if (f === 'name') { b.name = e.target.value || _('body.default'); renderFrameSeg(); scheduleRebuild(); return; }
   const v = parseNum(e.target.value);
   const bad = !Number.isFinite(v) || (f !== 'phase' && v <= 0);
   e.target.setAttribute('aria-invalid', bad ? 'true' : 'false');
@@ -244,7 +238,7 @@ $('#m-theta-r').addEventListener('input', e => { S.M.theta = +e.target.value; $(
 $('#m-dv-r').addEventListener('input', e => { S.M.dv = +e.target.value; $('#m-dv').value = S.M.dv; scheduleRebuild(); });
 $('#m-auto').addEventListener('change', e => { S.M.autoDur = e.target.checked; $('#m-dur').disabled = S.M.autoDur; scheduleRebuild(); });
 $('#modeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.M.mode = b.dataset.v; syncMission(); scheduleRebuild(); });
-$('#sideSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.M.side = +b.dataset.v; syncMission(); setStatus('Geçiş yönü çözücüde kullanılır: "Hedefe göre çöz" ile uygulayın.'); });
+$('#sideSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.M.side = +b.dataset.v; syncMission(); setStatus(_('st.side')); });
 
 let rebuildQueued = false;
 function scheduleRebuild() { if (rebuildQueued) return; rebuildQueued = true; requestAnimationFrame(() => { rebuildQueued = false; rebuild({}); }); }
@@ -252,12 +246,13 @@ function scheduleRebuild() { if (rebuildQueued) return; rebuildQueued = true; re
 // ===================== Build & simulate =====================
 function sysList() { return S.bodies.map(b => ({ name: b.name, mass: b.mass, radius: b.radius * 1e3, parent: b.parent, a: b.a * 1e3, phase: b.phase })); }
 
-function showErr(t) { const e = $('#err'); e.textContent = t || ''; e.hidden = !t; const m = $('#msg'); m.textContent = t ? 'Cisim ayarlarını düzeltin: ' + t : ''; m.hidden = !t; }
+function showErr(t) { const e = $('#err'); e.textContent = t || ''; e.hidden = !t; const m = $('#msg'); m.textContent = t ? _('err.fix', { e: t }) : ''; m.hidden = !t; }
+const errText = r => _(r.error, { ...r.params, name: (r.params && r.params.name) || _('body.default') });
 
 function rebuild(o = {}) {
   const s = buildSystem(sysList());
-  if (s.error) { showErr(s.error); sys = null; simR = null; C = null; updateResults(); return; }
-  if (!(S.M.h0 >= 0)) { showErr('Park irtifası negatif olamaz.'); return; }
+  if (s.error) { showErr(errText(s)); sys = null; simR = null; C = null; updateResults(); return; }
+  if (!(S.M.h0 >= 0)) { showErr(_('err.parkNeg')); return; }
   showErr('');
   sys = s;
   try { guess = hohmannGuess(sys, S.M); } catch (e) { guess = null; }
@@ -324,10 +319,10 @@ function buildCache() {
   C.markers = r.events.filter(e => e.type !== 'impact' || true).map(e => {
     const p = posAtTime(e.t, [0, 0]);
     let txt = '';
-    if (e.type === 'burn') txt = (e.body === 0 ? 'Δv ' : 'Giriş Δv ') + nf0.format(e.dv) + ' m/s';
-    else if (e.type === 'peri') txt = (e.body === 1 ? Peri(1) + ' ' : 'Dönüş ' + peri(0) + ' ') + nf1.format(e.alt / 1e3) + ' km' + (e.body === 0 && e.alt < 150e3 ? ' · atmosfer girişi' : '');
-    else txt = 'Çarpma · ' + S.bodies[e.body].name;
-    const label = e.type === 'peri' ? (e.body === 1 ? S.bodies[1].name + ' ' + peri(1) : 'Dönüş ' + peri(0)) : e.label;
+    if (e.type === 'burn') txt = _(e.body === 0 ? 'mk.dv' : 'mk.capDv', { v: nf0.format(e.dv) });
+    else if (e.type === 'peri') txt = (e.body === 1 ? Peri(1) : _('ev.returnPeri', { peri: peri(0) })) + ' ' + nf1.format(e.alt / 1e3) + ' km' + (e.body === 0 && e.alt < 150e3 ? _('mk.entry') : '');
+    else txt = _('mk.impact', { name: S.bodies[e.body].name });
+    const label = e.type === 'peri' ? (e.body === 1 ? S.bodies[1].name + ' ' + peri(1) : _('ev.returnPeri', { peri: peri(0) })) : _(e.label);
     return { ...e, label, x: p[0], y: p[1], txt };
   });
 }
@@ -460,11 +455,11 @@ cv.addEventListener('dblclick', () => { S.follow = 'free'; renderFrameSeg(); fit
 
 // ===================== HUD controls =====================
 function renderFrameSeg() {
-  $('#lbl-hB').textContent = 'Hedef ' + peri(1) + ' (km)'; $('#lbl-hRet').textContent = 'Dönüş ' + peri(0) + ' (km)';
+  $('#lbl-hB').textContent = _('m.target', { peri: peri(1) }); $('#lbl-hRet').textContent = _('m.return', { peri: peri(0) });
   const A = S.bodies[0] ? S.bodies[0].name : 'A', B = S.bodies[1] ? S.bodies[1].name : 'B';
-  const fr = [['inertial', 'Eylemsiz'], ['A', A + ' merkezli'], ['B', B + ' merkezli'], ['rot', 'Dönen ' + A + '–' + B]];
+  const fr = [['inertial', _('fr.inertial')], ['A', _('fr.centered', { name: A })], ['B', _('fr.centered', { name: B })], ['rot', _('fr.rot', { a: A, b: B })]];
   $('#frameSeg').innerHTML = fr.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${S.frame === v}">${esc(l)}</button>`).join('');
-  const fo = [['free', 'Serbest'], ['craft', 'Araç'], ['A', A], ['B', B]];
+  const fo = [['free', _('fo.free')], ['craft', _('fo.craft')], ['A', A], ['B', B]];
   $('#followSeg').innerHTML = fo.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${S.follow === v}">${esc(l)}</button>`).join('');
 }
 $('#frameSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.frame = b.dataset.v; renderFrameSeg(); if (S.follow === 'free') needFit = true; });
@@ -483,7 +478,7 @@ $('#tTracks').addEventListener('change', e => { S.tracks = e.target.checked; });
 // ===================== Timeline =====================
 const playSvg = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9.5-5.5z" fill="currentColor"/></svg>';
 const pauseSvg = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="2.5" width="3.2" height="11" rx="1" fill="currentColor"/><rect x="9.3" y="2.5" width="3.2" height="11" rx="1" fill="currentColor"/></svg>';
-function setPlayIcon() { const b = $('#play'); b.innerHTML = S.playing ? pauseSvg : playSvg; b.setAttribute('aria-label', S.playing ? 'Duraklat' : 'Oynat'); }
+function setPlayIcon() { const b = $('#play'); b.innerHTML = S.playing ? pauseSvg : playSvg; b.setAttribute('aria-label', _(S.playing ? 'play.pause' : 'play.play')); }
 $('#play').addEventListener('click', () => { if (!S.playing && S.u >= 1 && !(C && C.orbit && !S.loop)) { S.u = 0; S.ext = 0; } S.playing = !S.playing; setPlayIcon(); });
 $('#loop').addEventListener('change', e => { S.loop = e.target.checked; });
 let scrubbing = false;
@@ -498,7 +493,7 @@ document.addEventListener('keydown', e => {
 });
 function renderTicks() {
   const box = $('#ticks'); if (!C) { box.innerHTML = ''; return; }
-  box.innerHTML = C.markers.map(m => `<button type="button" class="tick ${m.type}" style="left:${(tToU(m.t) * 100).toFixed(3)}%" title="${esc(m.label)} · T+ ${fmtDur(m.t)}" aria-label="${esc(m.label)}" data-t="${m.t}"></button>`).join('');
+  box.innerHTML = C.markers.map(m => `<button type="button" class="tick ${m.type}" style="left:${(tToU(m.t) * 100).toFixed(3)}%" title="${esc(_('tick.title', { label: m.label, t: fmtDur(m.t) }))}" aria-label="${esc(m.label)}" data-t="${m.t}"></button>`).join('');
   $('#tend').textContent = '/ ' + fmtDur(C.T);
 }
 $('#ticks').addEventListener('click', e => { const b = e.target.closest('.tick'); if (!b) return; S.u = tToU(+b.dataset.t); });
@@ -506,36 +501,36 @@ $('#ticks').addEventListener('click', e => { const b = e.target.closest('.tick')
 // ===================== Results =====================
 function updateResults() {
   const chip = $('#chip'), res = $('#res');
-  if (!simR || !sys) { chip.className = 'chip bad'; chip.textContent = 'Hesaplanamadı'; res.innerHTML = ''; return; }
+  if (!simR || !sys) { chip.className = 'chip bad'; chip.textContent = _('res.fail'); res.innerHTML = ''; return; }
   const r = simR, A = S.bodies[0].name, B = S.bodies[1].name, M = S.M;
   let cls = 'warn', txt;
-  if (r.impact >= 0) { cls = 'bad'; txt = r.impact === 1 ? B + ' yüzeyine çarptı' : S.bodies[r.impact].name + ' yüzeyine çarptı'; }
-  else if (M.mode === 'capture' && r.captured) { cls = 'good'; txt = B + ' yörüngesine girildi'; }
-  else if (M.mode === 'free' && r.aRet) { cls = 'good'; txt = 'Serbest dönüş tamam'; }
-  else if (M.mode === 'free' && r.bPeri) { txt = B + ' geçişi var, dönüş yok'; }
-  else if (r.bPeri) { cls = 'good'; txt = B + ' yakın geçişi'; }
-  else txt = B + ' ıskalandı · en yakın ' + fmtDist(r.dmin[1] - sys.R[1]);
+  if (r.impact >= 0) { cls = 'bad'; txt = _('chip.impact', { name: S.bodies[r.impact].name }); }
+  else if (M.mode === 'capture' && r.captured) { cls = 'good'; txt = _('chip.captured', { name: B }); }
+  else if (M.mode === 'free' && r.aRet) { cls = 'good'; txt = _('chip.freeDone'); }
+  else if (M.mode === 'free' && r.bPeri) { txt = _('chip.noReturn', { name: B }); }
+  else if (r.bPeri) { cls = 'good'; txt = _('chip.flyby', { name: B }); }
+  else txt = _('chip.missed', { name: B, d: fmtDist(r.dmin[1] - sys.R[1]) });
   chip.className = 'chip ' + cls; chip.textContent = txt;
   const rows = [];
   const dv2 = r.captured ? r.captured.dv : 0;
   const vdep = r.vc + M.dv, c3 = (vdep * vdep - 2 * sys.mu[0] / r.r0) / 1e6;
-  rows.push(['Kalkış Δv', nf1.format(M.dv), 'm/s']);
-  if (M.mode === 'capture') rows.push(['Giriş Δv', r.captured ? nf1.format(dv2) : '—', 'm/s']);
-  if (M.mode === 'capture') rows.push(['Toplam Δv', nf1.format(M.dv + dv2), 'm/s']);
-  rows.push(['C3 · ' + A, nf2.format(c3), 'km²/s²']);
+  rows.push([_('res.dv'), nf1.format(M.dv), 'm/s']);
+  if (M.mode === 'capture') rows.push([_('res.capDv'), r.captured ? nf1.format(dv2) : '—', 'm/s']);
+  if (M.mode === 'capture') rows.push([_('res.totDv'), nf1.format(M.dv + dv2), 'm/s']);
+  rows.push([_('res.c3', { name: A }), nf2.format(c3), 'km²/s²']);
   if (r.bPeri) {
-    rows.push([B + ' varış süresi', fmtDur(r.bPeri.t), '']);
-    rows.push([Peri(1) + ' irtifası', nf1.format((r.bPeri.d - sys.R[1]) / 1e3), 'km · ' + (r.bPeri.dir > 0 ? 'prograd' : 'retrograd')]);
+    rows.push([_('res.arrival', { name: B }), fmtDur(r.bPeri.t), '']);
+    rows.push([_('res.periAlt', { peri: Peri(1) }), nf1.format((r.bPeri.d - sys.R[1]) / 1e3), 'km · ' + _(r.bPeri.dir > 0 ? 'res.pro' : 'res.retro')]);
     const vinf2 = r.bPeri.v * r.bPeri.v - 2 * sys.mu[1] / r.bPeri.d;
-    rows.push([Peri(1) + ' hızı', nf3.format(r.bPeri.v / 1e3), 'km/s']);
-    rows.push(['v∞ · ' + B, vinf2 > 0 ? nf3.format(Math.sqrt(vinf2) / 1e3) : 'bağlı', vinf2 > 0 ? 'km/s' : '']);
+    rows.push([_('res.periSpeed', { peri: Peri(1) }), nf3.format(r.bPeri.v / 1e3), 'km/s']);
+    rows.push([_('res.vinf', { name: B }), vinf2 > 0 ? nf3.format(Math.sqrt(vinf2) / 1e3) : _('res.bound'), vinf2 > 0 ? 'km/s' : '']);
   } else {
-    rows.push(['En yakın yaklaşım', fmtDist(r.dmin[1] - sys.R[1]), 'irtifa']);
-    rows.push(['Zamanı', fmtDur(r.tmin[1]), '']);
+    rows.push([_('res.closest'), fmtDist(r.dmin[1] - sys.R[1]), _('res.altUnit')]);
+    rows.push([_('res.time'), fmtDur(r.tmin[1]), '']);
   }
-  if (M.mode === 'free') rows.push(['Dönüş ' + peri(0), r.aRet ? nf1.format((r.aRet.d - sys.R[0]) / 1e3) : '—', r.aRet ? 'km · T+ ' + fmtDur(r.aRet.t) : 'dönmüyor']);
-  if (guess && Number.isFinite(guess.dv)) rows.push(['Hohmann referansı', nf1.format(guess.dv), 'm/s · ' + nf1.format(guess.tof / DAY) + ' g']);
-  rows.push(['Entegrasyon', nf0.format(r.steps), 'adım']);
+  if (M.mode === 'free') rows.push([_('res.retPeri', { peri: peri(0) }), r.aRet ? nf1.format((r.aRet.d - sys.R[0]) / 1e3) : '—', r.aRet ? 'km · ' + _('hud.tplus', { t: fmtDur(r.aRet.t) }) : _('res.noReturn')]);
+  if (guess && Number.isFinite(guess.dv)) rows.push([_('res.hohmann'), nf1.format(guess.dv), _('res.hohmannUnit', { days: nf1.format(guess.tof / DAY) })]);
+  rows.push([_('res.integration'), nf0.format(r.steps), _('res.steps')]);
   res.innerHTML = rows.map(([l, v, u]) => `<div><span class="lbl">${esc(l)}</span><b>${v}${u ? `<em>${esc(u)}</em>` : ''}</b></div>`).join('');
 }
 function setStatus(t) { $('#status').textContent = t; }
@@ -544,10 +539,10 @@ function setStatus(t) { $('#status').textContent = t; }
 $('#hohmann').addEventListener('click', () => {
   if (!sys) return;
   const g = hohmannGuess(sys, S.M);
-  if (!Number.isFinite(g.dv)) { setStatus('Bu yapılandırma için Hohmann tahmini üretilemedi.'); return; }
+  if (!Number.isFinite(g.dv)) { setStatus(_('st.noHohmann')); return; }
   Object.assign(S.M, { theta: g.theta, dv: g.dv, t0: g.t0 });
   syncMission(); rebuild({ resetU: true, fit: true });
-  setStatus(`Hohmann: Δv ${nf1.format(g.dv)} m/s · transfer ${nf2.format(g.tof / DAY)} gün` + (g.case === 'sibling' ? ` · t₀ ${nf1.format(g.t0)} g` : '') + '. İnce ayar için "Hedefe göre çöz".');
+  setStatus(_('st.hohmann', { dv: nf1.format(g.dv), days: nf2.format(g.tof / DAY) }) + (g.case === 'sibling' ? _('st.hohmannT0', { t0: nf1.format(g.t0) }) : '') + _('st.hohmannTail'));
 });
 $('#solve').addEventListener('click', solve);
 // Solver runs in a Web Worker so the animation never stalls; falls back to the main thread.
@@ -583,28 +578,28 @@ async function solve() {
   if (solving) { cancelSolve = true; if (solverWorker) { solverWorker.terminate(); solverWorker = null; rejectSolve && rejectSolve('cancel'); } return; }
   if (!sys) return;
   solving = true; cancelSolve = false;
-  btn.textContent = 'Durdur'; btn.classList.add('busy');
+  btn.textContent = _('ui.stop'); btn.classList.add('busy');
   const s2 = buildSystem(sysList());
   const g = hohmannGuess(s2, S.M);
   const M0 = { ...S.M, theta: g.theta, dv: g.dv, t0: g.t0 };
   if (M0.autoDur) { const k = M0.mode === 'free' ? 2.4 : M0.mode === 'capture' ? 1.3 : 1.5; M0.duration = clamp(g.tof * k / DAY, 0.2, 5000); }
   const varyT0 = g.case === 'sibling';
   const t1 = performance.now();
-  setStatus('Çözülüyor…');
+  setStatus(_('st.solving'));
   try {
     const opt = { varyT0, t0Grid: g.nested ? [-12, -9, -6, -3, 0, 3, 6, 9, 12] : [-4, -2, 0, 2, 4] };
-    const prog = n => setStatus(`Çözülüyor… ${nf0.format(n)} yörünge denendi`);
+    const prog = n => setStatus(_('st.progress', { n: nf0.format(n) }));
     const r = await runSolver(sysList(), M0, opt, prog, s2);
     Object.assign(S.M, { theta: r.theta, dv: r.dv, t0: r.t0 });
     syncMission(); rebuild({ resetU: true, fit: true });
     if (!reduceMotion) { S.playing = true; setPlayIcon(); }
     const secs = (performance.now() - t1) / 1000;
     const okv = r.f < 1e-4;
-    setStatus((okv ? 'Çözüldü' : 'Tam çözüm bulunamadı, en yakın sonuç uygulandı') + ` · ${nf0.format(r.evals)} yörünge · ${nf1.format(secs)} s`);
+    setStatus(_(okv ? 'st.solved' : 'st.nearest') + _('st.solvedInfo', { evals: nf0.format(r.evals), secs: nf1.format(secs) }));
   } catch (e) {
-    if (e === 'cancel') setStatus('Durduruldu; değerler değişmedi.'); else { setStatus('Çözücü hata verdi: ' + e); console.error(e); }
+    if (e === 'cancel') setStatus(_('st.cancelled')); else { setStatus(_('st.solverErr', { e })); console.error(e); }
   } finally {
-    solving = false; btn.textContent = 'Hedefe göre çöz'; btn.classList.remove('busy');
+    solving = false; btn.textContent = _('ui.solve'); btn.classList.remove('busy');
   }
 }
 
@@ -732,7 +727,7 @@ function draw(now) {
       if (!isFinite(sys.soi[b])) continue;
       const r = sys.soi[b] * cam.scale; if (r < 3 || r > 1e5) continue;
       ctx.beginPath(); ctx.arc(sx(bpos[b][0]), sy(bpos[b][1]), r, 0, 6.2832); ctx.stroke();
-      if (r > 30) { ctx.fillStyle = hexA(COL.dim, 0.7); ctx.font = '500 10px ' + 'IBM Plex Mono, monospace'; ctx.fillText('SOI', sx(bpos[b][0]) + r * 0.707 + 4, sy(bpos[b][1]) - r * 0.707 - 4); }
+      if (r > 30) { ctx.fillStyle = hexA(COL.dim, 0.7); ctx.font = '500 10px ' + 'IBM Plex Mono, monospace'; ctx.fillText(_('canvas.soi'), sx(bpos[b][0]) + r * 0.707 + 4, sy(bpos[b][1]) - r * 0.707 - 4); }
     }
     ctx.setLineDash([]);
   }
@@ -801,7 +796,7 @@ function draw(now) {
     }
     ctx.font = '600 11px "Chakra Petch", system-ui, sans-serif';
     ctx.fillStyle = hexA(COL.ink, 0.82);
-    ctx.fillText(S.bodies[b].name.toLocaleUpperCase('tr-TR'), x + r + 7, y + r + 12);
+    ctx.fillText(S.bodies[b].name.toLocaleUpperCase(DICT['meta.locale']), x + r + 7, y + r + 12);
   }
 
   // spacecraft
@@ -841,61 +836,23 @@ function draw(now) {
     const near = dB - sys.R[1] < dA - sys.R[0] ? 1 : 0;
     if (ext) { const rx = absX - SP[2], ry = absY - SP[3]; vx = SV[2] - C.orbit.w * ry; vy = SV[3] + C.orbit.w * rx; }
     const A = S.bodies[0].name, B = S.bodies[1].name;
-    setT('#r-t', 'T+ ' + fmtDur(tNow, true));
-    setT('#tplus', 'T+ ' + fmtDur(tNow, true));
-    setT('#r-l1', 'İrtifa · ' + A); setT('#r-v1', fmtDist(Math.max(0, dA - sys.R[0])));
-    setT('#r-l2', 'İrtifa · ' + B); setT('#r-v2', fmtDist(Math.max(0, dB - sys.R[1])));
-    setT('#r-l3', 'Bağıl hız · ' + (near ? B : A));
+    setT('#r-t', _('hud.tplus', { t: fmtDur(tNow, true) }));
+    setT('#tplus', _('hud.tplus', { t: fmtDur(tNow, true) }));
+    setT('#r-l1', _('hud.alt', { name: A })); setT('#r-v1', fmtDist(Math.max(0, dA - sys.R[0])));
+    setT('#r-l2', _('hud.alt', { name: B })); setT('#r-v2', fmtDist(Math.max(0, dB - sys.R[1])));
+    setT('#r-l3', _('hud.rel', { name: near ? B : A }));
     setT('#r-v3', fmtSpeed(Math.hypot(vx - SV[2 * near], vy - SV[2 * near + 1])));
-    setT('#tend', '/ ' + fmtDur(C.T) + (ext ? ' · yörüngede ' + (1 + Math.floor(S.ext / C.orbit.P)) + '. tur' : ''));
+    setT('#tend', '/ ' + fmtDur(C.T) + (ext ? _('hud.lap', { n: 1 + Math.floor(S.ext / C.orbit.P) }) : ''));
     if (!scrubbing) scrub.value = Math.round(S.u * 10000);
   }
   requestAnimationFrame(draw);
 }
 
 // ===================== Glossary =====================
-const GLOSS = [
-  ['Yörünge noktaları', [
-    ['Periapsis / Apoapsis', 'peri- / apo-', 'Bir yörüngenin merkez cisme en yakın (periapsis) ve en uzak (apoapsis) noktaları. Genel isimdir; cisme göre özel adlar kullanılır (aşağıdaki tablo).'],
-    ['__APSIS__'],
-    ['Perigee / Apogee', 'Dünya', 'Dünya etrafındaki yörüngenin en yakın ve en uzak noktası. Serbest dönüşte "dönüş perigee" atmosfere giriş irtifasıdır.'],
-    ['Perilune / Apolune', 'Ay', 'Ay etrafındaki en yakın ve en uzak nokta. Apollo görevlerinde "pericynthion" da denir.'],
-    ['Perihelion / Aphelion', 'Güneş', 'Güneş etrafındaki yörüngede en yakın ve en uzak nokta. Dünya–Mars Hohmann transferinde kalkış perihelion, varış aphelion noktasındadır.'],
-  ]],
-  ['Manevralar', [
-    ['Δv (delta-v)', 'm/s', 'Bir manevra için gereken hız değişimi. Roket denklemiyle doğrudan yakıt miktarına bağlıdır: <code>Δv = Isp·g₀·ln(m₀/m₁)</code>.'],
-    ['Hohmann transferi', '', 'İki dairesel yörünge arasında, iki teğetsel yanmayla yapılan en az enerjili transfer. Transfer elipsi bir yörüngeye periapsisinde, diğerine apoapsisinde değer.'],
-    ['Park yörüngesi', '', 'Transferden önce aracın beklediği alçak dairesel yörünge. Kalkış yanması buradan yapılır.'],
-    ['TLI', 'Trans-Lunar Injection', 'Dünya park yörüngesinden Ay\'a gönderen kalkış yanması. Alçak yörüngede yaklaşık 3,1 km/s.'],
-    ['Yörüngeye giriş', 'capture', 'Hedefe varışta aracı yavaşlatıp hedefin etrafında kapalı bir yörüngeye sokan yanma. Uygulamada periapsiste, dairesel yörüngeye anlık yanma olarak modellenir.'],
-    ['Prograd / Retrograd', '', 'Prograd: yörünge hareketi yönünde. Retrograd: ters yönde. Hedefin etrafında retrograd geçiş, serbest dönüşte 8 (S) biçimini verir.'],
-    ['Anlık yanma', 'impulsive burn', 'Motor yanma süresinin yörünge periyoduna göre çok kısa olduğu varsayımı; hız bir anda değişir. Düşük itkili motorlarda geçerli değildir.'],
-  ]],
-  ['Görev tipleri', [
-    ['Serbest dönüş', 'free return', 'Hedefin yanından geçip ek yanma yapmadan başlangıç cismine geri dönen yörünge. Apollo 13 bu yörüngeyle kurtarıldı.'],
-    ['Yakın geçiş', 'flyby', 'Hedefin yanından yörüngeye girmeden geçmek. Hedefin çekimi aracın yönünü ve hızını değiştirir (kütleçekim yardımı).'],
-    ['Kütleçekim yardımı', 'gravity assist', 'Bir gezegenin yanından geçerken onun yörünge hareketinden hız ödünç almak. Hedefe göre hız aynı kalır, Güneş\'e göre değişir.'],
-    ['Cycler', '', 'İki cisim arasında periyodik olarak gidip gelen, kendini tekrarlayan yörünge (ör. Aldrin cycler, Dünya–Mars). Korunması için küçük düzeltme yanmaları gerekir.'],
-    ['Atmosfer girişi', 'entry interface', 'Dünya için yaklaşık 120 km irtifa. Dönüş perigee\'si bu koridorun içine nişanlanırsa sürtünme aracı yakalar.'],
-  ]],
-  ['Hız ve enerji', [
-    ['v∞', 'hiperbolik fazla hız', 'Aracın bir cismin etki küresinden çıkarken (ya da girerken) o cisme göre sahip olduğu artık hız. Kaçış hızını aşan kısımdır.'],
-    ['C3', 'karakteristik enerji, km²/s²', 'Kalkıştaki yörünge enerjisinin iki katı: <code>C3 = v∞²</code>. Negatifse araç cisme bağlıdır (Ay transferi), pozitifse kaçar (Mars transferi).'],
-    ['Kaçış hızı', '', 'Bir cismin çekiminden kurtulmak için gereken en düşük hız: <code>v = √(2μ/r)</code>. Dünya yüzeyinde ≈ 11,2 km/s.'],
-    ['μ (mu)', 'GM, m³/s²', 'Standart kütleçekim parametresi; cismin kütlesi ile G\'nin çarpımı. Kütleden çok daha hassas bilinir.'],
-  ]],
-  ['Model ve görünüm', [
-    ['SOI', 'Sphere of Influence · etki küresi', 'Bir cismin çekiminin baskın sayıldığı bölge: <code>r ≈ a·(m/M)^(2/5)</code>. Ay\'ın SOI\'si ≈ 66.000 km, Dünya\'nınki (Güneş\'e göre) ≈ 925.000 km.'],
-    ['Faz açısı', 'fırlatma penceresi', 'Kalkış anında hedefin, kalkış cismine göre önde olması gereken açı. Dünya–Mars için ≈ 44°; bu geometri yaklaşık her 26 ayda bir tekrarlar.'],
-    ['Eylemsiz çerçeve', '', 'Dönmeyen, sabit yıldızlara göre tanımlı görünüm. Yörüngeler "gerçek" şekilleriyle görünür.'],
-    ['Dönen çerçeve', 'sinodik', 'İki cismi aynı yerde sabit tutan, onlarla birlikte dönen görünüm. Serbest dönüşün 8 biçimi yalnızca burada görünür.'],
-    ['Kısıtlı N-cisim', '', 'Aracın kütlesinin ihmal edildiği model: cisimler aracı çeker, araç cisimleri çekmez. Bu uygulamanın kullandığı modeldir.'],
-    ['Patched conic', 'yamalı konikler', 'Yörüngeyi her SOI\'de tek bir cismin Kepler yörüngesi olarak hesaplayıp sınırlarda birleştiren yaklaşım. "Hohmann tahmini" bununla yapılır.'],
-  ]],
-];
-const APSIS_TABLE = [['Dünya', 'perigee', 'apogee'], ['Ay', 'perilune', 'apolune'], ['Güneş', 'perihelion', 'aphelion'], ['Mars', 'periareion', 'apoareion'], ['Venüs', 'pericytherion', 'apocytherion'], ['Jüpiter', 'perijove', 'apojove']];
+const GLOSS = DICT['gloss'];
+const APSIS_TABLE = Object.entries(APSIS).filter(([, v]) => v[1]).map(([k, v]) => [_('body.' + k), v[0], v[1]]);
 function renderGloss(q) {
-  const n = s => s.toLocaleLowerCase('tr-TR').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const n = s => s.toLocaleLowerCase(DICT['meta.locale']).normalize('NFD').replace(/[̀-ͯ]/g, '');
   const qq = n(q.trim());
   let html = '';
   for (const [grp, items] of GLOSS) {
@@ -903,11 +860,11 @@ function renderGloss(q) {
       if (it[0] === '__APSIS__') return !qq || APSIS_TABLE.some(r => r.some(c => n(c).includes(qq)));
       return !qq || n(it.join(' ').replace(/<[^>]+>/g, '')).includes(qq);
     }).map(it => it[0] === '__APSIS__'
-      ? `<div><table class="apsis"><thead><tr><th>Cisim</th><th>En yakın</th><th>En uzak</th></tr></thead><tbody>${APSIS_TABLE.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</tbody></table></div>`
+      ? `<div><table class="apsis"><thead><tr><th>${_('apsis.table.body')}</th><th>${_('apsis.table.near')}</th><th>${_('apsis.table.far')}</th></tr></thead><tbody>${APSIS_TABLE.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</tbody></table></div>`
       : `<div><dt>${it[0]}${it[1] ? `<i>${it[1]}</i>` : ''}</dt><dd>${it[2]}</dd></div>`).join('');
     if (rows) html += `<div class="gloss-grp"><span>${grp}</span><dl>${rows}</dl></div>`;
   }
-  $('#glossBody').innerHTML = html || '<p class="none">Bu aramayla eşleşen terim yok.</p>';
+  $('#glossBody').innerHTML = html || `<p class="none">${_('gloss.none')}</p>`;
 }
 function setGloss(open) {
   $('#gloss').hidden = !open; $('#helpBtn').setAttribute('aria-expanded', String(open));
@@ -920,7 +877,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#gloss
 document.addEventListener('pointerdown', e => { if (!$('#gloss').hidden && !e.target.closest('#gloss') && !e.target.closest('#helpBtn')) setGloss(false); });
 
 // ===================== Init =====================
-$('#scenario').innerHTML = SCENARIOS.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+applyI18n();
+$('#scenario').innerHTML = SCENARIOS.map(s => `<option value="${s.id}">${esc(_('sc.' + s.id + '.name'))}</option>`).join('');
 $('#scenario').addEventListener('change', e => loadScenario(e.target.value));
 resize();
 loadScenario('em_free');

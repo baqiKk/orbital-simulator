@@ -4,18 +4,20 @@ Tarayıcıda çalışan, düzlemsel (2B) yörünge transfer simülatörü. Kulla
 
 ## Kurallar
 - Arayüz dili **Türkçe**. Kod, yorumlar ve commit mesajları İngilizce olabilir.
+- Site şimdilik Türkçe; ileride İngilizce de eklenecek. Kullanıcıya görünen tüm metinler js/i18n.js içindeki tek bir sözlükten gelsin, kod içine metin yazma.
 - **Build adımı yok.** Saf HTML/CSS/vanilla JS. Framework, bundler, npm bağımlılığı ekleme. Dış kaynak olarak sadece Google Fonts var.
 - Fizik `js/core.js` içinde kalır ve **DOM'a dokunmaz**: hem sayfada, hem Web Worker'da (`importScripts`), hem Node testlerinde çalışmalı.
 - Fizikte değişiklik yaptıktan sonra `node tests/core.test.js` çalıştır; yeni davranış için test ekle.
 - Tarayıcı yükü düşük kalmalı: kare başına iş O(çizilen nokta). Ağır hesap (çözücü) Web Worker'da.
-- Yörünge noktası adları cisme göre: Dünya perigee/apogee, Ay perilune/apolune, Güneş perihelion/aphelion, Mars periareion, Venüs pericytherion, Jüpiter perijove; diğerleri periapsis. `app.js` içindeki `APSIS` tablosunu kullan.
+- Yörünge noktası adları cisme göre: Dünya perigee/apogee, Ay perilune/apolune, Güneş perihelion/aphelion, Mars periareion, Venüs pericytherion, Jüpiter perijove; diğerleri periapsis. `app.js` içindeki `APSIS` tablosunu kullan (veri `i18n.js` içindeki `apsis` girdisinden gelir).
 - Tek tema: koyu uzay. Renkler `css/style.css` başındaki `:root` token'larında; yeni renk ekleme, token kullan.
 - Mobil (≈400 px) genişlikte de çalışmalı; yatay sayfa kaydırması olmamalı.
 
 ## Dosyalar
-- `index.html` — işaretleme (panel, sahne, HUD, zaman çizelgesi, sözlük paneli).
+- `index.html` — işaretleme (panel, sahne, HUD, zaman çizelgesi, sözlük paneli). Metinler yazılmaz; `data-i18n="anahtar"` (metin) ya da `data-i18n-<öznitelik>="anahtar"` (aria-label, title, placeholder, content) kullanılır.
+- `js/i18n.js` — tek metin sözlüğü (`I18N.tr`), `_(anahtar, {param})` ve `applyI18n()`. `core.js`'ten önce yüklenir. Yeni metin = yeni anahtar buraya; sözlük/APSIS gibi yapısal veri de burada. Dil eklemek için `I18N.en` ekleyip `LANG`'ı değiştirmek yeter.
 - `css/style.css` — tüm stiller.
-- `js/core.js` — fizik:
+- `js/core.js` — fizik (metin içermez: hatalar ve olay etiketleri `err.*` / `ev.*` i18n anahtarı olarak döner, çevirisini arayüz yapar):
   - `buildSystem(list)`: cisim hiyerarşisi (her cisim bir ebeveyn etrafında dairesel Kepler yörüngesinde; tek kök sabit merkez). Ağırlık merkezleri korunur. SOI = a·(m/M)^0.4.
   - `states(s, t, P, V)`: t anında tüm cisimlerin konum/hızı (analitik).
   - `simulate(s, M, opts)`: araç için Dormand–Prince 5(4) uyarlamalı entegrasyon. Olaylar: kalkış yanması, hedef periapsisi (SOI içinde), yakalama yanması (capture modunda), dönüş periapsisi, çarpma. Serbest dönüşte dönüş periapsisinde durur (atmosfer girişi varsayımı).
