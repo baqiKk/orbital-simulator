@@ -17,6 +17,7 @@ Tarayıcıda çalışan yörünge transfer simülatörü. Fizik 3B, görünüm �
 - Yörünge noktası adları cisme göre: Dünya perigee/apogee, Ay perilune/apolune, Güneş perihelion/aphelion, Mars periareion, Venüs pericytherion, Jüpiter perijove; diğerleri periapsis. `app.js` içindeki `APSIS` tablosunu kullan (veri `i18n.js` içindeki `apsis` girdisinden gelir).
 - Tek tema: koyu uzay. Renkler `css/style.css` başındaki `:root` token'larında; yeni renk ekleme, token kullan.
 - Mobil (≈400 px) genişlikte de çalışmalı; yatay sayfa kaydırması olmamalı.
+- Bu makinede Python yok. Dosya düzenlemeleri için Edit aracını ya da Node betiklerini kullan; yerel sunucu için `npx serve` veya küçük bir Node sunucusu kullan.
 
 ## Dosyalar
 - `index.html` — işaretleme (sol ikon çubuğu, sahne, HUD + mod seçici, zaman çizelgesi, pencereler: Görev / Gök cisimleri / Sonuçlar / Sözlük / Model, ilk açılış uyarısı, performans önerisi). Metinler yazılmaz; `data-i18n="anahtar"` (metin) ya da `data-i18n-<öznitelik>="anahtar"` (aria-label, title, placeholder, content) kullanılır.
