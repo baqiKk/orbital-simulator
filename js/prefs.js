@@ -3,7 +3,8 @@
 // Every storage access is wrapped: private windows, blocked site data and quota errors must never break the page.
 const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip' };
 const VIEW_MODES = ['low', 'normal'];
-const WIN_IDS = ['mission', 'bodies', 'results', 'gloss', 'model'];
+// placement order: overview's default spot sits under Results, so it comes after it
+const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'gloss', 'model'];
 const WIN_DEFAULT_OPEN = { mission: true, results: true };
 
 function readPref(store, key) { try { return store ? store.getItem(key) : null; } catch (e) { return null; } }
@@ -17,19 +18,22 @@ function startupMode(store) {
 }
 
 // narrow: a narrow desktop (floating windows, little room) — Results starts collapsed so the plot stays clear.
+// wide: a wide desktop (≥ 1440 px) — the overview (body picker) starts open too.
 function defaultWins(opts = {}) {
   const o = {};
-  for (const id of WIN_IDS) o[id] = { open: !!WIN_DEFAULT_OPEN[id], collapsed: !!opts.narrow && id === 'results', x: null, y: null };
+  for (const id of WIN_IDS) o[id] = { open: !!WIN_DEFAULT_OPEN[id] || (!!opts.wide && id === 'overview'), collapsed: !!opts.narrow && id === 'results', x: null, y: null };
   return o;
 }
 // Tolerates missing, corrupt or partial data; x/y null means "use the default position".
-// Saved entries always win over the defaults.
+// Saved entries always win over the defaults. A saved layout (even one from before a window existed)
+// is left as it is: the wide-screen overview default only applies on a first visit.
 function parseWins(raw, opts) {
   const out = defaultWins(opts);
   if (!raw) return out;
   let d;
   try { d = JSON.parse(raw); } catch (e) { return out; }
   if (!d || typeof d !== 'object') return out;
+  out.overview.open = false;
   for (const id of WIN_IDS) {
     const w = d[id];
     if (!w || typeof w !== 'object') continue;

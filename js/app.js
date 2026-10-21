@@ -129,7 +129,7 @@ function loadScenario(id) {
   if (S.model === 'real') linkReal();
   S.M = { ...sc.M };
   S.frame = sc.frame; S.follow = 'free';
-  openRows.clear();
+  openRows.clear(); ovReveal(); MAP.needFit = true;
   $('#scenario').value = sc.id;
   $('#scNote').textContent = _('sc.' + sc.id + '.note');
   syncModel(); renderBodies(); syncMission(); renderFrameSeg();
@@ -198,6 +198,7 @@ function renderBodies() {
     </div>`;
   }).join('');
   $('#addBody').hidden = N >= 4;
+  renderOverview();
 }
 function simpleFields(b, i) {
   const pOpts = `<option value="-1" ${b.parent < 0 ? 'selected' : ''}>${_('body.parentRoot')}</option>` +
@@ -661,7 +662,7 @@ function fit() {
 }
 function zoomAt(px, py, k) {
   const ns = clamp(cam.scale * k, 1e-15, 0.05);
-  if (S.follow !== 'free') { cam.scale = ns; return; }
+  if (MAP.on ? MAP.follow != null : S.follow !== 'free') { cam.scale = ns; return; }
   const wx = cam.cx + (px - W / 2) / cam.scale, wy = cam.cy - (py - H / 2) / cam.scale;
   cam.scale = ns; cam.cx = wx - (px - W / 2) / ns; cam.cy = wy + (py - H / 2) / ns;
 }
@@ -673,7 +674,8 @@ cv.addEventListener('pointermove', e => {
   const p = ptrs.get(e.pointerId); if (!p) return;
   const dx = e.offsetX - p.x, dy = e.offsetY - p.y; p.x = e.offsetX; p.y = e.offsetY;
   if (ptrs.size === 1) {
-    if (S.follow !== 'free' && Math.hypot(dx, dy) > 0) { S.follow = 'free'; renderFrameSeg(); }
+    if (MAP.on) MAP.follow = null;
+    else if (S.follow !== 'free' && Math.hypot(dx, dy) > 0) { S.follow = 'free'; renderFrameSeg(); }
     cam.cx -= dx / cam.scale; cam.cy += dy / cam.scale;
   } else if (ptrs.size === 2 && pinch0) {
     const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y);
@@ -683,7 +685,7 @@ cv.addEventListener('pointermove', e => {
 const endPtr = e => { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = null; if (!ptrs.size) cv.classList.remove('drag'); };
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
 cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
-cv.addEventListener('dblclick', () => { S.follow = 'free'; renderFrameSeg(); fit(); });
+cv.addEventListener('dblclick', () => { if (MAP.on) { fitMap(); return; } S.follow = 'free'; renderFrameSeg(); fit(); });
 
 // ===================== HUD controls =====================
 function renderFrameSeg() {
@@ -697,13 +699,21 @@ function renderFrameSeg() {
 $('#frameSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.frame = b.dataset.v; renderFrameSeg(); if (S.follow === 'free') needFit = true; });
 $('#followSeg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return; S.follow = b.dataset.v; renderFrameSeg();
-  if ((S.follow === 'A' || S.follow === 'B') && sys) {
-    const k = S.follow === 'A' ? 0 : 1, R = sys.R[k], rad = Math.min(sys.soi[k], 45 * R);
-    const { l, r, t, b } = insets(); cam.scale = Math.min(W - l - r, H - t - b) * 0.42 / rad;
-  }
+  if (S.follow === 'A' || S.follow === 'B') followZoom(S.follow === 'A' ? 0 : 1);
   if (S.follow === 'free') needFit = true;
 });
-$('#fit').addEventListener('click', () => { S.follow = 'free'; renderFrameSeg(); fit(); });
+// zoom onto body k of the mission (its SOI, at most 45 radii)
+function followZoom(k) {
+  if (!sys || !(k < sys.N)) return;
+  const R = sys.R[k], rad = Math.min(sys.soi[k], 45 * R);
+  const { l, r, t, b } = insets(); cam.scale = Math.min(W - l - r, H - t - b) * 0.42 / rad;
+}
+// follow mission body i: A and B through the follow buttons, extra bodies as 'b<i>'
+function followBody(i) {
+  S.follow = i === 0 ? 'A' : i === 1 ? 'B' : 'b' + i;
+  renderFrameSeg(); followZoom(i);
+}
+$('#fit').addEventListener('click', () => { if (MAP.on) { fitMap(); return; } S.follow = 'free'; renderFrameSeg(); fit(); });
 $('#tSoi').addEventListener('change', e => { S.soi = e.target.checked; });
 $('#tTracks').addEventListener('change', e => { S.tracks = e.target.checked; });
 
@@ -770,17 +780,24 @@ function updateResults() {
   rows.push([_('res.integration'), nf0.format(r.steps), _('res.steps')]);
   res.innerHTML = rows.map(([l, v, u]) => `<tr><th scope="row">${esc(l)}</th><td>${v}${u ? `<em>${esc(u)}</em>` : ''}</td></tr>`).join('');
 }
-function setStatus(t) { $('#status').textContent = t; }
+// the overview window repeats the mission status, so picks and solver progress show where the user clicked
+function setStatus(t) { $('#status').textContent = t; $('#ovStatus').textContent = t; }
 
 // ===================== Hohmann & Solver =====================
-$('#hohmann').addEventListener('click', () => {
-  if (!sys) return;
-  const g = hohmannGuess(sys, S.M);
-  if (!Number.isFinite(g.dv)) { setStatus(_('st.noHohmann')); return; }
+// Apply the patched-conic guess to the mission; returns the status text (without its tail) or null.
+function applyHohmann() {
+  let g;
+  try { g = hohmannGuess(sys, S.M); } catch (e) { return null; }
+  if (!Number.isFinite(g.dv)) return null;
   Object.assign(S.M, { theta: g.theta, dv: g.dv, t0: g.t0, beta: 0 });
   syncMission(); rebuild({ resetU: true, fit: true });
   const when = g.case !== 'sibling' ? '' : S.model === 'real' ? _('st.hohmannDate', { date: fmtDate(daysToUtc(g.t0)) }) : _('st.hohmannT0', { t0: nf1.format(g.t0) });
-  setStatus(_('st.hohmann', { dv: nf1.format(g.dv), days: nf2.format(g.tof / DAY) }) + when + _('st.hohmannTail'));
+  return _('st.hohmann', { dv: nf1.format(g.dv), days: nf2.format(g.tof / DAY) }) + when;
+}
+$('#hohmann').addEventListener('click', () => {
+  if (!sys) return;
+  const st = applyHohmann();
+  setStatus(st ? st + _('st.hohmannTail') : _('st.noHohmann'));
 });
 $('#solve').addEventListener('click', solve);
 // Solver runs in a Web Worker so the animation never stalls; falls back to the main thread.
@@ -839,6 +856,276 @@ async function solve() {
   } finally {
     solving = false; btn.textContent = _('ui.solve'); btn.classList.remove('busy');
   }
+}
+
+// ===================== Solar system map =====================
+// Always the real solar system (JPL elements), heliocentric, projected on the ecliptic. Date: the mission
+// departure plus the timeline time (real model) or today plus the timeline time (simplified model).
+// The map has its own camera: entering the map swaps it with the mission view's.
+const MAPK = KEYS_REAL, MSUN = MAPK.indexOf('sun');
+const mapSys = buildSystem(MAPK.map(k => { const d = BODIES[k]; return { name: k, mu: d.gm * 1e9, radius: d.radius * 1e3, parent: MAPK.indexOf(d.parent), a: 0, orb: d.orb }; }));
+const MPAR = MAPK.map(k => MAPK.indexOf(BODIES[k].parent));
+const MKIDS = MAPK.map(k => MAPK.filter(q => BODIES[q].parent === k).map(q => MAPK.indexOf(q)));
+const isMoon = i => MPAR[i] >= 0 && MPAR[i] !== MSUN;
+const MP = new Float64Array(3 * mapSys.N), MV = new Float64Array(3 * mapSys.N);
+const MAP = { on: false, log: false, moons: true, follow: null, needFit: true, cam: { cx: 0, cy: 0, scale: 1e-9 }, today: 0, orb: null, pos: null };
+const simCam = { cx: 0, cy: 0, scale: 1e-6 };
+let tNowG = 0, ovLast = 0;
+MAP.today = utcToDays(Date.now()) * DAY;
+const mapTime = t => (S.model === 'real' ? S.M.t0 * DAY : MAP.today) + t;
+
+// Logarithmic scale: radial distance from the Sun r -> AU·ln(1 + r/r0); directions are kept.
+const LOG_R0 = 0.05 * AU;
+function mapXY(x, y, out) {
+  if (MAP.log) { const r = Math.hypot(x, y), k = r > 0 ? AU * Math.log1p(r / LOG_R0) / r : 0; out[0] = x * k; out[1] = y * k; }
+  else { out[0] = x; out[1] = y; }
+  return out;
+}
+// heliocentric ecliptic x, y of map body i (after states(mapSys, …))
+const hx = i => MP[3 * i] - MP[3 * MSUN], hy = i => MP[3 * i + 1] - MP[3 * MSUN + 1];
+
+function setMap(on) {
+  if (on === MAP.on) return;
+  if (on) { Object.assign(simCam, cam); Object.assign(cam, MAP.cam); MAP.today = utcToDays(Date.now()) * DAY; }
+  else { Object.assign(MAP.cam, cam); Object.assign(cam, simCam); }
+  MAP.on = on; INS = null;
+  syncMapUI();
+}
+function syncMapUI() {
+  $('#mapBtn').setAttribute('aria-pressed', String(MAP.on));
+  for (const s of ['#frameSeg', '#followSeg', '#tSoiWrap', '#tTracksWrap']) $(s).hidden = MAP.on;
+  for (const s of ['#mapSeg', '#mapMoonsWrap']) $(s).hidden = !MAP.on;
+  setSeg('#mapSeg', MAP.log ? 'log' : 'lin');
+}
+$('#mapBtn').addEventListener('click', () => setMap(!MAP.on));
+$('#mapSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  MAP.log = b.dataset.v === 'log'; syncMapUI();
+  if (C) C.mapKey = '';
+  MAP.needFit = true;
+});
+$('#tMoons').addEventListener('change', e => { MAP.moons = e.target.checked; });
+document.addEventListener('keydown', e => {
+  if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey && !e.altKey && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) setMap(!MAP.on);
+});
+
+// Fit: the planets out to the mission's bodies (at least to Mars) in the linear scale, Neptune in the log scale.
+function fitMap() {
+  if (W < 50 || H < 50) return;
+  states(mapSys, mapTime(tNowG), MP, MV);
+  let R = 1.75 * AU;
+  if (MAP.log) R = mapXY(31 * AU, 0, [0, 0])[0];
+  else for (const b of S.bodies) { const i = MAPK.indexOf(b.key); if (i >= 0) R = Math.max(R, 1.2 * Math.hypot(hx(i), hy(i))); }
+  const { l, r, t, b } = insets();
+  cam.scale = Math.min(W - l - r, H - t - b) * 0.47 / R;
+  cam.cx = -((l - r) / 2) / cam.scale; cam.cy = ((t - b) / 2) / cam.scale;
+  MAP.follow = null; MAP.needFit = false;
+}
+// Centre on body k and follow it; in the linear scale zoom to its moons (or its neighbourhood).
+function mapCenter(k) {
+  const i = MAPK.indexOf(k); if (i < 0) return;
+  if (i === MSUN) { fitMap(); return; }
+  MAP.needFit = false; MAP.follow = i;
+  if (MAP.log) return;
+  states(mapSys, mapTime(tNowG), MP, MV);
+  const a = q => Math.hypot(MP[3 * q] - MP[3 * MPAR[q]], MP[3 * q + 1] - MP[3 * MPAR[q] + 1]);
+  const R = MKIDS[i].length ? 1.4 * Math.max(...MKIDS[i].map(a)) : isMoon(i) ? 2.5 * a(i) : 0.3 * a(i);
+  const { l, r, t, b } = insets();
+  cam.scale = Math.min(W - l - r, H - t - b) * 0.47 / R;
+}
+
+// orbit outlines cached per ~30 days of map time: planets relative to the Sun (mapped), moons to their planet
+function mapOrbits(T) {
+  const key = Math.round(T / (30 * DAY)) + '|' + MAP.log + '|' + Q.ellK;
+  if (MAP.orb && MAP.orb.key === key) return MAP.orb;
+  const K = Q.ellK, o = [0, 0], paths = [];
+  for (let i = 0; i < mapSys.N; i++) {
+    if (!mapSys.orb[i]) { paths.push(null); continue; }
+    const p = orbitPath(mapSys, i, T, K), e = new Float64Array(2 * K);
+    if (!isMoon(i)) for (let k = 0; k < K; k++) { mapXY(p[3 * k], p[3 * k + 1], o); e[2 * k] = o[0]; e[2 * k + 1] = o[1]; }
+    else for (let k = 0; k < K; k++) { e[2 * k] = p[3 * k]; e[2 * k + 1] = p[3 * k + 1]; }
+    paths.push(e);
+  }
+  return (MAP.orb = { key, paths });
+}
+
+// Real model: the craft path in heliocentric map coordinates. The offset from the mission's root body
+// to the Sun is sampled 400 times and interpolated (it changes slowly over a mission).
+const SPm = new Float64Array(12), SVm = new Float64Array(12);
+function mapOffset(t, out) { // map(root body) − sim(root body) at mission time t, after states(mapSys, …)
+  const r = sys.root, rk = MAPK.indexOf(S.bodies[r].key);
+  states(sys, S.M.t0 * DAY + t, SPm, SVm);
+  out[0] = hx(rk) - SPm[3 * r]; out[1] = hy(rk) - SPm[3 * r + 1]; return out;
+}
+function mapTraj() {
+  if (S.model !== 'real' || !C || !sys) return null;
+  const key = MAP.log + '|' + C.pt.length;
+  if (C.mapKey === key) return C;
+  const n = C.pt.length, K = 400, off = new Float64Array(2 * (K + 1)), o = [0, 0];
+  for (let k = 0; k <= K; k++) { const t = C.T * k / K; states(mapSys, S.M.t0 * DAY + t, MP, MV); mapOffset(t, o); off[2 * k] = o[0]; off[2 * k + 1] = o[1]; }
+  C.mx = new Float64Array(n); C.my = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const f = clamp(C.pt[i] / C.T * K, 0, K), k = Math.min(K - 1, Math.floor(f)), g = f - k;
+    const ox = off[2 * k] + (off[2 * k + 2] - off[2 * k]) * g, oy = off[2 * k + 1] + (off[2 * k + 3] - off[2 * k + 1]) * g;
+    mapXY(C.px[i] + ox, C.py[i] + oy, o); C.mx[i] = o[0]; C.my[i] = o[1];
+  }
+  C.mapKey = key;
+  return C;
+}
+
+const LABEL_FONT = '600 11px "Chakra Petch", system-ui, sans-serif';
+function drawMap(T, glow, craft, tNow, pathIdx) {
+  const tr = mapTraj(); // before the states below (it reuses MP)
+  states(mapSys, T, MP, MV);
+  const N = mapSys.N, pos = MAP.pos || (MAP.pos = new Float64Array(2 * N)), o = [0, 0];
+  for (let i = 0; i < N; i++) { mapXY(hx(i), hy(i), o); pos[2 * i] = o[0]; pos[2 * i + 1] = o[1]; }
+  if (MAP.needFit) fitMap();
+  if (MAP.follow != null) { cam.cx = pos[2 * MAP.follow]; cam.cy = pos[2 * MAP.follow + 1]; }
+  const keyA = S.bodies[0] && S.bodies[0].key, keyB = S.bodies[1] && S.bodies[1].key, sc = cam.scale;
+  const moonsOn = MAP.moons && !MAP.log;
+  // a moon is shown (linear scale only) once its orbit is a few pixels across
+  const moonR = i => Math.hypot(MP[3 * i] - MP[3 * MPAR[i]], MP[3 * i + 1] - MP[3 * MPAR[i] + 1]) * sc;
+  const showBody = i => !isMoon(i) || (moonsOn && moonR(i) > 5);
+
+  // orbits
+  const orb = mapOrbits(T);
+  ctx.lineWidth = 1;
+  for (let i = 0; i < N; i++) {
+    const e = orb.paths[i]; if (!e || !showBody(i)) continue;
+    const p = MPAR[i], cx0 = isMoon(i) ? sx(pos[2 * p]) : sx(0), cy0 = isMoon(i) ? sy(pos[2 * p + 1]) : sy(0);
+    const k = MAPK[i], hi = k === keyA || k === keyB;
+    ctx.strokeStyle = hexA(BODIES[k].color, hi ? 0.5 : isMoon(i) ? 0.18 : 0.26);
+    ctx.beginPath();
+    for (let j = 0; j < e.length; j += 2) { const x = cx0 + e[j] * sc, y = cy0 - e[j + 1] * sc; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.closePath(); ctx.stroke();
+  }
+  // craft path (real model)
+  if (tr && craft) {
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = hexA(COL.traj, 0.3); ctx.lineWidth = 1.2;
+    strokePath(tr.mx, tr.my, 0, tr.mx.length - 1);
+    ctx.strokeStyle = COL.traj; ctx.lineWidth = 1.8;
+    strokePath(tr.mx, tr.my, 0, pathIdx);
+    mapOffset(tNow, o); mapXY(craft[0] + o[0], craft[1] + o[1], o);
+    const x = sx(o[0]), y = sy(o[1]);
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = COL.traj; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(x, y, 6, 0, 6.2832); ctx.stroke();
+  }
+  // bodies and labels: Sun and planets first, then moons; a label that would overlap another is skipped
+  ctx.font = LABEL_FONT;
+  const placed = [], fits = (x, y, w) => !placed.some(q => x < q[0] + q[2] + 4 && x + w + 4 > q[0] && Math.abs(y - q[1]) < 13);
+  const order = [...Array(N).keys()].sort((p, q) => isMoon(p) - isMoon(q));
+  for (const i of order) {
+    if (!showBody(i)) continue;
+    const k = MAPK[i], x = sx(pos[2 * i]), y = sy(pos[2 * i + 1]), col = BODIES[k].color, moon = isMoon(i);
+    if (x < -40 || x > W + 40 || y < -40 || y > H + 40) continue;
+    const r = Math.max(i === MSUN ? 4.5 : moon ? 1.6 : 2.6, MAP.log ? 0 : mapSys.R[i] * sc);
+    if (i === MSUN && glow) {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r * 4);
+      g.addColorStop(0, hexA(col, 0.5)); g.addColorStop(1, hexA(col, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 4, 0, 6.2832); ctx.fill();
+    }
+    ctx.fillStyle = i === MSUN ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+    if (k === keyA || k === keyB) { ctx.strokeStyle = k === keyA ? COL.traj : COL.orbit; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.2832); ctx.stroke(); }
+    if (moon && (!Q.glow || moonR(i) < 22)) continue; // low-resource mode: planet labels only
+    const txt = _('body.' + k).toLocaleUpperCase(DICT['meta.locale']), w = ctx.measureText(txt).width;
+    const lx = x + r + 6, ly = y + 4;
+    if (!fits(lx, ly, w)) continue;
+    placed.push([lx, ly, w]);
+    ctx.fillStyle = hexA(COL.ink, moon ? 0.6 : 0.85); ctx.fillText(txt, lx, ly);
+  }
+  // caption: the date, and what the scale or the model leaves out
+  const { l, b: bot } = insets();
+  ctx.font = '500 11px "IBM Plex Mono", ui-monospace, monospace'; ctx.fillStyle = COL.dim;
+  let notes = [_('map.caption', { date: fmtDate(daysToUtc(T / DAY)) })];
+  if (MAP.log) notes.push(_('map.logNote'));
+  if (S.model !== 'real') notes.push(_('map.today'));
+  // narrow screens: a line too wide for the plot breaks at its ' · ' separators
+  notes = notes.flatMap(s => ctx.measureText(s).width > W - l - 16 ? s.split(' · ') : [s]);
+  notes.forEach((s, j) => ctx.fillText(s, l + 8, H - bot - (MAP.log ? 8 : 30) - (notes.length - 1 - j) * 15));
+}
+
+// ===================== Overview (body picker) =====================
+// Tree of the real bodies: the Sun, the planets, their moons (folded per planet). Distances follow the map date.
+const ovOpen = new Set();
+let OVD = [];
+const ICON_CHEV_R = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 3 7.5 6 4.5 9"/></svg>';
+// unfold the planets that hold the departure or target body
+function ovReveal() { for (const b of S.bodies.slice(0, 2)) { const p = BODIES[b.key] && BODIES[b.key].parent; if (p && p !== 'sun') ovOpen.add(p); } }
+function renderOverview() {
+  const A = S.bodies[0] && S.bodies[0].key, B = S.bodies[1] && S.bodies[1].key, inM = new Set(S.bodies.map(b => b.key));
+  const rows = [];
+  const row = (i, lvl) => {
+    const k = MAPK[i], name = _('body.' + k), kids = MKIDS[i], open = lvl === 0 || ovOpen.has(k);
+    const fold = lvl === 1 && kids.length
+      ? `<button type="button" class="ibtn" data-act="fold" aria-expanded="${open}" aria-label="${esc(_('ov.moons', { name }))}">${open ? ICON_CHEV : ICON_CHEV_R}</button>`
+      : lvl === 1 ? '<span class="ot-sp"></span>' : '';
+    rows.push(`<tr data-k="${k}" class="l${lvl}${inM.has(k) ? ' inm' : ''}">
+      <th scope="row"><span class="ot-n">${fold}<button type="button" class="ot-name" data-act="center" title="${esc(_('ov.center', { name }))}"><span class="dot" style="background:${BODIES[k].color}"></span><span>${esc(name)}</span></button></span></th>
+      <td class="ot-d" data-i="${i}">—</td>
+      <td class="ot-p"><button type="button" class="pick dep" data-act="dep" aria-pressed="${k === A}" aria-label="${esc(_('ov.pickDep', { name }))}" title="${esc(_('ov.pickDep', { name }))}"></button></td>
+      <td class="ot-p"><button type="button" class="pick tgt" data-act="tgt" aria-pressed="${k === B}" aria-label="${esc(_('ov.pickTgt', { name }))}" title="${esc(_('ov.pickTgt', { name }))}"></button></td></tr>`);
+    if (open) for (const c of kids) row(c, lvl + 1);
+  };
+  row(MSUN, 0);
+  $('#ovBody').innerHTML = rows.join('');
+  OVD = [...$('#ovBody').querySelectorAll('td[data-i]')].map(el => [el, +el.dataset.i]).filter(([, i]) => i !== MSUN);
+  ovDist(true);
+}
+function ovDist(force) {
+  if (!force && (!WINS.overview.open || WINS.overview.collapsed)) return;
+  states(mapSys, mapTime(tNowG), MP, MV);
+  for (const [el, i] of OVD) {
+    // planets in AU from the Sun, moons in km from their planet
+    const p = MPAR[i], d = Math.hypot(MP[3 * i] - MP[3 * p], MP[3 * i + 1] - MP[3 * p + 1], MP[3 * i + 2] - MP[3 * p + 2]);
+    const v = isMoon(i) ? fmtDist(d) : nf3.format(d / AU) + ' ' + _('unit.au');
+    if (el.textContent !== v) el.textContent = v;
+  }
+}
+$('#ovBody').addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]'); if (!btn) return;
+  const k = btn.closest('tr').dataset.k, act = btn.dataset.act;
+  if (act === 'fold') { ovOpen.has(k) ? ovOpen.delete(k) : ovOpen.add(k); renderOverview(); clampWins(); $(`#ovBody tr[data-k="${k}"] [data-act=fold]`).focus(); }
+  else if (act === 'center') centerBody(k);
+  else pickBody(k, act);
+});
+// a mission body is followed in the mission view; any other body is centred on the map
+function centerBody(k) {
+  const i = S.bodies.findIndex(b => b.key === k);
+  if (i >= 0 && sys) { setMap(false); followBody(i); }
+  else { setMap(true); mapCenter(k); }
+}
+
+// Pick the departure or target body: the list becomes the two bodies plus the parents they need,
+// in the real model (from the simplified model, departing today), with the Hohmann guess applied.
+function pickBody(k, role) {
+  if (solving) $('#solve').click(); // cancel a running solve: its result would belong to the old bodies
+  const cur = S.bodies.map(b => b.key);
+  let a = role === 'dep' ? k : cur[0], b = role === 'tgt' ? k : cur[1];
+  if (a === b) { if (role === 'dep') b = cur[0]; else a = cur[1]; } // picking the other role's body swaps them
+  const eph = q => q && BODIES[q] && BODIES[q].gm;
+  if (!eph(a)) a = b === 'earth' ? 'moon' : 'earth';
+  if (!eph(b)) b = a === 'earth' ? 'moon' : 'earth';
+  const ch = missionChain(a, b, q => BODIES[q].parent || null);
+  if (ch.error) { setStatus(_(ch.error, { ...ch.params, a: _('body.' + a), b: _('body.' + b) })); return; }
+  const switched = S.model !== 'real';
+  if (switched) { S.model = 'real'; S.M.t0 = utcToDays(Math.floor(Date.now() / 60000) * 60000); }
+  S.M.beta = 0;
+  S.bodies = ch.keys.map(q => bodyFromPreset(q)); linkReal();
+  S.scenario = ''; $('#scenario').value = ''; $('#scNote').textContent = _('sc.pick.note');
+  // a body and its own moon: rotating view (A–B line fixed); anything else: inertial, and a free return
+  // (which only makes sense around a body's own moon) becomes an orbit insertion
+  const pair = ch.parent[1] === 0 || ch.parent[0] === 1;
+  S.frame = pair ? 'rot' : 'inertial'; S.follow = 'free';
+  if (!pair && S.M.mode === 'free') S.M.mode = 'capture';
+  openRows.clear(); ovReveal();
+  syncModel(); renderBodies(); syncMission(); renderFrameSeg();
+  rebuild({ fit: true, resetU: true });
+  if (MAP.follow == null) MAP.needFit = true;
+  const st = sys ? applyHohmann() : null;
+  setStatus((switched ? _('st.pickReal') : '') + _('st.picked', { a: S.bodies[0].name, b: S.bodies[1].name }) + (st ? st + _('st.pickTail') : _('st.noHohmann')));
+  if (!reduceMotion) S.playing = true;
+  setPlayIcon();
 }
 
 // ===================== Render loop =====================
@@ -905,9 +1192,9 @@ function draw(now) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H);
   if (stars) ctx.drawImage(stars, 0, 0, W, H);
-  if (!sys || !simR || !C) { requestAnimationFrame(draw); return; }
+  if (!sys || !simR || !C) { if (MAP.on) { drawMap(mapTime(0), glow, null, 0, 0); if (!MAP.log) drawScale(); } requestAnimationFrame(draw); return; }
   frameCache();
-  if (needFit) fit();
+  if (needFit && !MAP.on) fit();
 
   if (S.playing && !scrubbing) {
     if (S.u >= 1) {
@@ -922,6 +1209,7 @@ function draw(now) {
   const [si, sf] = uToSeg(S.u);
   const segH = simR.t[si + 1] - simR.t[si];
   const tNow = ext ? C.T + S.ext : simR.t[si] + (segH > 0 ? sf * segH : 0);
+  tNowG = tNow;
   const craft = ext ? orbitPos(tNow, [0, 0, 0]) : segH > 0 ? herm(si, sf, [0, 0, 0]) : [simR.x[si + 1], simR.y[si + 1], simR.z[si + 1]];
   const pathIdx = ext ? C.fx.length - 1 : Math.min(C.fx.length - 1, C.segStart[si] + Math.floor(sf * (segH > 0 ? SUB : 0)));
 
@@ -940,155 +1228,149 @@ function draw(now) {
   if (S.follow === 'craft') { cam.cx = cpos[0]; cam.cy = cpos[1]; }
   else if (S.follow === 'A') { cam.cx = bpos[0][0]; cam.cy = bpos[0][1]; }
   else if (S.follow === 'B') { cam.cx = bpos[1][0]; cam.cy = bpos[1][1]; }
+  else if (S.follow[0] === 'b' && bpos[+S.follow.slice(1)]) { const p = bpos[+S.follow.slice(1)]; cam.cx = p[0]; cam.cy = p[1]; }
 
-  // orbits (non-rotating frames): circles in the simplified model, projected ellipses in the real one
-  ctx.lineWidth = 1;
-  if (S.frame !== 'rot') {
-    const diag = Math.hypot(W, H);
-    for (let b = 0; b < N; b++) {
-      const p = sys.parent[b]; if (p < 0) continue;
-      const ell = C.ell[b];
-      const r = (ell ? sys.a[b] : Math.hypot(bpos[b][0] - bpos[p][0], bpos[b][1] - bpos[p][1])) * cam.scale;
-      if (r < 4 || r > 1e5) continue;
-      const cx0 = sx(bpos[p][0]), cy0 = sy(bpos[p][1]), dc = Math.hypot(cx0 - W / 2, cy0 - H / 2), ro = ell ? r * 1.3 : r;
-      if (dc - ro > diag / 2 || (ell ? r * 0.7 : r) - dc > diag / 2) continue; // entirely off-screen
-      ctx.setLineDash(r < 1500 ? [3, 5] : []);
-      ctx.strokeStyle = hexA(S.bodies[b].color, r < 1500 ? 0.2 : 0.12);
-      ctx.beginPath();
-      if (ell) { for (let k = 0; k < ell.length; k += 2) { const x = cx0 + ell[k] * cam.scale, y = cy0 - ell[k + 1] * cam.scale; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.closePath(); }
-      else ctx.arc(cx0, cy0, r, 0, 6.2832);
-      ctx.stroke();
+  if (MAP.on) drawMap(mapTime(tNow), glow, craft, tNow, pathIdx);
+  else {
+    // orbits (non-rotating frames): circles in the simplified model, projected ellipses in the real one
+    ctx.lineWidth = 1;
+    if (S.frame !== 'rot') {
+      const diag = Math.hypot(W, H);
+      for (let b = 0; b < N; b++) {
+        const p = sys.parent[b]; if (p < 0) continue;
+        const ell = C.ell[b];
+        const r = (ell ? sys.a[b] : Math.hypot(bpos[b][0] - bpos[p][0], bpos[b][1] - bpos[p][1])) * cam.scale;
+        if (r < 4 || r > 1e5) continue;
+        const cx0 = sx(bpos[p][0]), cy0 = sy(bpos[p][1]), dc = Math.hypot(cx0 - W / 2, cy0 - H / 2), ro = ell ? r * 1.3 : r;
+        if (dc - ro > diag / 2 || (ell ? r * 0.7 : r) - dc > diag / 2) continue; // entirely off-screen
+        ctx.setLineDash(r < 1500 ? [3, 5] : []);
+        ctx.strokeStyle = hexA(S.bodies[b].color, r < 1500 ? 0.2 : 0.12);
+        ctx.beginPath();
+        if (ell) { for (let k = 0; k < ell.length; k += 2) { const x = cx0 + ell[k] * cam.scale, y = cy0 - ell[k + 1] * cam.scale; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.closePath(); }
+        else ctx.arc(cx0, cy0, r, 0, 6.2832);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
     }
-    ctx.setLineDash([]);
-  }
-  // body tracks over the mission
-  if (S.tracks) {
-    ctx.lineWidth = 1.2;
-    for (let b = 0; b < N; b++) {
-      const tr = C.tracks[b]; ctx.strokeStyle = hexA(S.bodies[b].color, 0.38);
-      ctx.beginPath();
-      for (let k = 0; k < tr.length; k += 2) { const x = sx(tr[k]), y = sy(tr[k + 1]); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-      ctx.stroke();
+    // body tracks over the mission
+    if (S.tracks) {
+      ctx.lineWidth = 1.2;
+      for (let b = 0; b < N; b++) {
+        const tr = C.tracks[b]; ctx.strokeStyle = hexA(S.bodies[b].color, 0.38);
+        ctx.beginPath();
+        for (let k = 0; k < tr.length; k += 2) { const x = sx(tr[k]), y = sy(tr[k + 1]); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+        ctx.stroke();
+      }
     }
-  }
-  // SOI
-  if (S.soi) {
-    ctx.setLineDash([1.5, 4]); ctx.strokeStyle = hexA(COL.dim, 0.5); ctx.lineWidth = 1;
-    for (let b = 0; b < N; b++) {
-      if (!isFinite(sys.soi[b])) continue;
-      const r = sys.soi[b] * cam.scale; if (r < 3 || r > 1e5) continue;
-      ctx.beginPath(); ctx.arc(sx(bpos[b][0]), sy(bpos[b][1]), r, 0, 6.2832); ctx.stroke();
-      if (r > 30) { ctx.fillStyle = hexA(COL.dim, 0.7); ctx.font = '500 10px ' + 'IBM Plex Mono, monospace'; ctx.fillText(_('canvas.soi'), sx(bpos[b][0]) + r * 0.707 + 4, sy(bpos[b][1]) - r * 0.707 - 4); }
+    // SOI
+    if (S.soi) {
+      ctx.setLineDash([1.5, 4]); ctx.strokeStyle = hexA(COL.dim, 0.5); ctx.lineWidth = 1;
+      for (let b = 0; b < N; b++) {
+        if (!isFinite(sys.soi[b])) continue;
+        const r = sys.soi[b] * cam.scale; if (r < 3 || r > 1e5) continue;
+        ctx.beginPath(); ctx.arc(sx(bpos[b][0]), sy(bpos[b][1]), r, 0, 6.2832); ctx.stroke();
+        if (r > 30) { ctx.fillStyle = hexA(COL.dim, 0.7); ctx.font = '500 10px ' + 'IBM Plex Mono, monospace'; ctx.fillText(_('canvas.soi'), sx(bpos[b][0]) + r * 0.707 + 4, sy(bpos[b][1]) - r * 0.707 - 4); }
+      }
+      ctx.setLineDash([]);
     }
-    ctx.setLineDash([]);
-  }
-  // trajectory
-  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  ctx.strokeStyle = hexA(COL.traj, 0.26); ctx.lineWidth = 1.2;
-  strokePath(C.fx, C.fy, 0, C.fx.length - 1);
-  for (const [lw, col] of (glow ? [[6, hexA(COL.traj, 0.16)], [1.8, COL.traj]] : [[1.8, COL.traj]])) {
-    ctx.strokeStyle = col; ctx.lineWidth = lw;
-    strokePath(C.fx, C.fy, 0, pathIdx);
-    ctx.beginPath(); ctx.moveTo(sx(C.fx[pathIdx]), sy(C.fy[pathIdx])); ctx.lineTo(sx(cpos[0]), sy(cpos[1])); ctx.stroke();
+    // trajectory
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = hexA(COL.traj, 0.26); ctx.lineWidth = 1.2;
+    strokePath(C.fx, C.fy, 0, C.fx.length - 1);
+    for (const [lw, col] of (glow ? [[6, hexA(COL.traj, 0.16)], [1.8, COL.traj]] : [[1.8, COL.traj]])) {
+      ctx.strokeStyle = col; ctx.lineWidth = lw;
+      strokePath(C.fx, C.fy, 0, pathIdx);
+      ctx.beginPath(); ctx.moveTo(sx(C.fx[pathIdx]), sy(C.fy[pathIdx])); ctx.lineTo(sx(cpos[0]), sy(cpos[1])); ctx.stroke();
+    }
+
+    if (ext) {
+      // the parking orbit around B, projected (an ellipse when its plane is tilted to the view)
+      const rr = C.orbit.r * cam.scale;
+      if (rr > 2 && rr < 1e5) {
+        const o = C.orbit, r = o.r0, k = o.ax, q = [k[1] * r[2] - k[2] * r[1], k[2] * r[0] - k[0] * r[2], k[0] * r[1] - k[1] * r[0]];
+        const X = FP.X, Y = FP.Y, ux = r[0] * X[0] + r[1] * X[1] + r[2] * X[2], uy = r[0] * Y[0] + r[1] * Y[1] + r[2] * Y[2];
+        const vx = q[0] * X[0] + q[1] * X[1] + q[2] * X[2], vy = q[0] * Y[0] + q[1] * Y[1] + q[2] * Y[2];
+        const cx0 = sx(bpos[1][0]), cy0 = sy(bpos[1][1]), s = cam.scale;
+        ctx.strokeStyle = hexA(COL.traj, 0.55); ctx.lineWidth = 1.4; ctx.beginPath();
+        for (let j = 0; j <= 64; j++) { const a = j * Math.PI / 32, c = Math.cos(a), sn = Math.sin(a), x = cx0 + (ux * c + vx * sn) * s, y = cy0 - (uy * c + vy * sn) * s; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+        ctx.stroke();
+      }
+    }
+    // markers
+    ctx.font = MARK_FONT;
+    const placed = [];
+    for (const m of C.markers) {
+      const x = sx(m.fx), y = sy(m.fy), reached = m.t <= tNow + 1e-6;
+      if (x < -50 || x > W + 50 || y < -50 || y > H + 50) continue;
+      const col = m.type === 'burn' ? COL.burn : m.type === 'impact' ? COL.bad : COL.orbit;
+      ctx.globalAlpha = reached ? 1 : 0.55;
+      ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1.4;
+      if (m.type === 'burn') { ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y); ctx.closePath(); ctx.fill(); }
+      else { ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 6.2832); ctx.fill(); ctx.strokeStyle = 'rgba(4,6,11,0.9)'; ctx.lineWidth = 1.2; ctx.stroke(); }
+      ctx.fillStyle = hexA(col, reached ? 0.95 : 0.6);
+      // push label outward from the body the event belongs to
+      const bb = m.body || 0; let ox = x - sx(bpos[bb][0]), oy = y - sy(bpos[bb][1]); let ol = Math.hypot(ox, oy);
+      if (ol < 1) { ox = 1; oy = -1; ol = Math.SQRT2; }
+      ox /= ol; oy /= ol;
+      const tw = ctx.measureText(m.txt).width;
+      let lx = x + ox * 14 + (ox < -0.3 ? -tw : ox < 0.3 ? -tw / 2 : 0), ly = y + oy * 14 + 4 + (oy > 0.3 ? 8 : 0);
+      lx = clamp(lx, 6, W - tw - 6);
+      // avoid stacking labels of coincident events (e.g. perilune + capture burn)
+      for (let guard = 0; guard < 6 && placed.some(q => lx < q[0] + q[2] && lx + tw > q[0] && Math.abs(ly - q[1]) < 13); guard++) ly += oy >= 0 ? 14 : -14;
+      placed.push([lx, ly, tw]);
+      ctx.fillText(m.txt, lx, ly);
+      ctx.globalAlpha = 1;
+    }
+
+    // bodies
+    /*bodies*/
+    const sunIdx = S.bodies.findIndex(b => b.key === 'sun');
+    for (const b of [...Array(N).keys()].sort((p, q) => sys.R[q] - sys.R[p])) {
+      const x = sx(bpos[b][0]), y = sy(bpos[b][1]);
+      const isSun = S.bodies[b].key === 'sun';
+      const minR = b < 2 ? 5 : 4;
+      const r = Math.max(minR, sys.R[b] * cam.scale);
+      if (x + r < -60 || x - r > W + 60 || y + r < -60 || y - r > H + 60) continue;
+      const col = S.bodies[b].color;
+      if (!Q.glow) { // low-resource: flat discs, no gradients
+        ctx.fillStyle = isSun ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+      } else if (isSun) {
+        const g = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 4.5);
+        g.addColorStop(0, hexA(col, 0.55)); g.addColorStop(0.25, hexA(col, 0.18)); g.addColorStop(1, hexA(col, 0));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 4.5, 0, 6.2832); ctx.fill();
+        ctx.fillStyle = '#fff3d6'; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+      } else {
+        let lx = -0.6, ly = -0.8;
+        if (sunIdx >= 0) { const dx = sx(bpos[sunIdx][0]) - x, dy = sy(bpos[sunIdx][1]) - y, d = Math.hypot(dx, dy); if (d > 0) { lx = dx / d; ly = dy / d; } }
+        const g = ctx.createRadialGradient(x + lx * r * 0.45, y + ly * r * 0.45, r * 0.1, x, y, r * 1.05);
+        g.addColorStop(0, col); g.addColorStop(0.65, hexA(col, 0.75)); g.addColorStop(1, 'rgba(8,10,18,0.95)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+        ctx.strokeStyle = hexA(col, 0.35); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, r + 2.5, 0, 6.2832); ctx.stroke();
+      }
+      ctx.font = '600 11px "Chakra Petch", system-ui, sans-serif';
+      ctx.fillStyle = hexA(COL.ink, 0.82);
+      ctx.fillText(S.bodies[b].name.toLocaleUpperCase(DICT['meta.locale']), x + r + 7, y + r + 12);
+    }
+
+    // spacecraft
+    {
+      const x = sx(cpos[0]), y = sy(cpos[1]);
+      if (Q.glow) {
+        const g = ctx.createRadialGradient(x, y, 0, x, y, 16);
+        g.addColorStop(0, hexA(COL.traj, 0.6)); g.addColorStop(1, hexA(COL.traj, 0));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 16, 0, 6.2832); ctx.fill();
+      } else { ctx.strokeStyle = COL.traj; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, 6, 0, 6.2832); ctx.stroke(); }
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
+      const vx = sx(cpos2[0]) - x, vy = sy(cpos2[1]) - y, vl = Math.hypot(vx, vy);
+      if (vl > 1e-6) {
+        const ux = vx / vl, uy = vy / vl, L = 22;
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(x + ux * 6, y + uy * 6); ctx.lineTo(x + ux * L, y + uy * L); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x + ux * L, y + uy * L); ctx.lineTo(x + ux * (L - 5) - uy * 3.5, y + uy * (L - 5) + ux * 3.5); ctx.lineTo(x + ux * (L - 5) + uy * 3.5, y + uy * (L - 5) - ux * 3.5); ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
+      }
+    }
   }
 
-  if (ext) {
-    // the parking orbit around B, projected (an ellipse when its plane is tilted to the view)
-    const rr = C.orbit.r * cam.scale;
-    if (rr > 2 && rr < 1e5) {
-      const o = C.orbit, r = o.r0, k = o.ax, q = [k[1] * r[2] - k[2] * r[1], k[2] * r[0] - k[0] * r[2], k[0] * r[1] - k[1] * r[0]];
-      const X = FP.X, Y = FP.Y, ux = r[0] * X[0] + r[1] * X[1] + r[2] * X[2], uy = r[0] * Y[0] + r[1] * Y[1] + r[2] * Y[2];
-      const vx = q[0] * X[0] + q[1] * X[1] + q[2] * X[2], vy = q[0] * Y[0] + q[1] * Y[1] + q[2] * Y[2];
-      const cx0 = sx(bpos[1][0]), cy0 = sy(bpos[1][1]), s = cam.scale;
-      ctx.strokeStyle = hexA(COL.traj, 0.55); ctx.lineWidth = 1.4; ctx.beginPath();
-      for (let j = 0; j <= 64; j++) { const a = j * Math.PI / 32, c = Math.cos(a), sn = Math.sin(a), x = cx0 + (ux * c + vx * sn) * s, y = cy0 - (uy * c + vy * sn) * s; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-      ctx.stroke();
-    }
-  }
-  // markers
-  ctx.font = MARK_FONT;
-  const placed = [];
-  for (const m of C.markers) {
-    const x = sx(m.fx), y = sy(m.fy), reached = m.t <= tNow + 1e-6;
-    if (x < -50 || x > W + 50 || y < -50 || y > H + 50) continue;
-    const col = m.type === 'burn' ? COL.burn : m.type === 'impact' ? COL.bad : COL.orbit;
-    ctx.globalAlpha = reached ? 1 : 0.55;
-    ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1.4;
-    if (m.type === 'burn') { ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y); ctx.closePath(); ctx.fill(); }
-    else { ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 6.2832); ctx.fill(); ctx.strokeStyle = 'rgba(4,6,11,0.9)'; ctx.lineWidth = 1.2; ctx.stroke(); }
-    ctx.fillStyle = hexA(col, reached ? 0.95 : 0.6);
-    // push label outward from the body the event belongs to
-    const bb = m.body || 0; let ox = x - sx(bpos[bb][0]), oy = y - sy(bpos[bb][1]); let ol = Math.hypot(ox, oy);
-    if (ol < 1) { ox = 1; oy = -1; ol = Math.SQRT2; }
-    ox /= ol; oy /= ol;
-    const tw = ctx.measureText(m.txt).width;
-    let lx = x + ox * 14 + (ox < -0.3 ? -tw : ox < 0.3 ? -tw / 2 : 0), ly = y + oy * 14 + 4 + (oy > 0.3 ? 8 : 0);
-    lx = clamp(lx, 6, W - tw - 6);
-    // avoid stacking labels of coincident events (e.g. perilune + capture burn)
-    for (let guard = 0; guard < 6 && placed.some(q => lx < q[0] + q[2] && lx + tw > q[0] && Math.abs(ly - q[1]) < 13); guard++) ly += oy >= 0 ? 14 : -14;
-    placed.push([lx, ly, tw]);
-    ctx.fillText(m.txt, lx, ly);
-    ctx.globalAlpha = 1;
-  }
-
-  // bodies
-  /*bodies*/
-  const sunIdx = S.bodies.findIndex(b => b.key === 'sun');
-  for (const b of [...Array(N).keys()].sort((p, q) => sys.R[q] - sys.R[p])) {
-    const x = sx(bpos[b][0]), y = sy(bpos[b][1]);
-    const isSun = S.bodies[b].key === 'sun';
-    const minR = b < 2 ? 5 : 4;
-    const r = Math.max(minR, sys.R[b] * cam.scale);
-    if (x + r < -60 || x - r > W + 60 || y + r < -60 || y - r > H + 60) continue;
-    const col = S.bodies[b].color;
-    if (!Q.glow) { // low-resource: flat discs, no gradients
-      ctx.fillStyle = isSun ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
-    } else if (isSun) {
-      const g = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 4.5);
-      g.addColorStop(0, hexA(col, 0.55)); g.addColorStop(0.25, hexA(col, 0.18)); g.addColorStop(1, hexA(col, 0));
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 4.5, 0, 6.2832); ctx.fill();
-      ctx.fillStyle = '#fff3d6'; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
-    } else {
-      let lx = -0.6, ly = -0.8;
-      if (sunIdx >= 0) { const dx = sx(bpos[sunIdx][0]) - x, dy = sy(bpos[sunIdx][1]) - y, d = Math.hypot(dx, dy); if (d > 0) { lx = dx / d; ly = dy / d; } }
-      const g = ctx.createRadialGradient(x + lx * r * 0.45, y + ly * r * 0.45, r * 0.1, x, y, r * 1.05);
-      g.addColorStop(0, col); g.addColorStop(0.65, hexA(col, 0.75)); g.addColorStop(1, 'rgba(8,10,18,0.95)');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
-      ctx.strokeStyle = hexA(col, 0.35); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, r + 2.5, 0, 6.2832); ctx.stroke();
-    }
-    ctx.font = '600 11px "Chakra Petch", system-ui, sans-serif';
-    ctx.fillStyle = hexA(COL.ink, 0.82);
-    ctx.fillText(S.bodies[b].name.toLocaleUpperCase(DICT['meta.locale']), x + r + 7, y + r + 12);
-  }
-
-  // spacecraft
-  {
-    const x = sx(cpos[0]), y = sy(cpos[1]);
-    if (Q.glow) {
-      const g = ctx.createRadialGradient(x, y, 0, x, y, 16);
-      g.addColorStop(0, hexA(COL.traj, 0.6)); g.addColorStop(1, hexA(COL.traj, 0));
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 16, 0, 6.2832); ctx.fill();
-    } else { ctx.strokeStyle = COL.traj; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, 6, 0, 6.2832); ctx.stroke(); }
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
-    const vx = sx(cpos2[0]) - x, vy = sy(cpos2[1]) - y, vl = Math.hypot(vx, vy);
-    if (vl > 1e-6) {
-      const ux = vx / vl, uy = vy / vl, L = 22;
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(x + ux * 6, y + uy * 6); ctx.lineTo(x + ux * L, y + uy * L); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x + ux * L, y + uy * L); ctx.lineTo(x + ux * (L - 5) - uy * 3.5, y + uy * (L - 5) + ux * 3.5); ctx.lineTo(x + ux * (L - 5) + uy * 3.5, y + uy * (L - 5) - ux * 3.5); ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
-    }
-  }
-
-  // scale bar
-  {
-    const { l, b: bot } = insets();
-    const target = 110 / cam.scale; const p = Math.pow(10, Math.floor(Math.log10(target)));
-    const nice = [1, 2, 5, 10].map(k => k * p).reduce((a, b) => Math.abs(b - target) < Math.abs(a - target) ? b : a);
-    const px = nice * cam.scale, x0 = l + 8, y0 = H - bot - 4;
-    ctx.strokeStyle = hexA(COL.dim, 0.9); ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(x0, y0 - 5); ctx.lineTo(x0, y0); ctx.lineTo(x0 + px, y0); ctx.lineTo(x0 + px, y0 - 5); ctx.stroke();
-    ctx.fillStyle = COL.dim; ctx.font = '500 11px "IBM Plex Mono", ui-monospace, monospace';
-    ctx.fillText(fmtDist(nice), x0 + 2, y0 - 8);
-  }
+  if (!(MAP.on && MAP.log)) drawScale();
 
   // HUD text
   if (Q.hudMs ? now - hudLast >= Q.hudMs : (hudTick++ & 3) === 0) {
@@ -1115,7 +1397,20 @@ function draw(now) {
     setT('#tend', '/ ' + fmtDur(C.T) + (ext ? _('hud.lap', { n: 1 + Math.floor(S.ext / C.orbit.P) }) : ''));
     if (!scrubbing) scrub.value = Math.round(S.u * 10000);
   }
+  if (now - ovLast > 500) { ovLast = now; ovDist(); }
   requestAnimationFrame(draw);
+}
+
+// scale bar, bottom-left of the free plot area
+function drawScale() {
+  const { l, b: bot } = insets();
+  const target = 110 / cam.scale; const p = Math.pow(10, Math.floor(Math.log10(target)));
+  const nice = [1, 2, 5, 10].map(k => k * p).reduce((a, b) => Math.abs(b - target) < Math.abs(a - target) ? b : a);
+  const px = nice * cam.scale, x0 = l + 8, y0 = H - bot - 4;
+  ctx.strokeStyle = hexA(COL.dim, 0.9); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x0, y0 - 5); ctx.lineTo(x0, y0); ctx.lineTo(x0 + px, y0); ctx.lineTo(x0 + px, y0 - 5); ctx.stroke();
+  ctx.fillStyle = COL.dim; ctx.font = '500 11px "IBM Plex Mono", ui-monospace, monospace';
+  ctx.fillText(fmtDist(nice), x0 + 2, y0 - 8);
 }
 
 // ===================== Glossary =====================
@@ -1143,8 +1438,9 @@ $('#glossQ').addEventListener('input', e => renderGloss(e.target.value));
 // Layout persists in localStorage. A null x/y means "default spot", recomputed on every layout change.
 const mqFloat = window.matchMedia('(min-width: 861px)');
 function floating() { return mqFloat.matches; }
-// narrow desktop (~<1100 px): Results starts collapsed unless a saved layout says otherwise
-const narrowDesk = () => ({ narrow: window.matchMedia('(min-width: 861px) and (max-width: 1099px)').matches });
+// narrow desktop (~<1100 px): Results starts collapsed; wide (≥ 1440 px): the overview starts open.
+// Neither touches a saved layout.
+const narrowDesk = () => ({ narrow: window.matchMedia('(min-width: 861px) and (max-width: 1099px)').matches, wide: window.matchMedia('(min-width: 1440px)').matches });
 const WINS = parseWins(readPref(LS, PREF_KEYS.wins), narrowDesk());
 const ICON_MINUS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7"/></svg>';
 const ICON_PLUS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7M6 2.5v7"/></svg>';
@@ -1153,7 +1449,8 @@ const winEl = id => $('#w-' + id);
 const railBtn = id => $(`.rail-btn[data-win="${id}"]`);
 function saveWins() { writePref(LS, PREF_KEYS.wins, JSON.stringify(WINS)); }
 
-// Default spots: mission top-left, results under the view controls on the right, so the centre stays clear.
+// Default spots: mission top-left, results under the view controls on the right and the overview under
+// results (same column), so the centre stays clear.
 function defaultWinPos(id, el) {
   const box = $('#wins'), cw = box.clientWidth, ch = box.clientHeight, m = 12, w = el.offsetWidth;
   const cssW = k => parseFloat(getComputedStyle(winEl(k)).width) || 0;
@@ -1162,6 +1459,7 @@ function defaultWinPos(id, el) {
     case 'mission': return [m, m];
     case 'bodies': return [m + cssW('mission') + 10, m];
     case 'results': return [cw - w - m, below];
+    case 'overview': { const r = winEl('results'); return [cw - w - m, WINS.results.open && floating() ? r.offsetTop + r.offsetHeight + 10 : below]; }
     case 'gloss': return [cw - w - m - cssW('results') - 10, below];
     default: return [(cw - w) / 2, ch * 0.16];
   }
@@ -1169,7 +1467,10 @@ function defaultWinPos(id, el) {
 function placeWin(id) {
   const st = WINS[id], el = winEl(id), box = $('#wins');
   if (!st.open || !floating()) return;
-  let [x, y] = st.x == null || st.y == null ? defaultWinPos(id, el) : [st.x, st.y];
+  const def = st.x == null || st.y == null;
+  let [x, y] = def ? defaultWinPos(id, el) : [st.x, st.y];
+  // the overview in its default spot under Results gets the height left down to the timeline (it scrolls)
+  if (id === 'overview') el.style.maxHeight = def ? Math.max(180, box.clientHeight - y - 12) + 'px' : '';
   // pull inside the visible area; the saved spot is kept, so it comes back when the screen grows again
   [x, y] = clampWin(x, y, el.offsetWidth, el.offsetHeight, box.clientWidth, box.clientHeight);
   el.style.left = x + 'px'; el.style.top = y + 'px';
@@ -1184,6 +1485,7 @@ function applyWin(id) {
   cb.setAttribute('aria-expanded', String(!st.collapsed));
   railBtn(id).setAttribute('aria-pressed', String(st.open));
   if (id === 'gloss' && st.open) renderGloss($('#glossQ').value);
+  if (id === 'overview' && st.open) ovDist(true);
   placeWin(id);
 }
 function setWin(id, patch) {
@@ -1231,7 +1533,7 @@ $('#resetWins').addEventListener('click', () => {
   clearPref(LS, PREF_KEYS.wins);
   Object.assign(WINS, defaultWins(narrowDesk()));
   for (const id of WIN_IDS) applyWin(id);
-  INS = null; S.follow = 'free'; renderFrameSeg(); needFit = true;
+  INS = null; S.follow = 'free'; renderFrameSeg(); needFit = true; MAP.needFit = true;
 });
 // Esc closes the reference windows (glossary, model) when focus is inside them
 document.addEventListener('keydown', e => {
@@ -1239,6 +1541,8 @@ document.addEventListener('keydown', e => {
   const win = document.activeElement && document.activeElement.closest('.win');
   if (win && (win.dataset.win === 'gloss' || win.dataset.win === 'model')) { setWin(win.dataset.win, { open: false }); railBtn(win.dataset.win).focus(); }
 });
+// Results grows and shrinks with the mission: keep the overview's default spot right under it
+new ResizeObserver(() => { if (WINS.overview.x == null) { placeWin('overview'); INS = null; } }).observe(winEl('results'));
 mqFloat.addEventListener('change', () => { for (const id of WIN_IDS) applyWin(id); INS = null; needFit = true; });
 
 // ===================== View mode =====================
@@ -1297,6 +1601,7 @@ const start = startupMode(LS);
 setMode(start.mode, false);
 loadScenario('em_free');
 setPlayIcon();
+syncMapUI();
 for (const id of WIN_IDS) applyWin(id);
 if (start.ask) askMode();
 requestAnimationFrame(t => { last = t; draw(t); });

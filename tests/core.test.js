@@ -85,6 +85,46 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 const norm = v => Math.hypot(v[0], v[1], v[2]);
 const inclination = st => { const h = cross(st.slice(0, 3), st.slice(3)); return Math.acos(h[2] / norm(h)) * DEG; };
 
+// 15) Body picker: smallest body list for departure → target, ancestors up to the common one
+{
+  const par = k => BODIES[k].parent || null, ch = (a, b) => C.missionChain(a, b, par);
+  assert.deepStrictEqual(ch('earth', 'mars'), { keys: ['earth', 'mars', 'sun'], parent: [2, 2, -1] });
+  assert.deepStrictEqual(ch('earth', 'moon'), { keys: ['earth', 'moon'], parent: [-1, 0] });
+  assert.deepStrictEqual(ch('moon', 'earth'), { keys: ['moon', 'earth'], parent: [1, -1] });
+  assert.deepStrictEqual(ch('moon', 'mars'), { keys: ['moon', 'mars', 'earth', 'sun'], parent: [2, 3, 3, -1] }, 'same order as the moon_mars scenario');
+  assert.deepStrictEqual(ch('io', 'europa'), { keys: ['io', 'europa', 'jupiter'], parent: [2, 2, -1] });
+  assert.deepStrictEqual(ch('earth', 'phobos'), { keys: ['earth', 'phobos', 'sun', 'mars'], parent: [2, 3, -1, 2] });
+  assert.deepStrictEqual(ch('sun', 'venus'), { keys: ['sun', 'venus'], parent: [-1, 0] });
+  assert.strictEqual(ch('phobos', 'ganymede').error, 'err.chainLen');
+  assert.strictEqual(ch('moon', 'titan').params.n, 5);
+  assert.strictEqual(ch('mars', 'mars').error, 'err.chainSame');
+  // every pair the picker can produce builds a valid real system (and the chain respects the natural parents)
+  const keys = Object.keys(BODIES).filter(k => BODIES[k].gm);
+  for (const a of keys) for (const b of keys) {
+    const r = ch(a, b); if (r.error) continue;
+    r.keys.forEach((k, i) => assert.strictEqual(r.parent[i] < 0 ? null : r.keys[r.parent[i]], i === r.parent.indexOf(-1) ? null : par(k)));
+    assert.ok(!realSys(r.keys).error, `${a} → ${b} builds`);
+  }
+}
+
+// 16) Solar system map: the whole body table builds as one system; states are finite, planets in order
+{
+  const keys = Object.keys(BODIES).filter(k => BODIES[k].gm), sy = realSys(keys);
+  assert.ok(!sy.error, 'full system builds');
+  const P = new Float64Array(3 * sy.N), V = new Float64Array(3 * sy.N);
+  C.states(sy, C.utcToDays(Date.UTC(2026, 9, 22)) * DAY, P, V);
+  assert.ok([...P, ...V].every(Number.isFinite), 'full system states are finite');
+  const sun = keys.indexOf('sun'), helio = k => { const i = keys.indexOf(k); return Math.hypot(P[3 * i] - P[3 * sun], P[3 * i + 1] - P[3 * sun + 1], P[3 * i + 2] - P[3 * sun + 2]) / C.AU; };
+  const planets = keys.filter(k => BODIES[k].parent === 'sun'), d = planets.map(helio);
+  assert.deepStrictEqual(planets, ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune']);
+  for (let i = 1; i < d.length; i++) assert.ok(d[i] > d[i - 1], `${planets[i]} beyond ${planets[i - 1]}`);
+  assert.ok(Math.abs(helio('earth') - 1) < 0.02 && Math.abs(helio('neptune') - 30) < 0.5, 'Earth ≈ 1 AU, Neptune ≈ 30 AU');
+  for (const k of keys.filter(q => BODIES[q].parent && BODIES[q].parent !== 'sun')) {
+    const i = keys.indexOf(k), p = sy.parent[i], r = Math.hypot(P[3 * i] - P[3 * p], P[3 * i + 1] - P[3 * p + 1], P[3 * i + 2] - P[3 * p + 2]);
+    assert.ok(r < sy.soi[p], `${k} inside the SOI of ${keys[p]}`);
+  }
+}
+
 // 6) Kepler's equation: residual below 1e-12 rad over the whole circle, for low and high eccentricity
 for (const e of [0, 0.0167, 0.2056, 0.5, 0.9]) for (let k = -36; k <= 36; k++) {
   const Mk = k * Math.PI / 36, E = C.keplerE(Mk, e);

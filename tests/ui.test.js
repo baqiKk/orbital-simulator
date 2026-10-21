@@ -73,6 +73,15 @@ assert.strictEqual(P.parseWins(null, { narrow: true }).results.collapsed, true);
 assert.strictEqual(P.parseWins(JSON.stringify({ results: { open: true, collapsed: false } }), { narrow: true }).results.collapsed, false);
 assert.strictEqual(P.parseWins(null, { narrow: false }).results.collapsed, false);
 
+// 5c) Wide desktop (≥ 1440 px): the overview starts open on a first visit only; a saved layout is left alone
+assert.ok(P.WIN_IDS.indexOf('overview') > P.WIN_IDS.indexOf('results'), 'overview is placed after results (its default spot is under it)');
+assert.deepStrictEqual(P.WIN_IDS.filter(id => P.defaultWins({ wide: true })[id].open), ['mission', 'results', 'overview']);
+assert.strictEqual(P.parseWins(null, { wide: true }).overview.open, true);
+assert.strictEqual(P.parseWins('{broken', { wide: true }).overview.open, true, 'unreadable layout counts as none');
+assert.strictEqual(P.parseWins(JSON.stringify({ mission: { open: true } }), { wide: true }).overview.open, false, 'older saved layout without the overview');
+assert.strictEqual(P.parseWins(JSON.stringify({ overview: { open: true, x: 5, y: 6 } }), { wide: false }).overview.open, true);
+assert.strictEqual(P.parseWins(null, { wide: false }).overview.open, false);
+
 // 6) Clamping pulls windows fully inside; oversize windows pin to the top-left
 assert.deepStrictEqual(P.clampWin(900, 700, 300, 200, 1000, 800), [700, 600]);
 assert.deepStrictEqual(P.clampWin(-50, -20, 300, 200, 1000, 800), [0, 0]);

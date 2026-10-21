@@ -219,6 +219,21 @@ function states(s, t, P, V) {
   }
 }
 
+// ----- Body selection -----
+// Smallest body list for a mission from departure a to target b (body keys): a, b, then the ancestors
+// each needs up to their lowest common ancestor (the root), a's chain first. parentOf(k) gives the
+// parent key or null. Returns { keys, parent } (parent: index in keys, -1 for the root) or an error key.
+function missionChain(a, b, parentOf, max = 4) {
+  if (a === b) return { error: 'err.chainSame' };
+  const up = k => { const c = [k]; for (let p = parentOf(k); p; p = parentOf(p)) c.push(p); return c; };
+  const ca = up(a), cb = up(b), lca = ca.find(k => cb.includes(k));
+  if (!lca) return { error: 'err.chainNone' };
+  const keys = [a, b];
+  for (const k of [...ca.slice(0, ca.indexOf(lca) + 1), ...cb.slice(0, cb.indexOf(lca) + 1)]) if (!keys.includes(k)) keys.push(k);
+  if (keys.length > max) return { error: 'err.chainLen', params: { n: keys.length, max } };
+  return { keys, parent: keys.map(k => (k === lca ? -1 : keys.indexOf(parentOf(k)))) };
+}
+
 // ----- Mission plane -----
 function ancestors(s, i) { const p = [i]; while (s.parent[p[p.length - 1]] >= 0) p.push(s.parent[p[p.length - 1]]); return p; }
 
@@ -683,5 +698,5 @@ async function optimize(s, M, opt = {}) {
 
 if (typeof module !== 'undefined') module.exports = {
   G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, keplerE, laplaceFrame, orbitElements, orbitState, orbitPath,
-  buildSystem, defaultOrbitRadius, states, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
+  buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
 };
