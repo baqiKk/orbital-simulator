@@ -44,6 +44,7 @@ button,.seg button,.rail-btn,.wbtn,.btn,.ghost{transition:color .12s,background-
 
 /* ---------- stage & HUD ---------- */
 .stage{grid-column:2;grid-row:1;position:relative;overflow:hidden;background:var(--void);min-width:0}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block}
 #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 #cv.hot{cursor:pointer}
 #cv.drag{cursor:grabbing}

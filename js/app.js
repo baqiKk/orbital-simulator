@@ -61,6 +61,8 @@ if (reduceMotion) S.playing = false;
 const QUALITY = {
   normal: { stars: true, glow: true, dprMax: 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0, ellK: 180, trailK: 96, trailFade: true },
   low:    { stars: false, glow: false, dprMax: 1, fpsCap: 30, sub: 2, trackK: 140, hudMs: 250, ellK: 72, trailK: 36, trailFade: false },
+  // 3D (js/mode3d.js): the normal profile, drawn with WebGL; phones render at a lower pixel ratio
+  '3d':   { stars: true, glow: true, dprMax: window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 1.25 : 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0, ellK: 180, trailK: 96, trailFade: true },
 };
 let MODE = 'normal', Q = QUALITY.normal;
 const LS = (() => { try { return window.localStorage; } catch (e) { return null; } })();
@@ -543,13 +545,13 @@ function uToT(u) { const [i, f] = uToSeg(u), h = simR.t[i + 1] - simR.t[i]; retu
 // (PLANE: for Earth–Moon the Moon's orbit plane, so its 5° tilt does not skew the view).
 // Rotating A–B: the same plane, x axis turning with the A→B direction.
 const SP = new Float64Array(12), SV = new Float64Array(12);
-const EX = [1, 0, 0], EY = [0, 1, 0], RX = [1, 0, 0], RY = [0, 1, 0];
-const FP = { cx: 0, cy: 0, cz: 0, X: EX, Y: EY };
+const EX = [1, 0, 0], EY = [0, 1, 0], EZ = [0, 0, 1], RX = [1, 0, 0], RY = [0, 1, 0];
+const FP = { cx: 0, cy: 0, cz: 0, X: EX, Y: EY, Z: EZ };
 function frameAt(t) { // t: sim time (relative to t0)
   states(sys, S.M.t0 * DAY + t, SP, SV);
   const f = S.frame;
-  if (f === 'inertial') { FP.cx = 0; FP.cy = 0; FP.cz = 0; FP.X = EX; FP.Y = EY; }
-  else if (f === 'A' || f === 'B') { const k = f === 'A' ? 0 : 3; FP.cx = SP[k]; FP.cy = SP[k + 1]; FP.cz = SP[k + 2]; FP.X = PLANE.x; FP.Y = PLANE.y; }
+  if (f === 'inertial') { FP.cx = 0; FP.cy = 0; FP.cz = 0; FP.X = EX; FP.Y = EY; FP.Z = EZ; }
+  else if (f === 'A' || f === 'B') { const k = f === 'A' ? 0 : 3; FP.cx = SP[k]; FP.cy = SP[k + 1]; FP.cz = SP[k + 2]; FP.X = PLANE.x; FP.Y = PLANE.y; FP.Z = PLANE.n; }
   else {
     const mA = sys.m[0], mB = sys.m[1], n = PLANE.n;
     FP.cx = (mA * SP[0] + mB * SP[3]) / (mA + mB); FP.cy = (mA * SP[1] + mB * SP[4]) / (mA + mB); FP.cz = (mA * SP[2] + mB * SP[5]) / (mA + mB);
@@ -557,13 +559,18 @@ function frameAt(t) { // t: sim time (relative to t0)
     const d = ux * n[0] + uy * n[1] + uz * n[2]; ux -= d * n[0]; uy -= d * n[1]; uz -= d * n[2];
     const l = Math.hypot(ux, uy, uz); RX[0] = ux / l; RX[1] = uy / l; RX[2] = uz / l;
     RY[0] = n[1] * RX[2] - n[2] * RX[1]; RY[1] = n[2] * RX[0] - n[0] * RX[2]; RY[2] = n[0] * RX[1] - n[1] * RX[0];
-    FP.X = RX; FP.Y = RY;
+    FP.X = RX; FP.Y = RY; FP.Z = n;
   }
   return FP;
 }
 function tf(x, y, z, out) {
   const dx = x - FP.cx, dy = y - FP.cy, dz = z - FP.cz, X = FP.X, Y = FP.Y;
   out[0] = dx * X[0] + dy * X[1] + dz * X[2]; out[1] = dx * Y[0] + dy * Y[1] + dz * Y[2]; return out;
+}
+// 3D view: the same frame with its third axis Z = X × Y (the ecliptic pole, or the mission plane normal)
+function tf3(x, y, z, out) {
+  const dx = x - FP.cx, dy = y - FP.cy, dz = z - FP.cz, X = FP.X, Y = FP.Y, Z = FP.Z;
+  out[0] = dx * X[0] + dy * X[1] + dz * X[2]; out[1] = dx * Y[0] + dy * Y[1] + dz * Y[2]; out[2] = dx * Z[0] + dy * Z[1] + dz * Z[2]; return out;
 }
 
 function frameCache() {
@@ -604,16 +611,17 @@ function frameCache() {
 const cv = $('#cv'), ctx = cv.getContext('2d'), stage = $('#stage');
 let W = 0, H = 0, DPR = 1, stars = null;
 const css = getComputedStyle(document.documentElement);
-const COL = { traj: css.getPropertyValue('--traj').trim() || '#ffb547', orbit: css.getPropertyValue('--orbit').trim() || '#6b9be0', burn: css.getPropertyValue('--burn').trim() || '#ff7a52', dim: css.getPropertyValue('--dim').trim() || '#8a96ae', faint: css.getPropertyValue('--faint').trim() || '#56637d', void: css.getPropertyValue('--void').trim() || '#04060b', ink: css.getPropertyValue('--ink').trim() || '#e2e8f3', bad: css.getPropertyValue('--bad').trim() || '#ff6f6f', warn: css.getPropertyValue('--warn').trim() || '#f2c85b', accent: css.getPropertyValue('--accent').trim() || '#ffb547', solid: css.getPropertyValue('--solid').trim() || '#080c10', line: css.getPropertyValue('--line2').trim() || 'rgba(140,196,212,.28)' };
+const COL = { traj: css.getPropertyValue('--traj').trim() || '#ffb547', orbit: css.getPropertyValue('--orbit').trim() || '#6b9be0', burn: css.getPropertyValue('--burn').trim() || '#ff7a52', dim: css.getPropertyValue('--dim').trim() || '#8a96ae', faint: css.getPropertyValue('--faint').trim() || '#56637d', void: css.getPropertyValue('--void').trim() || '#04060b', ink: css.getPropertyValue('--ink').trim() || '#e2e8f3', bad: css.getPropertyValue('--bad').trim() || '#ff6f6f', warn: css.getPropertyValue('--warn').trim() || '#f2c85b', accent: css.getPropertyValue('--accent').trim() || '#ffb547', solid: css.getPropertyValue('--solid').trim() || '#080c10', line: css.getPropertyValue('--line2').trim() || 'rgba(140,196,212,.28)', cyan: css.getPropertyValue('--cyan').trim() || '#9fd6e4' };
 
 function resize() {
   const r = stage.getBoundingClientRect();
   W = Math.max(1, r.width); H = Math.max(1, r.height); DPR = lowQ ? 1 : Math.min(Q.dprMax, window.devicePixelRatio || 1);
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  if (V3) V3.size(W, H, DPR);
   makeStars();
 }
 function makeStars() {
-  if (!Q.stars) { stars = null; return; }
+  if (!Q.stars || MODE === '3d') { stars = null; return; }
   stars = document.createElement('canvas'); stars.width = cv.width; stars.height = cv.height;
   const g = stars.getContext('2d'); g.scale(DPR, DPR);
   let seed = 1234567; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -671,6 +679,7 @@ function measureFree() {
 }
 
 function fit() {
+  if (is3d()) { fit3(); return; }
   if (!C || W < 50 || H < 50) return; // stage not laid out yet (hidden tab/pane): keep needFit for later
   frameCache();
   INS = null; // windows may have changed size this frame (Results after a new mission), before their observer runs
@@ -722,14 +731,16 @@ function zoomAt(px, py, k) {
 }
 
 // pointer controls: a press that stays within TAP_PX is a tap (focus a body; two quick taps zoom onto it
-// or, on empty space, fit); moving further drags the view and drops the follow; wheel/pinch keep it
+// or, on empty space, fit); moving further drags the view and drops the follow; wheel/pinch keep it.
+// 3D: a drag turns the camera about its target and keeps the follow; a right or middle (or Shift) drag and a
+// two-finger drag pan it and drop the follow, as a drag does in 2D
 const ptrs = new Map(); let pinch0 = null, gest = null, lastTap = null, hoverPt = null;
 const TAP_PX = { mouse: 5, touch: 10 }, HIT_PX = { mouse: 12, touch: 20 };
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
-  if (ptrs.size === 1) gest = { x0: e.offsetX, y0: e.offsetY, moved: false, multi: false, touch: e.pointerType !== 'mouse' };
+  if (ptrs.size === 1) gest = { x0: e.offsetX, y0: e.offsetY, moved: false, multi: false, touch: e.pointerType !== 'mouse', btn: e.button, pan: e.button === 1 || e.button === 2 || e.shiftKey };
   else if (gest) gest.multi = true;
-  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), s: cam.scale }; }
+  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), s: cam.scale, dist: cam3().dist, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, pan: 0 }; }
 });
 cv.addEventListener('pointermove', e => {
   const p = ptrs.get(e.pointerId);
@@ -741,12 +752,18 @@ cv.addEventListener('pointermove', e => {
       dx = e.offsetX - gest.x0; dy = e.offsetY - gest.y0;
       if (Math.hypot(dx, dy) < TAP_PX[gest.touch ? 'touch' : 'mouse']) return;
       gest.moved = true; cv.classList.add('drag'); hoverPt = null;
-      unfollow();
+      if (!is3d() || gest.pan) unfollow();
     }
-    cam.cx -= dx / cam.scale; cam.cy += dy / cam.scale;
+    if (!is3d()) { cam.cx -= dx / cam.scale; cam.cy += dy / cam.scale; }
+    else if (gest.pan) pan3(dx, dy); else rot3(dx, dy);
   } else if (ptrs.size === 2 && pinch0) {
-    const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y);
-    zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, (pinch0.s * d / pinch0.d) / cam.scale);
+    const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    if (!is3d()) { zoomAt(mx, my, (pinch0.s * d / pinch0.d) / cam.scale); return; }
+    zoom3(mx, my, (pinch0.dist * pinch0.d / Math.max(1, d)) / cam3().dist);
+    // the two fingers moving together pan, once past twice the tap distance
+    const pdx = mx - pinch0.mx, pdy = my - pinch0.my; pinch0.mx = mx; pinch0.my = my;
+    if (pinch0.pan < 2 * TAP_PX.touch) { pinch0.pan += Math.hypot(pdx, pdy); if (pinch0.pan >= 2 * TAP_PX.touch) unfollow(); }
+    else pan3(pdx, pdy);
   }
 });
 const endPtr = e => {
@@ -755,11 +772,14 @@ const endPtr = e => {
   if (ptrs.size) return;
   cv.classList.remove('drag');
   const g = gest; gest = null;
-  if (e.type === 'pointerup' && g && !g.moved && !g.multi) tap(e.offsetX, e.offsetY, g.touch);
+  if (e.type === 'pointerup' && g && !g.moved && !g.multi && g.btn === 0) tap(e.offsetX, e.offsetY, g.touch);
 };
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
 cv.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') hoverPt = null; });
-cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (is3d()) zoom3(e.offsetX, e.offsetY, Math.exp(e.deltaY * 0.0015)); else zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0015));
+}, { passive: false });
 function tap(x, y, touch) {
   const h = hitAt(x, y, HIT_PX[touch ? 'touch' : 'mouse']), now = performance.now();
   const dbl = lastTap && now - lastTap.t < 350 && Math.hypot(x - lastTap.x, y - lastTap.y) < 24;
@@ -836,6 +856,7 @@ $('#followSeg').addEventListener('click', e => {
 });
 // zoom onto body k of the mission: its moons in the mission, else its SOI (at most 45 radii)
 function followZoom(k) {
+  if (is3d()) { followZoom3(k); return; }
   if (!sys || !(k < sys.N)) return;
   let rad = Math.min(sys.soi[k], 45 * sys.R[k]), moons = 0;
   for (let b = 0; b < sys.N; b++) if (sys.parent[b] === k) moons = Math.max(moons, 1.25 * sys.a[b]);
@@ -1451,6 +1472,7 @@ document.addEventListener('keydown', e => {
 
 // Fit: the planets out to the mission's bodies (at least to Mars) in the linear scale, Neptune in the log scale.
 function fitMap() {
+  if (is3d()) { fitMap3(); return; }
   if (W < 50 || H < 50) return;
   states(mapSys, mapTime(tNowG), MP, MV);
   let R = 1.75 * AU;
@@ -1464,6 +1486,7 @@ function fitMap() {
 // Centre on body k and follow it; in the linear scale zoom to its moons (or its neighbourhood).
 function mapCenter(k) {
   const i = MAPK.indexOf(k); if (i < 0) return;
+  if (is3d()) { mapCenter3(i); return; }
   if (i === MSUN) { fitMap(); return; }
   MAP.needFit = false; MAP.follow = i;
   if (MAP.log) return;
@@ -1575,15 +1598,22 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
     placed.push([lx, ly, w]);
     ctx.fillStyle = hexA(COL.ink, moon ? 0.6 : 0.85); ctx.fillText(txt, lx, ly);
   }
-  // caption: the date, and what the scale or the model leaves out
-  const { l, b: bot } = insets();
-  ctx.font = '500 11px "IBM Plex Mono", ui-monospace, monospace'; ctx.fillStyle = COL.dim;
-  let notes = [_('map.caption', { date: fmtDate(daysToUtc(T / DAY)) })];
+  drawNotes(mapNotes(T), MAP.log ? 8 : 30);
+}
+// map caption: the date, and what the scale or the model leaves out
+function mapNotes(T) {
+  const notes = [_('map.caption', { date: fmtDate(daysToUtc(T / DAY)) })];
   if (MAP.log) notes.push(_('map.logNote'));
   if (S.model !== 'real') notes.push(_('map.today'));
+  return notes;
+}
+// caption lines at the bottom left of the free area, lift px above its bottom (room for the scale bar)
+function drawNotes(notes, lift) {
+  const { l, b: bot } = insets();
+  ctx.font = '500 11px "IBM Plex Mono", ui-monospace, monospace'; ctx.fillStyle = COL.dim;
   // narrow screens: a line too wide for the plot breaks at its ' · ' separators
   notes = notes.flatMap(s => ctx.measureText(s).width > W - l - 16 ? s.split(' · ') : [s]);
-  notes.forEach((s, j) => ctx.fillText(s, l + 8, H - bot - (MAP.log ? 8 : 30) - (notes.length - 1 - j) * 15));
+  notes.forEach((s, j) => ctx.fillText(s, l + 8, H - bot - lift - (notes.length - 1 - j) * 15));
 }
 
 // ===================== Overview (body picker) =====================
@@ -1687,18 +1717,18 @@ function trailUpdate(ext) {
   const jEnd = Math.floor(ext / dts), jStart = Math.max(0, jEnd - TRAIL_REVS * K), key = S.frame + '|' + K;
   let tr = C.trail;
   if (!tr || tr.key !== key || jEnd < tr.jHi || jStart > tr.jHi) {
-    tr = C.trail = { key, dts, base: jStart, jLo: jStart, jHi: jStart - 1, x: new Float64Array(2 * cap), y: new Float64Array(2 * cap) };
+    tr = C.trail = { key, dts, base: jStart, jLo: jStart, jHi: jStart - 1, x: new Float64Array(2 * cap), y: new Float64Array(2 * cap), z: new Float64Array(2 * cap) };
   }
-  const p = [0, 0, 0], q = [0, 0];
+  const p = [0, 0, 0], q = [0, 0, 0];
   for (let j = tr.jHi + 1; j <= jEnd; j++) {
     if (j - tr.base >= tr.x.length) { // full: move the samples still needed to the front
       const from = Math.max(tr.jLo, jStart) - tr.base, n = tr.jHi - tr.base + 1 - from;
-      tr.x.copyWithin(0, from, from + n); tr.y.copyWithin(0, from, from + n);
+      tr.x.copyWithin(0, from, from + n); tr.y.copyWithin(0, from, from + n); tr.z.copyWithin(0, from, from + n);
       tr.base += from; tr.jLo = tr.base;
     }
     const t = C.T + j * dts;
-    frameAt(t); tf(...orbitPos(t, p), q);
-    tr.x[j - tr.base] = q[0]; tr.y[j - tr.base] = q[1];
+    frameAt(t); tf3(...orbitPos(t, p), q); // the 2D views use x, y; the 3D view also z
+    tr.x[j - tr.base] = q[0]; tr.y[j - tr.base] = q[1]; tr.z[j - tr.base] = q[2];
   }
   tr.jHi = jEnd; tr.jLo = Math.max(tr.jLo, jStart);
 }
@@ -1752,6 +1782,32 @@ function strokePath(fx, fy, from, to) {
   }
   ctx.stroke();
 }
+// event marker at (x, y) px with its label pushed outward from (bx, by), where the event's body was;
+// placed: label boxes of this frame (needs ctx.font = MARK_FONT)
+function drawMark(m, x, y, bx, by, reached, placed) {
+  if (x < -50 || x > W + 50 || y < -50 || y > H + 50) return;
+  const col = m.type === 'burn' ? COL.burn : m.type === 'impact' ? COL.bad : m.type === 'aero' ? COL.warn : COL.orbit;
+  ctx.globalAlpha = reached ? 1 : 0.55;
+  ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1.4;
+  if (m.type === 'burn') { ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y); ctx.closePath(); ctx.fill(); }
+  else { ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 6.2832); ctx.fill(); ctx.strokeStyle = 'rgba(4,6,11,0.9)'; ctx.lineWidth = 1.2; ctx.stroke(); }
+  ctx.fillStyle = hexA(col, reached ? 0.95 : 0.6);
+  // push label outward from the body the event belongs to (where it was at the event, as fit() assumes)
+  let ox = x - bx, oy = y - by; let ol = Math.hypot(ox, oy);
+  if (ol < 1) { ox = 1; oy = -1; ol = Math.SQRT2; }
+  ox /= ol; oy /= ol;
+  const { tw, lines, lw } = markLines(m), lh = lines.length * MARK_LH;
+  let lx = x + ox * 14 + (ox < -0.3 ? -tw : ox < 0.3 ? -tw / 2 : 0), ly = y + markBase(oy, lines.length);
+  // inside the fitted free area when the marker is, so a label never slides under a window; else on screen
+  const q = FITQ && x > FITQ.l && x < W - FITQ.r && y > FITQ.t && y < H - FITQ.b ? FITQ : { l: 0, r: 0 };
+  lx = clamp(lx, q.l + 6, W - q.r - tw - 6);
+  // avoid stacking labels of coincident events (e.g. perilune + capture burn)
+  for (let guard = 0; guard < 6 && placed.some(q => lx < q[0] + q[2] && lx + tw > q[0] && ly < q[1] + q[3] && ly + lh > q[1]); guard++) ly += oy >= 0 ? 14 : -14;
+  placed.push([lx, ly, tw, lh]);
+  // lines line up on the side facing the marker
+  lines.forEach((t, j) => ctx.fillText(t, lx + (ox < -0.3 ? tw - lw[j] : ox < 0.3 ? (tw - lw[j]) / 2 : 0), ly + j * MARK_LH));
+  ctx.globalAlpha = 1;
+}
 const _txt = new Map();
 function setT(sel, v) { if (_txt.get(sel) !== v) { _txt.set(sel, v); document.querySelector(sel).textContent = v; } }
 const _hx = new Map();
@@ -1762,18 +1818,24 @@ function draw(now) {
   // frame cap (low-resource mode); the small slack keeps 60 Hz displays at an even 30 fps
   if (Q.fpsCap && now - last < 1000 / Q.fpsCap - 4) { requestAnimationFrame(draw); return; }
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
-  // adaptive quality (normal mode): if frames stay slow, drop glow, render at 1x pixel ratio and suggest low mode
-  if (MODE === 'normal') {
+  // adaptive quality (normal and 3D modes): if frames stay slow, drop glow, render at 1x pixel ratio and suggest
+  // a lighter mode
+  if (MODE !== 'low') {
     frameAvg = frameAvg * 0.95 + dt * 0.05;
     if (!lowQ && frameAvg > 0.03 && ++slowFrames > 90) { lowQ = true; resize(); showPerfTip(); }
   }
   const glow = Q.glow && !lowQ;
   HITS = [];
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H);
-  if (stars) ctx.drawImage(stars, 0, 0, W, H);
-  if (!sys || !simR || !C) { if (MAP.on) { drawMap(mapTime(0), glow, null, 0, 0); if (!MAP.log) drawScale(); } frameEnd(); requestAnimationFrame(draw); return; }
-  frameCache();
+  const v3 = is3d(); // 3D: the WebGL canvas below draws the scene, this one only the overlay
+  if (v3) ctx.clearRect(0, 0, W, H);
+  else { ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H); if (stars) ctx.drawImage(stars, 0, 0, W, H); }
+  if (!sys || !simR || !C) {
+    if (MAP.on) { if (v3) drawMap3(mapTime(0), glow, null, 0, 0); else { drawMap(mapTime(0), glow, null, 0, 0); if (!MAP.log) drawScale(); } }
+    else if (v3) { V3.setActive('none'); V3.render({ stars: Q.stars }); }
+    frameEnd(); requestAnimationFrame(draw); return;
+  }
+  if (!v3) frameCache();
   if (needFit && !MAP.on) fit();
 
   if (S.playing && !scrubbing) {
@@ -1791,182 +1853,161 @@ function draw(now) {
   const tNow = ext ? C.T + S.ext : simR.t[si] + (segH > 0 ? sf * segH : 0);
   tNowG = tNow;
   const craft = ext ? orbitPos(tNow, [0, 0, 0]) : segH > 0 ? herm(si, sf, [0, 0, 0]) : [simR.x[si + 1], simR.y[si + 1], simR.z[si + 1]];
-  const pathIdx = ext ? C.fx.length - 1 : Math.min(C.fx.length - 1, C.segStart[si] + Math.floor(sf * (segH > 0 ? SUB : 0)));
-
-  // body states & frame at current time
-  frameAt(tNow);
-  const N = sys.N, bpos = [];
-  for (let b = 0; b < N; b++) { tf(SP[3 * b], SP[3 * b + 1], SP[3 * b + 2], tmp); bpos.push([tmp[0], tmp[1]]); }
-  const cpos = tf(craft[0], craft[1], craft[2], [0, 0]);
-  // velocity direction in frame (finite diff)
+  const pathIdx = ext ? C.pt.length - 1 : Math.min(C.pt.length - 1, C.segStart[si] + Math.floor(sf * (segH > 0 ? SUB : 0)));
+  // a point a little later: the craft's velocity direction (finite difference)
   const dtv = ext ? C.orbit.P / 300 : Math.max(1, (segH > 0 ? segH : 60) * 0.02);
   const t2 = ext ? tNow + dtv : Math.min(C.T, tNow + dtv);
   const craft2 = ext ? orbitPos(t2, [0, 0, 0]) : posAtTime(t2, [0, 0, 0]);
-  frameAt(t2); const cpos2 = tf(craft2[0], craft2[1], craft2[2], [0, 0]);
-  if (ext && !MAP.on) trailUpdate(S.ext);
-  frameAt(tNow);
 
-  if (MAP.on) { /* the map has its own camera and follow */ }
-  else if (S.follow === 'craft') { cam.cx = cpos[0]; cam.cy = cpos[1]; }
-  else if (S.follow === 'A') { cam.cx = bpos[0][0]; cam.cy = bpos[0][1]; }
-  else if (S.follow === 'B') { cam.cx = bpos[1][0]; cam.cy = bpos[1][1]; }
-  else if (S.follow[0] === 'b' && bpos[+S.follow.slice(1)]) { const p = bpos[+S.follow.slice(1)]; cam.cx = p[0]; cam.cy = p[1]; }
-
-  if (MAP.on) drawMap(mapTime(tNow), glow, craft, tNow, pathIdx);
+  if (v3) { if (MAP.on) drawMap3(mapTime(tNow), glow, craft, tNow, pathIdx); else draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow); }
   else {
-    // orbits (non-rotating frames): circles in the simplified model, projected ellipses in the real one
-    ctx.lineWidth = 1;
-    if (S.frame !== 'rot') {
-      const diag = Math.hypot(W, H);
-      for (let b = 0; b < N; b++) {
-        const p = sys.parent[b]; if (p < 0) continue;
-        const ell = C.ell[b];
-        const r = (ell ? sys.a[b] : Math.hypot(bpos[b][0] - bpos[p][0], bpos[b][1] - bpos[p][1])) * cam.scale;
-        if (r < 4 || r > 1e5) continue;
-        const cx0 = sx(bpos[p][0]), cy0 = sy(bpos[p][1]), dc = Math.hypot(cx0 - W / 2, cy0 - H / 2), ro = ell ? r * 1.3 : r;
-        if (dc - ro > diag / 2 || (ell ? r * 0.7 : r) - dc > diag / 2) continue; // entirely off-screen
-        ctx.setLineDash(r < 1500 ? [3, 5] : []);
-        ctx.strokeStyle = hexA(S.bodies[b].color, r < 1500 ? 0.2 : 0.12);
-        ctx.beginPath();
-        if (ell) { for (let k = 0; k < ell.length; k += 2) { const x = cx0 + ell[k] * cam.scale, y = cy0 - ell[k + 1] * cam.scale; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.closePath(); }
-        else ctx.arc(cx0, cy0, r, 0, 6.2832);
+    // body states & frame at current time
+    frameAt(tNow);
+    const N = sys.N, bpos = [];
+    for (let b = 0; b < N; b++) { tf(SP[3 * b], SP[3 * b + 1], SP[3 * b + 2], tmp); bpos.push([tmp[0], tmp[1]]); }
+    const cpos = tf(craft[0], craft[1], craft[2], [0, 0]);
+    frameAt(t2); const cpos2 = tf(craft2[0], craft2[1], craft2[2], [0, 0]);
+    if (ext && !MAP.on) trailUpdate(S.ext);
+    frameAt(tNow);
+
+    if (MAP.on) { /* the map has its own camera and follow */ }
+    else if (S.follow === 'craft') { cam.cx = cpos[0]; cam.cy = cpos[1]; }
+    else if (S.follow === 'A') { cam.cx = bpos[0][0]; cam.cy = bpos[0][1]; }
+    else if (S.follow === 'B') { cam.cx = bpos[1][0]; cam.cy = bpos[1][1]; }
+    else if (S.follow[0] === 'b' && bpos[+S.follow.slice(1)]) { const p = bpos[+S.follow.slice(1)]; cam.cx = p[0]; cam.cy = p[1]; }
+
+    if (MAP.on) drawMap(mapTime(tNow), glow, craft, tNow, pathIdx);
+    else {
+      // orbits (non-rotating frames): circles in the simplified model, projected ellipses in the real one
+      ctx.lineWidth = 1;
+      if (S.frame !== 'rot') {
+        const diag = Math.hypot(W, H);
+        for (let b = 0; b < N; b++) {
+          const p = sys.parent[b]; if (p < 0) continue;
+          const ell = C.ell[b];
+          const r = (ell ? sys.a[b] : Math.hypot(bpos[b][0] - bpos[p][0], bpos[b][1] - bpos[p][1])) * cam.scale;
+          if (r < 4 || r > 1e5) continue;
+          const cx0 = sx(bpos[p][0]), cy0 = sy(bpos[p][1]), dc = Math.hypot(cx0 - W / 2, cy0 - H / 2), ro = ell ? r * 1.3 : r;
+          if (dc - ro > diag / 2 || (ell ? r * 0.7 : r) - dc > diag / 2) continue; // entirely off-screen
+          ctx.setLineDash(r < 1500 ? [3, 5] : []);
+          ctx.strokeStyle = hexA(S.bodies[b].color, r < 1500 ? 0.2 : 0.12);
+          ctx.beginPath();
+          if (ell) { for (let k = 0; k < ell.length; k += 2) { const x = cx0 + ell[k] * cam.scale, y = cy0 - ell[k + 1] * cam.scale; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.closePath(); }
+          else ctx.arc(cx0, cy0, r, 0, 6.2832);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
+      // body tracks over the mission
+      if (S.tracks) {
+        ctx.lineWidth = 1.2;
+        for (let b = 0; b < N; b++) {
+          const tr = C.tracks[b]; ctx.strokeStyle = hexA(S.bodies[b].color, 0.38);
+          ctx.beginPath();
+          for (let k = 0; k < tr.length; k += 2) { const x = sx(tr[k]), y = sy(tr[k + 1]); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+          ctx.stroke();
+        }
+      }
+      // SOI
+      if (S.soi) {
+        ctx.setLineDash([1.5, 4]); ctx.strokeStyle = hexA(COL.dim, 0.5); ctx.lineWidth = 1;
+        for (let b = 0; b < N; b++) {
+          if (!isFinite(sys.soi[b])) continue;
+          const r = sys.soi[b] * cam.scale; if (r < 3 || r > 1e5) continue;
+          ctx.beginPath(); ctx.arc(sx(bpos[b][0]), sy(bpos[b][1]), r, 0, 6.2832); ctx.stroke();
+          if (r > 30) { ctx.fillStyle = hexA(COL.dim, 0.7); ctx.font = '500 10px ' + 'IBM Plex Mono, monospace'; ctx.fillText(_('canvas.soi'), sx(bpos[b][0]) + r * 0.707 + 4, sy(bpos[b][1]) - r * 0.707 - 4); }
+        }
+        ctx.setLineDash([]);
+      }
+      // trajectory
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.strokeStyle = hexA(COL.traj, 0.26); ctx.lineWidth = 1.2;
+      strokePath(C.fx, C.fy, 0, C.fx.length - 1);
+      for (const [lw, col] of (glow ? [[6, hexA(COL.traj, 0.16)], [1.8, COL.traj]] : [[1.8, COL.traj]])) {
+        ctx.strokeStyle = col; ctx.lineWidth = lw;
+        strokePath(C.fx, C.fy, 0, pathIdx);
+        // up to the craft between samples; after the integrated span the trail takes over
+        if (!ext) { ctx.beginPath(); ctx.moveTo(sx(C.fx[pathIdx]), sy(C.fy[pathIdx])); ctx.lineTo(sx(cpos[0]), sy(cpos[1])); }
         ctx.stroke();
       }
-      ctx.setLineDash([]);
-    }
-    // body tracks over the mission
-    if (S.tracks) {
-      ctx.lineWidth = 1.2;
-      for (let b = 0; b < N; b++) {
-        const tr = C.tracks[b]; ctx.strokeStyle = hexA(S.bodies[b].color, 0.38);
-        ctx.beginPath();
-        for (let k = 0; k < tr.length; k += 2) { const x = sx(tr[k]), y = sy(tr[k + 1]); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-        ctx.stroke();
+      if (ext) drawTrail(S.ext, cpos);
+      // where the integrated mission ends (orbit insertion, or the mission complete), once reached
+      if (S.u >= 1) {
+        const e = C.fx.length - 1, x = sx(C.fx[e]), y = sy(C.fy[e]);
+        ctx.fillStyle = COL.traj; ctx.strokeStyle = 'rgba(4,6,11,0.9)'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 6.2832); ctx.fill(); ctx.stroke();
       }
-    }
-    // SOI
-    if (S.soi) {
-      ctx.setLineDash([1.5, 4]); ctx.strokeStyle = hexA(COL.dim, 0.5); ctx.lineWidth = 1;
-      for (let b = 0; b < N; b++) {
-        if (!isFinite(sys.soi[b])) continue;
-        const r = sys.soi[b] * cam.scale; if (r < 3 || r > 1e5) continue;
-        ctx.beginPath(); ctx.arc(sx(bpos[b][0]), sy(bpos[b][1]), r, 0, 6.2832); ctx.stroke();
-        if (r > 30) { ctx.fillStyle = hexA(COL.dim, 0.7); ctx.font = '500 10px ' + 'IBM Plex Mono, monospace'; ctx.fillText(_('canvas.soi'), sx(bpos[b][0]) + r * 0.707 + 4, sy(bpos[b][1]) - r * 0.707 - 4); }
+
+      if (ext) {
+        // the parking orbit around B, projected (an ellipse when its plane is tilted to the view)
+        const rr = C.orbit.r * cam.scale;
+        if (rr > 2 && rr < 1e5) {
+          const o = C.orbit, r = o.r0, k = o.ax, q = [k[1] * r[2] - k[2] * r[1], k[2] * r[0] - k[0] * r[2], k[0] * r[1] - k[1] * r[0]];
+          const X = FP.X, Y = FP.Y, ux = r[0] * X[0] + r[1] * X[1] + r[2] * X[2], uy = r[0] * Y[0] + r[1] * Y[1] + r[2] * Y[2];
+          const vx = q[0] * X[0] + q[1] * X[1] + q[2] * X[2], vy = q[0] * Y[0] + q[1] * Y[1] + q[2] * Y[2];
+          const cx0 = sx(bpos[1][0]), cy0 = sy(bpos[1][1]), s = cam.scale;
+          ctx.strokeStyle = hexA(COL.traj, 0.3); ctx.lineWidth = 1.2; ctx.beginPath();
+          for (let j = 0; j <= 64; j++) { const a = j * Math.PI / 32, c = Math.cos(a), sn = Math.sin(a), x = cx0 + (ux * c + vx * sn) * s, y = cy0 - (uy * c + vy * sn) * s; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+          ctx.stroke();
+        }
       }
-      ctx.setLineDash([]);
-    }
-    // trajectory
-    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    ctx.strokeStyle = hexA(COL.traj, 0.26); ctx.lineWidth = 1.2;
-    strokePath(C.fx, C.fy, 0, C.fx.length - 1);
-    for (const [lw, col] of (glow ? [[6, hexA(COL.traj, 0.16)], [1.8, COL.traj]] : [[1.8, COL.traj]])) {
-      ctx.strokeStyle = col; ctx.lineWidth = lw;
-      strokePath(C.fx, C.fy, 0, pathIdx);
-      // up to the craft between samples; after the integrated span the trail takes over
-      if (!ext) { ctx.beginPath(); ctx.moveTo(sx(C.fx[pathIdx]), sy(C.fy[pathIdx])); ctx.lineTo(sx(cpos[0]), sy(cpos[1])); }
-      ctx.stroke();
-    }
-    if (ext) drawTrail(S.ext, cpos);
-    // where the integrated mission ends (orbit insertion, or the mission complete), once reached
-    if (S.u >= 1) {
-      const e = C.fx.length - 1, x = sx(C.fx[e]), y = sy(C.fy[e]);
-      ctx.fillStyle = COL.traj; ctx.strokeStyle = 'rgba(4,6,11,0.9)'; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 6.2832); ctx.fill(); ctx.stroke();
+      // markers
+      ctx.font = MARK_FONT;
+      const placed = [];
+      for (const m of C.markers) drawMark(m, sx(m.fx), sy(m.fy), sx(m.bfx), sy(m.bfy), m.t <= tNow + 1e-6, placed);
+
+      // bodies
+      /*bodies*/
+      const sunIdx = S.bodies.findIndex(b => b.key === 'sun');
+      for (const b of [...Array(N).keys()].sort((p, q) => sys.R[q] - sys.R[p])) {
+        const x = sx(bpos[b][0]), y = sy(bpos[b][1]);
+        const isSun = S.bodies[b].key === 'sun';
+        const minR = b < 2 ? 5 : 4;
+        const r = Math.max(minR, sys.R[b] * cam.scale);
+        if (x + r < -60 || x - r > W + 60 || y + r < -60 || y - r > H + 60) continue;
+        addHit('b', b, x, y, r);
+        const col = S.bodies[b].color;
+        if (!Q.glow) { // low-resource: flat discs, no gradients
+          ctx.fillStyle = isSun ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+        } else if (isSun) {
+          const g = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 4.5);
+          g.addColorStop(0, hexA(col, 0.55)); g.addColorStop(0.25, hexA(col, 0.18)); g.addColorStop(1, hexA(col, 0));
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 4.5, 0, 6.2832); ctx.fill();
+          ctx.fillStyle = '#fff3d6'; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+        } else {
+          let lx = -0.6, ly = -0.8;
+          if (sunIdx >= 0) { const dx = sx(bpos[sunIdx][0]) - x, dy = sy(bpos[sunIdx][1]) - y, d = Math.hypot(dx, dy); if (d > 0) { lx = dx / d; ly = dy / d; } }
+          const g = ctx.createRadialGradient(x + lx * r * 0.45, y + ly * r * 0.45, r * 0.1, x, y, r * 1.05);
+          g.addColorStop(0, col); g.addColorStop(0.65, hexA(col, 0.75)); g.addColorStop(1, 'rgba(8,10,18,0.95)');
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+          ctx.strokeStyle = hexA(col, 0.35); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, r + 2.5, 0, 6.2832); ctx.stroke();
+        }
+        ctx.font = '600 11px "Chakra Petch", system-ui, sans-serif';
+        ctx.fillStyle = hexA(COL.ink, 0.82);
+        ctx.fillText(S.bodies[b].name.toLocaleUpperCase(DICT['meta.locale']), x + r + 7, y + r + 12);
+      }
+
+      // spacecraft
+      {
+        const x = sx(cpos[0]), y = sy(cpos[1]);
+        addHit('c', 0, x, y, 3.2);
+        if (Q.glow) {
+          const g = ctx.createRadialGradient(x, y, 0, x, y, 16);
+          g.addColorStop(0, hexA(COL.traj, 0.6)); g.addColorStop(1, hexA(COL.traj, 0));
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 16, 0, 6.2832); ctx.fill();
+        } else { ctx.strokeStyle = COL.traj; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, 6, 0, 6.2832); ctx.stroke(); }
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
+        const vx = sx(cpos2[0]) - x, vy = sy(cpos2[1]) - y, vl = Math.hypot(vx, vy);
+        if (vl > 1e-6) {
+          const ux = vx / vl, uy = vy / vl, L = 22;
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(x + ux * 6, y + uy * 6); ctx.lineTo(x + ux * L, y + uy * L); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(x + ux * L, y + uy * L); ctx.lineTo(x + ux * (L - 5) - uy * 3.5, y + uy * (L - 5) + ux * 3.5); ctx.lineTo(x + ux * (L - 5) + uy * 3.5, y + uy * (L - 5) - ux * 3.5); ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
+        }
+      }
     }
 
-    if (ext) {
-      // the parking orbit around B, projected (an ellipse when its plane is tilted to the view)
-      const rr = C.orbit.r * cam.scale;
-      if (rr > 2 && rr < 1e5) {
-        const o = C.orbit, r = o.r0, k = o.ax, q = [k[1] * r[2] - k[2] * r[1], k[2] * r[0] - k[0] * r[2], k[0] * r[1] - k[1] * r[0]];
-        const X = FP.X, Y = FP.Y, ux = r[0] * X[0] + r[1] * X[1] + r[2] * X[2], uy = r[0] * Y[0] + r[1] * Y[1] + r[2] * Y[2];
-        const vx = q[0] * X[0] + q[1] * X[1] + q[2] * X[2], vy = q[0] * Y[0] + q[1] * Y[1] + q[2] * Y[2];
-        const cx0 = sx(bpos[1][0]), cy0 = sy(bpos[1][1]), s = cam.scale;
-        ctx.strokeStyle = hexA(COL.traj, 0.3); ctx.lineWidth = 1.2; ctx.beginPath();
-        for (let j = 0; j <= 64; j++) { const a = j * Math.PI / 32, c = Math.cos(a), sn = Math.sin(a), x = cx0 + (ux * c + vx * sn) * s, y = cy0 - (uy * c + vy * sn) * s; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-        ctx.stroke();
-      }
-    }
-    // markers
-    ctx.font = MARK_FONT;
-    const placed = [];
-    for (const m of C.markers) {
-      const x = sx(m.fx), y = sy(m.fy), reached = m.t <= tNow + 1e-6;
-      if (x < -50 || x > W + 50 || y < -50 || y > H + 50) continue;
-      const col = m.type === 'burn' ? COL.burn : m.type === 'impact' ? COL.bad : m.type === 'aero' ? COL.warn : COL.orbit;
-      ctx.globalAlpha = reached ? 1 : 0.55;
-      ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1.4;
-      if (m.type === 'burn') { ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y); ctx.closePath(); ctx.fill(); }
-      else { ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 6.2832); ctx.fill(); ctx.strokeStyle = 'rgba(4,6,11,0.9)'; ctx.lineWidth = 1.2; ctx.stroke(); }
-      ctx.fillStyle = hexA(col, reached ? 0.95 : 0.6);
-      // push label outward from the body the event belongs to (where it was at the event, as fit() assumes)
-      let ox = x - sx(m.bfx), oy = y - sy(m.bfy); let ol = Math.hypot(ox, oy);
-      if (ol < 1) { ox = 1; oy = -1; ol = Math.SQRT2; }
-      ox /= ol; oy /= ol;
-      const { tw, lines, lw } = markLines(m), lh = lines.length * MARK_LH;
-      let lx = x + ox * 14 + (ox < -0.3 ? -tw : ox < 0.3 ? -tw / 2 : 0), ly = y + markBase(oy, lines.length);
-      // inside the fitted free area when the marker is, so a label never slides under a window; else on screen
-      const q = FITQ && x > FITQ.l && x < W - FITQ.r && y > FITQ.t && y < H - FITQ.b ? FITQ : { l: 0, r: 0 };
-      lx = clamp(lx, q.l + 6, W - q.r - tw - 6);
-      // avoid stacking labels of coincident events (e.g. perilune + capture burn)
-      for (let guard = 0; guard < 6 && placed.some(q => lx < q[0] + q[2] && lx + tw > q[0] && ly < q[1] + q[3] && ly + lh > q[1]); guard++) ly += oy >= 0 ? 14 : -14;
-      placed.push([lx, ly, tw, lh]);
-      // lines line up on the side facing the marker
-      lines.forEach((t, j) => ctx.fillText(t, lx + (ox < -0.3 ? tw - lw[j] : ox < 0.3 ? (tw - lw[j]) / 2 : 0), ly + j * MARK_LH));
-      ctx.globalAlpha = 1;
-    }
-
-    // bodies
-    /*bodies*/
-    const sunIdx = S.bodies.findIndex(b => b.key === 'sun');
-    for (const b of [...Array(N).keys()].sort((p, q) => sys.R[q] - sys.R[p])) {
-      const x = sx(bpos[b][0]), y = sy(bpos[b][1]);
-      const isSun = S.bodies[b].key === 'sun';
-      const minR = b < 2 ? 5 : 4;
-      const r = Math.max(minR, sys.R[b] * cam.scale);
-      if (x + r < -60 || x - r > W + 60 || y + r < -60 || y - r > H + 60) continue;
-      addHit('b', b, x, y, r);
-      const col = S.bodies[b].color;
-      if (!Q.glow) { // low-resource: flat discs, no gradients
-        ctx.fillStyle = isSun ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
-      } else if (isSun) {
-        const g = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 4.5);
-        g.addColorStop(0, hexA(col, 0.55)); g.addColorStop(0.25, hexA(col, 0.18)); g.addColorStop(1, hexA(col, 0));
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 4.5, 0, 6.2832); ctx.fill();
-        ctx.fillStyle = '#fff3d6'; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
-      } else {
-        let lx = -0.6, ly = -0.8;
-        if (sunIdx >= 0) { const dx = sx(bpos[sunIdx][0]) - x, dy = sy(bpos[sunIdx][1]) - y, d = Math.hypot(dx, dy); if (d > 0) { lx = dx / d; ly = dy / d; } }
-        const g = ctx.createRadialGradient(x + lx * r * 0.45, y + ly * r * 0.45, r * 0.1, x, y, r * 1.05);
-        g.addColorStop(0, col); g.addColorStop(0.65, hexA(col, 0.75)); g.addColorStop(1, 'rgba(8,10,18,0.95)');
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
-        ctx.strokeStyle = hexA(col, 0.35); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, r + 2.5, 0, 6.2832); ctx.stroke();
-      }
-      ctx.font = '600 11px "Chakra Petch", system-ui, sans-serif';
-      ctx.fillStyle = hexA(COL.ink, 0.82);
-      ctx.fillText(S.bodies[b].name.toLocaleUpperCase(DICT['meta.locale']), x + r + 7, y + r + 12);
-    }
-
-    // spacecraft
-    {
-      const x = sx(cpos[0]), y = sy(cpos[1]);
-      addHit('c', 0, x, y, 3.2);
-      if (Q.glow) {
-        const g = ctx.createRadialGradient(x, y, 0, x, y, 16);
-        g.addColorStop(0, hexA(COL.traj, 0.6)); g.addColorStop(1, hexA(COL.traj, 0));
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 16, 0, 6.2832); ctx.fill();
-      } else { ctx.strokeStyle = COL.traj; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, 6, 0, 6.2832); ctx.stroke(); }
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
-      const vx = sx(cpos2[0]) - x, vy = sy(cpos2[1]) - y, vl = Math.hypot(vx, vy);
-      if (vl > 1e-6) {
-        const ux = vx / vl, uy = vy / vl, L = 22;
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(x + ux * 6, y + uy * 6); ctx.lineTo(x + ux * L, y + uy * L); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(x + ux * L, y + uy * L); ctx.lineTo(x + ux * (L - 5) - uy * 3.5, y + uy * (L - 5) + ux * 3.5); ctx.lineTo(x + ux * (L - 5) + uy * 3.5, y + uy * (L - 5) - ux * 3.5); ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
-      }
-    }
+    if (!(MAP.on && MAP.log)) drawScale();
   }
-
-  if (!(MAP.on && MAP.log)) drawScale();
 
   // HUD text
   if (Q.hudMs ? now - hudLast >= Q.hudMs : (hudTick++ & 3) === 0) {
@@ -1999,11 +2040,12 @@ function draw(now) {
 }
 
 // scale bar, bottom-left of the free plot area
-function drawScale() {
+// scale: px per metre (3D: at the camera target's distance)
+function drawScale(scale = cam.scale) {
   const { l, b: bot } = insets();
-  const target = 110 / cam.scale; const p = Math.pow(10, Math.floor(Math.log10(target)));
+  const target = 110 / scale; const p = Math.pow(10, Math.floor(Math.log10(target)));
   const nice = [1, 2, 5, 10].map(k => k * p).reduce((a, b) => Math.abs(b - target) < Math.abs(a - target) ? b : a);
-  const px = nice * cam.scale, x0 = l + 8, y0 = H - bot - 4;
+  const px = nice * scale, x0 = l + 8, y0 = H - bot - 4;
   ctx.strokeStyle = hexA(COL.dim, 0.9); ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(x0, y0 - 5); ctx.lineTo(x0, y0); ctx.lineTo(x0 + px, y0); ctx.lineTo(x0 + px, y0 - 5); ctx.stroke();
   ctx.fillStyle = COL.dim; ctx.font = '500 11px "IBM Plex Mono", ui-monospace, monospace';
@@ -2155,17 +2197,30 @@ for (const id of WIN_IDS) roWins.observe(winEl(id));
 mqFloat.addEventListener('change', () => { for (const id of WIN_IDS) applyWin(id); INS = null; needFit = true; });
 
 // ===================== View mode =====================
+let want3 = false;
 function setMode(m, save) {
   if (!QUALITY[m]) return;
+  want3 = m === '3d';
+  if (m === '3d' && !V3) { want3d(save); return; } // Three.js arrives first; the current mode stays until then
+  const flip = (m === '3d') !== (MODE === '3d');
   MODE = m; Q = QUALITY[m]; SUB = Q.sub;
   document.documentElement.dataset.q = m;
-  if (m === 'normal') { lowQ = false; slowFrames = 0; frameAvg = 1 / 60; }
+  if (m !== 'low') { lowQ = false; slowFrames = 0; frameAvg = 1 / 60; }
+  if (flip) { needFit = true; MAP.needFit = true; }
+  sync3dUI();
   resize();
   if (sys && simR) { buildCache(); renderTicks(); }
   PC.base = null; pcSync(); // grid resolution and drawing follow the mode
   document.querySelectorAll('#viewMode button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === m)));
   if (save) writePref(LS, PREF_KEYS.mode, m);
-  if (m === 'low') $('#perfTip').hidden = true;
+  $('#perfTip').hidden = true;
+}
+// first pick of the 3D mode: fetch the renderer and Three.js (load3d); a failure leaves the 3D button disabled
+function want3d(save) {
+  if (!GL2 || V3fail) return;
+  const em = $('#v3em'); em.hidden = false;
+  load3d().then(() => { em.hidden = true; if (want3) setMode('3d', save); })
+    .catch(e => { console.error(e); em.hidden = true; want3 = false; setStatus(_('mode.fail')); sync3dUI(); });
 }
 $('#viewMode').addEventListener('click', e => {
   const b = e.target.closest('button');
@@ -2193,11 +2248,12 @@ function askMode() {
 function showPerfTip() {
   if ($('#askDlg').open) { perfTipPending = true; return; }
   perfTipPending = false;
-  if (MODE !== 'normal' || perfTipShown || readPref(SS, PREF_KEYS.perfTip)) return;
+  if (MODE === 'low' || perfTipShown || readPref(SS, PREF_KEYS.perfTip)) return;
   perfTipShown = true; writePref(SS, PREF_KEYS.perfTip, '1');
+  $('#perfText').textContent = _(MODE === '3d' ? 'perf.text3d' : 'perf.text');
   $('#perfTip').hidden = false;
 }
-$('#perfGo').addEventListener('click', () => setMode('low', true));
+$('#perfGo').addEventListener('click', () => setMode(MODE === '3d' ? 'normal' : 'low', true));
 $('#perfX').addEventListener('click', () => { $('#perfTip').hidden = true; });
 
 // ===================== Init =====================
@@ -2208,7 +2264,9 @@ $('#scenario').innerHTML = `<option value="" hidden>${esc(_('sc.custom.name'))}<
 $('#scenario').addEventListener('change', e => { if (e.target.value) loadScenario(e.target.value); });
 $('#dateWarn').textContent = _('err.dateRange', { from: EPHEM_YEARS[0], to: EPHEM_YEARS[1] });
 const start = startupMode(LS);
-setMode(start.mode, false);
+bind3d();
+setMode(start.mode === '3d' ? 'normal' : start.mode, false);
+if (start.mode === '3d') setMode('3d', false); // normal 2D until Three.js has loaded
 loadScenario('em_free');
 setPlayIcon();
 syncMapUI();

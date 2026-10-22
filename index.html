@@ -14,6 +14,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="css/style.css">
+<!-- 3D mode only: js/view3d.js imports Three.js through these names; nothing is fetched until it is picked -->
+<script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }</script>
 </head>
 <body>
 <h1 class="sr" data-i18n="ui.title"></h1>
@@ -32,6 +34,7 @@
   </nav>
 
   <main class="stage" id="stage">
+    <canvas id="gl" aria-hidden="true" hidden></canvas>
     <canvas id="cv" data-i18n-aria-label="ui.canvas"></canvas>
     <div class="msg" id="msg" hidden></div>
     <div class="hud-top">
@@ -39,23 +42,29 @@
         <div class="seg vmode" id="viewMode" role="group" data-i18n-aria-label="mode.aria">
           <button type="button" data-v="low" data-i18n="mode.low"></button>
           <button type="button" data-v="normal" data-i18n="mode.normal"></button>
-          <button type="button" data-v="3d" aria-disabled="true" data-i18n-title="mode.soonTip"><span data-i18n="mode.3d"></span><em data-i18n="mode.soon"></em></button>
+          <button type="button" data-v="3d" data-i18n-title="mode.3dTip"><span data-i18n="mode.3d"></span><em id="v3em" data-i18n="mode.loading" hidden></em></button>
         </div>
         <div class="seg" id="frameSeg" role="group" data-i18n-aria-label="ui.frameAria"></div>
         <div class="seg" id="mapSeg" role="group" data-i18n-aria-label="map.scaleAria" hidden>
           <button type="button" data-v="lin" data-i18n="map.lin"></button>
           <button type="button" data-v="log" data-i18n="map.log"></button>
         </div>
+        <div class="seg" id="sizeSeg" role="group" data-i18n-aria-label="v3.sizeAria" hidden>
+          <button type="button" data-v="real" data-i18n="v3.sizeReal" data-i18n-title="v3.sizeRealTip"></button>
+          <button type="button" data-v="big" data-i18n="v3.sizeBig" data-i18n-title="v3.sizeBigTip"></button>
+        </div>
         <div class="row">
           <div class="seg" id="followSeg" role="group" data-i18n-aria-label="ui.followAria"></div>
           <button class="ghost" id="mapBtn" type="button" aria-pressed="false" data-i18n="map.toggle" data-i18n-title="map.toggleTip"></button>
           <button class="ghost" id="fit" type="button" data-i18n="ui.fit"></button>
+          <button class="ghost" id="topView" type="button" data-i18n="v3.top" data-i18n-title="v3.topTip" hidden></button>
         </div>
         <div class="glass focus-tag" id="focusTag" hidden><span class="lbl" data-i18n="focus.tag"></span><b id="focusName"></b><button type="button" class="ibtn x" id="focusOff" data-i18n-aria-label="focus.release" data-i18n-title="focus.release"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></div>
         <div class="glass toggles">
           <label class="chk" id="mapMoonsWrap" hidden><input type="checkbox" id="tMoons" checked><span data-i18n="map.moons"></span></label>
           <label class="chk" id="tSoiWrap"><input type="checkbox" id="tSoi"><span data-i18n="ui.soi"></span></label>
           <label class="chk" id="tTracksWrap"><input type="checkbox" id="tTracks" checked><span data-i18n="ui.tracks"></span></label>
+          <label class="chk" id="tGridWrap" hidden><input type="checkbox" id="tGrid" checked><span data-i18n="v3.grid"></span></label>
         </div>
       </div>
     </div>
@@ -231,6 +240,7 @@
         <p data-i18n="ui.model3"></p>
         <p data-i18n="ui.model4"></p>
         <p data-i18n="ui.model5"></p>
+        <p data-i18n="ui.model6"></p>
       </div>
     </section>
   </div>
@@ -246,7 +256,7 @@
 </dialog>
 
 <div class="toast" id="perfTip" role="status" hidden>
-  <p data-i18n="perf.text"></p>
+  <p id="perfText" data-i18n="perf.text"></p>
   <div class="toast-act">
     <button class="btn sm primary" type="button" id="perfGo" data-i18n="perf.switch"></button>
     <button class="btn sm" type="button" id="perfX" data-i18n="perf.close"></button>
@@ -256,6 +266,7 @@
 <script src="js/prefs.js"></script>
 <script src="js/bodies.js"></script>
 <script id="core" src="js/core.js"></script>
+<script src="js/mode3d.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

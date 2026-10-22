@@ -17,7 +17,7 @@ for (const m of html.matchAll(/data-i18n(?:-[a-z-]+)?="([^"]+)"/g)) assert.ok(ha
 
 // 2) Every literal key in app.js / core.js exists (string literals inside a dictionary namespace, incl. ternaries)
 const spaces = new Set(Object.keys(DICT).map(k => k.split('.')[0]));
-for (const f of ['js/app.js', 'js/core.js']) {
+for (const f of ['js/app.js', 'js/core.js', 'js/mode3d.js']) {
   for (const m of read(f).matchAll(/'([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9_]+)+)'/g)) {
     if (spaces.has(m[1].split('.')[0])) assert.ok(has(m[1]), `${f} key missing from dictionary: ${m[1]}`);
   }
@@ -43,7 +43,8 @@ const broken = { getItem() { throw new Error('denied'); }, setItem() { throw new
 assert.deepStrictEqual(P.startupMode(store('low')), { mode: 'low', ask: false });
 assert.deepStrictEqual(P.startupMode(store('normal')), { mode: 'normal', ask: false });
 assert.deepStrictEqual(P.startupMode(store(null)), { mode: 'normal', ask: true });
-assert.deepStrictEqual(P.startupMode(store('3d')), { mode: 'normal', ask: true }, '3D is not selectable yet');
+assert.deepStrictEqual(P.startupMode(store('3d')), { mode: '3d', ask: false });
+assert.deepStrictEqual(P.startupMode(store('vr')), { mode: 'normal', ask: true }, 'unknown modes fall back');
 assert.deepStrictEqual(P.startupMode(broken), { mode: 'normal', ask: true });
 assert.deepStrictEqual(P.startupMode(null), { mode: 'normal', ask: true });
 assert.strictEqual(P.writePref(broken, P.PREF_KEYS.mode, 'low'), false);
@@ -119,5 +120,33 @@ assert.deepStrictEqual(P.clampWin(900, 700, 300, 200, 1000, 800), [700, 600]);
 assert.deepStrictEqual(P.clampWin(-50, -20, 300, 200, 1000, 800), [0, 0]);
 assert.deepStrictEqual(P.clampWin(100, 100, 300, 200, 1000, 800), [100, 100]);
 assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
+
+// 7) 3D mode: Three.js is only reached through import() when the mode is picked (no script tag, nothing in the
+// 2D code paths), the import map points at files that exist, and every custom shader includes the logdepthbuf
+// chunks (logarithmic depth buffer: without them bodies and lines would not hide each other correctly)
+{
+  const fsx = f => fs.existsSync(path.join(__dirname, '..', f));
+  assert.ok(!/<script[^>]*src="[^"]*(vendor\/three|view3d)/.test(html), 'no script tag loads Three.js or view3d.js');
+  for (const f of ['js/app.js', 'js/core.js', 'js/prefs.js', 'css/style.css']) assert.ok(!/vendor\/three|view3d\.js/.test(read(f)), `${f} does not reference Three.js`);
+  const m3 = read('js/mode3d.js');
+  assert.strictEqual([...m3.matchAll(/import\([^)]/g)].length, 1, 'one dynamic import, in load3d');
+  assert.ok(/V3load = import\(new URL\('js\/view3d\.js'/.test(m3));
+  const map = JSON.parse(html.match(/<script type="importmap">([^<]*)<\/script>/)[1]).imports;
+  assert.ok(fsx(map.three), 'import map: three');
+  const v3 = read('js/view3d.js');
+  for (const m of v3.matchAll(/from '(three\/addons\/[^']+)'/g)) assert.ok(fsx(map['three/addons/'] + m[1].slice('three/addons/'.length)), 'addon exists: ' + m[1]);
+  const shaders = new Map([...v3.matchAll(/const (\w+_(?:VS|FS)) = \/\* glsl \*\/`([^`]*)`/g)].map(m => [m[1], m[2]]));
+  assert.ok(shaders.size >= 4);
+  for (const [name, src] of shaders) {
+    const want = name.endsWith('_VS') ? ['common', 'logdepthbuf_pars_vertex', 'logdepthbuf_vertex'] : ['logdepthbuf_pars_fragment', 'logdepthbuf_fragment'];
+    for (const c of want) assert.ok(src.includes(`#include <${c}>`), `${name} includes ${c}`);
+  }
+  const mats = [...v3.matchAll(/new THREE\.ShaderMaterial\(\{ vertexShader: (\w+), fragmentShader: (\w+)/g)];
+  assert.ok(mats.length >= 2);
+  for (const [, vs, fsh] of mats) assert.ok(shaders.has(vs) && shaders.has(fsh), `ShaderMaterial uses checked shaders: ${vs}, ${fsh}`);
+  assert.ok(/logarithmicDepthBuffer: true/.test(v3));
+  // the saved 3D mode is restored (Three.js then loads at startup)
+  assert.ok(P.VIEW_MODES.includes('3d'));
+}
 
 console.log('OK — all UI tests passed');
