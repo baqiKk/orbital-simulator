@@ -1060,8 +1060,340 @@ async function refineSeed(s, M, opt = {}) {
   return r2;
 }
 
+// ===== Orbit maneuvers about one central body =====
+// Sources: Vallado, Fundamentals of Astrodynamics and Applications (4th ed.), ch. 6 (Hohmann, bi-elliptic, plane
+// changes); Curtis, Orbital Mechanics for Engineering Students, ch. 6 and ch. 4 (oblateness).
+// Frame: the central body's equator, inertial (z = spin pole; x as the app picks it: Earth's J2000 equinox, else the
+// equator's node on the ICRF equator). The craft's initial orbit has its periapsis at the ascending node (ω₀ = 0), so
+// its apse line is the line of nodes ℓ = (cos Ω₀, sin Ω₀, 0). Every burn is on ℓ, side 0 (the initial periapsis, the
+// ascending node) or side 1 (the opposite point), at an apsis of the orbits before and after it; a plane change turns
+// the orbit about ℓ, so Ω stays and every apse line stays on ℓ. Radii in m, angles in rad, speeds in m/s.
+const G0 = 9.80665; // standard gravity (m/s²): exhaust speed c = Isp·g₀
+
+const visViva = (mu, r, a) => Math.sqrt(Math.max(0, mu * (2 / r - 1 / a)));
+// Δv of an apsis burn from horizontal speed v1 to v2 that also turns the plane by di: the law of cosines
+// v1² + v2² − 2·v1·v2·cos di, written as (v1 − v2)² + 4·v1·v2·sin²(di/2) (no cancellation for small di)
+const burnDv = (v1, v2, di) => { const s = Math.sin(di / 2); return Math.sqrt((v1 - v2) * (v1 - v2) + 4 * v1 * v2 * s * s); };
+// Tsiolkovsky: propellant (kg) for Δv from wet mass m0; Δv available from m0 down to the dry mass
+const propMass = (m0, dv, isp) => m0 * (1 - Math.exp(-dv / (isp * G0)));
+const dvAvail = (m0, md, isp) => isp * G0 * Math.log(m0 / md);
+
+// Minimum of f on [a, b]: a grid of n cells, then a golden-section search around the best grid point.
+function min1d(f, a, b, n = 64) {
+  if (!(b > a)) return { x: a, f: f(a) };
+  let bi = 0, bf = Infinity;
+  for (let k = 0; k <= n; k++) { const v = f(a + (b - a) * k / n); if (v < bf) { bf = v; bi = k; } }
+  let lo = a + (b - a) * Math.max(0, bi - 1) / n, hi = a + (b - a) * Math.min(n, bi + 1) / n;
+  const g = (Math.sqrt(5) - 1) / 2;
+  let x1 = hi - g * (hi - lo), x2 = lo + g * (hi - lo), f1 = f(x1), f2 = f(x2);
+  for (let it = 0; it < 100 && hi - lo > 1e-14; it++) {
+    if (f1 < f2) { hi = x2; x2 = x1; f2 = f1; x1 = hi - g * (hi - lo); f1 = f(x1); }
+    else { lo = x1; x1 = x2; f1 = f2; x2 = lo + g * (hi - lo); f2 = f(x2); }
+  }
+  const x = f1 < f2 ? x1 : x2, fx = Math.min(f1, f2);
+  // keep the grid point (an end of the interval, typically) unless the search really improves on it
+  return fx < bf - 1e-12 * Math.abs(bf) ? { x, f: fx } : { x: a + (b - a) * bi / n, f: bf };
+}
+
+// Combined plane change: split the turn di over the burns (speed pairs [v1, v2]) at the least total Δv. The cost is
+// not convex (a pure turn, 2v·sin(x/2), is concave), so each share is found by a grid and a golden-section search,
+// nested for the burns after it. Returns { x: shares, dv: total }.
+function planeSplit(pairs, di) {
+  if (pairs.length === 0) return { x: [], dv: 0 };
+  if (pairs.length === 1) return { x: [di], dv: burnDv(pairs[0][0], pairs[0][1], di) };
+  const [p, ...rest] = pairs;
+  const m = min1d(x => burnDv(p[0], p[1], x) + planeSplit(rest, di - x).dv, 0, di, rest.length > 1 ? 32 : 64);
+  return { x: [m.x, ...planeSplit(rest, di - m.x).x], dv: m.f };
+}
+
+// Impulsive plan from the initial orbit o0 to the target o1 ({ rp, ra, i }) about a body with μ and radius R.
+// opt: { type: 'hohmann' | 'bielliptic', rb (bi-elliptic apoapsis radius), plane: 'comb' | 'sep', k (1–8) }.
+// Hohmann, from any ellipse (two apsis burns): the first at an apsis of o0 (radius rA, side s) moves the far side to
+// one target apsis (far); the second, there, moves the near side to the other one (near; near + far = rp1 + ra1):
+//   Δv₁ = |v(rA; aT) − v(rA; a0)|, Δv₂ = |v(far; a1) − v(far; aT)|, aT = (rA + far)/2, v(r; a) = √(μ(2/r − 1/a)),
+//   time of flight π√(aT³/μ). From a circle to a circle this is the textbook Hohmann transfer.
+// Bi-elliptic (three): rA → far side rb; at rb the near side to `near`; at `near` the far side to `far`.
+// Both apsides of o0 and both ways of placing the target's apsides are tried; the cheapest (plane change included)
+// wins. A burn that changes nothing (e.g. o0 already reaches the target's far apsis) drops out.
+// Plane change Δi = i1 − i0 about ℓ: 'comb' splits it over the burns (planeSplit); 'sep' turns the plane alone,
+// Δv = 2v·sin(Δi/2), at the slowest point on ℓ of the orbits on the way (the apoapsis of o0, of a transfer leg or of
+// the final orbit), next to the burn at the same point when there is one.
+// k > 1 splits every burn into k equal vector pieces on successive passes (the total Δv is the same): piece j leaves
+// the craft with velocity v₁ + (j/k)(v₂ − v₁) at the burn point, still horizontal, so the point stays an apsis.
+// Returns { burns, nodes, dv, tof } or { error } (an i18n key). burns: { node, piece, pieces, side, r, dv, di (signed
+// turn), iAfter, rOther (the other apsis after the burn), a (after), now (right after the previous burn), sep }.
+function maneuverPlan(mu, R, o0, o1, opt) {
+  for (const o of [o0, o1]) {
+    if (!(o.rp > R)) return { error: 'err.mvSurface' };
+    if (!(o.ra >= o.rp)) return { error: 'err.mvApsis' };
+  }
+  const bi = opt.type === 'bielliptic', k = Math.max(1, Math.min(8, Math.round(opt.k || 1)));
+  if (bi && !(opt.rb > Math.max(o0.ra, o1.ra))) return { error: 'err.mvRb' };
+  const a0 = (o0.rp + o0.ra) / 2, a1 = (o1.rp + o1.ra) / 2, DI = o1.i - o0.i, adi = Math.abs(DI), sg = DI < 0 ? -1 : 1;
+  const speeds = n => [visViva(mu, n.r, n.a1), visViva(mu, n.r, n.a2)];
+  let best = null;
+  for (const s of o0.ra > o0.rp ? [0, 1] : [0]) {
+    const rA = s ? o0.ra : o0.rp;
+    for (const [near, far] of o1.ra > o1.rp ? [[o1.rp, o1.ra], [o1.ra, o1.rp]] : [[o1.rp, o1.rp]]) {
+      let nodes;
+      if (bi) {
+        const t1 = (rA + opt.rb) / 2, t2 = (opt.rb + near) / 2;
+        nodes = [{ side: s, r: rA, a1: a0, a2: t1 }, { side: 1 - s, r: opt.rb, a1: t1, a2: t2 }, { side: s, r: near, a1: t2, a2: a1 }];
+      } else {
+        const aT = (rA + far) / 2;
+        nodes = [{ side: s, r: rA, a1: a0, a2: aT }, { side: 1 - s, r: far, a1: aT, a2: a1 }];
+      }
+      for (const n of nodes) n.di = 0;
+      let dv;
+      if (opt.plane === 'sep' && adi > 0) {
+        // the orbits on the way: o0, then the one after each burn; the apoapsis of each lies on ℓ
+        let pick = null;
+        for (let j = 0; j <= nodes.length; j++) {
+          let a, rApo, side;
+          if (j === 0) { a = a0; rApo = o0.ra; side = o0.ra > o0.rp ? 1 : nodes[0].side; }
+          else {
+            const n = nodes[j - 1], other = 2 * n.a2 - n.r;
+            a = n.a2; rApo = Math.max(n.r, other); side = other > n.r * (1 + 1e-12) ? 1 - n.side : n.side;
+          }
+          const v = visViva(mu, rApo, a);
+          if (!pick || v < pick.v * (1 - 1e-12)) pick = { v, j, node: { side, r: rApo, a1: a, a2: a, di: adi, sep: true } };
+        }
+        nodes.splice(pick.j, 0, pick.node);
+        dv = nodes.reduce((acc, n) => acc + burnDv(...speeds(n), n.di), 0);
+      } else {
+        const ps = planeSplit(nodes.map(speeds), adi);
+        nodes.forEach((n, j) => { n.di = ps.x[j]; });
+        dv = ps.dv;
+      }
+      if (!best || dv < best.dv - 1e-9) best = { nodes, dv };
+    }
+  }
+  const nodes = best.nodes.filter(n => burnDv(...speeds(n), n.di) > 1e-6);
+  const burns = [];
+  let inc = o0.i, prevSide = -1, err = null;
+  nodes.forEach((n, m) => {
+    const [v1, v2] = speeds(n), x = n.di, dvN = burnDv(v1, v2, x);
+    n.v1 = v1; n.v2 = v2; n.dv = dvN; n.iBefore = inc;
+    const now = n.side === prevSide; // a burn at the point the previous one left: right away (the same orbit there)
+    let phiPrev = 0;
+    for (let j = 1; j <= k; j++) {
+      const f = j / k, ux = v1 + f * (v2 * Math.cos(x) - v1), uy = f * v2 * Math.sin(x);
+      const sp = Math.hypot(ux, uy), phi = Math.atan2(uy, ux), a = 1 / (2 / n.r - sp * sp / mu);
+      if (!(a > 0)) { err = 'err.mvEscape'; break; }
+      const rO = 2 * a - n.r;
+      if (Math.min(rO, n.r) < R) { err = 'err.mvLow'; break; }
+      burns.push({ node: m, piece: j, pieces: k, side: n.side, r: n.r, dv: dvN / k, di: sg * (phi - phiPrev), iAfter: n.iBefore + sg * phi,
+        rOther: rO, a, now: j === 1 && now, sep: !!n.sep });
+      phiPrev = phi;
+    }
+    inc = n.iBefore + sg * x; prevSide = n.side;
+  });
+  if (err) return { error: err };
+  // time from the first burn to the last: half a period to the other side, a full one back to the same side
+  let tof = 0;
+  for (let j = 1; j < burns.length; j++) {
+    const b = burns[j], p = burns[j - 1];
+    if (!b.now) tof += (b.side === p.side ? 2 : 1) * Math.PI * Math.sqrt(p.a * p.a * p.a / mu);
+  }
+  return { burns, nodes, dv: burns.reduce((acc, b) => acc + b.dv, 0), tof, o0, o1 };
+}
+
+// The orbits and options of an app maneuver M (altitudes in km above the equatorial radius Re in m, angles in degrees):
+// start hp0 × ha0 at i0; target periapsis altitude hp1, eccentricity e1, inclination i1; bi-elliptic rb altitude.
+function mvOrbits(M, Re) {
+  const rp1 = Re + M.hp1 * 1e3;
+  return { o0: { rp: Re + M.hp0 * 1e3, ra: Re + M.ha0 * 1e3, i: M.i0 * D2R }, o1: { rp: rp1, ra: rp1 * (1 + M.e1) / (1 - M.e1), i: M.i1 * D2R },
+    opt: { type: M.type, rb: Re + M.rb * 1e3, plane: M.plane, k: M.k } };
+}
+
+// Osculating elements of (r, v) about μ: a, e, i, Ω, ω, apsis radii, unit normal.
+function rv2el(mu, r, v) {
+  const rn = Math.hypot(r[0], r[1], r[2]), v2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2], rv = r[0] * v[0] + r[1] * v[1] + r[2] * v[2];
+  const h = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]], hn = Math.hypot(h[0], h[1], h[2]);
+  const a = 1 / (2 / rn - v2 / mu), ev = [0, 1, 2].map(j => ((v2 - mu / rn) * r[j] - rv * v[j]) / mu), e = Math.hypot(ev[0], ev[1], ev[2]);
+  const i = Math.acos(Math.max(-1, Math.min(1, h[2] / hn))), nx = -h[1], ny = h[0], nn = Math.hypot(nx, ny);
+  const O = nn > 1e-12 * hn ? Math.atan2(ny, nx) : 0;
+  let w = 0;
+  if (e > 1e-12) {
+    const ux = nn > 1e-12 * hn ? nx / nn : 1, uy = nn > 1e-12 * hn ? ny / nn : 0, hu = h.map(q => q / hn);
+    const wy = [hu[1] * 0 - hu[2] * uy, hu[2] * ux - hu[0] * 0, hu[0] * uy - hu[1] * ux]; // ĥ × node
+    w = Math.atan2(ev[0] * wy[0] + ev[1] * wy[1] + ev[2] * wy[2], ev[0] * ux + ev[1] * uy);
+  }
+  return { a, e, i, O, w, rp: a * (1 - e), ra: a * (1 + e), p: hn * hn / mu, n: h.map(q => q / hn) };
+}
+
+// Secular J2 rates (rad/s) of Ω, ω and the mean anomaly for a, e, i (Vallado ch. 9; Curtis ch. 4):
+// Ω̇ = −(3/2)·n·J2·(Re/p)²·cos i, ω̇ = (3/4)·n·J2·(Re/p)²·(5cos²i − 1), Ṁ − n = (3/4)·n·J2·(Re/p)²·√(1−e²)·(3cos²i − 1).
+function j2Rates(mu, J2, Re, a, e, i) {
+  const n = Math.sqrt(mu / (a * a * a)), p = a * (1 - e * e), q = n * J2 * (Re / p) * (Re / p), c = Math.cos(i);
+  return { dO: -1.5 * q * c, dw: 0.75 * q * (5 * c * c - 1), dM: 0.75 * q * Math.sqrt(1 - e * e) * (3 * c * c - 1) };
+}
+
+// Two-body state dt after (r0, v0) on an ellipse (f and g functions, Kepler's equation in ΔE), with an optional
+// secular drift rates = { dO, dw, dM }: mean motion n + dM, the result turned about the orbit normal by dw·dt and
+// about z by dO·dt. Writes position and velocity to out[0..5].
+function keplerStep(mu, r0, v0, dt, rates, out) {
+  const rn = Math.hypot(r0[0], r0[1], r0[2]), v2 = v0[0] * v0[0] + v0[1] * v0[1] + v0[2] * v0[2];
+  const a = 1 / (2 / rn - v2 / mu), sa = Math.sqrt(a), n = Math.sqrt(mu / (a * a * a));
+  const s0 = (r0[0] * v0[0] + r0[1] * v0[1] + r0[2] * v0[2]) / Math.sqrt(mu), ec = 1 - rn / a, es = s0 / sa;
+  const dM = (n + (rates ? rates.dM : 0)) * dt, M = dM - 2 * Math.PI * Math.floor(dM / (2 * Math.PI));
+  let E = M;
+  for (let it = 0; it < 50; it++) { // ΔM = ΔE + es(1 − cos ΔE) − ec·sin ΔE
+    const d = (E + es * (1 - Math.cos(E)) - ec * Math.sin(E) - M) / (1 - ec * Math.cos(E) + es * Math.sin(E));
+    E -= d; if (Math.abs(d) < 1e-14) break;
+  }
+  const cE = Math.cos(E), sE = Math.sin(E), r = a + (rn - a) * cE + s0 * sa * sE;
+  const f = 1 - a / rn * (1 - cE), g = M / n - (E - sE) / n, fd = -Math.sqrt(mu * a) / (r * rn) * sE, gd = 1 - a / r * (1 - cE);
+  const p = [0, 1, 2].map(j => f * r0[j] + g * v0[j]), v = [0, 1, 2].map(j => fd * r0[j] + gd * v0[j]);
+  if (rates) {
+    const h = [r0[1] * v0[2] - r0[2] * v0[1], r0[2] * v0[0] - r0[0] * v0[2], r0[0] * v0[1] - r0[1] * v0[0]], hl = Math.hypot(h[0], h[1], h[2]);
+    const k = h.map(q => q / hl), rot = (u, ax, ang) => { // Rodrigues
+      const c = Math.cos(ang), s = Math.sin(ang), d = (ax[0] * u[0] + ax[1] * u[1] + ax[2] * u[2]) * (1 - c);
+      return [u[0] * c + (ax[1] * u[2] - ax[2] * u[1]) * s + ax[0] * d, u[1] * c + (ax[2] * u[0] - ax[0] * u[2]) * s + ax[1] * d, u[2] * c + (ax[0] * u[1] - ax[1] * u[0]) * s + ax[2] * d];
+    };
+    const Z = [0, 0, 1], aw = rates.dw * dt, aO = rates.dO * dt;
+    const p2 = rot(rot(p, k, aw), Z, aO), v3 = rot(rot(v, k, aw), Z, aO);
+    for (let j = 0; j < 3; j++) { out[j] = p2[j]; out[3 + j] = v3[j]; }
+    return out;
+  }
+  for (let j = 0; j < 3; j++) { out[j] = p[j]; out[3 + j] = v[j]; }
+  return out;
+}
+
+// Equator of a body (IAU pole p = [α0, α1, δ0, δ1, …], periodic terms [cα, cδ, cW, θ0, θ1] at index k) at t: the
+// rotation equator -> J2000 ecliptic, x toward the equator's node on the ICRF equator (laplaceFrame).
+function equatorFrame(p, t, k) {
+  const T = t / JCY;
+  let ra = p[0] + p[1] * T, dec = p[2] + p[3] * T;
+  for (const q of p[k] || []) { const th = (q[3] + q[4] * T) * D2R; ra += q[0] * Math.sin(th); dec += q[1] * Math.cos(th); }
+  return laplaceFrame(ra, dec);
+}
+
+// State (equatorial frame) on orbit o = { rp, ra, i } with node Ω and ω = 0, at true anomaly nu.
+function orbitPoint(mu, o, O, nu) {
+  const a = (o.rp + o.ra) / 2, e = (o.ra - o.rp) / (o.ra + o.rp), p = a * (1 - e * e), r = p / (1 + e * Math.cos(nu)), w = Math.sqrt(mu / p);
+  const P = [Math.cos(O), Math.sin(O), 0], Q = [-Math.sin(O) * Math.cos(o.i), Math.cos(O) * Math.cos(o.i), Math.sin(o.i)];
+  const xp = r * Math.cos(nu), yp = r * Math.sin(nu), vxp = -w * Math.sin(nu), vyp = w * (e + Math.cos(nu));
+  return [0, 1, 2].map(j => xp * P[j] + yp * Q[j]).concat([0, 1, 2].map(j => vxp * P[j] + vyp * Q[j]));
+}
+
+// Dormand–Prince 5(4) step for an autonomous system y' = f(y) of n components; K[0] must hold f(y).
+function dpStepN(f, n, y, h, yOut, errOut, K, YT) {
+  for (let st = 1; st < 7; st++) {
+    const row = DP.a[st];
+    for (let j = 0; j < n; j++) { let acc = y[j]; for (let q = 0; q < st; q++) acc += h * row[q] * K[q][j]; YT[j] = acc; }
+    f(YT, K[st]);
+  }
+  for (let j = 0; j < n; j++) yOut[j] = YT[j];
+  if (errOut) for (let j = 0; j < n; j++) { let e = 0; for (let q = 0; q < 7; q++) e += DP.e[q] * K[q][j]; errOut[j] = h * e; }
+}
+
+// Fly the plan: two-body (+ J2: a = −(3/2)·J2·μ·Re²/r⁵·[x(1 − 5z²/r²), y(1 − 5z²/r²), z(3 − 5z²/r²)]) with DP5(4).
+// c: { mu, R, J2, Re, rot (equator -> ecliptic, row-major), O0 (Ω₀) }. The craft starts on o0 a quarter turn before
+// the first burn. A burn fires where the craft crosses ℓ on its side: the line of nodes (z = 0, ascending = side 0)
+// once the orbit is inclined, else the line ℓ itself; a piece of a split burn waits for the next pass. Each burn is
+// closed-loop from the actual state: the velocity becomes horizontal (the point an apsis) with the speed that puts the
+// other apsis at the planned radius, turned about the radius to the planned inclination; its Δv is what that took.
+// After the last burn the craft coasts opts.tail periods (no burns: opts.tail seconds). Output like simulate(): samples
+// (ecliptic axes, centred on the body), events, plus burns (executed), done (osculating elements after the last burn)
+// and end (equatorial state at the end).
+function maneuverSim(c, plan, opts = {}) {
+  const { mu, R } = c, kJ = c.J2 ? 1.5 * c.J2 * mu * c.Re * c.Re : 0, rot = c.rot, O0 = c.O0 || 0, tol = opts.tol || 1e-10;
+  const f = (y, out) => {
+    const x = y[0], yy = y[1], z = y[2], r2 = x * x + yy * yy + z * z, r = Math.sqrt(r2), k = mu / (r2 * r);
+    let ax = -k * x, ay = -k * yy, az = -k * z;
+    if (kJ) { const q = kJ / (r2 * r2 * r), w = 5 * z * z / r2; ax -= q * x * (1 - w); ay -= q * yy * (1 - w); az -= q * z * (3 - w); }
+    out[0] = y[3]; out[1] = y[4]; out[2] = y[5]; out[3] = ax; out[4] = ay; out[5] = az;
+  };
+  const Kb = Array.from({ length: 7 }, () => new Float64Array(6)), YT = new Float64Array(6);
+  const L = [Math.cos(O0), Math.sin(O0), 0], Mx = [-Math.sin(O0), Math.cos(O0), 0];
+  const burns = plan.burns || [];
+  const period = y => { const r = Math.hypot(y[0], y[1], y[2]), a = 1 / (2 / r - (y[3] * y[3] + y[4] * y[4] + y[5] * y[5]) / mu); return a > 0 ? 2 * Math.PI * Math.sqrt(a * a * a / mu) : Infinity; };
+  const normal = y => { const h = [y[1] * y[5] - y[2] * y[4], y[2] * y[3] - y[0] * y[5], y[0] * y[4] - y[1] * y[3]], l = Math.hypot(...h); return h.map(q => q / l); };
+  const inclined = y => { const n = normal(y); return Math.hypot(n[0], n[1]) > 1e-9; };
+  const gOf = (y, zMode) => zMode ? y[2] : y[0] * Mx[0] + y[1] * Mx[1];
+  const side0 = burns.length ? burns[0].side : 0;
+  let y = Float64Array.from(orbitPoint(mu, plan.o0, O0, side0 * Math.PI - Math.PI / 2));
+  const out = { t: [], x: [], y: [], z: [], vx: [], vy: [], vz: [], events: [], burns: [], impact: -1, ok: true, steps: 0 };
+  const push = (tt, q) => {
+    out.t.push(tt);
+    for (const [key, o] of [['x', 0], ['y', 1], ['z', 2], ['vx', 3], ['vy', 4], ['vz', 5]]) {
+      const b = o < 3 ? 0 : 3;
+      out[key].push(rot ? rot[3 * (o - b)] * q[b] + rot[3 * (o - b) + 1] * q[b + 1] + rot[3 * (o - b) + 2] * q[b + 2] : q[o]);
+    }
+  };
+  const ecl = u => rot ? [0, 1, 2].map(j => rot[3 * j] * u[0] + rot[3 * j + 1] * u[1] + rot[3 * j + 2] * u[2]) : u.slice();
+  out.normal = ecl(normal(y));
+  let t = 0, bi = 0, tLast = -Infinity, P = period(y), zMode = inclined(y), g0 = gOf(y, zMode);
+  let tEnd = burns.length ? Infinity : (opts.tail || P);
+  let h = P / 400;
+  const y1 = new Float64Array(6), err = new Float64Array(6), maxSteps = opts.maxSteps || 400000;
+  push(0, y); f(y, Kb[0]);
+  const fire = () => { // burn bi at the current state
+    const b = burns[bi], r = [y[0], y[1], y[2]], rn = Math.hypot(...r), u = r.map(q => q / rn);
+    const n = normal(y), tt = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
+    const vh = Math.sqrt(2 * mu * b.rOther / (rn * (rn + b.rOther)));
+    // turn by phi about the radius: normal' = cos φ·n − sin φ·t̂, so cos i' = A cos φ + B sin φ
+    const A = n[2], B = -tt[2], rho = Math.hypot(A, B), psi = Math.atan2(B, A), cc = Math.max(-1, Math.min(1, Math.cos(b.iAfter) / (rho || 1)));
+    const want = (b.side === 0 ? 1 : -1) * b.di, ac = Math.acos(cc);
+    let phi = 0;
+    if (rho > 0) { const c1 = wrapPi(psi + ac), c2 = wrapPi(psi - ac); phi = Math.abs(c1 - want) <= Math.abs(c2 - want) ? c1 : c2; }
+    const nv = [0, 1, 2].map(j => vh * (Math.cos(phi) * tt[j] + Math.sin(phi) * n[j]));
+    const dv = Math.hypot(nv[0] - y[3], nv[1] - y[4], nv[2] - y[5]);
+    const ex = { node: b.node, piece: b.piece, pieces: b.pieces, t, dv, plan: b.dv, sep: b.sep, side: b.side };
+    y[3] = nv[0]; y[4] = nv[1]; y[5] = nv[2];
+    ex.el = rv2el(mu, r, nv); ex.di = ex.el.i - (out.burns.length ? out.burns[out.burns.length - 1].el.i : plan.o0.i);
+    out.burns.push(ex);
+    out.events.push({ type: 'burn', t, dv, body: 0, label: 'ev.mvBurn', node: b.node, piece: b.piece, pieces: b.pieces, di: ex.di, sep: b.sep });
+    push(t, y);
+    bi++; tLast = t; P = period(y); zMode = inclined(y); g0 = gOf(y, zMode); h = P / 400;
+    f(y, Kb[0]);
+    if (bi === burns.length) { tEnd = t + (opts.tail || 0.5) * P; out.done = ex.el; }
+  };
+  while (out.steps < maxSteps) {
+    if (bi < burns.length && burns[bi].now) { fire(); continue; }
+    if (t >= tEnd - 1e-9) break;
+    out.steps++;
+    h = Math.min(h, P / 40, tEnd - t);
+    const yStart = Float64Array.from(y), k0 = Float64Array.from(Kb[0]);
+    dpStepN(f, 6, y, h, y1, err, Kb, YT);
+    const rn = Math.hypot(y[0], y[1], y[2]), vn = Math.hypot(y[3], y[4], y[5]), sp = tol * rn + 1e-3, sv = tol * vn + 1e-6;
+    const en = Math.max(Math.abs(err[0]) / sp, Math.abs(err[1]) / sp, Math.abs(err[2]) / sp, Math.abs(err[3]) / sv, Math.abs(err[4]) / sv, Math.abs(err[5]) / sv);
+    if (en > 1 && h > 1e-3) { h *= Math.max(0.2, 0.9 * Math.pow(en, -0.2)); Kb[0].set(k0); continue; }
+    const k7 = Float64Array.from(Kb[6]);
+    if (Math.hypot(y1[0], y1[1], y1[2]) < R) {
+      push(t + h, y1); out.impact = 0; out.events.push({ type: 'impact', body: 0, t: t + h, label: 'ev.impact' }); t += h; break;
+    }
+    // burn point crossed? (sign change of g on the right side, not the point just burned at)
+    const g1 = gOf(y1, zMode);
+    if (bi < burns.length && t + h - tLast > 0.1 * P && g0 !== g1 && (g0 < 0) !== (g1 < 0)) {
+      const sideAt = q => zMode ? (g1 > g0 ? 0 : 1) : (q[0] * L[0] + q[1] * L[1] > 0 ? 0 : 1);
+      if (sideAt(y1) === burns[bi].side) {
+        let lo = 0, hi = 1; const ym = new Float64Array(6);
+        for (let it = 0; it < 60; it++) {
+          const mid = 0.5 * (lo + hi);
+          Kb[0].set(k0); dpStepN(f, 6, yStart, h * mid, ym, null, Kb, YT);
+          if ((gOf(ym, zMode) < 0) === (g0 < 0)) lo = mid; else hi = mid;
+        }
+        Kb[0].set(k0); dpStepN(f, 6, yStart, h * hi, ym, null, Kb, YT);
+        t += h * hi; y.set(ym); push(t, y);
+        fire();
+        continue;
+      }
+    }
+    y.set(y1); t += h; g0 = g1; push(t, y);
+    Kb[0].set(k7);
+    h *= Math.min(4, Math.max(0.2, 0.9 * Math.pow(Math.max(en, 1e-10), -0.2)));
+  }
+  if (bi < burns.length) out.ok = false;
+  out.tEnd = t; out.end = Array.from(y);
+  out.tFirst = out.burns.length ? out.burns[0].t : 0; out.tLast = out.burns.length ? out.burns[out.burns.length - 1].t : 0;
+  return out;
+}
+
 if (typeof module !== 'undefined') module.exports = {
   G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, keplerE, laplaceFrame, bodyFrame, orbitElements, orbitState, orbitPath,
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed,
+  G0, visViva, burnDv, propMass, dvAvail, planeSplit, maneuverPlan, mvOrbits, rv2el, j2Rates, keplerStep, equatorFrame, orbitPoint, maneuverSim,
 };

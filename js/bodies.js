@@ -40,6 +40,14 @@
 //   1.591274, 0.584542 with BODY4 angles 15, 20 and 26) and Neptune (BODY899 0.70, −0.51, −0.48 with BODY8 angle N).
 //   The smaller ones (Mars ≤ 0.00024°, Jupiter ≤ 0.00012°, Mercury's prime meridian ≤ 0.011°) are left out.
 //   Display only (3D view, textured globes).
+// axis (the Moon): its pole from the same file, BODY301_POLE_RA / _POLE_DEC as [α0, α1, δ0, δ1] and the periodic terms
+//   over 0.1° as [cα, cδ, 0, θ0, θ1] (BODY301_NUT_PREC_RA −3.8787 and _DEC 1.5419 on angle E1, RA −0.1204 on E2; BODY3_NUT_PREC_ANGLES
+//   E1 = 125.045 − 1935.5364525·T, E2 = 250.089 − 3871.0729050·T). Not a rotation (the Moon is drawn as lock): the equator
+//   the orbit maneuvers measure inclinations from and the J2 axis; the globe's pole follows it too.
+// j2 (orbit maneuvers, optional oblateness): [J2 × 10⁶, equatorial radius km], the reference radius J2 goes with, from the NSSDCA
+//   planetary fact sheets (D. R. Williams), https://nssdc.gsfc.nasa.gov/planetary/factsheet/<body>fact.html, rows
+//   'J2 (x 10^-6)' and 'Equatorial radius (km)' (1 bar level for the giants), copied as printed (Saturn '16,298.', Neptune
+//   '3411.'). Planets and the Moon.
 // glow: [colour, strength] thin limb glow of an atmosphere (display only; strongest on the lit side, faint at night).
 // lock: synchronous moon, its prime meridian (texture longitude 0) faces the parent along the orbit (this app's orbit;
 //   the PCK rotation of these moons would disagree with our mean elements by the libration and the orbit phase).
@@ -77,25 +85,26 @@ const EPHEM_YEARS = [1800, 2050];
 const BODIES = {
   sun: { parent: null, gm: 1.32712440041e11, radius: 695700, tilt: 7.25, color: '#ffd27a', pole: [286.13, 0, 63.87, 0, 84.176, 14.18440],
     simple: { mass: 1.98847e30, radius: 695700, a: 0 } },
-  mercury: { parent: 'sun', gm: 22031.868551, radius: 2439.4, tilt: 0.03, color: '#a9a49c', pole: [281.0103, -0.0328, 61.4155, -0.0049, 329.5988, 6.1385108],
+  mercury: { parent: 'sun', gm: 22031.868551, radius: 2439.4, tilt: 0.03, j2: [50.3, 2440.5], color: '#a9a49c', pole: [281.0103, -0.0328, 61.4155, -0.0049, 329.5988, 6.1385108],
     tex: { file: 'img/planets/mercury.jpg', src: 'usgs', sat: 0.3 },
     simple: { mass: 3.3011e23, radius: 2439.7, a: 57909050 },
     orb: { jpl: [[0.38709927, 0.20563593, 7.00497902, 252.25032350, 77.45779628, 48.33076593],
                  [0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081]] } },
-  venus: { parent: 'sun', gm: 324858.592, radius: 6051.8, tilt: 177.36, color: '#e8c98f', pole: [272.76, 0, 67.16, 0, 160.20, -1.4813688],
+  venus: { parent: 'sun', gm: 324858.592, radius: 6051.8, tilt: 177.36, j2: [4.458, 6051.8], color: '#e8c98f', pole: [272.76, 0, 67.16, 0, 160.20, -1.4813688],
     texAlt: { file: 'img/planets/venus_radar.jpg', src: 'nasa3d' }, atm: [60, 180], atmR: 6051.8, glow: ['#f2dca0', 0.3],
     simple: { mass: 4.8675e24, radius: 6051.8, a: 108210000 },
     orb: { jpl: [[0.72333566, 0.00677672, 3.39467605, 181.97909950, 131.60246718, 76.67984255],
                  [0.00000390, -0.00004107, -0.00078890, 58517.81538729, 0.00268329, -0.27769418]] } },
-  earth: { parent: 'sun', gm: 398600.435507, radius: 6371.0084, tilt: 23.44, color: '#5b9cf0', pole: [0, -0.641, 90, -0.557, 190.147, 360.9856235],
+  earth: { parent: 'sun', gm: 398600.435507, radius: 6371.0084, tilt: 23.44, j2: [1082.63, 6378.137], color: '#5b9cf0', pole: [0, -0.641, 90, -0.557, 190.147, 360.9856235],
     tex: { file: 'img/planets/earth.jpg', src: 'bmng' }, atm: [50, 120], atmR: 6371, glow: ['#4d8dff', 1],
     simple: { mass: 5.9722e24, radius: 6371, a: 149598000 },
     orb: { jpl: [[1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0.0],
                  [0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0.0]] } },
-  moon: { parent: 'earth', gm: 4902.800118, radius: 1737.4, tilt: 6.68, color: '#cbc8bf', lock: true, tex: { file: 'img/planets/moon.jpg', src: 'svs' },
+  moon: { parent: 'earth', gm: 4902.800118, radius: 1737.4, tilt: 6.68, j2: [202.7, 1738.1], color: '#cbc8bf', lock: true, axis: [269.9949, 0.0031, 66.5392, 0.0130, [[-3.8787, 1.5419, 0, 125.045, -1935.5364525], [-0.1204, 0, 0, 250.089, -3871.0729050]]],
+    tex: { file: 'img/planets/moon.jpg', src: 'svs' },
     simple: { mass: 7.342e22, radius: 1737.4, a: 384400 },
     orb: { sat: [384400, 0.0554, 318.15, 135.27, 5.16, 125.08, 27.322, 5.997, 18.600] } },
-  mars: { parent: 'sun', gm: 42828.37362, radius: 3389.5, tilt: 25.19, color: '#e0703f', pole: [317.269202, -0.10927547, 54.432516, -0.05827105, 176.049863, 350.891982443297,
+  mars: { parent: 'sun', gm: 42828.37362, radius: 3389.5, tilt: 25.19, j2: [1960.45, 3396.2], color: '#e0703f', pole: [317.269202, -0.10927547, 54.432516, -0.05827105, 176.049863, 350.891982443297,
       [[0.419057, 0, 0, 79.398797, 0.5042615], [0, 1.591274, 0, 166.325722, 0.5042615], [0, 0, 0.584542, 95.391654, 0.5042615]]],
     tex: { file: 'img/planets/mars.jpg', src: 'nasa3d' }, atm: [50, 120], atmR: 3389.5, glow: ['#e8a478', 0.25],
     simple: { mass: 6.4171e23, radius: 3389.5, a: 227939000 },
@@ -106,7 +115,7 @@ const BODIES = {
     orb: { sat: [9375, 0.015, 216.3, 189.7, 1.1, 169.2, 0.3187, 1.1, 2.3], lp: [317.7, 52.9, 0.0] } },
   deimos: { parent: 'mars', gm: 9.6156e-5, radius: 6.2, tilt: 0, color: '#9a8c7f', lock: true,
     orb: { sat: [23457, 0.000, 0.0, 205.0, 1.8, 54.3, 1.2625, 0.0, 56.2], lp: [316.6, 53.5, 0.9] } },
-  jupiter: { parent: 'sun', gm: 126686531.9, radius: 69911, tilt: 3.13, color: '#d9b48c', pole: [268.056595, -0.006499, 64.495303, 0.002413, 284.95, 870.5360000],
+  jupiter: { parent: 'sun', gm: 126686531.9, radius: 69911, tilt: 3.13, j2: [14736, 71492], color: '#d9b48c', pole: [268.056595, -0.006499, 64.495303, 0.002413, 284.95, 870.5360000],
     tex: { file: 'img/planets/jupiter.jpg', src: 'pj' },
     simple: { mass: 1.89813e27, radius: 69911, a: 778570000 },
     orb: { jpl: [[5.20288700, 0.04838624, 1.30439695, 34.39644051, 14.72847983, 100.47390909],
@@ -120,17 +129,17 @@ const BODIES = {
     orb: { sat: [1070400, 0.001, 198.3, 324.8, 0.2, 58.5, 7.155588, 68.301, 137.812], lp: [268.2, 64.6, 0.1] } },
   callisto: { parent: 'jupiter', gm: 7179.283089, radius: 2410.3, tilt: 0, color: '#8a7f70', lock: true, tex: { file: 'img/planets/callisto.jpg', src: 'nasa3d' },
     orb: { sat: [1882700, 0.007, 43.8, 87.4, 0.3, 309.1, 16.690440, 277.921, 577.264], lp: [268.7, 64.8, 0.4] } },
-  saturn: { parent: 'sun', gm: 37931206.234, radius: 58232, tilt: 26.73, color: '#e3cc94', pole: [40.589, -0.036, 83.537, -0.004, 38.90, 810.7939024],
+  saturn: { parent: 'sun', gm: 37931206.234, radius: 58232, tilt: 26.73, j2: [16298, 60268], color: '#e3cc94', pole: [40.589, -0.036, 83.537, -0.004, 38.90, 810.7939024],
     tex: { file: 'img/planets/saturn.jpg', src: 'vtad' },
     rings: { file: 'img/planets/saturn_rings.png', src: 'vtad', r: [616.1504 / 500.0371, 1165.4507 / 500.0371], req: 60268 },
     orb: { jpl: [[9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448],
                  [-0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794]] } },
   titan: { parent: 'saturn', gm: 8978.138845, radius: 2574.7, tilt: 0.3, color: '#d9a85b', lock: true, tex: { file: 'img/planets/titan.jpg', src: 'nasa3d' }, atm: [300, 1000], atmR: 2575, glow: ['#eaa83c', 0.35],
     orb: { sat: [1221900, 0.029, 78.3, 11.7, 0.3, 78.6, 15.945448, 346.680, 687.370], lp: [36.4, 84.0, 0.6] } },
-  uranus: { parent: 'sun', gm: 5794556.4, radius: 25362, tilt: 97.77, color: '#9fd7dc', pole: [257.311, 0, -15.175, 0, 203.81, -501.1600928], atm: [10, 1500], atmR: 25559,
+  uranus: { parent: 'sun', gm: 5794556.4, radius: 25362, tilt: 97.77, j2: [3343.43, 25559], color: '#9fd7dc', pole: [257.311, 0, -15.175, 0, 203.81, -501.1600928], atm: [10, 1500], atmR: 25559,
     orb: { jpl: [[19.18916464, 0.04725744, 0.77263783, 313.23810451, 170.95427630, 74.01692503],
                  [-0.00196176, -0.00004397, -0.00242939, 428.48202785, 0.40805281, 0.04240589]] } },
-  neptune: { parent: 'sun', gm: 6836527.10058, radius: 24622, tilt: 28.32, color: '#3f63d0', pole: [299.36, 0, 43.46, 0, 249.978, 541.1397757, [[0.70, -0.51, -0.48, 357.85, 52.316]]], atm: [100, 1000], atmR: 24622,
+  neptune: { parent: 'sun', gm: 6836527.10058, radius: 24622, tilt: 28.32, j2: [3411, 24764], color: '#3f63d0', pole: [299.36, 0, 43.46, 0, 249.978, 541.1397757, [[0.70, -0.51, -0.48, 357.85, 52.316]]], atm: [100, 1000], atmR: 24622,
     orb: { jpl: [[30.06992276, 0.00859048, 1.77004347, -55.12002969, 44.96476227, 131.78422574],
                  [0.00026291, 0.00005105, 0.00035372, 218.45945325, -0.32241464, -0.00508664]] } },
   // simplified model only: a free-form body the user edits
@@ -153,6 +162,7 @@ const DATA_SRC = {
   pck: 'https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc',
   amat: 'https://github.com/athulpg007/AMAT',
   rings: 'https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html',
+  nssdc: 'https://nssdc.gsfc.nasa.gov/planetary/planetfact.html',
   three: 'https://threejs.org/',
   usage: 'https://www.nasa.gov/nasa-brand-center/images-and-media/',
 };

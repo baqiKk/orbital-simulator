@@ -106,6 +106,10 @@
     <section class="win" id="w-mission" data-win="mission" aria-labelledby="wt-mission" hidden>
       <header class="win-h"><h2 id="wt-mission" data-i18n="win.mission"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
       <div class="win-b">
+        <div class="seg full" id="kindSeg" role="group" data-i18n-aria-label="ui.kind">
+          <button type="button" data-v="transfer" data-i18n="ui.kind.transfer" data-i18n-title="ui.kind.transferTip"></button>
+          <button type="button" data-v="man" data-i18n="ui.kind.man" data-i18n-title="ui.kind.manTip"></button>
+        </div>
         <div class="seg full" id="modelSeg" role="group" data-i18n-aria-label="ui.model">
           <button type="button" data-v="real" data-i18n="model.real" data-i18n-title="model.realTip"></button>
           <button type="button" data-v="simple" data-i18n="model.simple" data-i18n-title="model.simpleTip"></button>
@@ -116,6 +120,59 @@
           <div class="date-row"><input type="datetime-local" id="m-date" step="60" aria-labelledby="lbl-date"><button class="btn sm" type="button" id="m-now" data-i18n="ui.now" data-i18n-title="ui.nowTip"></button></div>
           <small class="warn" id="dateWarn" hidden></small>
         </div>
+        <div class="mvwrap" id="mvWrap" hidden>
+          <label class="field row-field"><span data-i18n="mv.body"></span><select id="mv-body"></select></label>
+          <fieldset class="mvbox">
+            <legend data-i18n="mv.start"></legend>
+            <div class="grid3">
+              <label class="field"><span id="lbl-hp0"></span><input type="number" id="mv-hp0" step="any" min="0"></label>
+              <label class="field"><span id="lbl-ha0"></span><input type="number" id="mv-ha0" step="any" min="0"></label>
+              <label class="field"><span data-i18n="mv.inc"></span><input type="number" id="mv-i0" step="any" min="0" max="180"></label>
+            </div>
+          </fieldset>
+          <fieldset class="mvbox">
+            <legend data-i18n="mv.target"></legend>
+            <div class="grid3">
+              <label class="field"><span id="lbl-hp1"></span><input type="number" id="mv-hp1" step="any" min="0"></label>
+              <label class="field"><span data-i18n="mv.ecc"></span><input type="number" id="mv-e1" step="any" min="0" max="0.99"></label>
+              <label class="field"><span data-i18n="mv.inc"></span><input type="number" id="mv-i1" step="any" min="0" max="180"></label>
+            </div>
+            <small class="mv-hint" id="mvHa"></small>
+          </fieldset>
+          <div class="field"><span data-i18n="mv.type"></span>
+            <div class="seg full" id="mvTypeSeg" role="group" data-i18n-aria-label="mv.type">
+              <button type="button" data-v="hohmann" data-i18n="mv.type.hohmann" data-i18n-title="mv.type.hohmannTip"></button>
+              <button type="button" data-v="bielliptic" data-i18n="mv.type.bielliptic" data-i18n-title="mv.type.biellipticTip"></button>
+            </div>
+          </div>
+          <label class="field" id="mvRbWrap" hidden><span id="lbl-rb"></span><input type="number" id="mv-rb" step="any" min="0"></label>
+          <div class="field"><span data-i18n="mv.plane"></span>
+            <div class="seg full" id="mvPlaneSeg" role="group" data-i18n-aria-label="mv.plane">
+              <button type="button" data-v="comb" data-i18n="mv.plane.comb" data-i18n-title="mv.plane.combTip"></button>
+              <button type="button" data-v="sep" data-i18n="mv.plane.sep" data-i18n-title="mv.plane.sepTip"></button>
+            </div>
+          </div>
+          <div class="grid2 mv-row">
+            <label class="field" data-i18n-title="mv.kTip"><span data-i18n="mv.k"></span><input type="number" id="mv-k" min="1" max="8" step="1"></label>
+            <label class="chk" data-i18n-title="mv.j2Tip"><input type="checkbox" id="mv-j2"><span data-i18n="mv.j2"></span></label>
+          </div>
+          <fieldset class="mvbox">
+            <legend data-i18n="mv.vehicle"></legend>
+            <div class="grid3">
+              <label class="field"><span data-i18n="mv.m0"></span><input type="number" id="mv-m0" step="any" min="0"></label>
+              <label class="field"><span data-i18n="mv.md"></span><input type="number" id="mv-md" step="any" min="0"></label>
+              <label class="field"><span data-i18n="mv.isp"></span><input type="number" id="mv-isp" step="any" min="0"></label>
+            </div>
+            <small class="mv-hint" id="mvAvail"></small>
+          </fieldset>
+          <details class="adv">
+            <summary data-i18n="ui.advanced"></summary>
+            <div class="adv-b">
+              <label class="field" data-i18n-title="mv.O0Tip"><span data-i18n="mv.O0"></span><input type="number" id="mv-O0" step="any"></label>
+            </div>
+          </details>
+        </div>
+        <div class="trwrap" id="trWrap">
         <div class="field"><span data-i18n="ui.missionType"></span>
           <div class="seg full" id="modeSeg" role="group" data-i18n-aria-label="ui.missionType">
             <button type="button" data-v="flyby" data-i18n="ui.mode.flyby"></button>
@@ -161,6 +218,7 @@
         <div class="actions">
           <button class="btn" id="hohmann" type="button" data-i18n="ui.hohmann"></button>
           <button class="btn primary" id="solve" type="button" data-i18n="ui.solve"></button>
+        </div>
         </div>
         <p class="status" id="status" aria-live="polite"></p>
       </div>
@@ -247,6 +305,7 @@
           <p data-i18n="about.p2">Gerçek güneş sistemi modeli, belirli bir tarihteki gezegen ve uydu konumlarını NASA JPL Kepler elemanlarından hesaplar (1800–2050). Basitleştirilmiş model ise dairesel ve düzlemsel yörüngelerle, kütle ve yarıçapı kendiniz girerek kavramları denemenizi sağlar. Fizik üç boyutludur; görünümü iki boyutlu izdüşüm ya da Three.js ile üç boyutlu olarak izleyebilirsiniz.</p>
           <p data-i18n="about.p3">Hohmann transferi, iki dairesel yörünge arasındaki en az yakıtlı geçiştir. Lambert problemi, iki nokta arasında verilen sürede giden yörüngeyi bulur; simülatör bunu gezegenler arası transferler için kullanır ve kalkış tarihi ile yolculuk süresine göre Δv, C3 ve varış hızını gösteren porkchop grafiğini çizer. Grafikte bir noktaya tıklayınca yol, Güneş ve gezegenlerin çekimiyle N-cisim modelinde yeniden çözülür.</p>
           <p data-i18n="about.p4">Hazır senaryolar arasında Dünya–Ay serbest dönüş yörüngesi (8 ve S biçimi), Ay yörüngesine giriş, 2026 penceresiyle Dünya–Mars, Dünya–Venüs ve Ganymede–Callisto transferi bulunur. Yakalama yanması, aerofren, yörünge noktaları (perigee, apogee, periapsis), Δv dökümü ve yakalamadan sonraki yörünge izi sonuç pencerelerinde gösterilir.</p>
+          <p data-i18n="about.p5">Yörünge manevrası görevinde tek bir gezegenin ya da Ay'ın etrafında yörünge değiştirilir: Hohmann ve bi-eliptik transfer, ayrı ya da birleşik eğim değişimi ve parçalı yanmalar. Başlangıç yörüngesi eliptik olabilir; Δv, transfer süresi ve roket denklemiyle yakıt kütlesi hesaplanır, isteğe bağlı J2 basıklığıyla düğüm gerilemesi ve Güneş eş zamanlı yörünge görülür.</p>
         </details>
         <p data-i18n="ui.model1"></p>
         <p data-i18n="ui.model2"></p>
@@ -254,6 +313,7 @@
         <p data-i18n="ui.model4"></p>
         <p data-i18n="ui.model5"></p>
         <p data-i18n="ui.model6"></p>
+        <p data-i18n="ui.model7"></p>
         <p><button class="ghost" type="button" data-open="credits" data-i18n="cred.open"></button></p>
       </div>
     </section>

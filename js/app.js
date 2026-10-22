@@ -3,6 +3,8 @@
 // real model: the bodies with an ephemeris (the Sun and everything with orbit elements).
 const KEYS_SIMPLE = Object.keys(BODIES);
 const KEYS_REAL = KEYS_SIMPLE.filter(k => BODIES[k].gm);
+// orbit maneuvers: the bodies with J2 and an equatorial radius (the planets and the Moon)
+const KEYS_MV = KEYS_REAL.filter(k => BODIES[k].j2);
 const AU_KM = AU / 1e3;
 // Simplified-model numbers (mass kg, radius km, circular orbit radius km): Phase 1 values where kept, else derived.
 function simpleData(k) {
@@ -45,12 +47,26 @@ const SCENARIOS = [
   { id: 'r_gan_cal', model: 'real', frame: 'inertial',
     bodies: [{ k: 'ganymede', parent: 2 }, { k: 'callisto', parent: 2 }, { k: 'jupiter', parent: -1 }],
     M: { mode: 'capture', side: 0, h0: 100, hB: 200, hRet: 60, t0: 9800.78452933949, theta: -115.32101579869845, dv: 1133.8633422404118, beta: -2.9268533075196106, autoDur: true, duration: 10 } },
+  // orbit maneuvers about one body (altitudes above its equatorial radius, km; angles deg); 2026-11-15 00:00 UTC
+  { id: 'mv_leo_geo', model: 'man', frame: 'eq',
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 191.34411, ha0: 191.34411, i0: 0, O0: 0, hp1: 35781.34857, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 2000, md: 500, isp: 320, j2: false } },
+  { id: 'mv_cape_geo', model: 'man', frame: 'eq',
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 185, ha0: 185, i0: 28.5, O0: 0, hp1: 35786, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 2000, md: 500, isp: 320, j2: false } },
+  { id: 'mv_bielliptic', model: 'man', frame: 'eq',
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 191.34411, ha0: 191.34411, i0: 0, O0: 0, hp1: 376310, e1: 0, i1: 0, type: 'bielliptic', rb: 503873, plane: 'comb', k: 1, m0: 2000, md: 500, isp: 320, j2: false } },
+  { id: 'mv_gto', model: 'man', frame: 'eq',
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 250, ha0: 35786, i0: 28.5, O0: 0, hp1: 35786, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 3500, md: 1900, isp: 320, j2: false } },
+  { id: 'mv_sso', model: 'man', frame: 'p0',
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 250, ha0: 250, i0: 98.6, O0: 0, hp1: 800, e1: 0, i1: 98.6, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 1000, md: 800, isp: 300, j2: true } },
 ];
 
 // ===================== State =====================
 // speed: playback relative to the mission length; rate: real-time playback (simulated s per s, 0 = off)
-const S = { model: 'simple', loop: false, ext: 0, bodies: [], M: {}, frame: 'rot', follow: 'free', soi: false, tracks: true, focus: true, speed: 1, rate: 0, playing: true, u: 0, scenario: 'em_free' };
+// kind: 'transfer' (between bodies) or 'man' (orbit maneuvers about one body, S.M holds the maneuver)
+const S = { kind: 'transfer', model: 'simple', loop: false, ext: 0, bodies: [], M: {}, frame: 'rot', follow: 'free', soi: false, tracks: true, focus: true, speed: 1, rate: 0, playing: true, u: 0, scenario: 'em_free' };
 let sys = null, simR = null, guess = null, C = null;
+// maneuver mission: body data, frames and plan of the current one (null for transfers)
+let MAN = null;
 const cam = { cx: 0, cy: 0, scale: 1e-6 };
 let needFit = true, solving = false, cancelSolve = false;
 const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -127,15 +143,19 @@ const depth = k => { let d = 0; while (BODIES[k].parent) { k = BODIES[k].parent;
 // ===================== Scenario =====================
 function loadScenario(id) {
   const sc = SCENARIOS.find(s => s.id === id) || SCENARIOS[0];
-  S.scenario = sc.id; S.model = sc.model;
-  S.bodies = sc.bodies.map(b => bodyFromPreset(b.k, { parent: b.parent, ...(b.a != null ? { a: b.a } : {}), phase: b.phase || 0 }));
-  if (S.model === 'real') linkReal();
+  S.scenario = sc.id; S.kind = sc.model === 'man' ? 'man' : 'transfer';
   S.M = { ...sc.M };
+  if (S.kind === 'man') { S.model = 'real'; S.bodies = [bodyFromPreset(S.M.body)]; } // dated: lighting, rotation
+  else {
+    S.model = sc.model;
+    S.bodies = sc.bodies.map(b => bodyFromPreset(b.k, { parent: b.parent, ...(b.a != null ? { a: b.a } : {}), phase: b.phase || 0 }));
+    if (S.model === 'real') linkReal();
+  }
   S.frame = sc.frame; S.follow = 'free';
   openRows.clear(); ovReveal(); MAP.needFit = true;
   $('#scenario').value = sc.id;
   $('#scNote').textContent = _('sc.' + sc.id + '.note');
-  syncModel(); renderBodies(); syncMission(); renderFrameSeg();
+  syncKind(); syncModel(); renderBodies(); syncMission(); renderFrameSeg();
   rebuild({ fit: true, resetU: true });
   setStatus('');
   if (!reduceMotion) S.playing = true;
@@ -170,6 +190,44 @@ function syncModel() {
 }
 $('#modelSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setModel(b.dataset.v); });
 
+// ===================== Mission kind: transfer / orbit maneuver =====================
+// Each kind keeps its own setup: switching back finds the mission as it was left (the first visit loads a scenario).
+const KSAVE = { transfer: null, man: null };
+function saveKind() { KSAVE[S.kind] = { scenario: S.scenario, model: S.model, bodies: S.bodies, M: S.M, frame: S.frame }; }
+function restoreKind(k) {
+  const v = KSAVE[k];
+  Object.assign(S, { kind: k, scenario: v.scenario, model: v.model, bodies: v.bodies, M: v.M, frame: v.frame, follow: 'free' });
+  $('#scenario').value = S.scenario;
+  $('#scNote').textContent = S.scenario ? _('sc.' + S.scenario + '.note') : '';
+}
+function setKind(k) {
+  if (k === S.kind) return;
+  if (solving) $('#solve').click();
+  saveKind();
+  if (!KSAVE[k]) { loadScenario(k === 'man' ? SCENARIOS.find(s => s.model === 'man').id : 'em_free'); return; }
+  restoreKind(k);
+  openRows.clear(); MAP.needFit = true;
+  syncKind(); syncModel(); renderBodies(); syncMission(); renderFrameSeg();
+  rebuild({ fit: true, resetU: true });
+  setStatus('');
+}
+// the overview picks departure and target bodies: from a maneuver, back to the transfer setup first (no rebuild)
+function toTransfer() {
+  if (S.kind !== 'man') return;
+  saveKind();
+  if (KSAVE.transfer) restoreKind('transfer');
+  else { const sc = SCENARIOS.find(s => s.id === 'em_free'); Object.assign(S, { kind: 'transfer', model: sc.model, M: { ...sc.M }, frame: sc.frame }); }
+  syncKind();
+}
+function syncKind() {
+  const man = S.kind === 'man';
+  setSeg('#kindSeg', S.kind);
+  $('#mvWrap').hidden = !man; $('#trWrap').hidden = man; $('#modelSeg').hidden = man;
+  $('#lbl-date').textContent = _(man ? 'ui.mvDate' : 'ui.date');
+  if (!man) MAN = null;
+}
+$('#kindSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setKind(b.dataset.v); });
+
 // ===================== Body rows =====================
 // Overview-style rows (colour, preset, role, parent); the editable fields fold out per row.
 const openRows = new Set();
@@ -177,6 +235,18 @@ const ICON_CHEV = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6
 const ICON_X = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg>';
 function renderBodies() {
   const box = $('#bodies');
+  if (S.kind === 'man') { // one central body: pick it here or in the mission window
+    const b = S.bodies[0], open = openRows.has(0);
+    box.innerHTML = `<div class="brow" data-i="0">
+      <div class="brow-h"><span class="dot" style="background:${b.color}"></span>
+        <select data-f="key" aria-label="${_('body.select')}">${KEYS_MV.map(k => `<option value="${k}" ${k === b.key ? 'selected' : ''}>${_('body.' + k)}</option>`).join('')}</select>
+        <span class="role dep">${_('body.role.center')}</span><span class="par">${esc(_('body.parentRoot'))}</span>
+        <button type="button" class="ibtn" data-act="toggle" aria-expanded="${open}" aria-controls="brow-b0" aria-label="${esc(_('body.details', { name: b.name }))}">${ICON_CHEV}</button><span></span></div>
+      <div class="brow-b" id="brow-b0" ${open ? '' : 'hidden'}>${realInfo(b)}</div></div>`;
+    $('#addBody').hidden = true;
+    renderOverview();
+    return;
+  }
   const N = S.bodies.length, real = S.model === 'real';
   const roots = S.bodies.filter(b => b.parent < 0).length;
   box.innerHTML = S.bodies.map((b, i) => {
@@ -226,6 +296,7 @@ function realInfo(b) {
       [_('body.inc'), nf2.format(Math.abs(inc) < 0.005 ? 0 : inc), '°'], [_('body.period'), fmtPeriod(2 * Math.PI / (o.O1 + o.w1 + o.M1)), ''],
       [_('body.ref'), _(d.orb.jpl || !d.orb.lp ? 'body.ref.ecl' : 'body.ref.laplace'), '']);
   } else rows.push([_('body.parent'), _('body.parentRoot'), '']);
+  if (S.kind === 'man' && d.j2) rows.push([_('body.j2'), nf2.format(d.j2[0] / 1e3) + '·10⁻³', ''], [_('body.req'), nf1.format(d.j2[1]), 'km']);
   return `<table class="ov binfo"><tbody>${rows.map(([l, v, u]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(v)}${u ? `<em>${esc(u)}</em>` : ''}</td></tr>`).join('')}</tbody></table>`;
 }
 
@@ -300,6 +371,7 @@ function removeBody(i) {
 $('#bodies').addEventListener('change', e => {
   const card = e.target.closest('.brow'); if (!card) return;
   const i = +card.dataset.i, f = e.target.dataset.f;
+  if (f === 'key' && S.kind === 'man') { setCentral(e.target.value); return; }
   if (f === 'key') { applyPreset(i, e.target.value); renderBodies(); renderFrameSeg(); rebuild({ fit: true }); }
   else if (f === 'parent') { S.bodies[i].parent = +e.target.value; renderBodies(); rebuild({ fit: true }); }
 });
@@ -332,6 +404,7 @@ $('#addBody').addEventListener('click', () => addBody());
 // ===================== Mission inputs =====================
 const MF = ['h0', 'hB', 'hRet', 't0', 'theta', 'dv', 'dur'];
 function syncMission() {
+  if (S.kind === 'man') { syncMan(); return; }
   const M = S.M;
   $('#m-h0').value = +M.h0.toFixed(3); $('#m-hB').value = +M.hB.toFixed(3); $('#m-hRet').value = +M.hRet.toFixed(3);
   $('#m-t0').value = +M.t0.toFixed(4); $('#m-theta').value = +M.theta.toFixed(4); $('#m-dv').value = +M.dv.toFixed(2);
@@ -415,6 +488,51 @@ $('#m-auto').addEventListener('change', e => { S.M.autoDur = e.target.checked; $
 $('#modeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.M.mode = b.dataset.v; syncMission(); scheduleRebuild(); });
 $('#sideSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.M.side = +b.dataset.v; syncMission(); setStatus(_('st.side')); });
 
+// ===================== Orbit maneuver inputs =====================
+// apsis names for the maneuver labels: the body's own pair when the table has both, else periapsis / apoapsis
+const apsNames = k => { const a = APSIS[k]; return a && a[1] ? a : [_('apsis.generic'), _('apsis.genericApo')]; };
+const cap1 = s => s[0].toLocaleUpperCase(DICT['meta.locale']) + s.slice(1);
+const MVF = ['hp0', 'ha0', 'i0', 'hp1', 'e1', 'i1', 'rb', 'k', 'm0', 'md', 'isp', 'O0'];
+function syncMan() {
+  const M = S.M, [pn, an] = apsNames(M.body).map(cap1), sel = $('#mv-body');
+  if (sel.options.length !== KEYS_MV.length) sel.innerHTML = KEYS_MV.map(k => `<option value="${k}">${esc(_('body.' + k))}</option>`).join('');
+  sel.value = M.body;
+  for (const f of MVF) { const el = $('#mv-' + f); if (document.activeElement !== el) { el.value = +(+M[f]).toFixed(6); el.setAttribute('aria-invalid', 'false'); } }
+  $('#mv-j2').checked = !!M.j2;
+  $('#lbl-hp0').textContent = $('#lbl-hp1').textContent = _('mv.hp', { peri: pn });
+  $('#lbl-ha0').textContent = _('mv.ha', { apo: an }); $('#lbl-rb').textContent = _('mv.rb', { apo: an });
+  setSeg('#mvTypeSeg', M.type); setSeg('#mvPlaneSeg', M.plane);
+  $('#mvRbWrap').hidden = M.type !== 'bielliptic';
+  const d = BODIES[M.body], Re = d.j2[1], ra = (Re + M.hp1) * (1 + M.e1) / (1 - M.e1), a = (Re + M.hp1 + ra) / 2;
+  $('#mvHa').textContent = M.e1 > 0 ? _('mv.haHint', { apo: an, h: nf0.format(ra - Re), a: nf0.format(a) }) : _('mv.circHint', { a: nf0.format(a) });
+  const ok = M.md > 0 && M.md < M.m0 && M.isp > 0, h = $('#mvAvail');
+  h.classList.toggle('warn', !ok);
+  h.textContent = ok ? _('mv.avail', { dv: nf0.format(dvAvail(M.m0, M.md, M.isp)), c: nf0.format(M.isp * G0) }) : _('mv.availBad');
+  if (S.model === 'real') { const dt = $('#m-date'); dt.value = isoMinute(daysToUtc(M.t0)); dt.setAttribute('aria-invalid', 'false'); }
+}
+// value checks per field (cross-field ones, like apoapsis ≥ periapsis, come back from maneuverPlan)
+const MV_OK = { hp0: v => v > 0, ha0: v => v > 0, hp1: v => v > 0, rb: v => v > 0, e1: v => v >= 0 && v <= 0.99, i0: v => v >= 0 && v <= 180, i1: v => v >= 0 && v <= 180,
+  k: v => Number.isInteger(v) && v >= 1 && v <= 8, m0: v => v > 0, md: v => v > 0, isp: v => v > 0, O0: () => true };
+for (const f of MVF) {
+  $('#mv-' + f).addEventListener('input', e => {
+    const v = parseNum(e.target.value), bad = !Number.isFinite(v) || !MV_OK[f](v);
+    e.target.setAttribute('aria-invalid', String(bad));
+    if (bad) return;
+    S.M[f] = v; syncMan(); scheduleRebuild();
+  });
+}
+function setCentral(k) {
+  S.M.body = k; S.bodies = [bodyFromPreset(k)];
+  S.scenario = ''; $('#scenario').value = ''; $('#scNote').textContent = _('sc.mv.note');
+  openRows.clear(); S.follow = 'free';
+  renderBodies(); syncMan(); renderFrameSeg();
+  rebuild({ fit: true, resetU: true });
+}
+$('#mv-body').addEventListener('change', e => setCentral(e.target.value));
+$('#mv-j2').addEventListener('change', e => { S.M.j2 = e.target.checked; scheduleRebuild(); });
+$('#mvTypeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.M.type = b.dataset.v; syncMan(); rebuild({ fit: true, resetU: true }); });
+$('#mvPlaneSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.M.plane = b.dataset.v; syncMan(); rebuild({ resetU: true }); });
+
 let rebuildQueued = false;
 function scheduleRebuild() { if (rebuildQueued) return; rebuildQueued = true; requestAnimationFrame(() => { rebuildQueued = false; rebuild({}); }); }
 
@@ -424,7 +542,7 @@ function sysList() {
   return S.bodies.map(b => ({ name: b.name, mass: b.mass, radius: b.radius * 1e3, parent: b.parent, a: b.a * 1e3, phase: b.phase }));
 }
 
-function showErr(t) { const e = $('#err'); e.textContent = t || ''; e.hidden = !t; const m = $('#msg'); m.textContent = t ? _('err.fix', { e: t }) : ''; m.hidden = !t; }
+function showErr(t, key = 'err.fix') { const e = $('#err'); e.textContent = t || ''; e.hidden = !t; const m = $('#msg'); m.textContent = t ? _(key, { e: t }) : ''; m.hidden = !t; }
 const errText = r => _(r.error, { ...r.params, name: (r.params && r.params.name) || _('body.default') });
 // Real model: the hierarchy is fixed, so name the body whose parent is missing instead of the generic error.
 function realErr() {
@@ -439,6 +557,7 @@ function realErr() {
 // mission plane at departure: the two-body views (A, B, rotating A–B) project onto it
 let PLANE = planeBasis([0, 0, 1]);
 function rebuild(o = {}) {
+  if (S.kind === 'man') { rebuildMan(o); return; }
   const pre = S.model === 'real' ? realErr() : '';
   const s = pre ? { error: true } : buildSystem(sysList());
   if (s.error) { showErr(pre || errText(s)); sys = null; simR = null; C = null; updateResults(); return; }
@@ -461,6 +580,49 @@ function rebuild(o = {}) {
   setDvRange(); updateResults(); renderTicks(); renderFrameSeg();
 }
 
+// Orbit maneuver: the analytic plan (core.js maneuverPlan), flown by maneuverSim in the body's equator frame; samples
+// come back in ecliptic axes about the body (at the origin of the one-body system). Altitudes are measured from the
+// equatorial radius (NSSDCA, the J2 reference radius), the globe and impacts use the mean radius.
+// Equator frame: Earth's J2000 equator and equinox (x = γ, the frame of the textbook examples), else the IAU pole.
+function eqFrame(k, t) {
+  const d = BODIES[k];
+  return k === 'earth' ? laplaceFrame(-90, 90) : d.pole ? equatorFrame(d.pole, t, 6) : equatorFrame(d.axis, t, 4);
+}
+function rebuildMan(o = {}) {
+  const M = S.M, k = M.body, d = BODIES[k], t0 = M.t0 * DAY;
+  sys = buildSystem(sysList()); guess = null;
+  const mu = d.gm * 1e9, R = d.radius * 1e3, Re = d.j2[1] * 1e3, rot = eqFrame(k, t0);
+  const { o0, o1, opt } = mvOrbits(M, Re);
+  const bad = MVF.some(f => !Number.isFinite(M[f]) || !MV_OK[f](M[f]));
+  const plan = bad ? { error: 'err.mvApsis' } : maneuverPlan(mu, R, o0, o1, opt);
+  if (plan.error) { showErr(_(plan.error), 'err.mvFix'); simR = null; C = null; MAN = null; updateResults(); renderTicks(); return; }
+  showErr('');
+  simR = maneuverSim({ mu, R, J2: M.j2 ? d.j2[0] * 1e-6 : 0, Re, rot, O0: M.O0 * D2R }, plan, { tol: 1e-10 });
+  // frames (ecliptic axes): the equator, the initial and the target orbit planes (x along the line of nodes ℓ)
+  const ecl = u => [0, 1, 2].map(j => rot[3 * j] * u[0] + rot[3 * j + 1] * u[1] + rot[3 * j + 2] * u[2]);
+  const O0 = M.O0 * D2R, L = ecl([Math.cos(O0), Math.sin(O0), 0]);
+  const plane = i => { const n = ecl([Math.sin(i) * Math.sin(O0), -Math.sin(i) * Math.cos(O0), Math.cos(i)]); return { x: L, y: [n[1] * L[2] - n[2] * L[1], n[2] * L[0] - n[0] * L[2], n[0] * L[1] - n[1] * L[0]], n }; };
+  const fr = { eq: { x: [rot[0], rot[3], rot[6]], y: [rot[1], rot[4], rot[7]], n: [rot[2], rot[5], rot[8]] }, p0: plane(o0.i), p1: plane(o1.i) };
+  MAN = { key: k, mu, R, Re, rot, plan, o0, o1, opt, fr, j2: M.j2 ? d.j2[0] * 1e-6 : 0 };
+  PLANE = planeBasis(simR.normal);
+  if (!['eq', 'p0', 'p1'].includes(S.frame)) S.frame = 'eq';
+  if (o.resetU) { S.u = 0; S.ext = 0; }
+  buildCache();
+  if (o.fit) needFit = true;
+  $('#dateWarn').hidden = inEphem(M.t0);
+  updateResults(); renderTicks(); renderFrameSeg(); pcSync();
+}
+// one revolution of orbit o ({ rp, ra, i }, node Ω, ω = 0) about the maneuver body: K points, ecliptic axes, m
+function mvRing(o, O0, K) {
+  const out = new Float64Array(3 * K), a = (o.rp + o.ra) / 2, e = (o.ra - o.rp) / (o.ra + o.rp), q = Math.sqrt(1 - e * e), rot = MAN.rot;
+  const P = [Math.cos(O0), Math.sin(O0), 0], Qv = [-Math.sin(O0) * Math.cos(o.i), Math.cos(O0) * Math.cos(o.i), Math.sin(o.i)];
+  for (let k = 0; k < K; k++) {
+    const E = 2 * Math.PI * k / K, xo = a * (Math.cos(E) - e), yo = a * q * Math.sin(E), u = [0, 1, 2].map(j => xo * P[j] + yo * Qv[j]);
+    for (let j = 0; j < 3; j++) out[3 * k + j] = rot[3 * j] * u[0] + rot[3 * j + 1] * u[1] + rot[3 * j + 2] * u[2];
+  }
+  return out;
+}
+
 // cubic Hermite position at fraction f of sample segment i
 function herm(i, f, out) {
   const r = simR, h = r.t[i + 1] - r.t[i];
@@ -478,6 +640,15 @@ function segAtTime(t) { // last i with t_i <= t, skipping zero-length segments f
   while (hi - lo > 1) { const m = (lo + hi) >> 1; if (T[m] <= t) lo = m; else hi = m; }
   while (lo < T.length - 2 && T[lo + 1] - T[lo] <= 0) lo++;
   return lo;
+}
+// velocity at fraction f of segment i: the derivative of the cubic Hermite position (consistent with herm())
+function hermV(i, f, out) {
+  const r = simR, h = r.t[i + 1] - r.t[i], f2 = f * f;
+  const d00 = (6 * f2 - 6 * f) / h, d10 = 3 * f2 - 4 * f + 1, d01 = (-6 * f2 + 6 * f) / h, d11 = 3 * f2 - 2 * f;
+  out[0] = d00 * r.x[i] + d10 * r.vx[i] + d01 * r.x[i + 1] + d11 * r.vx[i + 1];
+  out[1] = d00 * r.y[i] + d10 * r.vy[i] + d01 * r.y[i + 1] + d11 * r.vy[i + 1];
+  out[2] = d00 * r.z[i] + d10 * r.vz[i] + d01 * r.z[i + 1] + d11 * r.vz[i + 1];
+  return out;
 }
 function posAtTime(t, out) {
   const i = segAtTime(t), h = simR.t[i + 1] - simR.t[i];
@@ -498,28 +669,62 @@ function buildCache() {
   }
   segStart[n - 1] = px.length; px.push(r.x[n - 1]); py.push(r.y[n - 1]); pz.push(r.z[n - 1]); pt.push(r.t[n - 1]);
   const T = r.t[n - 1] || 1;
-  // captured: keep orbiting analytically after the integrated span (circle about the orbit normal ax)
+  // after the integrated span the craft keeps orbiting analytically (C.orbit.rel: position and velocity relative to
+  // body C.orbit.body, ecliptic axes, dt after T): captured, a circle about B; a maneuver, its final ellipse with the
+  // secular J2 drift
   let orbit = null;
-  if (r.captured && r.impact < 0) {
+  if (S.kind === 'man') orbit = r.impact < 0 && MAN ? mvOrbit(r) : null;
+  else if (r.captured && r.impact < 0) {
     states(sys, S.M.t0 * DAY + T, SP, SV);
     const rv = [r.x[n - 1] - SP[3], r.y[n - 1] - SP[4], r.z[n - 1] - SP[5]], vv = [r.vx[n - 1] - SV[3], r.vy[n - 1] - SV[4], r.vz[n - 1] - SV[5]];
     const h = [rv[1] * vv[2] - rv[2] * vv[1], rv[2] * vv[0] - rv[0] * vv[2], rv[0] * vv[1] - rv[1] * vv[0]];
-    const hl = Math.hypot(...h), rr = Math.hypot(...rv), w = hl / (rr * rr);
-    orbit = { r0: rv, ax: h.map(x => x / hl), w, r: rr, P: 2 * Math.PI / w };
+    const hl = Math.hypot(...h), rr = Math.hypot(...rv), w = hl / (rr * rr), k = h.map(x => x / hl);
+    const q = [k[1] * rv[2] - k[2] * rv[1], k[2] * rv[0] - k[0] * rv[2], k[0] * rv[1] - k[1] * rv[0]], ring = new Float64Array(3 * EL_RING);
+    for (let j = 0; j < EL_RING; j++) { const a = 2 * Math.PI * j / EL_RING, c = Math.cos(a), s = Math.sin(a); for (let m = 0; m < 3; m++) ring[3 * j + m] = rv[m] * c + q[m] * s; }
+    orbit = { body: 1, r: rr, P: 2 * Math.PI / w, ring, rel(dt, out) { // rotate r0 about the orbit normal k (r0 ⟂ k)
+      const a = w * dt, c = Math.cos(a), s = Math.sin(a);
+      for (let m = 0; m < 3; m++) { out[m] = rv[m] * c + q[m] * s; out[3 + m] = w * (q[m] * c - rv[m] * s); }
+      return out;
+    } };
   }
   const cum = new Float64Array(n);
   C = { orbit, px: Float64Array.from(px), py: Float64Array.from(py), pz: Float64Array.from(pz), pt: Float64Array.from(pt), segStart, cum, T, n, fx: null, fy: null, frameKey: '' };
+  // maneuvers: the initial and the target orbit as reference rings about the body (ecliptic axes)
+  C.rings = S.kind === 'man' && MAN ? [{ p: mvRing(MAN.o0, S.M.O0 * D2R, Q.ellK), col: COL.dim, a: 0.5 }, { p: mvRing(MAN.o1, S.M.O0 * D2R, Q.ellK), col: COL.cyan, a: 0.55, dash: true }] : [];
   rebuildCum();
+  let nodeNo = 0, lastNode = -1;
   C.markers = r.events.filter(e => e.type !== 'impact' || true).map(e => {
     const p = posAtTime(e.t, [0, 0, 0]);
-    let txt = '';
-    if (e.type === 'burn') txt = _(e.body === 0 ? 'mk.dv' : e.label === 'ev.raise' ? 'mk.raiseDv' : 'mk.capDv', { v: nf0.format(e.dv) });
+    let txt = '', label = null;
+    if (e.label === 'ev.mvBurn') { // maneuver burns: numbered by burn (the pieces of a split one share its number)
+      if (e.node !== lastNode && !e.sep) nodeNo++;
+      lastNode = e.node;
+      const v = nf0.format(e.dv), di = nf2.format(Math.abs(e.di) / D2R), turn = Math.abs(e.di) > 1e-5 ? _('mk.mvTurn', { di }) : '';
+      txt = e.sep ? _('mk.mvSep', { di, v }) : _(e.pieces > 1 ? 'mk.mvPiece' : 'mk.mvBurn', { n: nodeNo, j: e.piece, k: e.pieces, v }) + turn;
+      label = e.sep ? _('ev.mvSep') : _(e.pieces > 1 ? 'ev.mvPiece' : 'ev.mvBurn', { n: nodeNo, j: e.piece, k: e.pieces });
+    } else if (e.type === 'burn') txt = _(e.body === 0 ? 'mk.dv' : e.label === 'ev.raise' ? 'mk.raiseDv' : 'mk.capDv', { v: nf0.format(e.dv) });
     else if (e.type === 'aero') txt = _('mk.aero', { v: nf0.format(e.dv) });
     else if (e.type === 'peri') txt = (e.body === 1 ? Peri(1) : _('ev.returnPeri', { peri: peri(0) })) + ' ' + nf1.format(e.alt / 1e3) + ' km' + (e.body === 0 && e.alt < 150e3 ? _('mk.entry') : '');
     else txt = _('mk.impact', { name: S.bodies[e.body].name });
-    const label = e.type === 'peri' ? (e.body === 1 ? S.bodies[1].name + ' ' + peri(1) : _('ev.returnPeri', { peri: peri(0) })) : _(e.label);
+    if (label === null) label = e.type === 'peri' ? (e.body === 1 ? S.bodies[1].name + ' ' + peri(1) : _('ev.returnPeri', { peri: peri(0) })) : _(e.label);
     return { ...e, label, x: p[0], y: p[1], z: p[2], txt };
   });
+}
+const EL_RING = 128; // points of a reference ring (the parking orbit after capture)
+// the final orbit of a maneuver after the integrated span: Kepler from the end state (equator frame), with the
+// secular J2 drift when J2 is on, turned into ecliptic axes
+function mvOrbit(r) {
+  const { mu, rot } = MAN, r0 = r.end.slice(0, 3), v0 = r.end.slice(3, 6), el = rv2el(mu, r0, v0), q = new Array(6);
+  if (!(el.a > 0) || !(el.e < 1)) return null;
+  const rates = MAN.j2 ? j2Rates(mu, MAN.j2, MAN.Re, el.a, el.e, el.i) : null;
+  return { body: 0, r: el.a, P: 2 * Math.PI * Math.sqrt(el.a * el.a * el.a / mu), ring: null, rel(dt, out) {
+    keplerStep(mu, r0, v0, dt, rates, q);
+    for (let j = 0; j < 3; j++) {
+      out[j] = rot[3 * j] * q[0] + rot[3 * j + 1] * q[1] + rot[3 * j + 2] * q[2];
+      out[3 + j] = rot[3 * j] * q[3] + rot[3 * j + 1] * q[4] + rot[3 * j + 2] * q[5];
+    }
+    return out;
+  } };
 }
 function rebuildCum() {
   if (!C) return;
@@ -552,6 +757,7 @@ function frameAt(t) { // t: sim time (relative to t0)
   states(sys, S.M.t0 * DAY + t, SP, SV);
   const f = S.frame;
   if (f === 'inertial') { FP.cx = 0; FP.cy = 0; FP.cz = 0; FP.X = EX; FP.Y = EY; FP.Z = EZ; }
+  else if (MAN && MAN.fr[f]) { const b = MAN.fr[f]; FP.cx = SP[0]; FP.cy = SP[1]; FP.cz = SP[2]; FP.X = b.x; FP.Y = b.y; FP.Z = b.n; } // maneuver frames
   else if (f === 'A' || f === 'B') { const k = f === 'A' ? 0 : 3; FP.cx = SP[k]; FP.cy = SP[k + 1]; FP.cz = SP[k + 2]; FP.X = PLANE.x; FP.Y = PLANE.y; FP.Z = PLANE.n; }
   else {
     const mA = sys.m[0], mB = sys.m[1], n = PLANE.n;
@@ -591,6 +797,13 @@ function frameCache() {
     frameAt(m.t); tf(m.x, m.y, m.z, o); m.fx = o[0]; m.fy = o[1];
     const bb = m.body || 0; tf(SP[3 * bb], SP[3 * bb + 1], SP[3 * bb + 2], o); m.bfx = o[0]; m.bfy = o[1];
   }
+  // maneuvers: the reference rings in the view plane, relative to the body (the frames do not turn)
+  frameAt(0);
+  C.ring2 = C.rings.map(g => {
+    const K = g.p.length / 3, e = new Float64Array(2 * K), X = FP.X, Y = FP.Y, p = g.p;
+    for (let k = 0; k < K; k++) { e[2 * k] = p[3 * k] * X[0] + p[3 * k + 1] * X[1] + p[3 * k + 2] * X[2]; e[2 * k + 1] = p[3 * k] * Y[0] + p[3 * k + 1] * Y[1] + p[3 * k + 2] * Y[2]; }
+    return e;
+  });
   // real model, non-rotating views: each orbit's ellipse (relative to its parent) in the view plane
   C.ell = [];
   if (sys.real && S.frame !== 'rot') {
@@ -687,8 +900,9 @@ function fit() {
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   const add = (x, y) => { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; };
   for (let i = 0; i < C.fx.length; i++) add(C.fx[i], C.fy[i]);
-  for (const b of [0, 1]) { const tr = C.tracks[b]; for (let k = 0; k < tr.length; k += 2) add(tr[k], tr[k + 1]); }
-  const pad = Math.max(sys.R[0], sys.R[1]) * 2;
+  for (const b of [0, 1]) { if (b >= sys.N) continue; const tr = C.tracks[b]; for (let k = 0; k < tr.length; k += 2) add(tr[k], tr[k + 1]); }
+  for (const e of C.ring2) for (let k = 0; k < e.length; k += 2) add(e[k], e[k + 1]);
+  const pad = Math.max(sys.R[0], sys.N > 1 ? sys.R[1] : 0) * 2;
   x0 -= pad; x1 += pad; y0 -= pad; y1 += pad;
   // marker labels stick out past the path's bounding box: their overhang (px) on each side at scale s,
   // placed as in draw() (markBase; text 10 px above the first baseline, 3 px below the last)
@@ -844,10 +1058,11 @@ function frameEnd() {
 // ===================== HUD controls =====================
 function renderFrameSeg() {
   $('#lbl-hB').textContent = _('m.target', { peri: peri(1) }); $('#lbl-hRet').textContent = _('m.return', { peri: peri(0) });
-  const A = S.bodies[0] ? S.bodies[0].name : 'A', B = S.bodies[1] ? S.bodies[1].name : 'B';
-  const fr = [['inertial', _('fr.inertial')], ['A', _('fr.centered', { name: A })], ['B', _('fr.centered', { name: B })], ['rot', _('fr.rot', { a: A, b: B })]];
+  const A = S.bodies[0] ? S.bodies[0].name : 'A', B = S.bodies[1] ? S.bodies[1].name : 'B', man = S.kind === 'man';
+  const fr = man ? [['eq', _('fr.eq', { name: A })], ['p0', _('fr.p0')], ['p1', _('fr.p1')]]
+    : [['inertial', _('fr.inertial')], ['A', _('fr.centered', { name: A })], ['B', _('fr.centered', { name: B })], ['rot', _('fr.rot', { a: A, b: B })]];
   $('#frameSeg').innerHTML = fr.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${S.frame === v}">${esc(l)}</button>`).join('');
-  const fo = [['free', _('fo.free')], ['craft', _('fo.craft')], ['A', A], ['B', B]];
+  const fo = [['free', _('fo.free')], ['craft', _('fo.craft')], ['A', A], ...(man ? [] : [['B', B]])];
   $('#followSeg').innerHTML = fo.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${S.follow === v}">${esc(l)}</button>`).join('');
 }
 $('#frameSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.frame = b.dataset.v; renderFrameSeg(); if (S.follow === 'free') needFit = true; });
@@ -899,7 +1114,68 @@ function renderTicks() {
 $('#ticks').addEventListener('click', e => { const b = e.target.closest('.tick'); if (!b) return; S.u = tToU(+b.dataset.t); });
 
 // ===================== Results =====================
+const resRows = rows => rows.map(([l, v, u]) => v == null ? `<tr class="sec"><th scope="rowgroup" colspan="2">${esc(l)}</th></tr>`
+  : `<tr><th scope="row">${esc(l)}</th><td>${v}${u ? `<em>${esc(u)}</em>` : ''}</td></tr>`).join('');
+// Orbit maneuver: the analytic plan (per burn, its plane-change share; total, time, propellant, comparisons), what the
+// integration flew and reached, and the secular J2 rates of the final orbit.
+function updateResultsMan() {
+  const chip = $('#chip'), res = $('#res');
+  if (!simR || !MAN) { chip.className = 'chip bad'; chip.textContent = _('res.fail'); res.innerHTML = ''; return; }
+  const p = MAN.plan, M = S.M, r = simR, [pn, an] = apsNames(MAN.key), km = v => nf1.format(v / 1e3), deg = v => nf2.format(v / D2R);
+  const fin = r.done || rv2el(MAN.mu, r.end.slice(0, 3), r.end.slice(3)), o1 = MAN.o1;
+  const dev = Math.max(Math.abs(fin.rp - o1.rp), Math.abs(fin.ra - o1.ra)), dI = Math.abs(fin.i - o1.i);
+  // with J2 the elements right after the last burn are osculating: within the short-period swing (≈ 3·J2·Re²/a in
+  // radius, 3·J2·(Re/a)² in inclination) the target counts as reached
+  const a1 = (o1.rp + o1.ra) / 2, swing = MAN.j2 ? 3 * MAN.j2 * MAN.Re * MAN.Re / a1 : 1e3, swingI = MAN.j2 ? 3 * MAN.j2 * (MAN.Re / a1) ** 2 : 1e-4;
+  let cls = 'good', txt = _(MAN.j2 && dev > 1e3 ? 'chip.mvDoneJ2' : 'chip.mvDone', { d: fmtDist(dev) });
+  if (r.impact >= 0) { cls = 'bad'; txt = _('chip.impact', { name: S.bodies[0].name }); }
+  else if (!r.ok) { cls = 'bad'; txt = _('chip.mvFail'); }
+  else if (!p.burns.length) { cls = 'warn'; txt = _('chip.mvNone'); }
+  else if (dev > Math.max(1e3, swing) || dI > Math.max(1e-4, swingI)) { cls = 'warn'; txt = _('chip.mvOff', { d: fmtDist(dev) }); }
+  chip.className = 'chip ' + cls; chip.textContent = txt;
+  const rows = [[_('res.sec.mvPlan')]];
+  // where a burn is: an apsis of the orbit before it (else of the one after it; else a circle)
+  const where = n => {
+    for (const a of [n.a1, n.a2]) { const o = 2 * a - n.r; if (Math.abs(o - n.r) > 1e-9 * n.r) return n.r < o ? pn : an; }
+    return _('res.mvCircle');
+  };
+  let no = 0;
+  for (const n of p.nodes) {
+    const l = n.sep ? _('res.mvSepRow', { where: where(n) }) : _('res.mvBurn', { n: ++no, where: where(n) });
+    rows.push([l, nf1.format(n.dv), 'm/s' + (n.di > 1e-7 ? _('res.mvTurn', { di: deg(n.di) }) : '') + (M.k > 1 ? _('res.mvPieces', { k: M.k }) : '')]);
+  }
+  rows.push([_('res.mvTot'), nf1.format(p.dv), 'm/s']);
+  if (p.burns.length > 1) rows.push([_('res.mvTof'), fmtDur(p.tof), '']);
+  const avail = dvAvail(M.m0, M.md, M.isp), prop = propMass(M.m0, p.dv, M.isp), unit = _('res.mvPropUnit', { m0: nf0.format(M.m0), isp: nf0.format(M.isp) });
+  if (p.dv <= avail) { rows.push([_('res.mvProp'), nf1.format(prop), unit]); rows.push([_('res.mvLeft'), nf1.format(M.m0 - prop), 'kg']); }
+  else rows.push([_('res.mvProp'), '—', _('res.mvShort', { dv: nf0.format(avail) })]);
+  // the same transfer with the other plane-change option, and the bi-elliptic one against Hohmann
+  const alt = opt => { const q = maneuverPlan(MAN.mu, MAN.R, MAN.o0, o1, { ...MAN.opt, ...opt }); return q.error ? null : q.dv; };
+  const cmp = (l, v) => { if (v != null) rows.push([l, nf1.format(v), _('res.mvCmpUnit', { d: (v >= p.dv ? '+' : '−') + nf1.format(Math.abs(v - p.dv)) })]); };
+  if (Math.abs(o1.i - MAN.o0.i) > 1e-9) { const other = M.plane === 'sep' ? 'comb' : 'sep'; cmp(_('res.mvCmpPlane', { mode: _('mv.plane.' + other) }), alt({ plane: other })); }
+  if (M.type === 'bielliptic') cmp(_('res.mvCmpHoh'), alt({ type: 'hohmann' }));
+  rows.push([_('res.sec.mvSim')]);
+  if (p.burns.length) rows.push([_('res.mvFlown'), nf1.format(r.burns.reduce((a, b) => a + b.dv, 0)), _('res.mvFlownUnit')]);
+  rows.push([_('res.mvFinal'), km(fin.rp - MAN.Re) + ' × ' + km(fin.ra - MAN.Re), _('res.mvFinalUnit', { peri: pn, apo: an })]);
+  rows.push([_('res.mvFinalI'), deg(fin.i), '°']);
+  rows.push([_('res.mvErr'), km(fin.rp - o1.rp) + ' / ' + km(fin.ra - o1.ra), _('res.mvErrUnit', { peri: pn, apo: an, di: nf3.format((fin.i - o1.i) / D2R) })]);
+  rows.push([_('res.mvPeriod'), fmtPeriod(2 * Math.PI * Math.sqrt(fin.a ** 3 / MAN.mu)), '']);
+  rows.push([_('res.integration'), nf0.format(r.steps), _('res.steps')]);
+  if (MAN.j2) {
+    const q = j2Rates(MAN.mu, MAN.j2, MAN.Re, fin.a, fin.e, fin.i), dd = v => (v >= 0 ? '+' : '−') + nf3.format(Math.abs(v / D2R * DAY));
+    rows.push([_('res.sec.mvJ2')]);
+    rows.push([_('res.mvNode'), dd(q.dO), _('res.degDay')]);
+    rows.push([_('res.mvApse'), dd(q.dw), _('res.degDay')]);
+    const notes = [];
+    if (MAN.key === 'earth' && Math.abs(q.dO / D2R * DAY - 360 / 365.2421897) < 0.02) notes.push(_('res.mvSSO'));
+    if (fin.e > 1e-3 && Math.abs(q.dw / D2R * DAY) < 0.02) notes.push(_('res.mvCrit'));
+    notes.push(_('res.mvOsc'));
+    for (const t of notes) rows.push([_('res.mvNote'), esc(t), '']);
+  }
+  res.innerHTML = resRows(rows);
+}
 function updateResults() {
+  if (S.kind === 'man') { updateResultsMan(); return; }
   const chip = $('#chip'), res = $('#res');
   if (!simR || !sys) { chip.className = 'chip bad'; chip.textContent = _('res.fail'); res.innerHTML = ''; return; }
   const r = simR, A = S.bodies[0].name, B = S.bodies[1].name, M = S.M;
@@ -952,8 +1228,7 @@ function updateResults() {
     rows.push([_('res.oop'), nf0.format(tr.oop), _('res.oopUnit')]);
     if (tr.vEntry) rows.push([_('res.vEntry'), nf3.format(tr.vEntry / 1e3), 'km/s']);
   }
-  res.innerHTML = rows.map(([l, v, u]) => v == null ? `<tr class="sec"><th scope="rowgroup" colspan="2">${esc(l)}</th></tr>`
-    : `<tr><th scope="row">${esc(l)}</th><td>${v}${u ? `<em>${esc(u)}</em>` : ''}</td></tr>`).join('');
+  res.innerHTML = resRows(rows);
 }
 // the overview window repeats the mission status, so picks and solver progress show where the user clicked
 function setStatus(t) { $('#status').textContent = t; $('#ovStatus').textContent = t; }
@@ -1117,7 +1392,9 @@ $('#pcMetric').addEventListener('click', e => {
 // Called after every rebuild and when the window opens: pair label, range reset for a new pair, recompute when
 // anything the grid depends on changed (debounced), else just redraw the mission marker.
 function pcSync() {
-  if (!sys || !pcOpen()) return;
+  if (!pcOpen()) return;
+  if (S.kind === 'man') { $('#pcBody').hidden = true; $('#pcPair').textContent = _('pc.noneMan'); pcStop(); PC.res = null; PC.pair = ''; PC.key = ''; pcStatus(''); return; }
+  if (!sys) return;
   const sib = isSibling(sys), A = S.bodies[0].name, B = S.bodies[1].name;
   $('#pcBody').hidden = !sib;
   if (!sib) {
@@ -1675,6 +1952,8 @@ function centerBody(k) {
 function pickBody(k, role) {
   if (solving) $('#solve').click(); // cancel a running solve: its result would belong to the old bodies
   const cur = S.bodies.map(b => b.key);
+  toTransfer(); // a maneuver's body counts as the departure; the target picks a transfer
+  if (cur.length < 2) cur.push(cur[0] === 'earth' ? 'moon' : 'earth');
   let a = role === 'dep' ? k : cur[0], b = role === 'tgt' ? k : cur[1];
   if (a === b) { if (role === 'dep') b = cur[0]; else a = cur[1]; } // picking the other role's body swaps them
   const eph = q => q && BODIES[q] && BODIES[q].gm;
@@ -1703,14 +1982,12 @@ function pickBody(k, role) {
 }
 
 // ===================== Render loop =====================
-const SPo = new Float64Array(12), SVo = new Float64Array(12);
+const SPo = new Float64Array(12), SVo = new Float64Array(12), RELo = new Array(6);
+// craft position after the integrated span (t > C.T): the analytic orbit about its body
 function orbitPos(t, out) {
   states(sys, S.M.t0 * DAY + t, SPo, SVo);
-  // rotate r0 about the orbit normal k (r0 ⟂ k)
-  const o = C.orbit, a = o.w * (t - C.T), c = Math.cos(a), s = Math.sin(a), r = o.r0, k = o.ax;
-  out[0] = SPo[3] + r[0] * c + (k[1] * r[2] - k[2] * r[1]) * s;
-  out[1] = SPo[4] + r[1] * c + (k[2] * r[0] - k[0] * r[2]) * s;
-  out[2] = SPo[5] + r[2] * c + (k[0] * r[1] - k[1] * r[0]) * s; return out;
+  const b = 3 * C.orbit.body; C.orbit.rel(t - C.T, RELo);
+  out[0] = SPo[b] + RELo[0]; out[1] = SPo[b + 1] + RELo[1]; out[2] = SPo[b + 2] + RELo[2]; return out;
 }
 // Orbit trail after capture: the analytic orbit sampled trailK times per revolution (sample j at C.T + j·P/K),
 // in the current view frame, for the last TRAIL_REVS revolutions. Samples are cached on C and only new ones are
@@ -1849,6 +2126,7 @@ function draw(now) {
     else if (v3) { V3.setActive('none'); V3.render({ stars: Q.stars }); }
     frameEnd(); requestAnimationFrame(draw); return;
   }
+  if (S.kind === 'man' && !MAP.on) { CAPTION.push(_('mv.caption')); setCaption(); } // before fitting: an obstacle
   if (!v3) frameCache();
   if (needFit && !MAP.on && !v3) fit(); // 3D: draw3d fits once its caption is in place
 
@@ -1912,6 +2190,15 @@ function draw(now) {
         }
         ctx.setLineDash([]);
       }
+      // maneuvers: the initial and the target orbit about the body
+      for (let g = 0; g < C.ring2.length; g++) {
+        const e = C.ring2[g], st = C.rings[g], cx0 = sx(bpos[0][0]), cy0 = sy(bpos[0][1]), s = cam.scale;
+        ctx.strokeStyle = hexA(st.col, st.a); ctx.lineWidth = 1; ctx.setLineDash(st.dash ? [5, 5] : []);
+        ctx.beginPath();
+        for (let k = 0; k < e.length; k += 2) { const x = cx0 + e[k] * s, y = cy0 - e[k + 1] * s; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+        ctx.closePath(); ctx.stroke();
+      }
+      ctx.setLineDash([]);
       // body tracks over the mission
       if (S.tracks) {
         ctx.lineWidth = 1.2;
@@ -1952,17 +2239,17 @@ function draw(now) {
         ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 6.2832); ctx.fill(); ctx.stroke();
       }
 
-      if (ext) {
-        // the parking orbit around B, projected (an ellipse when its plane is tilted to the view)
+      if (ext && C.orbit.ring) {
+        // the parking orbit around its body, projected (an ellipse when its plane is tilted to the view)
         const rr = C.orbit.r * cam.scale;
         if (rr > 2 && rr < 1e5) {
-          const o = C.orbit, r = o.r0, k = o.ax, q = [k[1] * r[2] - k[2] * r[1], k[2] * r[0] - k[0] * r[2], k[0] * r[1] - k[1] * r[0]];
-          const X = FP.X, Y = FP.Y, ux = r[0] * X[0] + r[1] * X[1] + r[2] * X[2], uy = r[0] * Y[0] + r[1] * Y[1] + r[2] * Y[2];
-          const vx = q[0] * X[0] + q[1] * X[1] + q[2] * X[2], vy = q[0] * Y[0] + q[1] * Y[1] + q[2] * Y[2];
-          const cx0 = sx(bpos[1][0]), cy0 = sy(bpos[1][1]), s = cam.scale;
+          const p = C.orbit.ring, X = FP.X, Y = FP.Y, b = C.orbit.body, cx0 = sx(bpos[b][0]), cy0 = sy(bpos[b][1]), s = cam.scale;
           ctx.strokeStyle = hexA(COL.traj, 0.3); ctx.lineWidth = 1.2; ctx.beginPath();
-          for (let j = 0; j <= 64; j++) { const a = j * Math.PI / 32, c = Math.cos(a), sn = Math.sin(a), x = cx0 + (ux * c + vx * sn) * s, y = cy0 - (uy * c + vy * sn) * s; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-          ctx.stroke();
+          for (let j = 0; j < p.length; j += 3) {
+            const x = cx0 + (p[j] * X[0] + p[j + 1] * X[1] + p[j + 2] * X[2]) * s, y = cy0 - (p[j] * Y[0] + p[j + 1] * Y[1] + p[j + 2] * Y[2]) * s;
+            j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+          }
+          ctx.closePath(); ctx.stroke();
         }
       }
       // markers
@@ -2030,21 +2317,29 @@ function draw(now) {
     states(sys, S.M.t0 * DAY + tNow, SP, SV);
     const dA = Math.hypot(absX - SP[0], absY - SP[1], absZ - SP[2]), dB = Math.hypot(absX - SP[3], absY - SP[4], absZ - SP[5]);
     const i2 = segAtTime(tNow), h2 = simR.t[i2 + 1] - simR.t[i2], f2 = h2 > 0 ? clamp((tNow - simR.t[i2]) / h2, 0, 1) : 1;
-    const lerp = a => a[i2] + (a[i2 + 1] - a[i2]) * f2;
-    let vx = lerp(simR.vx), vy = lerp(simR.vy), vz = lerp(simR.vz);
-    const near = dB - sys.R[1] < dA - sys.R[0] ? 1 : 0;
-    if (ext) { // circular orbit about B: v = V_B + w·(k × r)
-      const rx = absX - SP[3], ry = absY - SP[4], rz = absZ - SP[5], k = C.orbit.ax, w = C.orbit.w;
-      vx = SV[3] + w * (k[1] * rz - k[2] * ry); vy = SV[4] + w * (k[2] * rx - k[0] * rz); vz = SV[5] + w * (k[0] * ry - k[1] * rx);
+    const hv = h2 > 0 ? hermV(i2, f2, [0, 0, 0]) : [simR.vx[i2 + 1], simR.vy[i2 + 1], simR.vz[i2 + 1]];
+    let vx = hv[0], vy = hv[1], vz = hv[2];
+    if (ext) { // the analytic orbit about its body
+      const b = 3 * C.orbit.body; C.orbit.rel(tNow - C.T, RELo);
+      vx = SV[b] + RELo[3]; vy = SV[b + 1] + RELo[4]; vz = SV[b + 2] + RELo[5];
     }
-    const A = S.bodies[0].name, B = S.bodies[1].name;
+    const A = S.bodies[0].name;
     setT('#r-t', _('hud.tplus', { t: fmtDur(tNow, true) }));
     setT('#tplus', _('hud.tplus', { t: fmtDur(tNow, true) }));
     if (S.model === 'real') setT('#r-date', fmtDate(dateAt(tNow)));
-    setT('#r-l1', _('hud.alt', { name: A })); setT('#r-v1', fmtDist(Math.max(0, dA - sys.R[0])));
-    setT('#r-l2', _('hud.alt', { name: B })); setT('#r-v2', fmtDist(Math.max(0, dB - sys.R[1])));
-    setT('#r-l3', _('hud.rel', { name: near ? B : A }));
-    setT('#r-v3', fmtSpeed(Math.hypot(vx - SV[3 * near], vy - SV[3 * near + 1], vz - SV[3 * near + 2])));
+    if (S.kind === 'man' && MAN) { // altitude above the equatorial radius, speed, osculating apsis altitudes
+      const rr = [absX - SP[0], absY - SP[1], absZ - SP[2]], vv = [vx - SV[0], vy - SV[1], vz - SV[2]], el = rv2el(MAN.mu, rr, vv);
+      setT('#r-l1', _('hud.alt', { name: A })); setT('#r-v1', fmtDist(Math.max(0, dA - MAN.Re)));
+      setT('#r-l2', _('hud.rel', { name: A })); setT('#r-v2', fmtSpeed(Math.hypot(...vv)));
+      setT('#r-l3', _('hud.osc'));
+      setT('#r-v3', el.a > 0 && el.e < 1 ? nf0.format((el.rp - MAN.Re) / 1e3) + ' × ' + nf0.format((el.ra - MAN.Re) / 1e3) + ' km' : '—');
+    } else {
+      const B = S.bodies[1].name, near = dB - sys.R[1] < dA - sys.R[0] ? 1 : 0;
+      setT('#r-l1', _('hud.alt', { name: A })); setT('#r-v1', fmtDist(Math.max(0, dA - sys.R[0])));
+      setT('#r-l2', _('hud.alt', { name: B })); setT('#r-v2', fmtDist(Math.max(0, dB - sys.R[1])));
+      setT('#r-l3', _('hud.rel', { name: near ? B : A }));
+      setT('#r-v3', fmtSpeed(Math.hypot(vx - SV[3 * near], vy - SV[3 * near + 1], vz - SV[3 * near + 2])));
+    }
     setT('#tend', '/ ' + fmtDur(C.T) + (ext ? _('hud.lap', { n: 1 + Math.floor(S.ext / C.orbit.P) }) : ''));
     if (!scrubbing) scrub.value = Math.round(S.u * 10000);
   }
@@ -2308,7 +2603,7 @@ $('#perfX').addEventListener('click', () => { $('#perfTip').hidden = true; });
 applyI18n();
 // scenarios grouped by model; the hidden empty option stands for a setup changed by switching the model
 const scGroup = (m, key) => `<optgroup label="${esc(_(key))}">${SCENARIOS.filter(s => s.model === m).map(s => `<option value="${s.id}">${esc(_('sc.' + s.id + '.name'))}</option>`).join('')}</optgroup>`;
-$('#scenario').innerHTML = `<option value="" hidden>${esc(_('sc.custom.name'))}</option>` + scGroup('simple', 'sc.group.simple') + scGroup('real', 'sc.group.real');
+$('#scenario').innerHTML = `<option value="" hidden>${esc(_('sc.custom.name'))}</option>` + scGroup('simple', 'sc.group.simple') + scGroup('real', 'sc.group.real') + scGroup('man', 'sc.group.man');
 $('#scenario').addEventListener('change', e => { if (e.target.value) loadScenario(e.target.value); });
 $('#dateWarn').textContent = _('err.dateRange', { from: EPHEM_YEARS[0], to: EPHEM_YEARS[1] });
 const start = startupMode(LS);

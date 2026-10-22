@@ -467,3 +467,160 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   assert.ok(Math.abs(ra - 280.46) < 0.5, `Earth prime meridian RA at J2000: ${ra.toFixed(2)}°`);
   console.log('body orientation (PCK poles) ok');
 }
+
+// ===== Orbit maneuvers about one body (Phase 6a) =====
+// Textbook examples: the expected numbers are the books' answers, each "bağımsız hesapla doğrulandı" (verified with an
+// independent calculation, vis-viva by hand), with each book's μ and radius.
+{
+  const D = Math.PI / 180, near = (a, b, tol, m) => assert.ok(Math.abs(a - b) <= tol, `${m}: ${a} vs ${b}`);
+  const muV = 398600.4418e9, ReV = 6378.1363e3; // Vallado
+  const circ = (R, h, i = 0) => ({ rp: R + h * 1e3, ra: R + h * 1e3, i: i * D });
+  const plan = (mu, o0, o1, opt) => C.maneuverPlan(mu, 1e6, o0, o1, { type: 'hohmann', plane: 'comb', k: 1, ...opt });
+
+  // 24a) Vallado Ex. 6-1, Hohmann LEO (191.34411 km) → GEO (35 781.34857 km): Δv 3.935224 km/s, 5.256713 h
+  //      (bağımsız hesapla doğrulandı)
+  let p = plan(muV, circ(ReV, 191.34411), circ(ReV, 35781.34857));
+  near(p.dv, 3935.224, 0.002, 'Vallado 6-1 Δv'); near(p.tof / 3600, 5.256713, 1e-5, 'Vallado 6-1 time');
+  near(p.burns[0].dv, 2457.038, 0.002, 'Vallado 6-1 Δv_a'); near(p.burns[1].dv, 1478.187, 0.002, 'Vallado 6-1 Δv_b');
+  // 24b) Vallado Ex. 6-2, bi-elliptic: same LEO → 376 310 km via 503 873 km (both altitudes): 3.904057 km/s
+  //      (3.156233 + 0.677358 + 0.070466), 593.92 h (bağımsız hesapla doğrulandı)
+  p = plan(muV, circ(ReV, 191.34411), circ(ReV, 376310), { type: 'bielliptic', rb: ReV + 503873e3 });
+  near(p.dv, 3904.057, 0.002, 'Vallado 6-2 Δv'); near(p.tof / 3600, 593.92, 0.005, 'Vallado 6-2 time');
+  [3156.233, 677.358, 70.466].forEach((v, j) => near(p.burns[j].dv, v, 0.002, `Vallado 6-2 Δv${j + 1}`));
+  // 24c) Vallado Ex. 6-4, inclination only, Δi = 15° at v = 5.892311 km/s: 2v·sin(Δi/2) = 1.538202 km/s, one burn
+  //      (bağımsız hesapla doğrulandı)
+  const r64 = muV / 5892.311 ** 2;
+  p = plan(muV, { rp: r64, ra: r64, i: 55 * D }, { rp: r64, ra: r64, i: 40 * D });
+  near(p.dv, 1538.202, 0.002, 'Vallado 6-4 Δv'); assert.strictEqual(p.burns.length, 1, 'Vallado 6-4: a single burn');
+  near(p.burns[0].iAfter / D, 40, 1e-9, 'Vallado 6-4 final inclination');
+  // 24d) Vallado Ex. 6-7 type, LEO 28.5° → GEO with the plane change split between the two burns: ≈ 4.270 km/s with
+  //      ≈ 2.2° at the first burn; all of it at apogee costs 4.294 km/s (bağımsız hesapla doğrulandı)
+  const leo = circ(ReV, 191.34411, 28.5), geo = circ(ReV, 35781.34857, 0);
+  p = plan(muV, leo, geo);
+  near(p.dv, 4270.1, 0.5, 'combined plane change Δv'); near(-p.burns[0].di / D, 2.17, 0.05, 'first-burn share');
+  const vs = n => [n.v1, n.v2], allEnd = C.burnDv(...vs(p.nodes[0]), 0) + C.burnDv(...vs(p.nodes[1]), 28.5 * D);
+  near(allEnd, 4294.1, 0.5, 'plane change all at apogee'); assert.ok(p.dv < allEnd, 'the split beats doing it all at apogee');
+  // separately at the slowest point (the transfer apogee): Hohmann + 2·v_apo·sin(Δi/2), in three burns
+  const ps = plan(muV, leo, geo, { plane: 'sep' }), h61 = plan(muV, circ(ReV, 191.34411), circ(ReV, 35781.34857));
+  const vApo = C.visViva(muV, geo.rp, (leo.rp + geo.rp) / 2);
+  near(ps.dv, h61.dv + 2 * vApo * Math.sin(14.25 * D), 1e-6, 'separate plane change at the transfer apogee');
+  assert.ok(ps.burns.length === 3 && ps.burns[1].sep && ps.burns[2].now, 'separate turn, then the circularisation right after it');
+  // 24e) Curtis Ex. 6.1, from the elliptic 480 × 800 km orbit to a 16 000 km circle (μ 398 600, R 6378): Δv 3.0522 km/s
+  //      from perigee (the cheaper apsis), propellant 1291 kg for 2000 kg at Isp 300 s (bağımsız hesapla doğrulandı)
+  const muC = 398600e9, ReC = 6378e3;
+  p = plan(muC, { rp: ReC + 480e3, ra: ReC + 800e3, i: 0 }, circ(ReC, 16000));
+  near(p.dv, 3052.2, 0.05, 'Curtis 6.1 Δv'); near(p.burns[0].dv, 1722.5, 0.05, 'Curtis 6.1 Δv_A'); near(p.burns[1].dv, 1329.7, 0.05, 'Curtis 6.1 Δv_B');
+  assert.strictEqual(p.burns[0].side, 0, 'Curtis 6.1: first burn at perigee');
+  near(C.propMass(2000, p.dv, 300), 1291, 1, 'Curtis 6.1 propellant');
+  // 24f) Curtis Ex. 6.3, 7000 → 105 000 km circles, bi-elliptic via 210 000 km: 4.0285 km/s against Hohmann 4.0463 km/s
+  //      (bağımsız hesapla doğrulandı)
+  p = plan(muC, circ(0, 7000), circ(0, 105000), { type: 'bielliptic', rb: 210000e3 });
+  near(p.dv, 4028.5, 0.1, 'Curtis 6.3 bi-elliptic'); near(plan(muC, circ(0, 7000), circ(0, 105000)).dv, 4046.3, 0.1, 'Curtis 6.3 Hohmann');
+  // 24g) Hohmann Δv/v₁ peaks at R = r₂/r₁ ≈ 15.58; with r_b → ∞ the bi-elliptic transfer is cheaper beyond R ≈ 11.94
+  const unit = (R, opt) => C.maneuverPlan(1, 0.1, circ(0, 1e-3), circ(0, R * 1e-3), { type: 'hohmann', plane: 'comb', k: 1, ...opt }).dv, hoh = R => unit(R);
+  let best = 0, bestR = 0;
+  for (let R = 14; R < 17; R += 0.001) { const v = hoh(R); if (v > best) { best = v; bestR = R; } }
+  near(bestR, 15.58, 0.01, 'Hohmann maximum');
+  const gain = R => hoh(R) - unit(R, { type: 'bielliptic', rb: 1e12 });
+  let lo = 10, hi = 14;
+  for (let it = 0; it < 40; it++) { const m = (lo + hi) / 2; if (gain(m) > 0) hi = m; else lo = m; }
+  near(lo, 11.94, 0.02, 'bi-elliptic break-even');
+  // 24h) Elliptic start: the first burn is at the apsis that is cheaper for the target
+  assert.strictEqual(plan(muC, { rp: ReC + 300e3, ra: ReC + 20000e3, i: 0 }, circ(ReC, 400)).burns[0].side, 1, 'lowering the apogee: burn at apogee first');
+  // GTO 250 × 35 786 km, 28.5° → GEO: the transfer orbit is the GTO itself, one apogee burn with the whole plane change
+  p = plan(muV, { rp: ReV + 250e3, ra: ReV + 35786e3, i: 28.5 * D }, circ(ReV, 35786));
+  assert.ok(p.burns.length === 1 && p.burns[0].side === 1, 'GTO → GEO: a single apogee burn');
+  // 24i) k pieces: the same total Δv; the pieces wait full revolutions of their intermediate orbits
+  for (const k of [2, 4]) {
+    const q = plan(muV, leo, geo, { k });
+    near(q.dv, plan(muV, leo, geo).dv, 1e-6, `k = ${k}: same Δv`);
+    assert.strictEqual(q.burns.length, 2 * k, `k = ${k}: ${2 * k} pieces`);
+  }
+  assert.strictEqual(plan(muV, circ(ReV, 300), circ(ReV, 300, 0)).burns.length, 0, 'nothing to do: no burn');
+  assert.strictEqual(C.maneuverPlan(muV, ReV, circ(ReV, 300), circ(ReV, 1000), { type: 'bielliptic', rb: ReV + 500e3 }).error, 'err.mvRb');
+
+  // 25) Flying the plan (J2 off): the closed-loop burns cost what the plan says and land on the target orbit
+  const cases = [
+    ['LEO 28.5° → GEO', muV, leo, geo, {}],
+    ['separate plane change', muV, leo, geo, { plane: 'sep' }],
+    ['k = 3', muV, leo, geo, { k: 3 }],
+    ['Curtis 6.1', muC, { rp: ReC + 480e3, ra: ReC + 800e3, i: 0 }, circ(ReC, 16000), {}],
+    ['equatorial → 40°, elliptic target', muV, circ(ReV, 300), { rp: ReV + 600e3, ra: ReV + 20000e3, i: 40 * D }, {}],
+    ['GTO → GEO', muV, { rp: ReV + 250e3, ra: ReV + 35786e3, i: 28.5 * D }, circ(ReV, 35786), {}],
+    ['bi-elliptic', muV, circ(ReV, 191.34411), circ(ReV, 376310), { type: 'bielliptic', rb: ReV + 503873e3 }],
+    ['lowering, k = 2', muV, circ(ReV, 20000, 10), { rp: ReV + 400e3, ra: ReV + 5000e3, i: 60 * D }, { k: 2 }],
+  ];
+  for (const [name, mu, o0, o1, opt] of cases) {
+    const q = plan(mu, o0, o1, opt), sim = C.maneuverSim({ mu, R: 6000e3, rot: C.laplaceFrame(-90, 90), O0: 0.7 }, q);
+    assert.ok(sim.ok && sim.impact < 0 && sim.burns.length === q.burns.length, `${name}: every burn fired`);
+    near(sim.burns.reduce((a, b) => a + b.dv, 0), q.dv, 1e-3, `${name}: Δv flown`);
+    near(sim.done.rp, o1.rp, 1, `${name}: periapsis`); near(sim.done.ra, o1.ra, 1, `${name}: apoapsis`);
+    near(sim.done.i, o1.i, 1e-9, `${name}: inclination`);
+    near(sim.tLast - sim.tFirst, q.tof, 1e-6 * q.tof + 1e-3, `${name}: time of flight`);
+  }
+
+  // 25b) The app's maneuver scenarios (stored values, altitudes above the NSSDCA equatorial radius, J2 as set) reach
+  // their targets; with J2 within the short-period swing of the osculating elements (≈ 3·J2·Re²/a)
+  const { BODIES: B } = require('../js/bodies.js');
+  for (const sc of SCENARIOS.filter(q => q.model === 'man')) {
+    const M = sc.M, d = B[M.body], Re = d.j2[1] * 1e3, mu = d.gm * 1e9, { o0, o1, opt } = C.mvOrbits(M, Re);
+    const q = C.maneuverPlan(mu, d.radius * 1e3, o0, o1, opt), J2 = M.j2 ? d.j2[0] * 1e-6 : 0;
+    const sim = C.maneuverSim({ mu, R: d.radius * 1e3, J2, Re, rot: C.laplaceFrame(-90, 90), O0: M.O0 * D }, q);
+    const tol = J2 ? 3 * J2 * Re * Re / ((o1.rp + o1.ra) / 2) : 1;
+    assert.ok(!q.error && sim.ok && sim.impact < 0 && sim.burns.length === q.burns.length, `${sc.id}: flown`);
+    near(sim.done.rp, o1.rp, tol, `${sc.id}: periapsis`); near(sim.done.ra, o1.ra, tol, `${sc.id}: apoapsis`);
+    near(sim.done.i, o1.i, J2 ? 3e-3 : 1e-9, `${sc.id}: inclination`);
+  }
+  near(C.maneuverPlan(B.earth.gm * 1e9, 6e6, ...Object.values(C.mvOrbits(SCENARIOS.find(q => q.id === 'mv_leo_geo').M, 6378.137e3)).slice(0, 2), { type: 'hohmann', plane: 'comb', k: 1 }).dv,
+    3935.22, 0.05, 'mv_leo_geo scenario = Vallado 6-1');
+}
+
+// 26) J2 (Earth, NSSDCA J2 and equatorial radius): nodal regression from the integrated path against
+// Ω̇ = −(3/2)·n·J2·(Re/p)²·cos i — about −5.00°/day for a 400 km, 51.6° orbit; the 800 km sun-synchronous inclination
+// (Ω̇ = 360°/tropical year) ≈ 98.6°; ω̇ = 0 at the critical inclination 63.43°.
+{
+  const { BODIES: B } = require('../js/bodies.js');
+  const D = Math.PI / 180, mu = B.earth.gm * 1e9, Re = B.earth.j2[1] * 1e3, J2 = B.earth.j2[0] * 1e-6;
+  const nodeRate = (h, inc, days) => {
+    const o = { rp: Re + h * 1e3, ra: Re + h * 1e3, i: inc * D };
+    const s = C.maneuverSim({ mu, R: B.earth.radius * 1e3, J2, Re }, { burns: [], o0: o }, { tail: days * C.DAY });
+    const T = [], O = [];
+    for (let k = 1; k < s.t.length; k++) if (s.z[k - 1] < 0 && s.z[k] >= 0) { // ascending node: its longitude
+      const f = s.z[k - 1] / (s.z[k - 1] - s.z[k]);
+      T.push(s.t[k - 1] + f * (s.t[k] - s.t[k - 1])); O.push(Math.atan2(s.y[k - 1] + f * (s.y[k] - s.y[k - 1]), s.x[k - 1] + f * (s.x[k] - s.x[k - 1])));
+      if (O.length > 1) O[O.length - 1] -= 2 * Math.PI * Math.round((O[O.length - 1] - O[O.length - 2]) / (2 * Math.PI));
+    }
+    const n = T.length, mt = T.reduce((a, b) => a + b) / n, mo = O.reduce((a, b) => a + b) / n;
+    let sxy = 0, sxx = 0; for (let k = 0; k < n; k++) { sxy += (T[k] - mt) * (O[k] - mo); sxx += (T[k] - mt) ** 2; }
+    return { meas: sxy / sxx / D * C.DAY, an: C.j2Rates(mu, J2, Re, o.rp, 0, o.i).dO / D * C.DAY };
+  };
+  const iss = nodeRate(400, 51.6, 10);
+  assert.ok(Math.abs(iss.an + 5.00) < 0.02, `ISS-like analytic Ω̇ ${iss.an.toFixed(3)}°/day`);
+  assert.ok(Math.abs(iss.meas / iss.an - 1) < 0.01, `ISS-like integrated Ω̇ ${iss.meas.toFixed(3)} vs ${iss.an.toFixed(3)}°/day`);
+  const need = 360 / 365.2421897, a = Re + 800e3, iSSO = Math.acos(need / (C.j2Rates(mu, J2, Re, a, 0, 0).dO / D * C.DAY)) / D;
+  assert.ok(Math.abs(iSSO - 98.6) < 0.05, `sun-synchronous inclination at 800 km: ${iSSO.toFixed(2)}°`);
+  const sso = nodeRate(800, iSSO, 10);
+  assert.ok(Math.abs(sso.meas / need - 1) < 0.02, `sun-synchronous integrated Ω̇ ${sso.meas.toFixed(4)}°/day`);
+  assert.ok(Math.abs(C.j2Rates(mu, J2, Re, 26600e3, 0.74, Math.acos(Math.sqrt(0.2))).dw) < 1e-20, 'ω̇ = 0 at the critical inclination');
+
+  // 27) Kepler step: one period returns to the start; it agrees with the integrator; the J2 drift turns the orbit
+  const o = { rp: Re + 500e3, ra: Re + 30000e3, i: 30 * D }, y0 = C.orbitPoint(mu, o, 0, -Math.PI / 2), out = [];
+  const P = 2 * Math.PI * Math.sqrt(((o.rp + o.ra) / 2) ** 3 / mu);
+  C.keplerStep(mu, y0.slice(0, 3), y0.slice(3), P, null, out);
+  assert.ok(Math.hypot(out[0] - y0[0], out[1] - y0[1], out[2] - y0[2]) < 1e-3, 'Kepler step: one period');
+  const sim = C.maneuverSim({ mu, R: 6000e3 }, { burns: [], o0: o }, { tail: 0.37 * P });
+  C.keplerStep(mu, y0.slice(0, 3), y0.slice(3), sim.tEnd, null, out);
+  assert.ok(Math.hypot(out[0] - sim.end[0], out[1] - sim.end[1], out[2] - sim.end[2]) < 1, 'Kepler step = integration');
+  const rates = { dO: 1e-6, dw: 0, dM: 0 };
+  C.keplerStep(mu, y0.slice(0, 3), y0.slice(3), P, rates, out);
+  const ang = Math.atan2(out[1], out[0]) - Math.atan2(y0[1], y0[0]);
+  assert.ok(Math.abs(ang - rates.dO * P) < 1e-9, 'J2 drift: Ω turns by Ω̇·Δt');
+
+  // 28) The Moon's IAU pole (PCK, with its 0.1°+ periodic terms) keeps its equator ≈ 1.54° from the ecliptic
+  // (Cassini's laws), whatever the node's phase in its 18.6-year cycle
+  for (const yr of [2000, 2005, 2010, 2016]) {
+    const F = C.equatorFrame(B.moon.axis, (yr - 2000) * C.JYR, 4), tilt = Math.acos(F[8]) / D;
+    assert.ok(Math.abs(tilt - 1.54) < 0.06, `Moon equator to ecliptic in ${yr}: ${tilt.toFixed(3)}°`);
+  }
+  console.log('orbit maneuvers ok');
+}

@@ -143,9 +143,10 @@ function fit3() {
   frameCache3(); INS = null;
   let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
   const add = P => { for (let i = 0; i < P.length; i += 3) for (let k = 0; k < 3; k++) { if (P[i + k] < lo[k]) lo[k] = P[i + k]; if (P[i + k] > hi[k]) hi[k] = P[i + k]; } };
-  add(C.f3); add(C.trk3[0]); add(C.trk3[1]);
+  const pts = [C.f3, ...C.trk3.slice(0, 2), ...C.ring3];
+  for (const P of pts) add(P);
   const ctr = lo.map((v, k) => (v + hi[k]) / 2), c = CAM3.sim;
-  const best = fitPoints3([C.f3, C.trk3[0], C.trk3[1]], ctr, Math.max(sys.R[0], sys.R[1]) * 2);
+  const best = fitPoints3(pts, ctr, Math.max(sys.R[0], sys.N > 1 ? sys.R[1] : 0) * 2);
   if (!best) return;
   const q = best.q;
   c.t = ctr; c.dist = Math.max(best.dist, minDist3()); c.cx = (q.x0 + q.x1) / 2; c.cy = (q.y0 + q.y1) / 2;
@@ -199,7 +200,13 @@ function frameCache3() {
     }
     C.ell3.push(e);
   }
-  if (S.frame === 'inertial') { const nd = []; planeNodes(f3, n, false, nd, -1); if (nd.length <= 12) C.nodes3.push(...nd); }
+  if (S.frame === 'inertial' || S.frame === 'eq') { const nd = []; planeNodes(f3, n, false, nd, -1); if (nd.length <= 12) C.nodes3.push(...nd); }
+  // maneuvers: the initial and the target orbit about the body (frame axes; the frames do not turn)
+  C.ring3 = C.rings.map(g => {
+    const p = g.p, e = new Float64Array(p.length);
+    for (let k = 0; k < p.length; k += 3) { const x = p[k], y = p[k + 1], z = p[k + 2]; e[k] = x * X[0] + y * X[1] + z * X[2]; e[k + 1] = x * Y[0] + y * Y[1] + z * Y[2]; e[k + 2] = x * Z[0] + y * Z[1] + z * Z[2]; }
+    return e;
+  });
   // size-exaggeration caps: a quarter of the nearest orbit around a body or of the body itself
   V3caps = new Float64Array(NB).fill(Infinity);
   for (let b = 0; b < NB; b++) { const p = sys.parent[b]; if (p < 0) continue; V3caps[b] = Math.min(V3caps[b], 0.25 * sys.a[b]); V3caps[p] = Math.min(V3caps[p], 0.25 * sys.a[b]); }
@@ -228,11 +235,10 @@ function upload3() {
     const e = C.ell3[b];
     if (e) V3.line('sim', 'ell' + b, e, e.length / 3, { color: S.bodies[b].color, opacity: 0.22, width: 1, closed: true });
   }
-  if (C.orbit) { // the parking orbit around B, ecliptic axes (turned into the frame each frame)
-    const o = C.orbit, r = o.r0, k = o.ax, q = [k[1] * r[2] - k[2] * r[1], k[2] * r[0] - k[0] * r[2], k[0] * r[1] - k[1] * r[0]], p = new Float64Array(3 * EL3);
-    for (let j = 0; j < EL3; j++) { const a = 2 * Math.PI * j / EL3, c = Math.cos(a), s = Math.sin(a); for (let m = 0; m < 3; m++) p[3 * j + m] = r[m] * c + q[m] * s; }
-    V3.line('sim', 'park', p, EL3, { color: COL.traj, opacity: 0.3, width: 1.2, closed: true });
+  if (C.orbit && C.orbit.ring) { // the parking orbit around its body, ecliptic axes (turned into the frame each frame)
+    V3.line('sim', 'park', C.orbit.ring, C.orbit.ring.length / 3, { color: COL.traj, opacity: 0.3, width: 1.2, closed: true });
   }
+  C.ring3.forEach((e, g) => V3.line('sim', 'ring' + g, e, e.length / 3, { color: C.rings[g].col, opacity: C.rings[g].a, width: 1, closed: true }));
   V3.dyn('sim', 'conn', 2, { color: COL.traj, width: 1.8 });
   V3.dyn('sim', 'trail', TRAIL_REVS * QUALITY.normal.trailK + 4, { color: '#ffffff', vertexColors: true, additive: true, width: 1.6 });
   if (S.model === 'real' && S.frame === 'inertial') V3.line('sim', 'gamma', new Float64Array([0, 0, 0, 50 * AU, 0, 0]), 2, { color: COL.cyan, opacity: 0.3, width: 1 });
@@ -280,7 +286,8 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   V3.setActive('sim');
   frameCache3();
   // caption first: its HUD box is an obstacle of the free area the fit uses
-  if (V3S.grid) CAPTION.push(_(S.frame !== 'inertial' ? 'v3.gridPlane' : S.model === 'real' ? 'v3.gridEcl' : 'v3.gridRef'));
+  if (V3S.grid) CAPTION.push(S.frame === 'eq' ? _('v3.gridEq', { name: S.bodies[0].name }) : S.frame === 'p0' || S.frame === 'p1' ? _('v3.gridOrbit')
+    : _(S.frame !== 'inertial' ? 'v3.gridPlane' : S.model === 'real' ? 'v3.gridEcl' : 'v3.gridRef'));
   if (C.nodes3.length) CAPTION.push(_('v3.nodes'));
   setCaption();
   if (V3sys !== sys) { V3.bodies('sim', S.bodies.map(b => ({ color: b.key === 'sun' ? '#fff3d6' : b.color, sun: b.key === 'sun' }))); V3sys = sys; }
@@ -321,7 +328,8 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
     const p = sys.parent[b];
     if (C.ell3[b]) V3.lineSet('sim', 'ell' + b, [BP3[3 * p], BP3[3 * p + 1], BP3[3 * p + 2]], true);
   }
-  if (C.orbit) V3.lineSet('sim', 'park', [BP3[3], BP3[4], BP3[5]], ext, ROT9);
+  if (C.orbit && C.orbit.ring) { const b = 3 * C.orbit.body; V3.lineSet('sim', 'park', [BP3[b], BP3[b + 1], BP3[b + 2]], ext, ROT9); }
+  for (let g = 0; g < C.ring3.length; g++) V3.lineSet('sim', 'ring' + g, [BP3[0], BP3[1], BP3[2]], true);
   V3.lineSet('sim', 'gamma', null, V3S.grid);
   if (ext) trail3(); else V3.dynHide('sim', 'trail');
   grid3(c, V3S.grid);

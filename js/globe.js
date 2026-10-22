@@ -37,16 +37,32 @@ const texMix = e => (e ? Math.min(1, (performance.now() - e.t) / TEX_FADE) : 0);
 
 // Body-fixed axes -> ecliptic (row-major, columns = body x, y, z) at t (s since J2000; the simplified model uses its
 // own clock): IAU rotation (pole), or a synchronous moon's prime meridian towards its parent (lock; positions and
-// velocities P, V with 3 per body, body i, parent p), else the ecliptic axes.
+// velocities P, V with 3 per body, body i, parent p; without the parent in the mission, as for maneuvers about the
+// Moon, from the moon's own elements), else the ecliptic axes. The pole of a lock moon is its orbit normal, or its
+// IAU pole where the table gives one (axis), the prime meridian then towards the parent projected on the equator.
+const LOCK_EL = {};
 function bodyAxes(key, t, P, V, i, p, out) {
   const b = BODIES[key];
   if (b && b.pole) return bodyFrame(b.pole, t, out);
-  if (b && b.lock && p >= 0) {
-    const r = [P[3 * i] - P[3 * p], P[3 * i + 1] - P[3 * p + 1], P[3 * i + 2] - P[3 * p + 2]];
-    const v = [V[3 * i] - V[3 * p], V[3 * i + 1] - V[3 * p + 1], V[3 * i + 2] - V[3 * p + 2]];
-    const rl = Math.hypot(...r), x = r.map(c => -c / rl);
-    let z = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]];
-    const zl = Math.hypot(...z); z = z.map(c => c / zl);
+  if (b && b.lock && (p >= 0 || b.orb)) {
+    let r, v;
+    if (p >= 0) {
+      r = [P[3 * i] - P[3 * p], P[3 * i + 1] - P[3 * p + 1], P[3 * i + 2] - P[3 * p + 2]];
+      v = [V[3 * i] - V[3 * p], V[3 * i + 1] - V[3 * p + 1], V[3 * i + 2] - V[3 * p + 2]];
+    } else {
+      const q = new Array(6); orbitState(LOCK_EL[key] || (LOCK_EL[key] = orbitElements(b.orb)), t, q, 0);
+      r = q.slice(0, 3); v = q.slice(3);
+    }
+    const rl = Math.hypot(...r);
+    let x = r.map(c => -c / rl), z;
+    if (b.axis) {
+      const F = equatorFrame(b.axis, t, 4), d = x[0] * F[2] + x[1] * F[5] + x[2] * F[8];
+      z = [F[2], F[5], F[8]]; x = x.map((c, k) => c - d * z[k]);
+      const xl = Math.hypot(...x); x = x.map(c => c / xl);
+    } else {
+      z = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]];
+      const zl = Math.hypot(...z); z = z.map(c => c / zl);
+    }
     const y = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]];
     for (let k = 0; k < 3; k++) { out[3 * k] = x[k]; out[3 * k + 1] = y[k]; out[3 * k + 2] = z[k]; }
     return out;
