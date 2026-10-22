@@ -28,8 +28,10 @@
 //   in the atmosphere." Copied for the bodies AMAT gives both for: Venus, Earth, Mars, Titan, Uranus, Neptune
 //   (the destinations of Girija's aerocapture design reference missions). Jupiter and Saturn have no h_low
 //   there, so aerocapture stays off for them. The app takes h_low as the default pass altitude (editable) and
-//   h_skip as the highest one allowed. AMAT measures altitude from its own radius RP, equal to ours except for
-//   Uranus (25559 km equatorial vs 25362 km mean here) and Titan (2575.0 vs 2574.7 km).
+//   h_skip as the highest one allowed.
+//   atmR (km): the radius AMAT measures its altitudes from (planet.py RP, copied as is). It differs from our
+//   radius for Earth (6371.0 vs 6371.0084), Titan (2575.0 vs 2574.7) and Uranus (25559 vs 25362; equatorial vs
+//   mean); atmAltitudes() converts the AMAT altitudes to ours via the distance from the centre (atmR + h - radius).
 // simple: the Phase 1 values of the simplified model, kept as they were so its scenarios reproduce
 //   exactly (mass kg, radius km, circular orbit radius a km). Bodies without it derive them (gm, radius, a).
 
@@ -43,18 +45,18 @@ const BODIES = {
     simple: { mass: 3.3011e23, radius: 2439.7, a: 57909050 },
     orb: { jpl: [[0.38709927, 0.20563593, 7.00497902, 252.25032350, 77.45779628, 48.33076593],
                  [0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081]] } },
-  venus: { parent: 'sun', gm: 324858.592, radius: 6051.8, tilt: 177.36, color: '#e8c98f', atm: [60, 180],
+  venus: { parent: 'sun', gm: 324858.592, radius: 6051.8, tilt: 177.36, color: '#e8c98f', atm: [60, 180], atmR: 6051.8,
     simple: { mass: 4.8675e24, radius: 6051.8, a: 108210000 },
     orb: { jpl: [[0.72333566, 0.00677672, 3.39467605, 181.97909950, 131.60246718, 76.67984255],
                  [0.00000390, -0.00004107, -0.00078890, 58517.81538729, 0.00268329, -0.27769418]] } },
-  earth: { parent: 'sun', gm: 398600.435507, radius: 6371.0084, tilt: 23.44, color: '#5b9cf0', atm: [50, 120],
+  earth: { parent: 'sun', gm: 398600.435507, radius: 6371.0084, tilt: 23.44, color: '#5b9cf0', atm: [50, 120], atmR: 6371,
     simple: { mass: 5.9722e24, radius: 6371, a: 149598000 },
     orb: { jpl: [[1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0.0],
                  [0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0.0]] } },
   moon: { parent: 'earth', gm: 4902.800118, radius: 1737.4, tilt: 6.68, color: '#cbc8bf',
     simple: { mass: 7.342e22, radius: 1737.4, a: 384400 },
     orb: { sat: [384400, 0.0554, 318.15, 135.27, 5.16, 125.08, 27.322, 5.997, 18.600] } },
-  mars: { parent: 'sun', gm: 42828.37362, radius: 3389.5, tilt: 25.19, color: '#e0703f', atm: [50, 120],
+  mars: { parent: 'sun', gm: 42828.37362, radius: 3389.5, tilt: 25.19, color: '#e0703f', atm: [50, 120], atmR: 3389.5,
     simple: { mass: 6.4171e23, radius: 3389.5, a: 227939000 },
     orb: { jpl: [[1.52371034, 0.09339410, 1.84969142, -4.55343205, -23.94362959, 49.55953891],
                  [0.00001847, 0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343]] } },
@@ -79,16 +81,23 @@ const BODIES = {
   saturn: { parent: 'sun', gm: 37931206.234, radius: 58232, tilt: 26.73, color: '#e3cc94',
     orb: { jpl: [[9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448],
                  [-0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794]] } },
-  titan: { parent: 'saturn', gm: 8978.138845, radius: 2574.7, tilt: 0.3, color: '#d9a85b', atm: [300, 1000],
+  titan: { parent: 'saturn', gm: 8978.138845, radius: 2574.7, tilt: 0.3, color: '#d9a85b', atm: [300, 1000], atmR: 2575,
     orb: { sat: [1221900, 0.029, 78.3, 11.7, 0.3, 78.6, 15.945448, 346.680, 687.370], lp: [36.4, 84.0, 0.6] } },
-  uranus: { parent: 'sun', gm: 5794556.4, radius: 25362, tilt: 97.77, color: '#9fd7dc', atm: [10, 1500],
+  uranus: { parent: 'sun', gm: 5794556.4, radius: 25362, tilt: 97.77, color: '#9fd7dc', atm: [10, 1500], atmR: 25559,
     orb: { jpl: [[19.18916464, 0.04725744, 0.77263783, 313.23810451, 170.95427630, 74.01692503],
                  [-0.00196176, -0.00004397, -0.00242939, 428.48202785, 0.40805281, 0.04240589]] } },
-  neptune: { parent: 'sun', gm: 6836527.10058, radius: 24622, tilt: 28.32, color: '#6f8fe8', atm: [100, 1000],
+  neptune: { parent: 'sun', gm: 6836527.10058, radius: 24622, tilt: 28.32, color: '#6f8fe8', atm: [100, 1000], atmR: 24622,
     orb: { jpl: [[30.06992276, 0.00859048, 1.77004347, -55.12002969, 44.96476227, 131.78422574],
                  [0.00026291, 0.00005105, 0.00035372, 218.45945325, -0.32241464, -0.00508664]] } },
   // simplified model only: a free-form body the user edits
   custom: { color: '#b590f2', simple: { mass: 1e23, radius: 2000, a: 500000 } },
 };
 
-if (typeof module !== 'undefined') module.exports = { BODIES, EPHEM_YEARS };
+// AMAT [h_low, h_skip] as altitudes above this app's radius (km), or null without atmosphere data.
+function atmAltitudes(key) {
+  const b = BODIES[key];
+  if (!b || !b.atm) return null;
+  return b.atm.map(h => b.atmR + h - b.radius);
+}
+
+if (typeof module !== 'undefined') module.exports = { BODIES, EPHEM_YEARS, atmAltitudes };

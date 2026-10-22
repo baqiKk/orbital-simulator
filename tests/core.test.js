@@ -419,3 +419,22 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   }
   console.log('OK — all core tests passed');
 })();
+
+// ===== Aerocapture altitudes: AMAT values are kept as is and converted to our radius =====
+{
+  const { BODIES: B, atmAltitudes } = require('../js/bodies.js');
+  const near = (a, b, m) => assert.ok(Math.abs(a - b) < 1e-9, `${m}: ${a} vs ${b}`);
+  for (const [k, b] of Object.entries(B)) {
+    if (!b.atm) { assert.strictEqual(atmAltitudes(k), null, k); continue; }
+    assert.ok(Number.isFinite(b.atmR), `${k}: atmR`);
+    const [lo, sk] = atmAltitudes(k);
+    near(b.radius + lo, b.atmR + b.atm[0], k + ' h_low'); // same distance from the centre
+    near(b.radius + sk, b.atmR + b.atm[1], k + ' h_skip');
+  }
+  assert.deepStrictEqual(B.mars.atm, [50, 120]);        // AMAT values untouched
+  near(atmAltitudes('uranus')[0], 10 + 25559 - 25362, 'uranus h_low');
+  near(atmAltitudes('uranus')[1], 1500 + 25559 - 25362, 'uranus h_skip');
+  near(atmAltitudes('earth')[0], 50 + 6371.0 - 6371.0084, 'earth h_low');
+  near(atmAltitudes('titan')[0], 300 + 2575.0 - 2574.7, 'titan h_low');
+  console.log('aerocapture altitude conversion ok');
+}

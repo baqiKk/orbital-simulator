@@ -349,7 +349,7 @@ function syncMission() {
 }
 // Aerocapture: offered in capture mode for targets with atmosphere data (js/bodies.js atm = [h_low, h_skip]);
 // the pass altitude starts at h_low for each new target and is editable up to h_skip.
-const tgtAtm = () => (S.bodies[1] && BODIES[S.bodies[1].key] && BODIES[S.bodies[1].key].atm) || null;
+const tgtAtm = () => (S.bodies[1] && atmAltitudes(S.bodies[1].key)) || null; // altitudes above our radius
 function syncAero() {
   const M = S.M, atm = tgtAtm(), key = S.bodies[1] && S.bodies[1].key;
   if (!atm) M.aero = false;
@@ -362,7 +362,7 @@ function syncAero() {
   const ok = M.hAtm >= 0 && M.hAtm <= atm[1] && M.hAtm < M.hB;
   inp.setAttribute('aria-invalid', String(!ok));
   const h = $('#atmHint'); h.hidden = !M.aero; h.classList.toggle('warn', !ok);
-  h.textContent = _(ok ? 'ui.atmHint' : 'ui.atmBad', { top: atm[1], hB: nf0.format(M.hB) });
+  h.textContent = _(ok ? 'ui.atmHint' : 'ui.atmBad', { top: nf0.format(atm[1]), hB: nf0.format(M.hB) });
 }
 $('#m-aero').addEventListener('change', e => { S.M.aero = e.target.checked; syncAero(); scheduleRebuild(); });
 $('#m-hAtm').addEventListener('input', e => {
@@ -1974,8 +1974,8 @@ const winEl = id => $('#w-' + id);
 const railBtn = id => $(`.rail-btn[data-win="${id}"]`);
 function saveWins() { writePref(LS, PREF_KEYS.wins, JSON.stringify(WINS)); }
 
-// Default spots: mission top-left, results under the view controls on the right and the overview under
-// results (same column), so the centre stays clear.
+// Default spots: mission top-left, results under the view controls on the right and the overview beside
+// results (to its left, same top), so the centre stays clear and nothing overlaps the HUD or each other.
 function defaultWinPos(id, el) {
   const box = $('#wins'), cw = box.clientWidth, ch = box.clientHeight, m = 12, w = el.offsetWidth;
   const cssW = k => parseFloat(getComputedStyle(winEl(k)).width) || 0;
@@ -1984,7 +1984,7 @@ function defaultWinPos(id, el) {
     case 'mission': return [m, m];
     case 'bodies': case 'transfer': return [m + cssW('mission') + 10, m];
     case 'results': return [cw - w - m, below];
-    case 'overview': { const r = winEl('results'); return [cw - w - m, WINS.results.open && floating() ? r.offsetTop + r.offsetHeight + 10 : below]; }
+    case 'overview': return [cw - w - m - (WINS.results.open && floating() ? winEl('results').offsetWidth + 10 : 0), below];
     case 'gloss': return [cw - w - m - cssW('results') - 10, below];
     default: return [(cw - w) / 2, ch * 0.16];
   }
@@ -1994,8 +1994,13 @@ function placeWin(id) {
   if (!st.open || !floating()) return;
   const def = st.x == null || st.y == null;
   let [x, y] = def ? defaultWinPos(id, el) : [st.x, st.y];
-  // the overview in its default spot under Results gets the height left down to the timeline (it scrolls)
-  if (id === 'overview') el.style.maxHeight = def ? Math.max(180, box.clientHeight - y - 12) + 'px' : '';
+  // Results and the overview in their default spots get the height left under the view controls, down to the
+  // readout / timeline (they scroll)
+  if (id === 'overview' || id === 'results') {
+    const ro = $('#readout').getBoundingClientRect(), bx = box.getBoundingClientRect();
+    const readoutTop = ro.height && !$('#readout').hidden && ro.left < bx.left + x + el.offsetWidth && ro.right > bx.left + x ? ro.top - bx.top - 10 : Infinity;
+    el.style.maxHeight = def ? Math.max(180, Math.min(box.clientHeight - 12, readoutTop) - y) + 'px' : '';
+  }
   // pull inside the visible area; the saved spot is kept, so it comes back when the screen grows again
   [x, y] = clampWin(x, y, el.offsetWidth, el.offsetHeight, box.clientWidth, box.clientHeight);
   el.style.left = x + 'px'; el.style.top = y + 'px';
@@ -2067,8 +2072,10 @@ document.addEventListener('keydown', e => {
   const win = document.activeElement && document.activeElement.closest('.win');
   if (win && (win.dataset.win === 'gloss' || win.dataset.win === 'model')) { setWin(win.dataset.win, { open: false }); railBtn(win.dataset.win).focus(); }
 });
-// Results grows and shrinks with the mission: keep the overview's default spot right under it
-new ResizeObserver(() => { if (WINS.overview.x == null) { placeWin('overview'); INS = null; } }).observe(winEl('results'));
+// The view controls (focus tag, wrapping), Results (grows with the mission), the readout and the window area
+// (timeline height) change size after first layout: re-place every window still at its default spot.
+const roDefaults = new ResizeObserver(() => { for (const id of WIN_IDS) if (WINS[id].x == null || WINS[id].y == null) placeWin(id); INS = null; });
+for (const el of [$('#ctrls'), $('#readout'), $('#wins'), winEl('results')]) roDefaults.observe(el);
 mqFloat.addEventListener('change', () => { for (const id of WIN_IDS) applyWin(id); INS = null; needFit = true; });
 
 // ===================== View mode =====================
