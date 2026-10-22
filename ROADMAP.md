@@ -75,3 +75,7 @@
 ## Faz 7 — Önceki bekleyen maddeler
 - "Atmosfer yok, devam et": dönüş periapsisi atmosferin üstündeyse simülasyon durmaz, sonraki karşılaşmalar gösterilir.
 - Dünya–Ay cycler senaryosu: dönen çerçevede periyodik yörüngeyi bulan çözücü; gerekirse tur başına düzeltme yanması ve Δv bütçesi.
+
+## SEO notları
+- İngilizce sürüm eklenince `index.html`'e hreflang etiketleri (`<link rel="alternate" hreflang="tr|en|x-default">`), her dil için kendine işaret eden canonical, sitemap.xml'e dil alternatifleri ve JSON-LD `inLanguage` güncellemesi eklenecek.
+- Statik "Hakkında" metni (`about.*`) ve meta metinleri dil değişince birlikte güncellenmeli.

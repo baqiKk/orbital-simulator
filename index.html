@@ -8,6 +8,8 @@
 <meta property="og:description" data-i18n-content="meta.description" content="Tarayıcıda çalışan yörünge transfer simülatörü: Dünya–Ay serbest dönüş, Dünya–Mars Hohmann transferi ve daha fazlası.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://baqikk.github.io/orbital-simulator/">
+<link rel="canonical" href="https://baqikk.github.io/orbital-simulator/">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Yörünge Transfer Simülatörü","description":"Tarayıcıda çalışan yörünge transfer simülatörü: Dünya–Ay serbest dönüş, Dünya–Mars Hohmann transferi ve daha fazlası.","url":"https://baqikk.github.io/orbital-simulator/","applicationCategory":"EducationalApplication","operatingSystem":"Any (web browser)","inLanguage":"tr","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"TRY"}}</script>
 <meta name="theme-color" content="#05080b">
 <title>Yörünge Transfer Simülatörü</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,7 +20,7 @@
 <script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }</script>
 </head>
 <body>
-<h1 class="sr" data-i18n="ui.title"></h1>
+<h1 class="sr" data-i18n="ui.title">Yörünge Transfer Simülatörü</h1>
 <div class="app">
   <nav class="rail" data-i18n-aria-label="ui.rail">
     <span class="rail-mark" aria-hidden="true"><svg viewBox="0 0 20 20"><ellipse cx="10" cy="10" rx="8.5" ry="4" transform="rotate(-24 10 10)"/><circle cx="10" cy="10" r="2.4" class="fill"/><circle cx="17" cy="6.6" r="1.3" class="fill acc"/></svg></span>
@@ -239,6 +241,13 @@
     <section class="win" id="w-model" data-win="model" aria-labelledby="wt-model" hidden>
       <header class="win-h"><h2 id="wt-model" data-i18n="win.model"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
       <div class="win-b model">
+        <details class="adv" open>
+          <summary data-i18n="about.h">Hakkında</summary>
+          <p data-i18n="about.p1">Yörünge Transfer Simülatörü, tarayıcıda çalışan ücretsiz bir uzay yolculuğu simülatörüdür. İki ile dört gök cismi seçersiniz, bir kalkış yanması tanımlarsınız; araç yolu hesaplanır ve video gibi oynatılır. Kurulum gerekmez, tüm hesap tarayıcınızda yapılır.</p>
+          <p data-i18n="about.p2">Gerçek güneş sistemi modeli, belirli bir tarihteki gezegen ve uydu konumlarını NASA JPL Kepler elemanlarından hesaplar (1800–2050). Basitleştirilmiş model ise dairesel ve düzlemsel yörüngelerle, kütle ve yarıçapı kendiniz girerek kavramları denemenizi sağlar. Fizik üç boyutludur; görünümü iki boyutlu izdüşüm ya da Three.js ile üç boyutlu olarak izleyebilirsiniz.</p>
+          <p data-i18n="about.p3">Hohmann transferi, iki dairesel yörünge arasındaki en az yakıtlı geçiştir. Lambert problemi, iki nokta arasında verilen sürede giden yörüngeyi bulur; simülatör bunu gezegenler arası transferler için kullanır ve kalkış tarihi ile yolculuk süresine göre Δv, C3 ve varış hızını gösteren porkchop grafiğini çizer. Grafikte bir noktaya tıklayınca yol, Güneş ve gezegenlerin çekimiyle N-cisim modelinde yeniden çözülür.</p>
+          <p data-i18n="about.p4">Hazır senaryolar arasında Dünya–Ay serbest dönüş yörüngesi (8 ve S biçimi), Ay yörüngesine giriş, 2026 penceresiyle Dünya–Mars, Dünya–Venüs ve Ganymede–Callisto transferi bulunur. Yakalama yanması, aerofren, yörünge noktaları (perigee, apogee, periapsis), Δv dökümü ve yakalamadan sonraki yörünge izi sonuç pencerelerinde gösterilir.</p>
+        </details>
         <p data-i18n="ui.model1"></p>
         <p data-i18n="ui.model2"></p>
         <p data-i18n="ui.model3"></p>
