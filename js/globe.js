@@ -17,7 +17,7 @@ const TEXC = new Map(); // file -> { img, ok, err, t }
 function lookOf(key) {
   const b = BODIES[key]; if (!b) return null;
   const tex = key === 'venus' ? (TEXOPT.venusRadar ? b.texAlt : null) : b.tex || null;
-  return { tex, sat: tex && tex.sat != null ? tex.sat : 1, limb: !tex && b.parent === 'sun', rings: b.rings || null };
+  return { tex, sat: tex && tex.sat != null ? tex.sat : 1, limb: !tex && b.parent === 'sun', rings: b.rings || null, glow: b.glow ? [...linC(b.glow[0]), b.glow[1]] : [0, 0, 0, 0] };
 }
 // the image for file once loaded (else null); want: allowed to start the download now
 function texReady(file, want) {
@@ -68,6 +68,7 @@ function axesIn(X, Y, Z, A, out) {
 // same axes, planet radius 1. Equirectangular lookup with seam-free derivatives (two longitude cuts, the smoother
 // wins), saturation, soft terminator, Saturn's ring shadow on the globe and the globe's shadow on the rings.
 const GLOBE_GLSL = `
+uniform float uRingHas;
 vec2 globeUV(vec3 b) {
   float u = atan(b.y, b.x) / 6.2831853 + 0.5, v = 0.5 + asin(clamp(b.z, -1.0, 1.0)) / 3.1415927;
   float u2 = fract(u + 0.5) - 0.5;
@@ -78,13 +79,22 @@ vec3 globeTex(sampler2D m, vec3 b, float sat) {
   return mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, sat);
 }
 float globeDay(vec3 n, vec3 s) { return smoothstep(-0.06, 0.3, dot(n, s)); }
+// night side stays nearly black (the albedo is sRGB: 0.035 linear would still show as a dull 20 % grey)
+float globeLit(float day) { return 0.004 + 0.996 * day; }
+// thin atmosphere glow at the limb (linear colour + strength in a): strong on the lit side, faint at night
+vec3 atmGlow(vec3 n, vec3 s, float mu, vec4 a) {
+  float rim = pow(clamp(1.0 - mu, 0.0, 1.0), 3.0), lit = 0.06 + 0.94 * smoothstep(-0.3, 0.5, dot(n, s));
+  return a.rgb * a.a * rim * lit * 1.6;
+}
+// ring colour and opacity at radial coordinate x (0..1): the texture, or a flat colour until it has loaded
+vec4 ringSample(sampler2D rm, float x) { return uRingHas > 0.5 ? texture(rm, vec2(x, 0.5)) : vec4(0.52, 0.42, 0.29, 0.7); }
 // untextured planets: Lambert fall-off towards the terminator and limb darkening (mu: cosine of the view angle)
 float plainShade(vec3 n, vec3 s, float mu) { return (0.4 + 0.6 * clamp(dot(n, s), 0.0, 1.0)) * (0.25 + 0.75 * pow(max(mu, 0.0), 0.6)); }
 float ringShadow(sampler2D rm, vec2 rr, vec3 p, vec3 s) {
   if (abs(s.z) < 1e-5) return 1.0;
   float t = -p.z / s.z; if (t <= 0.0) return 1.0;
   float r = length(p.xy + t * s.xy); if (r < rr.x || r > rr.y) return 1.0;
-  return 1.0 - 0.85 * texture(rm, vec2((r - rr.x) / (rr.y - rr.x), 0.5)).a;
+  return 1.0 - 0.85 * ringSample(rm, (r - rr.x) / (rr.y - rr.x)).a;
 }
 float sphereShadow(vec3 p, vec3 s) {
   float b = dot(p, s), c = dot(p, p) - 1.0, d = b * b - c;
@@ -103,7 +113,7 @@ const GLOBE_FS = `#version 300 es
 precision highp float;
 in vec2 vP; out vec4 oC;
 uniform mat3 uRot; uniform vec3 uSun, uColor; uniform float uTex, uSat, uLimb, uMix, uPx, uRing;
-uniform sampler2D uMap, uRingMap; uniform vec2 uRingR;
+uniform sampler2D uMap, uRingMap; uniform vec2 uRingR; uniform vec4 uGlow;
 ${GLOBE_GLSL}
 vec3 toSRGB(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 void main() {
@@ -115,7 +125,7 @@ void main() {
     float day = globeDay(b, sO);
     if (uRing > 0.5) day *= ringShadow(uRingMap, uRingR, b, sO);
     vec3 base = uTex > 0.5 ? mix(uColor, globeTex(uMap, b, uSat), uMix) : uColor;
-    vec3 c = toSRGB(base * (0.035 + 0.965 * day) * (uLimb > 0.5 ? plainShade(b, sO, n.z) : 1.0));
+    vec3 c = toSRGB(base * globeLit(day) * (uLimb > 0.5 ? plainShade(b, sO, n.z) : 1.0) + atmGlow(b, sO, n.z, uGlow));
     float cov = clamp((1.0 - d) * uPx + 0.5, 0.0, 1.0);
     col = vec4(c * cov, cov);
   }
@@ -125,7 +135,7 @@ void main() {
       float z = -(p.x * rn.x + p.y * rn.y) / rn.z;
       vec3 qb = Rt * vec3(p, z); float r = length(qb.xy);
       if (r >= uRingR.x && r <= uRingR.y && (d2 >= 1.0 || z > zs)) {
-        vec4 rc = texture(uRingMap, vec2((r - uRingR.x) / (uRingR.y - uRingR.x), 0.5));
+        vec4 rc = ringSample(uRingMap, (r - uRingR.x) / (uRingR.y - uRingR.x));
         vec3 c = toSRGB(rc.rgb * ringLight(sO) * sphereShadow(qb, sO));
         col = vec4(c * rc.a, rc.a) + col * (1.0 - rc.a);
       }
@@ -146,7 +156,7 @@ function globeInit() {
     const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
     const loc = gl.getAttribLocation(pr, 'aP'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    const u = {}; for (const n of ['uRect', 'uRot', 'uSun', 'uColor', 'uTex', 'uSat', 'uLimb', 'uMix', 'uPx', 'uRing', 'uMap', 'uRingMap', 'uRingR']) u[n] = gl.getUniformLocation(pr, n);
+    const u = {}; for (const n of ['uRect', 'uRot', 'uSun', 'uColor', 'uTex', 'uSat', 'uLimb', 'uMix', 'uPx', 'uRing', 'uMap', 'uRingMap', 'uRingR', 'uRingHas', 'uGlow']) u[n] = gl.getUniformLocation(pr, n);
     gl.uniform1i(u.uMap, 0); gl.uniform1i(u.uRingMap, 1);
     GLB.white = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, GLB.white);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
@@ -187,8 +197,9 @@ function drawGlobe(ctx, x, y, r, W, H, dpr, o) {
   gl.uniform1f(u.uPx, r * dpr); gl.uniform1f(u.uSat, o.sat); gl.uniform1f(u.uLimb, o.limb ? 1 : 0);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, o.tex ? globeTexture(o.tex.img, true) : GLB.white);
   gl.uniform1f(u.uTex, o.tex ? 1 : 0); gl.uniform1f(u.uMix, texMix(o.tex));
-  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, o.ring ? globeTexture(o.ring.e.img, false) : GLB.white);
-  gl.uniform1f(u.uRing, o.ring ? 1 : 0); if (o.ring) gl.uniform2f(u.uRingR, o.ring.r[0], o.ring.r[1]);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, o.ring && o.ring.e ? globeTexture(o.ring.e.img, false) : GLB.white);
+  gl.uniform1f(u.uRing, o.ring ? 1 : 0); if (o.ring) { gl.uniform2f(u.uRingR, o.ring.r[0], o.ring.r[1]); gl.uniform1f(u.uRingHas, o.ring.e ? 1 : 0); }
+  gl.uniform4fv(u.uGlow, o.glow || [0, 0, 0, 0]);
   gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   ctx.drawImage(GLB.cv, 0, GLB.cv.height - hd, wd, hd, X0, Y0, w, h);
@@ -202,6 +213,6 @@ function globeLook(key, r, allow, fetch) {
   const want = allow && r >= TEX_MIN_PX;
   const tex = L.tex ? texReady(L.tex.file, want && fetch) : null;
   const ring = L.rings ? texReady(L.rings.file, want && fetch) : null;
-  if (!want || (!tex && !L.limb)) return null;
-  return { tex, sat: L.sat, limb: L.limb, ring: ring ? { e: ring, r: L.rings.r.map(q => q * L.rings.req / BODIES[key].radius) } : null };
+  if (!want || (!tex && !L.limb && !L.rings)) return null;
+  return { tex, sat: L.sat, limb: L.limb, ring: L.rings ? { e: ring, r: L.rings.r.map(q => q * L.rings.req / BODIES[key].radius) } : null, glow: L.glow };
 }

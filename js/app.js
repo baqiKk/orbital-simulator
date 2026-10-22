@@ -1814,13 +1814,13 @@ function drawMark(m, x, y, bx, by, reached, placed) {
 // lit (textured) globe of mission body b at (x, y), r px, in the normal 2D mode; false: draw the plain disc
 function globe2d(b, sunIdx, x, y, r, tNow) {
   const o = bodyLook3(b, r, tNow); if (!o) return false;
-  return drawGlobe(ctx, x, y, r, W, H, DPR, { rot: o.rot, sun: sunDir3(b, sunIdx, tNow, [0, 0, 0]), color: S.bodies[b].color, tex: o.look.tex, sat: o.look.sat, limb: o.look.limb, ring: o.look.ring });
+  return drawGlobe(ctx, x, y, r, W, H, DPR, { rot: o.rot, sun: sunDir3(b, sunIdx, tNow, [0, 0, 0]), color: S.bodies[b].color, tex: o.look.tex, sat: o.look.sat, limb: o.look.limb, ring: o.look.ring, glow: o.look.glow });
 }
 // the same on the map (ecliptic axes, lit from the Sun at the origin; after states(mapSys, T, …))
 function globeMap(i, x, y, r, T) {
   const look = globeLook(MAPK[i], r, Q.tex, !lowQ); if (!look) return false;
   const p = [hx(i), hy(i), MP[3 * i + 2] - MP[3 * MSUN + 2]], l = Math.hypot(...p) || 1;
-  return drawGlobe(ctx, x, y, r, W, H, DPR, { rot: bodyAxes(MAPK[i], T, MP, MV, i, MPAR[i], new Array(9)), sun: p.map(c => -c / l), color: BODIES[MAPK[i]].color, tex: look.tex, sat: look.sat, limb: look.limb, ring: look.ring });
+  return drawGlobe(ctx, x, y, r, W, H, DPR, { rot: bodyAxes(MAPK[i], T, MP, MV, i, MPAR[i], new Array(9)), sun: p.map(c => -c / l), color: BODIES[MAPK[i]].color, tex: look.tex, sat: look.sat, limb: look.limb, ring: look.ring, glow: look.glow });
 }
 const _txt = new Map();
 function setT(sel, v) { if (_txt.get(sel) !== v) { _txt.set(sel, v); document.querySelector(sel).textContent = v; } }

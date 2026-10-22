@@ -32,6 +32,7 @@ export const BODY_FS = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_fragment>
 uniform vec3 uColor, uSun, uView;
+uniform vec4 uGlow;
 uniform float uEmit, uTex, uMix, uSat, uLimb, uRing;
 uniform sampler2D uMap, uRingMap;
 uniform vec2 uRingR;
@@ -44,7 +45,7 @@ void main() {
   if (uRing > 0.5) day *= ringShadow(uRingMap, uRingR, n, uSun);
   vec3 base = uTex > 0.5 ? mix(uColor, globeTex(uMap, n, uSat), uMix) : uColor;
   float limb = uLimb > 0.5 ? plainShade(n, uSun, dot(n, uView)) : 1.0;
-  gl_FragColor = vec4(base * mix((0.035 + 0.965 * day) * limb, 1.0, uEmit), 1.0);
+  gl_FragColor = vec4(base * mix(globeLit(day) * limb, 1.0, uEmit) + atmGlow(n, uSun, dot(n, uView), uGlow), 1.0);
   #include <colorspace_fragment>
 }`;
 // Saturn's rings: a flat annulus in the planet's equatorial plane (object space, planet radius 1), radial texture
@@ -68,7 +69,7 @@ varying vec3 vR;
 ${GLOBE_GLSL}
 void main() {
   #include <logdepthbuf_fragment>
-  vec4 rc = texture(uRingMap, vec2((length(vR.xy) - uRingR.x) / (uRingR.y - uRingR.x), 0.5));
+  vec4 rc = ringSample(uRingMap, (length(vR.xy) - uRingR.x) / (uRingR.y - uRingR.x));
   gl_FragColor = vec4(rc.rgb * ringLight(uSun) * sphereShadow(vec3(vR.xy, 0.0), uSun), rc.a);
   #include <colorspace_fragment>
 }`;
@@ -157,7 +158,7 @@ export function create(canvas, opts) {
       const mat = new THREE.ShaderMaterial({ vertexShader: BODY_VS, fragmentShader: BODY_FS,
         uniforms: { uColor: { value: new THREE.Color(d.color) }, uSun: { value: new THREE.Vector3(1, 0, 0) }, uView: { value: new THREE.Vector3(0, 0, 1) },
           uEmit: { value: d.sun ? 1 : 0 }, uTex: { value: 0 }, uMix: { value: 0 }, uSat: { value: 1 }, uLimb: { value: 0 }, uRing: { value: 0 },
-          uMap: { value: white }, uRingMap: { value: white }, uRingR: { value: new THREE.Vector2(1, 2) } } });
+          uGlow: { value: new THREE.Vector4() }, uRingHas: { value: 0 }, uMap: { value: white }, uRingMap: { value: white }, uRingR: { value: new THREE.Vector2(1, 2) } } });
       const mesh = new THREE.Mesh(sphere, mat); mesh.visible = false; roots[set].add(mesh);
       let glow = null;
       if (d.sun) { glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: new THREE.Color(d.color), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); glow.visible = false; roots[set].add(glow); }
@@ -168,7 +169,7 @@ export function create(canvas, opts) {
   function ringOf(b, rr) {
     if (b.ring) return b.ring;
     const mat = new THREE.ShaderMaterial({ vertexShader: RING_VS, fragmentShader: RING_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide,
-      uniforms: { uSun: { value: new THREE.Vector3(1, 0, 0) }, uRingMap: { value: white }, uRingR: { value: new THREE.Vector2(rr[0], rr[1]) } } });
+      uniforms: { uRingHas: { value: 0 }, uSun: { value: new THREE.Vector3(1, 0, 0) }, uRingMap: { value: white }, uRingR: { value: new THREE.Vector2(rr[0], rr[1]) } } });
     b.ring = new THREE.Mesh(new THREE.RingGeometry(rr[0], rr[1], 256, 1), mat); b.ring.visible = false; roots[b.set].add(b.ring);
     return b.ring;
   }
@@ -188,10 +189,11 @@ export function create(canvas, opts) {
     else b.mesh.quaternion.identity();
     const L = o && o.look;
     u.uTex.value = L && L.tex ? 1 : 0; u.uMap.value = L && L.tex ? texOf(L.tex.img, true) : white; u.uMix.value = L && L.tex ? o.mix : 0;
+    if (L && L.glow) u.uGlow.value.fromArray(L.glow); else u.uGlow.value.set(0, 0, 0, 0);
     u.uSat.value = L ? L.sat : 1; u.uLimb.value = L && L.limb ? 1 : 0;
     const ring = L && L.ring && show ? ringOf(b, L.ring.r) : null;
     u.uRing.value = ring ? 1 : 0;
-    if (ring) { u.uRingMap.value = texOf(L.ring.e.img, false); u.uRingR.value.set(L.ring.r[0], L.ring.r[1]); ring.material.uniforms.uRingMap.value = u.uRingMap.value; }
+    if (ring) { u.uRingHas.value = ring.material.uniforms.uRingHas.value = L.ring.e ? 1 : 0; u.uRingMap.value = L.ring.e ? texOf(L.ring.e.img, false) : white; u.uRingR.value.set(L.ring.r[0], L.ring.r[1]); ring.material.uniforms.uRingMap.value = u.uRingMap.value; }
     if (b.ring) b.ring.visible = !!ring;
   }
 

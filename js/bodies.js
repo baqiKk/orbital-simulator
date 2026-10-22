@@ -40,6 +40,7 @@
 //   1.591274, 0.584542 with BODY4 angles 15, 20 and 26) and Neptune (BODY899 0.70, −0.51, −0.48 with BODY8 angle N).
 //   The smaller ones (Mars ≤ 0.00024°, Jupiter ≤ 0.00012°, Mercury's prime meridian ≤ 0.011°) are left out.
 //   Display only (3D view, textured globes).
+// glow: [colour, strength] thin limb glow of an atmosphere (display only; strongest on the lit side, faint at night).
 // lock: synchronous moon, its prime meridian (texture longitude 0) faces the parent along the orbit (this app's orbit;
 //   the PCK rotation of these moons would disagree with our mean elements by the libration and the orbit phase).
 // tex: surface texture (equirectangular, longitude 0 in the middle, north up), drawn only in the normal 2D and 3D modes
@@ -82,12 +83,12 @@ const BODIES = {
     orb: { jpl: [[0.38709927, 0.20563593, 7.00497902, 252.25032350, 77.45779628, 48.33076593],
                  [0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081]] } },
   venus: { parent: 'sun', gm: 324858.592, radius: 6051.8, tilt: 177.36, color: '#e8c98f', pole: [272.76, 0, 67.16, 0, 160.20, -1.4813688],
-    texAlt: { file: 'img/planets/venus_radar.jpg', src: 'nasa3d' }, atm: [60, 180], atmR: 6051.8,
+    texAlt: { file: 'img/planets/venus_radar.jpg', src: 'nasa3d' }, atm: [60, 180], atmR: 6051.8, glow: ['#f2dca0', 0.3],
     simple: { mass: 4.8675e24, radius: 6051.8, a: 108210000 },
     orb: { jpl: [[0.72333566, 0.00677672, 3.39467605, 181.97909950, 131.60246718, 76.67984255],
                  [0.00000390, -0.00004107, -0.00078890, 58517.81538729, 0.00268329, -0.27769418]] } },
   earth: { parent: 'sun', gm: 398600.435507, radius: 6371.0084, tilt: 23.44, color: '#5b9cf0', pole: [0, -0.641, 90, -0.557, 190.147, 360.9856235],
-    tex: { file: 'img/planets/earth.jpg', src: 'bmng' }, atm: [50, 120], atmR: 6371,
+    tex: { file: 'img/planets/earth.jpg', src: 'bmng' }, atm: [50, 120], atmR: 6371, glow: ['#4d8dff', 1],
     simple: { mass: 5.9722e24, radius: 6371, a: 149598000 },
     orb: { jpl: [[1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0.0],
                  [0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0.0]] } },
@@ -96,7 +97,7 @@ const BODIES = {
     orb: { sat: [384400, 0.0554, 318.15, 135.27, 5.16, 125.08, 27.322, 5.997, 18.600] } },
   mars: { parent: 'sun', gm: 42828.37362, radius: 3389.5, tilt: 25.19, color: '#e0703f', pole: [317.269202, -0.10927547, 54.432516, -0.05827105, 176.049863, 350.891982443297,
       [[0.419057, 0, 0, 79.398797, 0.5042615], [0, 1.591274, 0, 166.325722, 0.5042615], [0, 0, 0.584542, 95.391654, 0.5042615]]],
-    tex: { file: 'img/planets/mars.jpg', src: 'nasa3d' }, atm: [50, 120], atmR: 3389.5,
+    tex: { file: 'img/planets/mars.jpg', src: 'nasa3d' }, atm: [50, 120], atmR: 3389.5, glow: ['#e8a478', 0.25],
     simple: { mass: 6.4171e23, radius: 3389.5, a: 227939000 },
     orb: { jpl: [[1.52371034, 0.09339410, 1.84969142, -4.55343205, -23.94362959, 49.55953891],
                  [0.00001847, 0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343]] } },
@@ -124,7 +125,7 @@ const BODIES = {
     rings: { file: 'img/planets/saturn_rings.png', src: 'vtad', r: [616.1504 / 500.0371, 1165.4507 / 500.0371], req: 60268 },
     orb: { jpl: [[9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448],
                  [-0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794]] } },
-  titan: { parent: 'saturn', gm: 8978.138845, radius: 2574.7, tilt: 0.3, color: '#d9a85b', lock: true, tex: { file: 'img/planets/titan.jpg', src: 'nasa3d' }, atm: [300, 1000], atmR: 2575,
+  titan: { parent: 'saturn', gm: 8978.138845, radius: 2574.7, tilt: 0.3, color: '#d9a85b', lock: true, tex: { file: 'img/planets/titan.jpg', src: 'nasa3d' }, atm: [300, 1000], atmR: 2575, glow: ['#eaa83c', 0.35],
     orb: { sat: [1221900, 0.029, 78.3, 11.7, 0.3, 78.6, 15.945448, 346.680, 687.370], lp: [36.4, 84.0, 0.6] } },
   uranus: { parent: 'sun', gm: 5794556.4, radius: 25362, tilt: 97.77, color: '#9fd7dc', pole: [257.311, 0, -15.175, 0, 203.81, -501.1600928], atm: [10, 1500], atmR: 25559,
     orb: { jpl: [[19.18916464, 0.04725744, 0.77263783, 313.23810451, 170.95427630, 74.01692503],
