@@ -634,63 +634,84 @@ const ro = new ResizeObserver(() => {
 });
 for (const el of [stage, $('#ctrls'), $('#hudBot'), $('#wins')]) ro.observe(el);
 
-const MARK_FONT = '500 11px "IBM Plex Mono", ui-monospace, monospace';
+const MARK_FONT = '500 11px "IBM Plex Mono", ui-monospace, monospace', MARK_LH = 13, MARK_WRAP = 140;
+// a marker label's lines (a long one breaks at its first '·') and their widths; needs ctx.font = MARK_FONT
+function markLines(m) {
+  if (!m.lines) {
+    const i = m.txt.indexOf('·');
+    m.lines = i > 0 && ctx.measureText(m.txt).width > MARK_WRAP ? [m.txt.slice(0, i).trim(), m.txt.slice(i + 1).trim()] : [m.txt];
+    m.lw = m.lines.map(t => ctx.measureText(t).width); m.tw = Math.max(...m.lw);
+  }
+  return m;
+}
+// baseline offset of a label's first line from its marker: 14 px away from the event's body (u: unit vector,
+// screen y down); a label above grows upwards, so its extra lines do not cover the marker
+const markBase = (uy, n) => 14 * uy + 4 + (uy > 0.3 ? 8 : 0) - (uy < -0.3 ? (n - 1) * MARK_LH : 0);
 const sx = x => W / 2 + (x - cam.cx) * cam.scale;
 const sy = y => H / 2 - (y - cam.cy) * cam.scale;
-// Free area of the plot not covered by floating windows and HUD: { l, r, t, b } in px from each edge.
+// the free rectangle the last fit() used: marker labels are kept inside it
+let FITQ = null;
+// Free area of the plot: the maximal rectangles not covered by floating windows and HUD (cached, see INS = null).
+// insets() is the largest one as { l, r, t, b } in px from each edge; fit() tries them all.
 let INS = null;
-function insets() { if (!INS) INS = measureInsets(); return INS; }
-function measureInsets() {
+const freeArea = () => INS || (INS = measureFree());
+const rectInsets = q => ({ l: q.x0, r: W - q.x1, t: q.y0, b: H - q.y1 });
+function insets() { return rectInsets(bestRect(freeArea())); }
+function measureFree() {
   const sr = stage.getBoundingClientRect(), gap = 12;
   const rel = el => { const r = el.getBoundingClientRect(); return { x0: r.left - sr.left, x1: r.right - sr.left, y0: r.top - sr.top, y1: r.bottom - sr.top }; };
-  let l = 0, r = 0, t = 0, b = 0;
-  // tall windows hug the left or right edge; short ones (collapsed bars) act like HUD below
-  const bars = [];
-  if (floating()) for (const el of document.querySelectorAll('.win:not([hidden])')) {
-    const o = rel(el);
-    if (o.y1 - o.y0 < (o.x1 - o.x0) * 0.5) bars.push(el);
-    else if ((o.x0 + o.x1) / 2 < W / 2) l = Math.max(l, o.x1 + gap); else r = Math.max(r, W - o.x0 + gap);
-  }
-  if (W - l - r < Math.max(260, W * 0.35)) l = r = 0; // too narrow: let windows overlap instead
-  // HUD blocks the top or bottom where it reaches into the free columns
-  for (const el of [$('#ctrls'), $('#readout'), $('#timeline'), ...bars]) {
-    const o = rel(el);
-    if (o.x1 <= l || o.x0 >= W - r || o.y1 <= o.y0) continue;
-    if ((o.y0 + o.y1) / 2 < H / 2) t = Math.max(t, o.y1 + gap); else b = Math.max(b, H - o.y0 + gap);
-  }
-  return { l, r, t: Math.min(t, H * 0.45), b: Math.min(b, H * 0.4) };
+  const shown = el => !el.hidden && el.getClientRects().length > 0;
+  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline')].filter(shown).map(rel);
+  const wins = floating() ? [...document.querySelectorAll('.win:not([hidden])')].map(rel) : [];
+  const rects = freeRects(W, H, [...hud, ...wins], gap);
+  // too little room left between the windows: let them overlap the plot instead (HUD still counts)
+  const q = bestRect(rects);
+  if (wins.length && (!q || q.x1 - q.x0 < Math.min(260, W * 0.35) || q.y1 - q.y0 < Math.min(180, H * 0.3))) return freeRects(W, H, hud, gap);
+  return rects.length ? rects : [{ x0: 0, x1: W, y0: 0, y1: H }];
 }
 
 function fit() {
   if (!C || W < 50 || H < 50) return; // stage not laid out yet (hidden tab/pane): keep needFit for later
   frameCache();
+  INS = null; // windows may have changed size this frame (Results after a new mission), before their observer runs
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   const add = (x, y) => { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; };
   for (let i = 0; i < C.fx.length; i++) add(C.fx[i], C.fy[i]);
   for (const b of [0, 1]) { const tr = C.tracks[b]; for (let k = 0; k < tr.length; k += 2) add(tr[k], tr[k + 1]); }
   const pad = Math.max(sys.R[0], sys.R[1]) * 2;
   x0 -= pad; x1 += pad; y0 -= pad; y1 += pad;
-  const { l, r, t, b } = insets();
-  const uh = Math.max(80, H - t - b), uw = Math.max(80, W - l - r - 20);
-  const scaleFor = w => Math.min(w / (x1 - x0), uh / (y1 - y0)) * 0.9;
-  // marker labels stick out sideways past the path's bounding box: reserve their overhang (px) on each side
+  // marker labels stick out past the path's bounding box: their overhang (px) on each side at scale s,
+  // placed as in draw() (markBase; text 10 px above the first baseline, 3 px below the last)
   ctx.font = MARK_FONT;
-  const overhang = s => {
-    let L = 0, R = 0;
+  const overhang = (s, uw, uh) => {
+    let L = 0, R = 0, T = 0, B = 0;
     for (const m of C.markers) {
       const dx = m.fx - m.bfx, dy = m.fy - m.bfy, d = Math.hypot(dx, dy) * s;
-      const ux = d < 1 ? Math.SQRT1_2 : dx * s / d, tw = ctx.measureText(m.txt).width;
-      const a = 14 * ux + (ux < -0.3 ? -tw : ux < 0.3 ? -tw / 2 : 0);
+      const ux = d < 1 ? Math.SQRT1_2 : dx * s / d, uy = d < 1 ? -Math.SQRT1_2 : -dy * s / d, { tw, lines } = markLines(m);
+      const a = 14 * ux + (ux < -0.3 ? -tw : ux < 0.3 ? -tw / 2 : 0), base = (y1 - m.fy) * s + markBase(uy, lines.length);
       L = Math.max(L, -((m.fx - x0) * s + a)); R = Math.max(R, (m.fx - x1) * s + a + tw);
+      T = Math.max(T, -(base - 10)); B = Math.max(B, base + 3 + (lines.length - 1) * MARK_LH - (y1 - y0) * s);
     }
-    const k = Math.min(1, uw * 0.4 / (L + R || 1)); // never give labels more than 40% of the width
-    return [L * k, R * k];
+    // never give labels more than 60% of the width or height (draw() keeps the rest inside the free area)
+    const kx = Math.min(1, uw * 0.6 / (L + R || 1)), ky = Math.min(1, uh * 0.6 / (T + B || 1));
+    return [L * kx, R * kx, T * ky, B * ky];
   };
-  let s = scaleFor(uw), L = 0, R = 0;
-  for (let k = 0; k < 2; k++) { [L, R] = overhang(s); s = scaleFor(Math.max(80, uw - L - R)); }
-  cam.scale = s;
+  // scale the path plus labels into each free rectangle (twice, as the labels' share depends on the scale);
+  // the one that shows it largest wins, the larger rectangle on a near tie
+  let best = null;
+  for (const q of freeArea()) {
+    const uw = Math.max(80, q.x1 - q.x0 - 20), uh = Math.max(80, q.y1 - q.y0 - 12);
+    let L = 0, R = 0, T = 0, B = 0;
+    const scaleFor = () => Math.min(Math.max(40, uw - L - R) / (x1 - x0), Math.max(40, uh - T - B) / (y1 - y0)) * 0.94;
+    let s = scaleFor();
+    for (let j = 0; j < 2; j++) { [L, R, T, B] = overhang(s, uw, uh); s = scaleFor(); }
+    const area = uw * uh;
+    if (!best || s > best.s * 1.03 || (s > best.s * 0.97 && area > best.area)) best = { s, L, R, T, B, area, ...rectInsets(q) };
+  }
+  const { s, L, R, T, B, l, r, t, b } = best;
+  cam.scale = s; FITQ = { l, r, t, b };
   cam.cx = (x0 + x1) / 2 - ((l + L - r - R) / 2) / s;
-  cam.cy = (y0 + y1) / 2 + ((t - b) / 2) / s;
+  cam.cy = (y0 + y1) / 2 + ((t + T - b - B) / 2) / s;
   needFit = false;
 }
 function zoomAt(px, py, k) {
@@ -1830,17 +1851,20 @@ function draw(now) {
       if (m.type === 'burn') { ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y); ctx.closePath(); ctx.fill(); }
       else { ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 6.2832); ctx.fill(); ctx.strokeStyle = 'rgba(4,6,11,0.9)'; ctx.lineWidth = 1.2; ctx.stroke(); }
       ctx.fillStyle = hexA(col, reached ? 0.95 : 0.6);
-      // push label outward from the body the event belongs to
-      const bb = m.body || 0; let ox = x - sx(bpos[bb][0]), oy = y - sy(bpos[bb][1]); let ol = Math.hypot(ox, oy);
+      // push label outward from the body the event belongs to (where it was at the event, as fit() assumes)
+      let ox = x - sx(m.bfx), oy = y - sy(m.bfy); let ol = Math.hypot(ox, oy);
       if (ol < 1) { ox = 1; oy = -1; ol = Math.SQRT2; }
       ox /= ol; oy /= ol;
-      const tw = ctx.measureText(m.txt).width;
-      let lx = x + ox * 14 + (ox < -0.3 ? -tw : ox < 0.3 ? -tw / 2 : 0), ly = y + oy * 14 + 4 + (oy > 0.3 ? 8 : 0);
-      lx = clamp(lx, 6, W - tw - 6);
+      const { tw, lines, lw } = markLines(m), lh = lines.length * MARK_LH;
+      let lx = x + ox * 14 + (ox < -0.3 ? -tw : ox < 0.3 ? -tw / 2 : 0), ly = y + markBase(oy, lines.length);
+      // inside the fitted free area when the marker is, so a label never slides under a window; else on screen
+      const q = FITQ && x > FITQ.l && x < W - FITQ.r && y > FITQ.t && y < H - FITQ.b ? FITQ : { l: 0, r: 0 };
+      lx = clamp(lx, q.l + 6, W - q.r - tw - 6);
       // avoid stacking labels of coincident events (e.g. perilune + capture burn)
-      for (let guard = 0; guard < 6 && placed.some(q => lx < q[0] + q[2] && lx + tw > q[0] && Math.abs(ly - q[1]) < 13); guard++) ly += oy >= 0 ? 14 : -14;
-      placed.push([lx, ly, tw]);
-      ctx.fillText(m.txt, lx, ly);
+      for (let guard = 0; guard < 6 && placed.some(q => lx < q[0] + q[2] && lx + tw > q[0] && ly < q[1] + q[3] && ly + lh > q[1]); guard++) ly += oy >= 0 ? 14 : -14;
+      placed.push([lx, ly, tw, lh]);
+      // lines line up on the side facing the marker
+      lines.forEach((t, j) => ctx.fillText(t, lx + (ox < -0.3 ? tw - lw[j] : ox < 0.3 ? (tw - lw[j]) / 2 : 0), ly + j * MARK_LH));
       ctx.globalAlpha = 1;
     }
 
@@ -1963,9 +1987,10 @@ $('#glossQ').addEventListener('input', e => renderGloss(e.target.value));
 // Layout persists in localStorage. A null x/y means "default spot", recomputed on every layout change.
 const mqFloat = window.matchMedia('(min-width: 861px)');
 function floating() { return mqFloat.matches; }
-// narrow desktop (~<1100 px): Results starts collapsed; wide (≥ 1440 px): the overview starts open.
+// narrow desktop (~<1100 px): Results starts collapsed; wide (≥ 1440 px): the overview starts open, collapsed
+// to its title bar below 1920 px.
 // Neither touches a saved layout.
-const narrowDesk = () => ({ narrow: window.matchMedia('(min-width: 861px) and (max-width: 1099px)').matches, wide: window.matchMedia('(min-width: 1440px)').matches });
+const narrowDesk = () => ({ narrow: window.matchMedia('(min-width: 861px) and (max-width: 1099px)').matches, wide: window.matchMedia('(min-width: 1440px)').matches, full: window.matchMedia('(min-width: 1920px)').matches });
 const WINS = parseWins(readPref(LS, PREF_KEYS.wins), narrowDesk());
 const ICON_MINUS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7"/></svg>';
 const ICON_PLUS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7M6 2.5v7"/></svg>';
@@ -2076,6 +2101,9 @@ document.addEventListener('keydown', e => {
 // (timeline height) change size after first layout: re-place every window still at its default spot.
 const roDefaults = new ResizeObserver(() => { for (const id of WIN_IDS) if (WINS[id].x == null || WINS[id].y == null) placeWin(id); INS = null; });
 for (const el of [$('#ctrls'), $('#readout'), $('#wins'), winEl('results')]) roDefaults.observe(el);
+// any window growing or shrinking (content, collapse) changes the free plot area
+const roWins = new ResizeObserver(() => { INS = null; });
+for (const id of WIN_IDS) roWins.observe(winEl(id));
 mqFloat.addEventListener('change', () => { for (const id of WIN_IDS) applyWin(id); INS = null; needFit = true; });
 
 // ===================== View mode =====================

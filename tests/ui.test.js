@@ -81,6 +81,28 @@ assert.strictEqual(P.parseWins('{broken', { wide: true }).overview.open, true, '
 assert.strictEqual(P.parseWins(JSON.stringify({ mission: { open: true } }), { wide: true }).overview.open, false, 'older saved layout without the overview');
 assert.strictEqual(P.parseWins(JSON.stringify({ overview: { open: true, x: 5, y: 6 } }), { wide: false }).overview.open, true);
 assert.strictEqual(P.parseWins(null, { wide: false }).overview.open, false);
+// below 1920 px it starts collapsed to its title bar; a saved layout keeps its own state
+assert.strictEqual(P.parseWins(null, { wide: true }).overview.collapsed, true);
+assert.strictEqual(P.parseWins(null, { wide: true, full: true }).overview.collapsed, false);
+assert.strictEqual(P.parseWins(JSON.stringify({ overview: { open: true, collapsed: false } }), { wide: true }).overview.collapsed, false);
+assert.strictEqual(P.defaultWins({ wide: true }).results.collapsed, false);
+
+// 5d) Free plot area: maximal empty rectangles around windows / HUD
+{
+  const box = (x0, y0, x1, y1) => ({ x0, y0, x1, y1 });
+  const key = q => [q.x0, q.y0, q.x1, q.y1].join(',');
+  assert.deepStrictEqual(P.freeRects(100, 50, []).map(key), ['0,0,100,50']);
+  // a window on the left and one on the right: the column between them, plus the strips above / below them
+  const rs = P.freeRects(1000, 600, [box(0, 0, 300, 400), box(700, 100, 1000, 600)]);
+  assert.ok(rs.some(q => key(q) === '300,0,700,600'), 'centre column');
+  assert.ok(rs.some(q => key(q) === '0,400,700,600'), 'below the left window');
+  assert.ok(rs.some(q => key(q) === '300,0,1000,100'), 'above the right window');
+  for (const q of rs) for (const o of [box(0, 0, 300, 400), box(700, 100, 1000, 600)]) assert.ok(q.x1 <= o.x0 || q.x0 >= o.x1 || q.y1 <= o.y0 || q.y0 >= o.y1, 'no overlap: ' + key(q));
+  assert.ok(!rs.some(p => rs.some(q => p !== q && p.x0 >= q.x0 && p.x1 <= q.x1 && p.y0 >= q.y0 && p.y1 <= q.y1)), 'only maximal ones');
+  assert.strictEqual(key(P.bestRect(rs)), '300,0,700,600', 'largest area');
+  // the gap grows each obstacle
+  assert.deepStrictEqual(P.freeRects(100, 100, [box(0, 0, 100, 40)], 10).map(key), ['0,50,100,100']);
+}
 
 // 6) Clamping pulls windows fully inside; oversize windows pin to the top-left
 assert.deepStrictEqual(P.clampWin(900, 700, 300, 200, 1000, 800), [700, 600]);
