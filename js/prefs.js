@@ -76,4 +76,12 @@ function bestRect(rects) {
   return best;
 }
 
-if (typeof module !== 'undefined') module.exports = { PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, defaultWins, parseWins, clampWin, freeRects, bestRect };
+// Opacity of the orbit trail by age in revolutions: the last keep revolutions are drawn; with fade the
+// oldest fade revolutions of them thin out towards zero, without it older ones are simply cut.
+const TRAIL_REVS = 10, TRAIL_FADE = 3;
+function trailAlpha(age, fade, keep = TRAIL_REVS, span = TRAIL_FADE) {
+  if (!(age <= keep)) return 0;
+  return fade && age > keep - span ? (keep - age) / span : 1;
+}
+
+if (typeof module !== 'undefined') module.exports = { PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

@@ -59,8 +59,8 @@ if (reduceMotion) S.playing = false;
 // View-mode quality profiles. sub: Hermite sub-samples per integrator step; trackK: body-track points;
 // hudMs: HUD text refresh period (0 = every 4th frame); fpsCap: 0 = display rate; ellK: points per orbit ellipse.
 const QUALITY = {
-  normal: { stars: true, glow: true, dprMax: 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0, ellK: 180 },
-  low:    { stars: false, glow: false, dprMax: 1, fpsCap: 30, sub: 2, trackK: 140, hudMs: 250, ellK: 72 },
+  normal: { stars: true, glow: true, dprMax: 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0, ellK: 180, trailK: 96, trailFade: true },
+  low:    { stars: false, glow: false, dprMax: 1, fpsCap: 30, sub: 2, trackK: 140, hudMs: 250, ellK: 72, trailK: 36, trailFade: false },
 };
 let MODE = 'normal', Q = QUALITY.normal;
 const LS = (() => { try { return window.localStorage; } catch (e) { return null; } })();
@@ -1679,6 +1679,44 @@ function orbitPos(t, out) {
   out[1] = SPo[4] + r[1] * c + (k[2] * r[0] - k[0] * r[2]) * s;
   out[2] = SPo[5] + r[2] * c + (k[0] * r[1] - k[1] * r[0]) * s; return out;
 }
+// Orbit trail after capture: the analytic orbit sampled trailK times per revolution (sample j at C.T + j·P/K),
+// in the current view frame, for the last TRAIL_REVS revolutions. Samples are cached on C and only new ones are
+// added each frame; a frame or quality change, or time running backwards, starts over.
+function trailUpdate(ext) {
+  const o = C.orbit, K = Q.trailK, dts = o.P / K, cap = TRAIL_REVS * K + 2;
+  const jEnd = Math.floor(ext / dts), jStart = Math.max(0, jEnd - TRAIL_REVS * K), key = S.frame + '|' + K;
+  let tr = C.trail;
+  if (!tr || tr.key !== key || jEnd < tr.jHi || jStart > tr.jHi) {
+    tr = C.trail = { key, dts, base: jStart, jLo: jStart, jHi: jStart - 1, x: new Float64Array(2 * cap), y: new Float64Array(2 * cap) };
+  }
+  const p = [0, 0, 0], q = [0, 0];
+  for (let j = tr.jHi + 1; j <= jEnd; j++) {
+    if (j - tr.base >= tr.x.length) { // full: move the samples still needed to the front
+      const from = Math.max(tr.jLo, jStart) - tr.base, n = tr.jHi - tr.base + 1 - from;
+      tr.x.copyWithin(0, from, from + n); tr.y.copyWithin(0, from, from + n);
+      tr.base += from; tr.jLo = tr.base;
+    }
+    const t = C.T + j * dts;
+    frameAt(t); tf(...orbitPos(t, p), q);
+    tr.x[j - tr.base] = q[0]; tr.y[j - tr.base] = q[1];
+  }
+  tr.jHi = jEnd; tr.jLo = Math.max(tr.jLo, jStart);
+}
+// draw the trail up to the craft (cpos, frame coords); fading oldest revolutions in normal mode
+function drawTrail(ext, cpos) {
+  const tr = C.trail, P = C.orbit.P, K = Q.trailK; if (!tr || tr.jHi < tr.jLo) return;
+  const i0 = tr.jLo - tr.base, i1 = tr.jHi - tr.base;
+  ctx.lineWidth = 1.6;
+  const fade = Q.trailFade, chunk = fade ? Math.max(4, K >> 4) : Infinity;
+  for (let a = i0; a < i1; a += chunk) {
+    const b = Math.min(i1, a + chunk), age = (ext - (tr.base + (a + b) / 2) * tr.dts) / P;
+    const al = trailAlpha(age, fade); if (al <= 0) continue;
+    ctx.strokeStyle = hexA(COL.traj, 0.9 * al);
+    strokePath(tr.x, tr.y, a, b); ctx.stroke();
+  }
+  ctx.strokeStyle = hexA(COL.traj, 0.9);
+  ctx.beginPath(); ctx.moveTo(sx(tr.x[i1]), sy(tr.y[i1])); ctx.lineTo(sx(cpos[0]), sy(cpos[1])); ctx.stroke();
+}
 let last = performance.now(), hold = 0, hudTick = 0, hudLast = 0, frameAvg = 1 / 60, slowFrames = 0, lowQ = false;
 const tmp = [0, 0], tmp2 = [0, 0];
 
@@ -1765,6 +1803,7 @@ function draw(now) {
   const t2 = ext ? tNow + dtv : Math.min(C.T, tNow + dtv);
   const craft2 = ext ? orbitPos(t2, [0, 0, 0]) : posAtTime(t2, [0, 0, 0]);
   frameAt(t2); const cpos2 = tf(craft2[0], craft2[1], craft2[2], [0, 0]);
+  if (ext && !MAP.on) trailUpdate(S.ext);
   frameAt(tNow);
 
   if (MAP.on) { /* the map has its own camera and follow */ }
@@ -1823,7 +1862,16 @@ function draw(now) {
     for (const [lw, col] of (glow ? [[6, hexA(COL.traj, 0.16)], [1.8, COL.traj]] : [[1.8, COL.traj]])) {
       ctx.strokeStyle = col; ctx.lineWidth = lw;
       strokePath(C.fx, C.fy, 0, pathIdx);
-      ctx.beginPath(); ctx.moveTo(sx(C.fx[pathIdx]), sy(C.fy[pathIdx])); ctx.lineTo(sx(cpos[0]), sy(cpos[1])); ctx.stroke();
+      // up to the craft between samples; after the integrated span the trail takes over
+      if (!ext) { ctx.beginPath(); ctx.moveTo(sx(C.fx[pathIdx]), sy(C.fy[pathIdx])); ctx.lineTo(sx(cpos[0]), sy(cpos[1])); }
+      ctx.stroke();
+    }
+    if (ext) drawTrail(S.ext, cpos);
+    // where the integrated mission ends (orbit insertion, or the mission complete), once reached
+    if (S.u >= 1) {
+      const e = C.fx.length - 1, x = sx(C.fx[e]), y = sy(C.fy[e]);
+      ctx.fillStyle = COL.traj; ctx.strokeStyle = 'rgba(4,6,11,0.9)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 6.2832); ctx.fill(); ctx.stroke();
     }
 
     if (ext) {
@@ -1834,7 +1882,7 @@ function draw(now) {
         const X = FP.X, Y = FP.Y, ux = r[0] * X[0] + r[1] * X[1] + r[2] * X[2], uy = r[0] * Y[0] + r[1] * Y[1] + r[2] * Y[2];
         const vx = q[0] * X[0] + q[1] * X[1] + q[2] * X[2], vy = q[0] * Y[0] + q[1] * Y[1] + q[2] * Y[2];
         const cx0 = sx(bpos[1][0]), cy0 = sy(bpos[1][1]), s = cam.scale;
-        ctx.strokeStyle = hexA(COL.traj, 0.55); ctx.lineWidth = 1.4; ctx.beginPath();
+        ctx.strokeStyle = hexA(COL.traj, 0.3); ctx.lineWidth = 1.2; ctx.beginPath();
         for (let j = 0; j <= 64; j++) { const a = j * Math.PI / 32, c = Math.cos(a), sn = Math.sin(a), x = cx0 + (ux * c + vx * sn) * s, y = cy0 - (uy * c + vy * sn) * s; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
         ctx.stroke();
       }

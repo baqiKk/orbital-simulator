@@ -104,6 +104,16 @@ assert.strictEqual(P.defaultWins({ wide: true }).results.collapsed, false);
   assert.deepStrictEqual(P.freeRects(100, 100, [box(0, 0, 100, 40)], 10).map(key), ['0,50,100,100']);
 }
 
+// 5e) Orbit trail opacity: last 10 revolutions; the oldest fade out (normal) or are cut (low-resource)
+assert.strictEqual(P.trailAlpha(0, true), 1);
+assert.strictEqual(P.trailAlpha(6.9, true), 1);
+assert.ok(Math.abs(P.trailAlpha(8.5, true) - 0.5) < 1e-12, 'halfway through the fade');
+assert.strictEqual(P.trailAlpha(10, true), 0);
+assert.strictEqual(P.trailAlpha(10.5, true), 0);
+assert.strictEqual(P.trailAlpha(9.9, false), 1, 'no fade in low-resource mode');
+assert.strictEqual(P.trailAlpha(10.01, false), 0);
+assert.strictEqual(P.trailAlpha(NaN, true), 0);
+
 // 6) Clamping pulls windows fully inside; oversize windows pin to the top-left
 assert.deepStrictEqual(P.clampWin(900, 700, 300, 200, 1000, 800), [700, 600]);
 assert.deepStrictEqual(P.clampWin(-50, -20, 300, 200, 1000, 800), [0, 0]);
