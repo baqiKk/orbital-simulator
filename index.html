@@ -29,6 +29,7 @@
     <button class="rail-btn" type="button" data-win="transfer" data-i18n-aria-label="win.transfer" data-i18n-title="win.transfer" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 2.5v14.5h14.5" class="thin"/><ellipse cx="11" cy="9.5" rx="5" ry="3.2" transform="rotate(-32 11 9.5)"/><ellipse cx="11" cy="9.5" rx="1.7" ry="1.1" transform="rotate(-32 11 9.5)" class="fill"/></svg></button>
     <button class="rail-btn" type="button" data-win="gloss" data-i18n-aria-label="win.gloss" data-i18n-title="win.gloss" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h5a2 2 0 0 1 2 2v10.5a2 2 0 0 0-2-2H3z"/><path d="M17 4h-5a2 2 0 0 0-2 2v10.5a2 2 0 0 1 2-2h5z"/></svg></button>
     <button class="rail-btn" type="button" data-win="model" data-i18n-aria-label="win.model" data-i18n-title="win.model" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 17 6.5v7L10 17.5 3 13.5v-7z"/><path d="M10 10v7.5M10 10l7-3.5M10 10 3 6.5" class="thin"/></svg></button>
+    <button class="rail-btn" type="button" data-win="credits" data-i18n-aria-label="win.credits" data-i18n-title="win.credits" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h7.5L16 6v11.5H5z"/><path d="M12.5 2.5V6H16" class="thin"/><path d="M7.5 9.5h6M7.5 12.5h6M7.5 15h4" class="thin"/></svg></button>
     <span class="rail-sp"></span>
     <button class="rail-btn" type="button" id="resetWins" data-i18n-aria-label="win.reset" data-i18n-title="win.reset"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6"/><rect x="11" y="3" width="6" height="6"/><rect x="3" y="11" width="6" height="6"/><path d="M11.5 14a3 3 0 1 0 1-2.2" class="thin"/><path d="M11.4 10.6v2h2" class="thin"/></svg></button>
   </nav>
@@ -69,12 +70,15 @@
       </div>
     </div>
     <div class="hud-bot" id="hudBot">
+      <div class="hud-row">
+      <div class="caption" id="caption" hidden></div>
       <div class="glass readout" id="readout">
         <div class="big" id="r-t" data-i18n="ui.tplusInit"></div>
         <div class="date" id="r-date" hidden></div>
         <span class="lbl" id="r-l1"></span><b id="r-v1">—</b>
         <span class="lbl" id="r-l2"></span><b id="r-v2">—</b>
         <span class="lbl" id="r-l3"></span><b id="r-v3">—</b>
+      </div>
       </div>
       <div class="glass timeline" id="timeline">
         <button class="play" id="play" type="button"></button>
@@ -241,7 +245,12 @@
         <p data-i18n="ui.model4"></p>
         <p data-i18n="ui.model5"></p>
         <p data-i18n="ui.model6"></p>
+        <p><button class="ghost" type="button" data-open="credits" data-i18n="cred.open"></button></p>
       </div>
+    </section>
+    <section class="win" id="w-credits" data-win="credits" aria-labelledby="wt-credits" hidden>
+      <header class="win-h"><h2 id="wt-credits" data-i18n="win.credits"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b credits" id="credBody"></div>
     </section>
   </div>
 </div>
@@ -266,6 +275,7 @@
 <script src="js/prefs.js"></script>
 <script src="js/bodies.js"></script>
 <script id="core" src="js/core.js"></script>
+<script src="js/globe.js"></script>
 <script src="js/mode3d.js"></script>
 <script src="js/app.js"></script>
 </body>

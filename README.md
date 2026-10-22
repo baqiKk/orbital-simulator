@@ -3,7 +3,7 @@
 Gök cisimlerini ve kalkış yanmasını seçip yörünge transferini tarayıcıda hesaplayan ve oynatan simülatör. İki model var: gerçek tarihli 3B güneş sistemi (JPL Kepler elemanları, 1800–2050) ve basitleştirilmiş dairesel/düzlemsel model. Dünya–Ay serbest dönüş (8 / S biçimi), Ay'a yörüngeye giriş, Dünya–Mars (2026 penceresi dahil) ve Ay–Mars transferleri, Dünya–Venüs geçişi, Ganymede–Callisto transferi hazır gelir.
 
 ## Görünüm modları
-Düşük kaynak 2B, Normal 2B ve 3B. 3B görünüm [Three.js](https://threejs.org/) (r186, MIT lisansı, `vendor/three/`) kullanır ve yalnızca 3B seçildiğinde yüklenir; WebGL 2 gerekir.
+Düşük kaynak 2B, Normal 2B ve 3B. 3B görünüm [Three.js](https://threejs.org/) (r186, MIT lisansı, `vendor/three/`) kullanır ve yalnızca 3B seçildiğinde yüklenir; WebGL 2 gerekir. Normal 2B ve 3B modlarda gezegenler NASA ve USGS kaynaklı dokularla çizilir (`img/planets/`); kaynaklar, krediler ve kullanım koşulları sitedeki Kaynakça penceresinde. Düşük kaynak modu hiçbir görsel indirmez. Site NASA ya da başka bir kurumla bağlantılı değildir.
 
 ## Yerelde çalıştırma
 Çözücü Web Worker kullandığı için dosyayı çift tıklayıp açmak yerine küçük bir sunucuyla aç:

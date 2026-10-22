@@ -253,22 +253,36 @@ function grid3(c, on) {
 const BP3 = new Float64Array(12), CR3 = [0, 0, 0], CR3b = [0, 0, 0], PJ = [0, 0, 0], PJ2 = [0, 0, 0], SUN3 = [0, 0, 0];
 const ROT9 = new Float64Array(9);
 let TRAIL3 = null, TRAIL3C = null;
-// sun direction (frame axes) for body b: from the Sun in the mission, else (real model) from the map ephemeris,
-// else a fixed upper-left light as in 2D
+// sun direction (frame axes, after frameAt) for body b: from the Sun in the mission, else (real model) from the map
+// ephemeris, else a fixed upper-left light as in 2D. Used by the 2D globes too.
 function sunDir3(b, sunIdx, tNow, out) {
-  if (sunIdx >= 0) { for (let k = 0; k < 3; k++) out[k] = BP3[3 * sunIdx + k] - BP3[3 * b + k]; }
+  let x, y, z;
+  if (sunIdx >= 0) { x = SP[3 * sunIdx] - SP[3 * b]; y = SP[3 * sunIdx + 1] - SP[3 * b + 1]; z = SP[3 * sunIdx + 2] - SP[3 * b + 2]; }
   else if (S.model === 'real') {
     states(mapSys, mapTime(tNow), MP, MV);
-    const i = MAPK.indexOf(S.bodies[sys.root].key), x = -hx(i), y = -hy(i), z = -(MP[3 * i + 2] - MP[3 * MSUN + 2]);
-    out[0] = x * FP.X[0] + y * FP.X[1] + z * FP.X[2]; out[1] = x * FP.Y[0] + y * FP.Y[1] + z * FP.Y[2]; out[2] = x * FP.Z[0] + y * FP.Z[1] + z * FP.Z[2];
-  } else { out[0] = -0.6; out[1] = 0.8; out[2] = 0.3; }
+    const i = MAPK.indexOf(S.bodies[sys.root].key); x = -hx(i); y = -hy(i); z = -(MP[3 * i + 2] - MP[3 * MSUN + 2]);
+  }
+  if (x === undefined) { out[0] = -0.6; out[1] = 0.8; out[2] = 0.3; }
+  else { out[0] = x * FP.X[0] + y * FP.X[1] + z * FP.X[2]; out[1] = x * FP.Y[0] + y * FP.Y[1] + z * FP.Y[2]; out[2] = x * FP.Z[0] + y * FP.Z[1] + z * FP.Z[2]; }
   const l = Math.hypot(out[0], out[1], out[2]) || 1; out[0] /= l; out[1] /= l; out[2] /= l;
   return out;
+}
+// how body b of the mission is drawn at rpx px: its look (js/globe.js) and axes in the view frame, or null
+const AX = new Array(9);
+function bodyLook3(b, rpx, tNow) {
+  const look = globeLook(S.bodies[b].key, rpx, Q.tex, !lowQ);
+  if (!look) return null;
+  bodyAxes(S.bodies[b].key, S.M.t0 * DAY + tNow, SP, SV, b, sys.parent[b], AX);
+  return { look, rot: axesIn(FP.X, FP.Y, FP.Z, AX, new Array(9)), mix: texMix(look.tex) };
 }
 
 function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   V3.setActive('sim');
   frameCache3();
+  // caption first: its HUD box is an obstacle of the free area the fit uses
+  if (V3S.grid) CAPTION.push(_(S.frame !== 'inertial' ? 'v3.gridPlane' : S.model === 'real' ? 'v3.gridEcl' : 'v3.gridRef'));
+  if (C.nodes3.length) CAPTION.push(_('v3.nodes'));
+  setCaption();
   if (V3sys !== sys) { V3.bodies('sim', S.bodies.map(b => ({ color: b.key === 'sun' ? '#fff3d6' : b.color, sun: b.key === 'sun' }))); V3sys = sys; }
   if (needFit) fit3();
   if (ext) trailUpdate(S.ext);
@@ -293,9 +307,9 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
     proj3(BP3, PJ, 3 * b);
     const r = dispR(sys.R[b], PJ[2], b < 2 ? 5 : 4, V3caps[b]);
     const sd = sunIdx >= 0 ? sunDir3(b, sunIdx, tNow, [0, 0, 0]) : SUN3;
-    V3.body('sim', b, [BP3[3 * b], BP3[3 * b + 1], BP3[3 * b + 2]], r, sd, true, glow);
-    OCC.push([BP3[3 * b], BP3[3 * b + 1], BP3[3 * b + 2], r, b]);
     rpx[b] = PJ[2] > 0 ? r * CB.f / PJ[2] : 0; scr.push([PJ[0], PJ[1], PJ[2]]);
+    V3.body('sim', b, [BP3[3 * b], BP3[3 * b + 1], BP3[3 * b + 2]], r, sd, true, glow, bodyLook3(b, rpx[b], tNow));
+    OCC.push([BP3[3 * b], BP3[3 * b + 1], BP3[3 * b + 2], r, b]);
   }
   // lines
   V3.lineSet('sim', 'path', null, true);
@@ -331,11 +345,11 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
     if (PJ[2] > 0 && !behind3(C.f3, 3 * e, -1)) { ctx.fillStyle = COL.traj; ctx.strokeStyle = 'rgba(4,6,11,0.9)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(PJ[0], PJ[1], 3.5, 0, 6.2832); ctx.fill(); ctx.stroke(); }
   }
   // nodes on the reference plane
-  let nodes = 0;
+
   for (const nd of C.nodes3) {
     const p = nd.b < 0 ? nd.p : [nd.p[0] + BP3[3 * sys.parent[nd.b]], nd.p[1] + BP3[3 * sys.parent[nd.b] + 1], nd.p[2] + BP3[3 * sys.parent[nd.b] + 2]];
     proj3(p, PJ); if (!(PJ[2] > 0) || behind3(p, 0, -1) || PJ[0] < -10 || PJ[0] > W + 10 || PJ[1] < -10 || PJ[1] > H + 10) continue;
-    nodeMark(PJ[0], PJ[1], nd.asc, nd.b < 0 ? COL.traj : S.bodies[nd.b].color); nodes++;
+    nodeMark(PJ[0], PJ[1], nd.asc, nd.b < 0 ? COL.traj : S.bodies[nd.b].color);
   }
   // markers
   ctx.font = MARK_FONT;
@@ -371,10 +385,6 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   }
   if (V3S.grid && S.model === 'real' && S.frame === 'inertial') gammaLabel(c);
   // caption: what the grid shows, the node marks
-  const notes = [];
-  if (V3S.grid) notes.push(_(S.frame !== 'inertial' ? 'v3.gridPlane' : S.model === 'real' ? 'v3.gridEcl' : 'v3.gridRef'));
-  if (nodes) notes.push(_('v3.nodes'));
-  drawNotes(notes, 30);
   drawScale(CB.f / c.dist);
 }
 // the trail after capture (fading oldest revolutions), up to the craft
@@ -483,6 +493,10 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
   states(mapSys, T, MP, MV);
   const N = mapSys.N, pos = MPOS3 || (MPOS3 = new Float64Array(3 * N)), o = [0, 0, 0];
   for (let i = 0; i < N; i++) pos.set(mapXYZ(hx(i), hy(i), hz(i), o), 3 * i);
+  mapOrbits3(T); // (cached) its node list goes into the caption, set before fitting
+  CAPTION.push(...mapNotes(T));
+  if (MAP3.nodes.length && !MAP.log) CAPTION.push(_('v3.nodes'));
+  setCaption();
   if (MAP.needFit) fitMap3();
   const c = CAM3.map;
   if (MAP.follow != null) c.t = [pos[3 * MAP.follow], pos[3 * MAP.follow + 1], pos[3 * MAP.follow + 2]];
@@ -502,9 +516,11 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
     const floor = i === MSUN ? 4.5 : moon ? 1.6 : 2.6;
     const r = MAP.log ? floor * Math.max(PJ[2], 1) / CB.f : dispR(mapSys.R[i], PJ[2], floor, MAP3.caps[i]);
     const l = Math.hypot(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]) || 1;
-    V3.body('map', i, [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], r, i === MSUN ? null : [-pos[3 * i] / l, -pos[3 * i + 1] / l, -pos[3 * i + 2] / l], !!show[i], glow);
-    if (show[i]) OCC.push([pos[3 * i], pos[3 * i + 1], pos[3 * i + 2], r, i]);
     rpx[i] = PJ[2] > 0 ? r * CB.f / PJ[2] : 0;
+    const look = show[i] ? globeLook(MAPK[i], rpx[i], Q.tex, !lowQ) : null; // map axes are the ecliptic ones
+    const o = look ? { look, rot: bodyAxes(MAPK[i], T, MP, MV, i, MPAR[i], new Array(9)), mix: texMix(look.tex) } : null;
+    V3.body('map', i, [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], r, i === MSUN ? null : [-pos[3 * i] / l, -pos[3 * i + 1] / l, -pos[3 * i + 2] / l], !!show[i], glow, o);
+    if (show[i]) OCC.push([pos[3 * i], pos[3 * i + 1], pos[3 * i + 2], r, i]);
     if (mapSys.orb[i]) V3.lineSet('map', 'orb' + i, moon ? [pos[3 * p], pos[3 * p + 1], pos[3 * p + 2]] : null, !!show[i]);
   }
   if (tr && craft) { V3.lineSet('map', 'traj', null, true); V3.lineSet('map', 'trajB', null, true); V3.lineUpTo('map', 'trajB', pathIdx); }
@@ -512,10 +528,10 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
   V3.render({ stars: Q.stars });
 
   // overlay: nodes, craft, labels (Sun and planets first, a label overlapping another is skipped)
-  let nodes = 0;
+
   if (!MAP.log) for (const nd of MAP3.nodes) {
     proj3(nd.p, PJ); if (!(PJ[2] > 0) || behind3(nd.p, 0, -1) || PJ[0] < -10 || PJ[0] > W + 10 || PJ[1] < -10 || PJ[1] > H + 10) continue;
-    nodeMark(PJ[0], PJ[1], nd.asc, BODIES[MAPK[nd.b]].color); nodes++;
+    nodeMark(PJ[0], PJ[1], nd.asc, BODIES[MAPK[nd.b]].color);
   }
   if (tr && craft) {
     mapOffset3(tNow, o); const p = mapXYZ(craft[0] + o[0], craft[1] + o[1], craft[2] + o[2], [0, 0, 0]); proj3(p, PJ);
@@ -540,9 +556,6 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
     placed.push([lx, ly, w]);
     ctx.fillStyle = hexA(COL.ink, moon ? 0.6 : 0.85); ctx.fillText(txt, lx, ly);
   }
-  const notes = mapNotes(T);
-  if (nodes) notes.push(_('v3.nodes'));
-  drawNotes(notes, MAP.log ? 8 : 30);
   if (!MAP.log) drawScale(CB.f / c.dist);
 }
 

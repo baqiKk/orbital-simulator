@@ -57,12 +57,13 @@ const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-mo
 if (reduceMotion) S.playing = false;
 
 // View-mode quality profiles. sub: Hermite sub-samples per integrator step; trackK: body-track points;
-// hudMs: HUD text refresh period (0 = every 4th frame); fpsCap: 0 = display rate; ellK: points per orbit ellipse.
+// hudMs: HUD text refresh period (0 = every 4th frame); fpsCap: 0 = display rate; ellK: points per orbit ellipse;
+// tex: planet textures and lit globes (js/globe.js) — never in the low-resource mode, which then downloads no image.
 const QUALITY = {
-  normal: { stars: true, glow: true, dprMax: 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0, ellK: 180, trailK: 96, trailFade: true },
-  low:    { stars: false, glow: false, dprMax: 1, fpsCap: 30, sub: 2, trackK: 140, hudMs: 250, ellK: 72, trailK: 36, trailFade: false },
+  normal: { stars: true, glow: true, tex: true, dprMax: 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0, ellK: 180, trailK: 96, trailFade: true },
+  low:    { stars: false, glow: false, tex: false, dprMax: 1, fpsCap: 30, sub: 2, trackK: 140, hudMs: 250, ellK: 72, trailK: 36, trailFade: false },
   // 3D (js/mode3d.js): the normal profile, drawn with WebGL; phones render at a lower pixel ratio
-  '3d':   { stars: true, glow: true, dprMax: window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 1.25 : 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0, ellK: 180, trailK: 96, trailFade: true },
+  '3d':   { stars: true, glow: true, tex: true, dprMax: window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 1.25 : 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0, ellK: 180, trailK: 96, trailFade: true },
 };
 let MODE = 'normal', Q = QUALITY.normal;
 const LS = (() => { try { return window.localStorage; } catch (e) { return null; } })();
@@ -669,7 +670,7 @@ function measureFree() {
   const sr = stage.getBoundingClientRect(), gap = 12;
   const rel = el => { const r = el.getBoundingClientRect(); return { x0: r.left - sr.left, x1: r.right - sr.left, y0: r.top - sr.top, y1: r.bottom - sr.top }; };
   const shown = el => !el.hidden && el.getClientRects().length > 0;
-  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline')].filter(shown).map(rel);
+  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline'), $('#caption')].filter(shown).map(rel);
   const wins = floating() ? [...document.querySelectorAll('.win:not([hidden])')].map(rel) : [];
   const rects = freeRects(W, H, [...hud, ...wins], gap);
   // too little room left between the windows: let them overlap the plot instead (HUD still counts)
@@ -827,6 +828,7 @@ function focusName() {
 }
 // end of a frame: HUD focus tag, hover cursor and ring (rings are plain in the low-resource mode)
 function frameEnd() {
+  setCaption();
   const n = focusName();
   if (n !== focusTxt) { focusTxt = n; $('#focusName').textContent = n; $('#focusTag').hidden = !n; }
   const h = hoverPt && !ptrs.size ? hitAt(hoverPt.x, hoverPt.y, HIT_PX.mouse) : null;
@@ -1542,6 +1544,7 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
   states(mapSys, T, MP, MV);
   const N = mapSys.N, pos = MAP.pos || (MAP.pos = new Float64Array(2 * N)), o = [0, 0];
   for (let i = 0; i < N; i++) { mapXY(hx(i), hy(i), o); pos[2 * i] = o[0]; pos[2 * i + 1] = o[1]; }
+  CAPTION.push(...mapNotes(T)); setCaption(); // before fitting: the caption box is an obstacle of the free area
   if (MAP.needFit) fitMap();
   if (MAP.follow != null) { cam.cx = pos[2 * MAP.follow]; cam.cy = pos[2 * MAP.follow + 1]; }
   const keyA = S.bodies[0] && S.bodies[0].key, keyB = S.bodies[1] && S.bodies[1].key, sc = cam.scale;
@@ -1589,7 +1592,7 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
       g.addColorStop(0, hexA(col, 0.5)); g.addColorStop(1, hexA(col, 0));
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 4, 0, 6.2832); ctx.fill();
     }
-    ctx.fillStyle = i === MSUN ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+    if (i === MSUN || !globeMap(i, x, y, r, T)) { ctx.fillStyle = i === MSUN ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); }
     if (k === keyA || k === keyB) { ctx.strokeStyle = k === keyA ? COL.traj : COL.orbit; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.2832); ctx.stroke(); }
     if (moon && (!Q.glow || moonR(i) < 22)) continue; // low-resource mode: planet labels only
     const txt = _('body.' + k).toLocaleUpperCase(DICT['meta.locale']), w = ctx.measureText(txt).width;
@@ -1598,7 +1601,6 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
     placed.push([lx, ly, w]);
     ctx.fillStyle = hexA(COL.ink, moon ? 0.6 : 0.85); ctx.fillText(txt, lx, ly);
   }
-  drawNotes(mapNotes(T), MAP.log ? 8 : 30);
 }
 // map caption: the date, and what the scale or the model leaves out
 function mapNotes(T) {
@@ -1607,13 +1609,14 @@ function mapNotes(T) {
   if (S.model !== 'real') notes.push(_('map.today'));
   return notes;
 }
-// caption lines at the bottom left of the free area, lift px above its bottom (room for the scale bar)
-function drawNotes(notes, lift) {
-  const { l, b: bot } = insets();
-  ctx.font = '500 11px "IBM Plex Mono", ui-monospace, monospace'; ctx.fillStyle = COL.dim;
-  // narrow screens: a line too wide for the plot breaks at its ' · ' separators
-  notes = notes.flatMap(s => ctx.measureText(s).width > W - l - 16 ? s.split(' · ') : [s]);
-  notes.forEach((s, j) => ctx.fillText(s, l + 8, H - bot - lift - (notes.length - 1 - j) * 15));
+// Caption lines of this frame (map date, what the 3D grid shows, node marks): shown in the HUD box #caption at the
+// bottom left, which counts as an obstacle for the free plot area like the readout, so labels and fits avoid it.
+const CAPTION = [];
+let capTxt = null;
+function setCaption() {
+  const t = CAPTION.join('\n');
+  if (t === capTxt) return;
+  capTxt = t; const el = $('#caption'); el.textContent = t; el.hidden = !t;
 }
 
 // ===================== Overview (body picker) =====================
@@ -1808,6 +1811,17 @@ function drawMark(m, x, y, bx, by, reached, placed) {
   lines.forEach((t, j) => ctx.fillText(t, lx + (ox < -0.3 ? tw - lw[j] : ox < 0.3 ? (tw - lw[j]) / 2 : 0), ly + j * MARK_LH));
   ctx.globalAlpha = 1;
 }
+// lit (textured) globe of mission body b at (x, y), r px, in the normal 2D mode; false: draw the plain disc
+function globe2d(b, sunIdx, x, y, r, tNow) {
+  const o = bodyLook3(b, r, tNow); if (!o) return false;
+  return drawGlobe(ctx, x, y, r, W, H, DPR, { rot: o.rot, sun: sunDir3(b, sunIdx, tNow, [0, 0, 0]), color: S.bodies[b].color, tex: o.look.tex, sat: o.look.sat, limb: o.look.limb, ring: o.look.ring });
+}
+// the same on the map (ecliptic axes, lit from the Sun at the origin; after states(mapSys, T, …))
+function globeMap(i, x, y, r, T) {
+  const look = globeLook(MAPK[i], r, Q.tex, !lowQ); if (!look) return false;
+  const p = [hx(i), hy(i), MP[3 * i + 2] - MP[3 * MSUN + 2]], l = Math.hypot(...p) || 1;
+  return drawGlobe(ctx, x, y, r, W, H, DPR, { rot: bodyAxes(MAPK[i], T, MP, MV, i, MPAR[i], new Array(9)), sun: p.map(c => -c / l), color: BODIES[MAPK[i]].color, tex: look.tex, sat: look.sat, limb: look.limb, ring: look.ring });
+}
 const _txt = new Map();
 function setT(sel, v) { if (_txt.get(sel) !== v) { _txt.set(sel, v); document.querySelector(sel).textContent = v; } }
 const _hx = new Map();
@@ -1825,7 +1839,7 @@ function draw(now) {
     if (!lowQ && frameAvg > 0.03 && ++slowFrames > 90) { lowQ = true; resize(); showPerfTip(); }
   }
   const glow = Q.glow && !lowQ;
-  HITS = [];
+  HITS = []; CAPTION.length = 0;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   const v3 = is3d(); // 3D: the WebGL canvas below draws the scene, this one only the overlay
   if (v3) ctx.clearRect(0, 0, W, H);
@@ -1836,7 +1850,7 @@ function draw(now) {
     frameEnd(); requestAnimationFrame(draw); return;
   }
   if (!v3) frameCache();
-  if (needFit && !MAP.on) fit();
+  if (needFit && !MAP.on && !v3) fit(); // 3D: draw3d fits once its caption is in place
 
   if (S.playing && !scrubbing) {
     if (S.u >= 1) {
@@ -1974,7 +1988,7 @@ function draw(now) {
           g.addColorStop(0, hexA(col, 0.55)); g.addColorStop(0.25, hexA(col, 0.18)); g.addColorStop(1, hexA(col, 0));
           ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 4.5, 0, 6.2832); ctx.fill();
           ctx.fillStyle = '#fff3d6'; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
-        } else {
+        } else if (!globe2d(b, sunIdx, x, y, r, tNow)) {
           let lx = -0.6, ly = -0.8;
           if (sunIdx >= 0) { const dx = sx(bpos[sunIdx][0]) - x, dy = sy(bpos[sunIdx][1]) - y, d = Math.hypot(dx, dy); if (d > 0) { lx = dx / d; ly = dy / d; } }
           const g = ctx.createRadialGradient(x + lx * r * 0.45, y + ly * r * 0.45, r * 0.1, x, y, r * 1.05);
@@ -2051,6 +2065,36 @@ function drawScale(scale = cam.scale) {
   ctx.fillStyle = COL.dim; ctx.font = '500 11px "IBM Plex Mono", ui-monospace, monospace';
   ctx.fillText(fmtDist(nice), x0 + 2, y0 - 8);
 }
+
+// ===================== Sources (credits) =====================
+// Data sources, then every texture with its source, credit line and what was done to it, the licence notes of the
+// sources used and the disclaimer. Built from js/bodies.js (TEX_SRC, DATA_SRC, tex / texAlt / rings) and cred.* texts.
+const link = (url, txt) => `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(txt)}</a>`;
+function renderCredits() {
+  const rows = [], used = new Set();
+  for (const [k, b] of Object.entries(BODIES)) {
+    for (const [t, note] of [[b.tex, 'cred.note.' + k], [b.texAlt, 'cred.note.' + k], [b.rings, 'cred.note.' + k + 'Rings']]) {
+      if (!t) continue;
+      used.add(t.src);
+      rows.push(`<tr><td>${esc(_('body.' + k))}</td><td>${link(TEX_SRC[t.src], _('cred.src.' + t.src))}<br>${esc(_('cred.by.' + t.src))}</td><td>${esc(_(note))}</td></tr>`);
+    }
+  }
+  rows.push(`<tr><td>${esc(_('cred.plainBodies'))}</td><td>—</td><td>${esc(_('cred.note.plain'))}</td></tr>`);
+  $('#credBody').innerHTML = `<p>${esc(_('cred.intro'))}</p>
+    <h3>${esc(_('cred.h.data'))}</h3>
+    <ul>${Object.keys(DATA_SRC).map(k => `<li>${link(DATA_SRC[k], _('cred.data.' + k))}</li>`).join('')}</ul>
+    <h3>${esc(_('cred.h.img'))}</h3>
+    <table><thead><tr><th>${esc(_('cred.col.body'))}</th><th>${esc(_('cred.col.src'))}</th><th>${esc(_('cred.col.note'))}</th></tr></thead><tbody>${rows.join('')}</tbody></table>
+    <label class="chk"><input type="checkbox" id="venusRadar"${TEXOPT.venusRadar ? ' checked' : ''}><span>${esc(_('cred.venusRadar'))}</span></label>
+    <h3>${esc(_('cred.h.lic'))}</h3>
+    <ul>${[...used].map(s => `<li><b>${esc(_('cred.src.' + s))}</b>: ${esc(_('cred.lic.' + s))}</li>`).join('')}</ul>
+    <p>${esc(_('cred.disclaimer'))}</p>`;
+}
+$('#credBody').addEventListener('change', e => {
+  if (e.target.id !== 'venusRadar') return;
+  TEXOPT.venusRadar = e.target.checked; writePref(LS, PREF_KEYS.venusRadar, e.target.checked ? '1' : '0');
+});
+TEXOPT.venusRadar = readPref(LS, PREF_KEYS.venusRadar) === '1';
 
 // ===================== Glossary =====================
 const GLOSS = DICT['gloss'];
@@ -2130,6 +2174,7 @@ function applyWin(id) {
   cb.setAttribute('aria-expanded', String(!st.collapsed));
   railBtn(id).setAttribute('aria-pressed', String(st.open));
   if (id === 'gloss' && st.open) renderGloss($('#glossQ').value);
+  if (id === 'credits' && st.open) renderCredits();
   if (id === 'overview' && st.open) ovDist(true);
   placeWin(id);
   if (id === 'transfer' && st.open && !st.collapsed) pcSync();
@@ -2181,12 +2226,14 @@ $('#resetWins').addEventListener('click', () => {
   for (const id of WIN_IDS) applyWin(id);
   INS = null; S.follow = 'free'; renderFrameSeg(); needFit = true; MAP.needFit = true;
 });
-// Esc closes the reference windows (glossary, model) when focus is inside them
+// Esc closes the reference windows (glossary, model, sources) when focus is inside them
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   const win = document.activeElement && document.activeElement.closest('.win');
-  if (win && (win.dataset.win === 'gloss' || win.dataset.win === 'model')) { setWin(win.dataset.win, { open: false }); railBtn(win.dataset.win).focus(); }
+  if (win && ['gloss', 'model', 'credits'].includes(win.dataset.win)) { setWin(win.dataset.win, { open: false }); railBtn(win.dataset.win).focus(); }
 });
+// buttons that open another window (Model -> Sources)
+$('#wins').addEventListener('click', e => { const b = e.target.closest('[data-open]'); if (b) setWin(b.dataset.open, { open: true, collapsed: false }); });
 // The view controls (focus tag, wrapping), Results (grows with the mission), the readout and the window area
 // (timeline height) change size after first layout: re-place every window still at its default spot.
 const roDefaults = new ResizeObserver(() => { for (const id of WIN_IDS) if (WINS[id].x == null || WINS[id].y == null) placeWin(id); INS = null; });
@@ -2194,6 +2241,7 @@ for (const el of [$('#ctrls'), $('#readout'), $('#wins'), winEl('results')]) roD
 // any window growing or shrinking (content, collapse) changes the free plot area
 const roWins = new ResizeObserver(() => { INS = null; });
 for (const id of WIN_IDS) roWins.observe(winEl(id));
+roWins.observe($('#caption'));
 mqFloat.addEventListener('change', () => { for (const id of WIN_IDS) applyWin(id); INS = null; needFit = true; });
 
 // ===================== View mode =====================

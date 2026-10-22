@@ -15,28 +15,61 @@ export const FOV = 45;     // vertical field of view, degrees
 const CHUNK = 256;         // points per line chunk (at most)
 const CHUNK_REL = 1e5;     // a chunk ends when a point is this many local steps away from its origin
 
-// Bodies: base colour lit by the Sun direction (uSun, world axes); soft terminator; uEmit 1 = self-lit (the Sun).
+// Bodies: the unit sphere's object space is the body-fixed frame (the mesh is turned by the body's axes), so the
+// object-space position is the surface direction. uSun / uView: Sun and camera directions in those axes. Texture
+// (equirectangular, fading in with uMix), saturation, limb darkening for untextured planets, Saturn's ring shadow;
+// uEmit 1 = self-lit (the Sun). GLOBE_GLSL comes from js/globe.js (a classic script loaded before this module).
 export const BODY_VS = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_vertex>
-varying vec3 vN;
+varying vec3 vO;
 void main() {
-  vN = normalize(mat3(modelMatrix) * normal);
+  vO = position;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   #include <logdepthbuf_vertex>
 }`;
 export const BODY_FS = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_fragment>
-uniform vec3 uColor;
-uniform vec3 uSun;
-uniform float uEmit;
-varying vec3 vN;
+uniform vec3 uColor, uSun, uView;
+uniform float uEmit, uTex, uMix, uSat, uLimb, uRing;
+uniform sampler2D uMap, uRingMap;
+uniform vec2 uRingR;
+varying vec3 vO;
+${GLOBE_GLSL}
 void main() {
   #include <logdepthbuf_fragment>
-  float l = dot(normalize(vN), uSun);
-  float day = smoothstep(-0.06, 0.3, l);
-  gl_FragColor = vec4(uColor * mix(0.035 + 0.965 * day, 1.0, uEmit), 1.0);
+  vec3 n = normalize(vO);
+  float day = globeDay(n, uSun);
+  if (uRing > 0.5) day *= ringShadow(uRingMap, uRingR, n, uSun);
+  vec3 base = uTex > 0.5 ? mix(uColor, globeTex(uMap, n, uSat), uMix) : uColor;
+  float limb = uLimb > 0.5 ? plainShade(n, uSun, dot(n, uView)) : 1.0;
+  gl_FragColor = vec4(base * mix((0.035 + 0.965 * day) * limb, 1.0, uEmit), 1.0);
+  #include <colorspace_fragment>
+}`;
+// Saturn's rings: a flat annulus in the planet's equatorial plane (object space, planet radius 1), radial texture
+// coordinate from the inner to the outer edge, lit by the Sun's elevation over the ring plane, in the planet's shadow.
+export const RING_VS = /* glsl */`
+#include <common>
+#include <logdepthbuf_pars_vertex>
+varying vec3 vR;
+void main() {
+  vR = position;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  #include <logdepthbuf_vertex>
+}`;
+export const RING_FS = /* glsl */`
+#include <common>
+#include <logdepthbuf_pars_fragment>
+uniform vec3 uSun;
+uniform sampler2D uRingMap;
+uniform vec2 uRingR;
+varying vec3 vR;
+${GLOBE_GLSL}
+void main() {
+  #include <logdepthbuf_fragment>
+  vec4 rc = texture(uRingMap, vec2((length(vR.xy) - uRingR.x) / (uRingR.y - uRingR.x), 0.5));
+  gl_FragColor = vec4(rc.rgb * ringLight(uSun) * sphereShadow(vec3(vR.xy, 0.0), uSun), rc.a);
   #include <colorspace_fragment>
 }`;
 // Reference-plane grid: unit lattice scaled per frame, fading out towards its edge (uR, lattice units).
@@ -106,24 +139,60 @@ export function create(canvas, opts) {
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
   })();
   const sets = { sim: [], map: [] };
+  const white = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1); white.needsUpdate = true;
+  // images (js/globe.js texture cache entries) -> Three.js textures
+  const texs = new WeakMap(), maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  function texOf(img, repeat) {
+    let t = texs.get(img); if (t) return t;
+    t = new THREE.Texture(img); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso;
+    t.wrapS = repeat ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping; t.needsUpdate = true;
+    texs.set(img, t); return t;
+  }
   function bodies(set, list) {
-    for (const b of sets[set]) { roots[set].remove(b.mesh); b.mesh.material.dispose(); if (b.glow) { roots[set].remove(b.glow); b.glow.material.dispose(); } }
+    for (const b of sets[set]) {
+      for (const m of [b.mesh, b.glow, b.ring]) if (m) { roots[set].remove(m); m.material.dispose(); }
+      if (b.ring) b.ring.geometry.dispose();
+    }
     sets[set] = list.map(d => {
       const mat = new THREE.ShaderMaterial({ vertexShader: BODY_VS, fragmentShader: BODY_FS,
-        uniforms: { uColor: { value: new THREE.Color(d.color) }, uSun: { value: new THREE.Vector3(1, 0, 0) }, uEmit: { value: d.sun ? 1 : 0 } } });
+        uniforms: { uColor: { value: new THREE.Color(d.color) }, uSun: { value: new THREE.Vector3(1, 0, 0) }, uView: { value: new THREE.Vector3(0, 0, 1) },
+          uEmit: { value: d.sun ? 1 : 0 }, uTex: { value: 0 }, uMix: { value: 0 }, uSat: { value: 1 }, uLimb: { value: 0 }, uRing: { value: 0 },
+          uMap: { value: white }, uRingMap: { value: white }, uRingR: { value: new THREE.Vector2(1, 2) } } });
       const mesh = new THREE.Mesh(sphere, mat); mesh.visible = false; roots[set].add(mesh);
       let glow = null;
       if (d.sun) { glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: new THREE.Color(d.color), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); glow.visible = false; roots[set].add(glow); }
-      return { mesh, glow, p: [0, 0, 0], r: 1 };
+      return { set, mesh, glow, ring: null, p: [0, 0, 0], r: 1, rot: null, sun: new THREE.Vector3(1, 0, 0) };
     });
   }
-  // body i of a set at p (metres), drawn radius r (metres), sun: unit vector towards the Sun (null keeps it)
-  function body(set, i, p, r, sun, show, glowOn) {
+  // the ring annulus of a body, made on first use (radii in body radii)
+  function ringOf(b, rr) {
+    if (b.ring) return b.ring;
+    const mat = new THREE.ShaderMaterial({ vertexShader: RING_VS, fragmentShader: RING_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      uniforms: { uSun: { value: new THREE.Vector3(1, 0, 0) }, uRingMap: { value: white }, uRingR: { value: new THREE.Vector2(rr[0], rr[1]) } } });
+    b.ring = new THREE.Mesh(new THREE.RingGeometry(rr[0], rr[1], 256, 1), mat); b.ring.visible = false; roots[b.set].add(b.ring);
+    return b.ring;
+  }
+  // body i of a set at p (metres), drawn radius r (metres), sun: unit vector towards the Sun in world axes (null keeps
+  // it). o (optional): rot (body axes -> world, row-major), tex / ring (js/globe.js look: image entries, mix, sat,
+  // limb, ring radii)
+  const _m4 = new THREE.Matrix4();
+  function body(set, i, p, r, sun, show, glowOn, o) {
     const b = sets[set][i]; if (!b) return;
     b.p[0] = p[0]; b.p[1] = p[1]; b.p[2] = p[2]; b.r = r;
     b.mesh.visible = show;
-    if (sun) b.mesh.material.uniforms.uSun.value.set(sun[0], sun[1], sun[2]);
+    if (sun) b.sun.set(sun[0], sun[1], sun[2]);
     if (b.glow) b.glow.visible = show && glowOn;
+    const u = b.mesh.material.uniforms;
+    b.rot = o && o.rot ? o.rot : null;
+    if (b.rot) { const m = b.rot; b.mesh.quaternion.setFromRotationMatrix(_m4.set(m[0], m[1], m[2], 0, m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, 0, 0, 0, 1)); }
+    else b.mesh.quaternion.identity();
+    const L = o && o.look;
+    u.uTex.value = L && L.tex ? 1 : 0; u.uMap.value = L && L.tex ? texOf(L.tex.img, true) : white; u.uMix.value = L && L.tex ? o.mix : 0;
+    u.uSat.value = L ? L.sat : 1; u.uLimb.value = L && L.limb ? 1 : 0;
+    const ring = L && L.ring && show ? ringOf(b, L.ring.r) : null;
+    u.uRing.value = ring ? 1 : 0;
+    if (ring) { u.uRingMap.value = texOf(L.ring.e.img, false); u.uRingR.value.set(L.ring.r[0], L.ring.r[1]); ring.material.uniforms.uRingMap.value = u.uRingMap.value; }
+    if (b.ring) b.ring.visible = !!ring;
   }
 
   // ---- lines ----
@@ -260,6 +329,7 @@ export function create(canvas, opts) {
     camera.setViewOffset(W, H, W / 2 - cx, H / 2 - cy, W, H);
     camera.updateProjectionMatrix();
   }
+  const _q = new THREE.Quaternion();
   function setActive(set) { active = set; for (const k in roots) roots[k].visible = k === set; }
   function render(opts) {
     if (lost) return;
@@ -270,6 +340,14 @@ export function create(canvas, opts) {
       if (!b.mesh.visible) continue;
       rel(b.p, b.mesh.position); b.mesh.scale.setScalar(b.r * KM);
       if (b.glow) { b.glow.position.copy(b.mesh.position); b.glow.scale.setScalar(b.r * KM * 9); }
+      // Sun and camera directions in the body's axes
+      const u = b.mesh.material.uniforms, q = _q.copy(b.mesh.quaternion).invert();
+      u.uSun.value.copy(b.sun).applyQuaternion(q);
+      u.uView.value.copy(camera.position).sub(b.mesh.position).normalize().applyQuaternion(q);
+      if (b.ring && b.ring.visible) {
+        b.ring.position.copy(b.mesh.position); b.ring.quaternion.copy(b.mesh.quaternion); b.ring.scale.copy(b.mesh.scale);
+        b.ring.material.uniforms.uSun.value.copy(u.uSun.value);
+      }
     }
     for (const h of lines[active].values()) if (h.show) rel(h.anchor, h.group.position);
     for (const d of dyns[active].values()) if (d.line.visible) rel(d.o, d.line.position);

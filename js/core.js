@@ -45,6 +45,19 @@ function laplaceFrame(ra, dec) {
     -se * A[3] + ce * A[6], -se * A[4] + ce * A[7], -se * A[5] + ce * A[8]];
 }
 
+// Body-fixed frame from IAU rotation elements (js/bodies.js pole = [α0, α1, δ0, δ1, W0, W1, terms] deg; α, δ per
+// Julian century, W per day, from J2000 TDB; optional periodic terms [cα, cδ, cW, θ0, θ1]) at t (s since J2000) -> J2000 ecliptic, row-major: the columns are the body's
+// x (prime meridian on the equator), y and z (north pole) axes. x is W east of the equator's node on the ICRF equator.
+// Display only (the physics never turns bodies).
+function bodyFrame(pole, t, out = new Array(9)) {
+  const T = t / JCY;
+  let ra = pole[0] + pole[1] * T, dec = pole[2] + pole[3] * T, w = pole[4] + pole[5] * t / DAY;
+  for (const q of pole[6] || []) { const th = (q[3] + q[4] * T) * D2R; ra += q[0] * Math.sin(th); dec += q[1] * Math.cos(th); w += q[2] * Math.sin(th); }
+  const L = laplaceFrame(ra, dec), W = w * D2R, c = Math.cos(W), s = Math.sin(W);
+  for (let r = 0; r < 3; r++) { const a = L[3 * r], b = L[3 * r + 1]; out[3 * r] = a * c + b * s; out[3 * r + 1] = b * c - a * s; out[3 * r + 2] = L[3 * r + 2]; }
+  return out;
+}
+
 // Table data (js/bodies.js) -> elements linear in t (s since J2000): x(t) = x0 + x1·t; a in m, angles in rad.
 // ω = argument of periapsis, Ω = ascending node, M = mean anomaly. F: element frame -> ecliptic (null = ecliptic).
 function orbitElements(o) {
@@ -1048,7 +1061,7 @@ async function refineSeed(s, M, opt = {}) {
 }
 
 if (typeof module !== 'undefined') module.exports = {
-  G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, keplerE, laplaceFrame, orbitElements, orbitState, orbitPath,
+  G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, keplerE, laplaceFrame, bodyFrame, orbitElements, orbitState, orbitPath,
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed,
 };

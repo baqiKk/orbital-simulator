@@ -17,7 +17,7 @@ for (const m of html.matchAll(/data-i18n(?:-[a-z-]+)?="([^"]+)"/g)) assert.ok(ha
 
 // 2) Every literal key in app.js / core.js exists (string literals inside a dictionary namespace, incl. ternaries)
 const spaces = new Set(Object.keys(DICT).map(k => k.split('.')[0]));
-for (const f of ['js/app.js', 'js/core.js', 'js/mode3d.js']) {
+for (const f of ['js/app.js', 'js/core.js', 'js/mode3d.js', 'js/globe.js']) {
   for (const m of read(f).matchAll(/'([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9_]+)+)'/g)) {
     if (spaces.has(m[1].split('.')[0])) assert.ok(has(m[1]), `${f} key missing from dictionary: ${m[1]}`);
   }
@@ -147,6 +147,51 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/logarithmicDepthBuffer: true/.test(v3));
   // the saved 3D mode is restored (Three.js then loads at startup)
   assert.ok(P.VIEW_MODES.includes('3d'));
+}
+
+// 8) Planet images: the low-resource mode never fetches one; every texture exists, is equirectangular (2:1, at most
+// 2048 px wide) and has its source, credit, licence and note texts; nothing in the markup or styles points at them
+{
+  const { TEX_SRC, DATA_SRC } = require('../js/bodies.js');
+  const appSrc = read('js/app.js'), globe = read('js/globe.js'), m3 = read('js/mode3d.js');
+  const prof = n => appSrc.match(new RegExp(`\\n  '?${n}'?:\\s*\\{([^}]*)\\}`))[1];
+  assert.ok(/tex: false/.test(prof('low')), 'low-resource profile: no textures');
+  assert.ok(/tex: true/.test(prof('normal')) && /tex: true/.test(prof('3d')), 'normal and 3D profiles: textures');
+  // the only download point is texReady (globe.js), reached through globeLook, whose callers pass Q.tex
+  assert.strictEqual([...globe.matchAll(/new Image\(\)/g)].length, 1, 'one place creates images');
+  for (const f of [appSrc, m3]) {
+    assert.ok(!/texReady\(/.test(f), 'texReady is only called inside globe.js');
+    for (const m of f.matchAll(/globeLook\(([^;]*)\)/g)) assert.ok(/Q\.tex, !lowQ/.test(m[1]), 'globeLook asks with Q.tex (draw) and !lowQ (fetch): ' + m[1]);
+  }
+  for (const f of ['index.html', 'css/style.css']) assert.ok(!/img\/planets/.test(read(f)), `${f} does not refer to planet images`);
+  const dims = file => {
+    const b = fs.readFileSync(path.join(__dirname, '..', file));
+    if (b[0] === 0x89) return [b.readUInt32BE(16), b.readUInt32BE(20)];
+    for (let i = 2; i < b.length - 9;) {
+      if (b[i] !== 0xff) { i++; continue; }
+      const m = b[i + 1]; if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return [b.readUInt16BE(i + 7), b.readUInt16BE(i + 5)];
+      i += 2 + b.readUInt16BE(i + 2);
+    }
+    return null;
+  };
+  let n = 0;
+  for (const [k, b] of Object.entries(BODIES)) {
+    for (const [t, note] of [[b.tex, k], [b.texAlt, k], [b.rings, k + 'Rings']]) {
+      if (!t) continue;
+      n++;
+      assert.ok(fs.existsSync(path.join(__dirname, '..', t.file)), `texture file exists: ${t.file}`);
+      const [w, h] = dims(t.file);
+      if (t === b.rings) assert.ok(w > h, 'ring strip is a horizontal strip');
+      else assert.ok(w === 2 * h && w <= 2048, `${t.file}: equirectangular, ≤ 2048 px (${w}×${h})`);
+      assert.ok(TEX_SRC[t.src], `${k}: source ${t.src} has a URL`);
+      for (const key of ['cred.src.' + t.src, 'cred.by.' + t.src, 'cred.lic.' + t.src, 'cred.note.' + note]) assert.ok(has(key), `credit text: ${key}`);
+    }
+  }
+  assert.ok(n >= 12, 'textures listed');
+  for (const k of Object.keys(DATA_SRC)) assert.ok(has('cred.data.' + k), `data source text: cred.data.${k}`);
+  // the real model's untextured planets are the ones the Sources window lists as plain globes
+  assert.deepStrictEqual(Object.keys(BODIES).filter(k => BODIES[k].parent === 'sun' && !BODIES[k].tex), ['venus', 'uranus', 'neptune']);
+  assert.ok(P.WIN_IDS.includes('credits') && /data-win="credits"/.test(html), 'Sources window');
 }
 
 console.log('OK — all UI tests passed');

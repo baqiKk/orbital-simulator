@@ -438,3 +438,32 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   near(atmAltitudes('titan')[0], 300 + 2575.0 - 2574.7, 'titan h_low');
   console.log('aerocapture altitude conversion ok');
 }
+
+// ===== Body orientation: IAU poles (NAIF PCK) against the axial tilts of the table, spin rate, Earth's meridian =====
+{
+  const { BODIES } = require('../js/bodies.js');
+  const D = Math.PI / 180, deg = x => x / D;
+  for (const [k, b] of Object.entries(BODIES)) {
+    if (!b.pole) continue;
+    const F = C.bodyFrame(b.pole, 0), col = j => [F[j], F[3 + j], F[6 + j]], dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) assert.ok(Math.abs(dot(col(i), col(j)) - (i === j)) < 1e-12, `${k}: orthonormal`);
+    const x = col(0), y = col(1), z = col(2);
+    assert.ok(Math.abs(dot([x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]], z) - 1) < 1e-12, `${k}: right-handed`);
+    // obliquity: spin axis (right-hand rule: the IAU north pole, flipped for retrograde W) vs orbit normal (Sun: ecliptic pole)
+    let n = [0, 0, 1];
+    if (b.orb && b.orb.jpl) { const I = b.orb.jpl[0][2] * D, O = b.orb.jpl[0][5] * D; n = [Math.sin(I) * Math.sin(O), -Math.sin(I) * Math.cos(O), Math.cos(I)]; }
+    const ob = deg(Math.acos(dot(n, z) * Math.sign(b.pole[5])));
+    assert.ok(Math.abs(ob - b.tilt) < 0.15, `${k}: obliquity from the PCK pole ${ob.toFixed(2)}° vs table tilt ${b.tilt}°`);
+    // one day later the prime meridian has turned by W1 about the pole
+    const G = C.bodyFrame(b.pole, C.DAY), x1 = [G[0], G[3], G[6]];
+    const ang = Math.atan2(dot([z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]], x1), dot(x, x1));
+    const want = ((b.pole[5] % 360) + 540) % 360 - 180;
+    assert.ok(Math.abs(deg(ang) - want) < 0.05, `${k}: spin ${deg(ang).toFixed(3)}° per day vs ${want.toFixed(3)}°`);
+  }
+  // Earth at J2000: the Greenwich meridian points to right ascension ≈ GMST = 280.46° (W is in TDB, GMST in UT1)
+  const E = C.bodyFrame(BODIES.earth.pole, 0), ce = Math.cos(C.OBLIQUITY), se = Math.sin(C.OBLIQUITY);
+  const gx = E[0], gy = ce * E[3] - se * E[6];
+  const ra = (deg(Math.atan2(gy, gx)) + 360) % 360;
+  assert.ok(Math.abs(ra - 280.46) < 0.5, `Earth prime meridian RA at J2000: ${ra.toFixed(2)}°`);
+  console.log('body orientation (PCK poles) ok');
+}
