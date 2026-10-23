@@ -49,15 +49,17 @@ const SCENARIOS = [
     M: { mode: 'capture', side: 0, h0: 100, hB: 200, hRet: 60, t0: 9800.78452933949, theta: -115.32101579869845, dv: 1133.8633422404118, beta: -2.9268533075196106, autoDur: true, duration: 10 } },
   // orbit maneuvers about one body (altitudes above its equatorial radius, km; angles deg); 2026-11-15 00:00 UTC
   { id: 'mv_leo_geo', model: 'man', frame: 'eq',
-    M: { body: 'earth', t0: 9814.500800740741, hp0: 191.34411, ha0: 191.34411, i0: 0, O0: 0, hp1: 35781.34857, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 2000, md: 500, isp: 320, j2: false } },
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 191.34411, ha0: 191.34411, i0: 0, O0: 0, hp1: 35781.34857, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 2000, md: 500, isp: 320, j2: false, thrust: 'imp', F: 400, steer: 'local' } },
   { id: 'mv_cape_geo', model: 'man', frame: 'eq',
-    M: { body: 'earth', t0: 9814.500800740741, hp0: 185, ha0: 185, i0: 28.5, O0: 0, hp1: 35786, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 2000, md: 500, isp: 320, j2: false } },
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 185, ha0: 185, i0: 28.5, O0: 0, hp1: 35786, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 2000, md: 500, isp: 320, j2: false, thrust: 'imp', F: 400, steer: 'local' } },
   { id: 'mv_bielliptic', model: 'man', frame: 'eq',
-    M: { body: 'earth', t0: 9814.500800740741, hp0: 191.34411, ha0: 191.34411, i0: 0, O0: 0, hp1: 376310, e1: 0, i1: 0, type: 'bielliptic', rb: 503873, plane: 'comb', k: 1, m0: 2000, md: 500, isp: 320, j2: false } },
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 191.34411, ha0: 191.34411, i0: 0, O0: 0, hp1: 376310, e1: 0, i1: 0, type: 'bielliptic', rb: 503873, plane: 'comb', k: 1, m0: 2000, md: 500, isp: 320, j2: false, thrust: 'imp', F: 400, steer: 'local' } },
   { id: 'mv_gto', model: 'man', frame: 'eq',
-    M: { body: 'earth', t0: 9814.500800740741, hp0: 250, ha0: 35786, i0: 28.5, O0: 0, hp1: 35786, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 3500, md: 1900, isp: 320, j2: false } },
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 250, ha0: 35786, i0: 28.5, O0: 0, hp1: 35786, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 3, m0: 3500, md: 1900, isp: 320, j2: false, thrust: 'fin', F: 400, steer: 'local' } },
+  { id: 'mv_spiral', model: 'man', frame: 'eq',
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 400, ha0: 400, i0: 28.5, O0: 0, hp1: 35786, e1: 0, i1: 0, type: 'spiral', rb: 100000, plane: 'comb', k: 1, m0: 1000, md: 600, isp: 1800, j2: false, thrust: 'fin', F: 0.3, steer: 'local' } },
   { id: 'mv_sso', model: 'man', frame: 'p0',
-    M: { body: 'earth', t0: 9814.500800740741, hp0: 250, ha0: 250, i0: 98.6, O0: 0, hp1: 800, e1: 0, i1: 98.6, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 1000, md: 800, isp: 300, j2: true } },
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 250, ha0: 250, i0: 98.6, O0: 0, hp1: 800, e1: 0, i1: 98.6, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 1000, md: 800, isp: 300, j2: true, thrust: 'imp', F: 400, steer: 'local' } },
 ];
 
 // ===================== State =====================
@@ -492,27 +494,41 @@ $('#sideSeg').addEventListener('click', e => { const b = e.target.closest('butto
 // apsis names for the maneuver labels: the body's own pair when the table has both, else periapsis / apoapsis
 const apsNames = k => { const a = APSIS[k]; return a && a[1] ? a : [_('apsis.generic'), _('apsis.genericApo')]; };
 const cap1 = s => s[0].toLocaleUpperCase(DICT['meta.locale']) + s.slice(1);
-const MVF = ['hp0', 'ha0', 'i0', 'hp1', 'e1', 'i1', 'rb', 'k', 'm0', 'md', 'isp', 'O0'];
+const MVF = ['hp0', 'ha0', 'i0', 'hp1', 'e1', 'i1', 'rb', 'k', 'm0', 'md', 'isp', 'F', 'O0'];
+// the engine runs: finite burns, or the spiral (always with the engine)
+const mvFinite = M => M.type === 'spiral' || M.thrust === 'fin';
 function syncMan() {
-  const M = S.M, [pn, an] = apsNames(M.body).map(cap1), sel = $('#mv-body');
+  const M = S.M, [pn, an] = apsNames(M.body).map(cap1), sel = $('#mv-body'), spiral = M.type === 'spiral', fin = mvFinite(M);
   if (sel.options.length !== KEYS_MV.length) sel.innerHTML = KEYS_MV.map(k => `<option value="${k}">${esc(_('body.' + k))}</option>`).join('');
   sel.value = M.body;
   for (const f of MVF) { const el = $('#mv-' + f); if (document.activeElement !== el) { el.value = +(+M[f]).toFixed(6); el.setAttribute('aria-invalid', 'false'); } }
   $('#mv-j2').checked = !!M.j2;
   $('#lbl-hp0').textContent = $('#lbl-hp1').textContent = _('mv.hp', { peri: pn });
   $('#lbl-ha0').textContent = _('mv.ha', { apo: an }); $('#lbl-rb').textContent = _('mv.rb', { apo: an });
-  setSeg('#mvTypeSeg', M.type); setSeg('#mvPlaneSeg', M.plane);
+  setSeg('#mvTypeSeg', M.type); setSeg('#mvPlaneSeg', M.plane); setSeg('#mvThrSeg', fin ? 'fin' : 'imp'); setSeg('#mvSteerSeg', M.steer);
+  // the spiral has its own steering (Edelbaum), no pieces, no separate plane change, and always the engine
   $('#mvRbWrap').hidden = M.type !== 'bielliptic';
+  $('#mvPlaneWrap').hidden = $('#mvKWrap').hidden = $('#mvThrSeg').hidden = spiral;
+  $('#mvFWrap').hidden = !fin; $('#mvSteerWrap').hidden = !fin || spiral; $('#mvFinHint').hidden = !fin;
   const d = BODIES[M.body], Re = d.j2[1], ra = (Re + M.hp1) * (1 + M.e1) / (1 - M.e1), a = (Re + M.hp1 + ra) / 2;
   $('#mvHa').textContent = M.e1 > 0 ? _('mv.haHint', { apo: an, h: nf0.format(ra - Re), a: nf0.format(a) }) : _('mv.circHint', { a: nf0.format(a) });
   const ok = M.md > 0 && M.md < M.m0 && M.isp > 0, h = $('#mvAvail');
   h.classList.toggle('warn', !ok);
   h.textContent = ok ? _('mv.avail', { dv: nf0.format(dvAvail(M.m0, M.md, M.isp)), c: nf0.format(M.isp * G0) }) : _('mv.availBad');
+  if (fin) $('#mvFinHint').textContent = _('mv.finHint', { mdot: NF(5).format(M.F / (M.isp * G0)), acc: NF(M.F / M.m0 < 0.01 ? 6 : 3).format(M.F / M.m0) });
+  const sh = $('#mvSpiralHint');
+  sh.hidden = !spiral;
+  if (spiral) { // the averaged estimate, before the worker flies it
+    const circ = M.hp0 === M.ha0 && M.e1 === 0, { o0, o1 } = mvOrbits(M, Re * 1e3);
+    const e = circ ? spiralEstimate(d.gm * 1e9, o0, o1, { F: M.F, isp: M.isp, m0: M.m0 }) : null;
+    sh.classList.toggle('warn', !circ);
+    sh.textContent = circ ? _('mv.spiralHint', { revs: nf0.format(e.revs), days: nf1.format(e.t / DAY), dv: nf0.format(e.dv), fuel: nf0.format(e.fuel) }) : _('mv.spiralCirc', { peri: pn, apo: an });
+  }
   if (S.model === 'real') { const dt = $('#m-date'); dt.value = isoMinute(daysToUtc(M.t0)); dt.setAttribute('aria-invalid', 'false'); }
 }
 // value checks per field (cross-field ones, like apoapsis ≥ periapsis, come back from maneuverPlan)
 const MV_OK = { hp0: v => v > 0, ha0: v => v > 0, hp1: v => v > 0, rb: v => v > 0, e1: v => v >= 0 && v <= 0.99, i0: v => v >= 0 && v <= 180, i1: v => v >= 0 && v <= 180,
-  k: v => Number.isInteger(v) && v >= 1 && v <= 8, m0: v => v > 0, md: v => v > 0, isp: v => v > 0, O0: () => true };
+  k: v => Number.isInteger(v) && v >= 1 && v <= 8, m0: v => v > 0, md: v => v > 0, isp: v => v > 0, F: v => v > 0, O0: () => true };
 for (const f of MVF) {
   $('#mv-' + f).addEventListener('input', e => {
     const v = parseNum(e.target.value), bad = !Number.isFinite(v) || !MV_OK[f](v);
@@ -532,6 +548,8 @@ $('#mv-body').addEventListener('change', e => setCentral(e.target.value));
 $('#mv-j2').addEventListener('change', e => { S.M.j2 = e.target.checked; scheduleRebuild(); });
 $('#mvTypeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.M.type = b.dataset.v; syncMan(); rebuild({ fit: true, resetU: true }); });
 $('#mvPlaneSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.M.plane = b.dataset.v; syncMan(); rebuild({ resetU: true }); });
+$('#mvThrSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.M.thrust = b.dataset.v; syncMan(); rebuild({ resetU: true }); });
+$('#mvSteerSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.M.steer = b.dataset.v; syncMan(); rebuild({}); });
 
 let rebuildQueued = false;
 function scheduleRebuild() { if (rebuildQueued) return; rebuildQueued = true; requestAnimationFrame(() => { rebuildQueued = false; rebuild({}); }); }
@@ -589,28 +607,62 @@ function eqFrame(k, t) {
   return k === 'earth' ? laplaceFrame(-90, 90) : d.pole ? equatorFrame(d.pole, t, 6) : equatorFrame(d.axis, t, 4);
 }
 function rebuildMan(o = {}) {
-  const M = S.M, k = M.body, d = BODIES[k], t0 = M.t0 * DAY;
+  const M = S.M, k = M.body, d = BODIES[k], t0 = M.t0 * DAY, spiral = M.type === 'spiral', fin = mvFinite(M);
   sys = buildSystem(sysList()); guess = null;
   const mu = d.gm * 1e9, R = d.radius * 1e3, Re = d.j2[1] * 1e3, rot = eqFrame(k, t0);
   const { o0, o1, opt } = mvOrbits(M, Re);
   const bad = MVF.some(f => !Number.isFinite(M[f]) || !MV_OK[f](M[f]));
-  const plan = bad ? { error: 'err.mvApsis' } : maneuverPlan(mu, R, o0, o1, opt);
-  if (plan.error) { showErr(_(plan.error), 'err.mvFix'); simR = null; C = null; MAN = null; updateResults(); renderTicks(); return; }
+  // the spiral flies no impulsive plan; its Hohmann counterpart is the comparison
+  const hoh = maneuverPlan(mu, R, o0, o1, { ...opt, type: 'hohmann', plane: 'comb', k: 1 });
+  const plan = bad ? { error: 'err.mvApsis' } : spiral ? (o0.ra === o0.rp && o1.ra === o1.rp ? (hoh.error ? hoh : { burns: [], nodes: [], dv: 0, tof: 0, o0, o1 }) : { error: 'err.mvSpiralCirc' })
+    : maneuverPlan(mu, R, o0, o1, opt);
+  if (plan.error) { mvStop(); showErr(_(plan.error), 'err.mvFix'); simR = null; C = null; MAN = null; updateResults(); renderTicks(); return; }
   showErr('');
-  simR = maneuverSim({ mu, R, J2: M.j2 ? d.j2[0] * 1e-6 : 0, Re, rot, O0: M.O0 * D2R }, plan, { tol: 1e-10 });
+  const c = { mu, R, J2: M.j2 ? d.j2[0] * 1e-6 : 0, Re, rot, O0: M.O0 * D2R }, prev = MAN;
+  // impulsive: flown here at once (also what a finite flight shows until the worker returns); the spiral keeps the
+  // previous spiral on screen meanwhile
+  if (!spiral) simR = maneuverSim(c, plan, { tol: 1e-10 });
+  else if (!(prev && prev.spiral && prev.res)) { simR = null; C = null; }
   // frames (ecliptic axes): the equator, the initial and the target orbit planes (x along the line of nodes ℓ)
   const ecl = u => [0, 1, 2].map(j => rot[3 * j] * u[0] + rot[3 * j + 1] * u[1] + rot[3 * j + 2] * u[2]);
   const O0 = M.O0 * D2R, L = ecl([Math.cos(O0), Math.sin(O0), 0]);
   const plane = i => { const n = ecl([Math.sin(i) * Math.sin(O0), -Math.sin(i) * Math.cos(O0), Math.cos(i)]); return { x: L, y: [n[1] * L[2] - n[2] * L[1], n[2] * L[0] - n[0] * L[2], n[0] * L[1] - n[1] * L[0]], n }; };
   const fr = { eq: { x: [rot[0], rot[3], rot[6]], y: [rot[1], rot[4], rot[7]], n: [rot[2], rot[5], rot[8]] }, p0: plane(o0.i), p1: plane(o1.i) };
-  MAN = { key: k, mu, R, Re, rot, plan, o0, o1, opt, fr, j2: M.j2 ? d.j2[0] * 1e-6 : 0 };
-  PLANE = planeBasis(simR.normal);
+  MAN = { key: k, mu, R, Re, rot, plan, hoh, o0, o1, opt, fr, j2: c.J2, spiral, fin, res: null, busy: fin, prog: 0, fit: !!o.fit || !simR };
+  if (spiral && simR) MAN.res = prev.res; // shown until the new one arrives
   if (!['eq', 'p0', 'p1'].includes(S.frame)) S.frame = 'eq';
   if (o.resetU) { S.u = 0; S.ext = 0; }
-  buildCache();
+  if (simR) { PLANE = planeBasis(simR.normal); buildCache(); }
   if (o.fit) needFit = true;
   $('#dateWarn').hidden = inEphem(M.t0);
+  if (fin) mvStart({ c, o0, o1, opt: { ...opt, type: M.type }, fin: { F: M.F, isp: M.isp, m0: M.m0, md: M.md, steer: M.steer }, cap: MODE === 'low' ? 20000 : 60000 }, MAN);
+  else mvStop();
   updateResults(); renderTicks(); renderFrameSeg(); pcSync();
+}
+// Finite burns and spirals fly in a worker (core.js maneuverRun); a newer job replaces a running one. Without workers
+// the job runs here, after this frame.
+const MVJ = { worker: null, busy: false, id: 0 };
+function mvStop() { MVJ.id++; if (MVJ.busy && MVJ.worker) { MVJ.worker.terminate(); MVJ.worker = null; } MVJ.busy = false; }
+function mvStart(job, man) {
+  mvStop();
+  const id = MVJ.id;
+  const done = r => {
+    if (id !== MVJ.id || MAN !== man) return;
+    MVJ.busy = false; man.busy = false; setStatus('');
+    if (r.error) { showErr(_(r.error, r.params), 'err.mvFix'); simR = null; C = null; man.res = null; updateResults(); renderTicks(); return; }
+    man.res = r; simR = r.sim; PLANE = planeBasis(simR.normal);
+    buildCache();
+    if (man.fit) needFit = true;
+    updateResults(); renderTicks();
+  };
+  const prog = p => { if (id !== MVJ.id) return; man.prog = p; setStatus(_(man.spiral ? 'st.mvSpiralBusy' : 'st.mvBusy', { p: nf0.format(p) })); if (!man.res || man.spiral) updateResults(); };
+  let w = MVJ.worker;
+  if (!w) { try { w = MVJ.worker = makeWorker(); } catch (e) { w = null; } }
+  if (!w) { setTimeout(() => { if (id === MVJ.id) done(maneuverRun(job)); }, 0); return; }
+  MVJ.busy = true;
+  w.onmessage = e => { const d = e.data; if (d.p != null) prog(d.p); else done(d.done || { error: 'err.mvWorker', params: { e: d.error } }); };
+  w.onerror = e => { if (MVJ.worker) MVJ.worker.terminate(); MVJ.worker = null; MVJ.busy = false; done({ error: 'err.mvWorker', params: { e: e.message || 'worker' } }); };
+  w.postMessage({ mv: job });
 }
 // one revolution of orbit o ({ rp, ra, i }, node Ω, ω = 0) about the maneuver body: K points, ecliptic axes, m
 function mvRing(o, O0, K) {
@@ -658,14 +710,15 @@ function posAtTime(t, out) {
 
 let SUB = Q.sub;
 function buildCache() {
-  const r = simR, n = r.t.length;
+  // a spiral's samples are already dense (decimated in the worker): no Hermite sub-samples
+  const r = simR, n = r.t.length, sub = S.kind === 'man' && MAN && MAN.spiral ? 1 : SUB;
   const px = [], py = [], pz = [], pt = [], segStart = new Int32Array(n);
   const o = [0, 0, 0];
   for (let i = 0; i < n - 1; i++) {
     segStart[i] = px.length;
     const h = r.t[i + 1] - r.t[i];
     if (!(h > 0)) continue;
-    for (let k = 0; k < SUB; k++) { herm(i, k / SUB, o); px.push(o[0]); py.push(o[1]); pz.push(o[2]); pt.push(r.t[i] + h * k / SUB); }
+    for (let k = 0; k < sub; k++) { herm(i, k / sub, o); px.push(o[0]); py.push(o[1]); pz.push(o[2]); pt.push(r.t[i] + h * k / sub); }
   }
   segStart[n - 1] = px.length; px.push(r.x[n - 1]); py.push(r.y[n - 1]); pz.push(r.z[n - 1]); pt.push(r.t[n - 1]);
   const T = r.t[n - 1] || 1;
@@ -688,7 +741,7 @@ function buildCache() {
     } };
   }
   const cum = new Float64Array(n);
-  C = { orbit, px: Float64Array.from(px), py: Float64Array.from(py), pz: Float64Array.from(pz), pt: Float64Array.from(pt), segStart, cum, T, n, fx: null, fy: null, frameKey: '' };
+  C = { sub, orbit, px: Float64Array.from(px), py: Float64Array.from(py), pz: Float64Array.from(pz), pt: Float64Array.from(pt), segStart, cum, T, n, fx: null, fy: null, frameKey: '' };
   // maneuvers: the initial and the target orbit as reference rings about the body (ecliptic axes)
   C.rings = S.kind === 'man' && MAN ? [{ p: mvRing(MAN.o0, S.M.O0 * D2R, Q.ellK), col: COL.dim, a: 0.5 }, { p: mvRing(MAN.o1, S.M.O0 * D2R, Q.ellK), col: COL.cyan, a: 0.55, dash: true }] : [];
   rebuildCum();
@@ -700,15 +753,65 @@ function buildCache() {
       if (e.node !== lastNode && !e.sep) nodeNo++;
       lastNode = e.node;
       const v = nf0.format(e.dv), di = nf2.format(Math.abs(e.di) / D2R), turn = Math.abs(e.di) > 1e-5 ? _('mk.mvTurn', { di }) : '';
-      txt = e.sep ? _('mk.mvSep', { di, v }) : _(e.pieces > 1 ? 'mk.mvPiece' : 'mk.mvBurn', { n: nodeNo, j: e.piece, k: e.pieces, v }) + turn;
+      txt = (e.sep ? _('mk.mvSep', { di, v }) : _(e.pieces > 1 ? 'mk.mvPiece' : 'mk.mvBurn', { n: nodeNo, j: e.piece, k: e.pieces, v }) + turn)
+        + (e.finite ? _('mk.mvFin', { t: fmtBurn(e.t1 - e.t0) }) : '');
       label = e.sep ? _('ev.mvSep') : _(e.pieces > 1 ? 'ev.mvPiece' : 'ev.mvBurn', { n: nodeNo, j: e.piece, k: e.pieces });
-    } else if (e.type === 'burn') txt = _(e.body === 0 ? 'mk.dv' : e.label === 'ev.raise' ? 'mk.raiseDv' : 'mk.capDv', { v: nf0.format(e.dv) });
+    } else if (e.label === 'ev.mvSpiral0') txt = _('mk.mvSpiral0', { v: nf0.format(e.dv) });
+    else if (e.label === 'ev.mvSpiral1') txt = _('mk.mvSpiral1', { n: nf0.format(r.burns[0].revs) });
+    else if (e.label === 'ev.fuelOut') txt = _('mk.fuelOut');
+    else if (e.type === 'burn') txt = _(e.body === 0 ? 'mk.dv' : e.label === 'ev.raise' ? 'mk.raiseDv' : 'mk.capDv', { v: nf0.format(e.dv) });
     else if (e.type === 'aero') txt = _('mk.aero', { v: nf0.format(e.dv) });
     else if (e.type === 'peri') txt = (e.body === 1 ? Peri(1) : _('ev.returnPeri', { peri: peri(0) })) + ' ' + nf1.format(e.alt / 1e3) + ' km' + (e.body === 0 && e.alt < 150e3 ? _('mk.entry') : '');
     else txt = _('mk.impact', { name: S.bodies[e.body].name });
-    if (label === null) label = e.type === 'peri' ? (e.body === 1 ? S.bodies[1].name + ' ' + peri(1) : _('ev.returnPeri', { peri: peri(0) })) : _(e.label);
+    if (label === null) label = e.type === 'peri' && !e.spiral ? (e.body === 1 ? S.bodies[1].name + ' ' + peri(1) : _('ev.returnPeri', { peri: peri(0) })) : _(e.label);
     return { ...e, label, x: p[0], y: p[1], z: p[2], txt };
   });
+  // engine on (finite burns, the spiral): timeline bands; the arcs of finite burns are highlighted on the path
+  C.spans = S.kind === 'man' && r.burns && r.burns.length && r.burns[0].t1 != null ? r.burns.map(b => [b.t0, b.t1, !!b.spiral]) : [];
+  const idx = t => { let lo = 0, hi = C.pt.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (C.pt[m] < t) lo = m + 1; else hi = m; } return lo; };
+  C.burnIdx = C.spans.filter(s => !s[2]).map(([a, b]) => [idx(a), Math.max(idx(a), idx(b) - (C.pt[idx(b)] > b ? 1 : 0))]);
+}
+// the thrust direction (ecliptic) at mission time t for the craft at abs, or null with the engine off
+function thrustNow(t, abs) {
+  const j = burnAt(t); if (j < 0) return null;
+  states(sys, S.M.t0 * DAY + t, SPo, SVo);
+  const i = segAtTime(t), h = simR.t[i + 1] - simR.t[i], v = h > 0 ? hermV(i, clamp((t - simR.t[i]) / h, 0, 1), [0, 0, 0]) : [simR.vx[i + 1], simR.vy[i + 1], simR.vz[i + 1]];
+  const r = [abs[0] - SPo[0], abs[1] - SPo[1], abs[2] - SPo[2]], vel = [v[0] - SVo[0], v[1] - SVo[1], v[2] - SVo[2]];
+  return thrustDir(j, r, vel, massAt(t));
+}
+// an arrow of len px from (x, y) along screen direction (dx, dy)
+function arrow(x, y, dx, dy, col, len) {
+  const l = Math.hypot(dx, dy); if (!(l > 1e-6)) return;
+  const ux = dx / l, uy = dy / l;
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.moveTo(x + ux * 5, y + uy * 5); ctx.lineTo(x + ux * len, y + uy * len); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + ux * (len + 2), y + uy * (len + 2)); ctx.lineTo(x + ux * (len - 4) - uy * 3.5, y + uy * (len - 4) + ux * 3.5); ctx.lineTo(x + ux * (len - 4) + uy * 3.5, y + uy * (len - 4) - ux * 3.5); ctx.closePath(); ctx.fill();
+}
+// a burn's duration: seconds, minutes and seconds, or days and hours
+function fmtBurn(s) {
+  if (s < 100) return nf1.format(s) + ' ' + _('unit.s');
+  if (s < 7200) return Math.floor(s / 60) + ' ' + _('unit.min') + ' ' + Math.round(s % 60) + ' ' + _('unit.s');
+  return fmtDur(s);
+}
+// engine state at mission time t: the burn on (index into simR.burns) or −1, the mass (finite flights record it)
+function burnAt(t) { const b = simR && simR.m ? simR.burns : null; if (b) for (let j = 0; j < b.length; j++) if (t >= b[j].t0 && t <= b[j].t1) return j; return -1; }
+function massAt(t) {
+  if (!simR || !simR.m) return NaN;
+  const i = segAtTime(t), h = simR.t[i + 1] - simR.t[i], f = h > 0 ? clamp((t - simR.t[i]) / h, 0, 1) : 1;
+  return simR.m[i] + (simR.m[i + 1] - simR.m[i]) * f;
+}
+// thrust direction (ecliptic axes, unit) of burn j for the craft at r, v (relative to the body) with mass m
+function thrustDir(j, r, v, m) {
+  const b = simR.burns[j], st = b.steer, vl = Math.hypot(...v);
+  const h = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]], hl = Math.hypot(...h);
+  if (st.spiral) { // Edelbaum: β from the Δv delivered so far, out of the plane with the sign of cos u
+    const s = st.ve * Math.log(st.m0 / m), be = Math.atan2(st.sb, st.cb - s), sg = st.sgI * (r[0] * st.L[0] + r[1] * st.L[1] + r[2] * st.L[2] >= 0 ? 1 : -1);
+    return [0, 1, 2].map(k => Math.cos(be) * v[k] / vl + Math.sin(be) * sg * h[k] / hl);
+  }
+  // Δv delivered so far: c·ln(m₀/m), c from the burn's own Δv and masses
+  const s = b.m1 < b.m0 ? b.dv * Math.log(b.m0 / m) / Math.log(b.m0 / b.m1) : 0, p = st.psi + st.psi1 * (2 * s / st.dvRef - 1);
+  if (st.inertial) return [0, 1, 2].map(k => Math.cos(p) * st.P[k] + Math.sin(p) * st.N[k]);
+  return [0, 1, 2].map(k => Math.cos(p) * st.sgP * v[k] / vl + Math.sin(p) * h[k] / hl);
 }
 const EL_RING = 128; // points of a reference ring (the parking orbit after capture)
 // the final orbit of a maneuver after the integrated span: Kepler from the end state (equator frame), with the
@@ -1108,7 +1211,7 @@ document.addEventListener('keydown', e => {
 });
 function renderTicks() {
   const box = $('#ticks'); if (!C) { box.innerHTML = ''; return; }
-  box.innerHTML = C.markers.map(m => `<button type="button" class="tick ${m.type}" style="left:${(tToU(m.t) * 100).toFixed(3)}%" title="${esc(_('tick.title', { label: m.label, t: fmtDur(m.t) }))}" aria-label="${esc(m.label)}" data-t="${m.t}"></button>`).join('');
+  box.innerHTML = (C.spans || []).map(([a, b]) => { const u0 = tToU(a) * 100, u1 = tToU(b) * 100; return `<span class="band" style="left:${u0.toFixed(3)}%;width:${Math.max(0.4, u1 - u0).toFixed(3)}%"></span>`; }).join('') + C.markers.map(m => `<button type="button" class="tick ${m.type}" style="left:${(tToU(m.t) * 100).toFixed(3)}%" title="${esc(_('tick.title', { label: m.label, t: fmtDur(m.t) }))}" aria-label="${esc(m.label)}" data-t="${m.t}"></button>`).join('');
   $('#tend').textContent = '/ ' + fmtDur(C.T);
 }
 $('#ticks').addEventListener('click', e => { const b = e.target.closest('.tick'); if (!b) return; S.u = tToU(+b.dataset.t); });
@@ -1119,59 +1222,109 @@ const resRows = rows => rows.map(([l, v, u]) => v == null ? `<tr class="sec"><th
 // Orbit maneuver: the analytic plan (per burn, its plane-change share; total, time, propellant, comparisons), what the
 // integration flew and reached, and the secular J2 rates of the final orbit.
 function updateResultsMan() {
-  const chip = $('#chip'), res = $('#res');
-  if (!simR || !MAN) { chip.className = 'chip bad'; chip.textContent = _('res.fail'); res.innerHTML = ''; return; }
-  const p = MAN.plan, M = S.M, r = simR, [pn, an] = apsNames(MAN.key), km = v => nf1.format(v / 1e3), deg = v => nf2.format(v / D2R);
-  const fin = r.done || rv2el(MAN.mu, r.end.slice(0, 3), r.end.slice(3)), o1 = MAN.o1;
-  const dev = Math.max(Math.abs(fin.rp - o1.rp), Math.abs(fin.ra - o1.ra)), dI = Math.abs(fin.i - o1.i);
-  // with J2 the elements right after the last burn are osculating: within the short-period swing (≈ 3·J2·Re²/a in
-  // radius, 3·J2·(Re/a)² in inclination) the target counts as reached
-  const a1 = (o1.rp + o1.ra) / 2, swing = MAN.j2 ? 3 * MAN.j2 * MAN.Re * MAN.Re / a1 : 1e3, swingI = MAN.j2 ? 3 * MAN.j2 * (MAN.Re / a1) ** 2 : 1e-4;
-  let cls = 'good', txt = _(MAN.j2 && dev > 1e3 ? 'chip.mvDoneJ2' : 'chip.mvDone', { d: fmtDist(dev) });
-  if (r.impact >= 0) { cls = 'bad'; txt = _('chip.impact', { name: S.bodies[0].name }); }
-  else if (!r.ok) { cls = 'bad'; txt = _('chip.mvFail'); }
-  else if (!p.burns.length) { cls = 'warn'; txt = _('chip.mvNone'); }
-  else if (dev > Math.max(1e3, swing) || dI > Math.max(1e-4, swingI)) { cls = 'warn'; txt = _('chip.mvOff', { d: fmtDist(dev) }); }
-  chip.className = 'chip ' + cls; chip.textContent = txt;
-  const rows = [[_('res.sec.mvPlan')]];
+  const chip = $('#chip'), res = $('#res'), M = S.M, busy = MAN && MAN.busy;
+  if (!MAN || (!simR && !busy)) { chip.className = 'chip bad'; chip.textContent = _('res.fail'); res.innerHTML = ''; return; }
+  const p = MAN.plan, r = simR, [pn, an] = apsNames(MAN.key), km = v => nf1.format(v / 1e3), deg = v => nf2.format(v / D2R), o1 = MAN.o1;
+  const sgn = v => (v >= 0 ? '+' : '−') + nf1.format(Math.abs(v)), cur = MAN.res && !(busy && MAN.spiral) ? MAN.res : null;
+  const rows = [];
   // where a burn is: an apsis of the orbit before it (else of the one after it; else a circle)
   const where = n => {
     for (const a of [n.a1, n.a2]) { const o = 2 * a - n.r; if (Math.abs(o - n.r) > 1e-9 * n.r) return n.r < o ? pn : an; }
     return _('res.mvCircle');
   };
-  let no = 0;
-  for (const n of p.nodes) {
-    const l = n.sep ? _('res.mvSepRow', { where: where(n) }) : _('res.mvBurn', { n: ++no, where: where(n) });
-    rows.push([l, nf1.format(n.dv), 'm/s' + (n.di > 1e-7 ? _('res.mvTurn', { di: deg(n.di) }) : '') + (M.k > 1 ? _('res.mvPieces', { k: M.k }) : '')]);
+  if (MAN.spiral) { // the spiral: revolutions, time, Δv against Edelbaum and the impulsive Hohmann, propellant
+    rows.push([_('res.sec.mvSpiral', { F: NF(M.F < 1 ? 2 : 0).format(M.F), isp: nf0.format(M.isp) })]);
+    if (!cur) rows.push([_('res.mvFinBusy'), nf0.format(MAN.prog) + ' %', '']);
+    else {
+      const b = r.burns[0], est = r.est, hd = MAN.hoh.dv;
+      rows.push([_('res.mvRevs'), nf0.format(b.revs), _('res.mvRevsUnit', { est: nf0.format(est.revs) })]);
+      rows.push([_('res.mvSpiralTime'), fmtDur(b.t1), '']);
+      rows.push([_('res.mvSpiralDv'), nf1.format(b.dv), _('res.mvSpiralDvUnit', { edel: nf1.format(est.dv) })]);
+      rows.push([_('res.mvSpiralHoh'), nf1.format(hd), _('res.mvCmpUnit', { d: sgn(hd - b.dv) })]);
+      rows.push([_('res.mvSpiralFuel'), nf1.format(r.fuel), _('res.mvSpiralFuelUnit', { imp: nf1.format(propMass(M.m0, hd, M.isp)) })]);
+      rows.push([_('res.mvLeft'), nf1.format(M.m0 - r.fuel), 'kg']);
+      if (r.fuelOut) rows.push([_('res.mvNote'), esc(_('res.mvFuelOut', { t: fmtDur(b.t1) })), '']);
+    }
+  } else { // the impulsive plan: per burn, total, time, propellant, comparisons
+    rows.push([_('res.sec.mvPlan')]);
+    let no = 0;
+    for (const n of p.nodes) {
+      const l = n.sep ? _('res.mvSepRow', { where: where(n) }) : _('res.mvBurn', { n: ++no, where: where(n) });
+      rows.push([l, nf1.format(n.dv), 'm/s' + (n.di > 1e-7 ? _('res.mvTurn', { di: deg(n.di) }) : '') + (M.k > 1 ? _('res.mvPieces', { k: M.k }) : '')]);
+    }
+    rows.push([_('res.mvTot'), nf1.format(p.dv), 'm/s']);
+    if (p.burns.length > 1) rows.push([_('res.mvTof'), fmtDur(p.tof), '']);
+    const avail = dvAvail(M.m0, M.md, M.isp), prop = propMass(M.m0, p.dv, M.isp), unit = _('res.mvPropUnit', { m0: nf0.format(M.m0), isp: nf0.format(M.isp) });
+    if (p.dv <= avail) { rows.push([_('res.mvProp'), nf1.format(prop), unit]); rows.push([_('res.mvLeft'), nf1.format(M.m0 - prop), 'kg']); }
+    else rows.push([_('res.mvProp'), '—', _('res.mvShort', { dv: nf0.format(avail) })]);
+    // the same transfer with the other plane-change option, and the bi-elliptic one against Hohmann
+    const alt = opt => { const q = maneuverPlan(MAN.mu, MAN.R, MAN.o0, o1, { ...MAN.opt, ...opt }); return q.error ? null : q.dv; };
+    const cmp = (l, v) => { if (v != null) rows.push([l, nf1.format(v), _('res.mvCmpUnit', { d: sgn(v - p.dv) })]); };
+    if (Math.abs(o1.i - MAN.o0.i) > 1e-9) { const other = M.plane === 'sep' ? 'comb' : 'sep'; cmp(_('res.mvCmpPlane', { mode: _('mv.plane.' + other) }), alt({ plane: other })); }
+    if (M.type === 'bielliptic') cmp(_('res.mvCmpHoh'), alt({ type: 'hohmann' }));
+    if (MAN.fin) { // the engine: per burn duration, Δv, propellant, arc; totals; the difference from the impulsive flight
+      rows.push([_('res.sec.mvFin', { F: NF(M.F < 1 ? 2 : 0).format(M.F), isp: nf0.format(M.isp) })]);
+      if (!cur) rows.push([_('res.mvFinBusy'), nf0.format(MAN.prog) + ' %', '']);
+      else {
+        const s = cur.sim;
+        let k = 0, last = -1, maxArc = 0;
+        for (const b of s.burns) {
+          const n = p.nodes[b.node]; if (b.node !== last && !b.sep) k++; last = b.node;
+          const l = (b.sep ? _('res.mvSepRow', { where: where(n) }) : _('res.mvBurn', { n: k, where: where(n) })) + (b.pieces > 1 ? ` · ${b.piece}/${b.pieces}` : '');
+          rows.push([l, fmtBurn(b.t1 - b.t0), _('res.mvFinUnit', { dv: nf1.format(b.dv), fuel: nf1.format(b.m0 - b.m1), arc: nf1.format(b.arc / D2R) }).slice(3)]);
+          maxArc = Math.max(maxArc, b.arc);
+        }
+        rows.push([_('res.mvBurnTime'), fmtBurn(s.burns.reduce((a, b) => a + b.t1 - b.t0, 0)), '']);
+        rows.push([_('res.mvFinDv'), nf1.format(s.dvFin), _('res.mvFinDvUnit')]);
+        rows.push([_('res.mvFinFuel'), nf1.format(s.fuel), _('res.mvFinFuelUnit', { imp: nf1.format(s.fuelImp) })]);
+        rows.push([_('res.mvLoss'), sgn(s.loss), _('res.mvLossUnit', { pct: nf2.format(100 * s.loss / Math.max(1e-9, s.dvImp)), fuel: sgn(s.fuel - s.fuelImp) })]);
+        if (s.trim > 0.05) {
+          rows.push([_('res.mvTrim'), nf1.format(s.trim), _('res.mvTrimUnit')]);
+          rows.push([_('res.mvLossTot'), sgn(s.lossTot), _('res.mvLossTotUnit')]);
+        }
+        if (maxArc > Math.PI / 3) { // over 60°: the warning, and what splitting would save
+          rows.push([_('res.mvArcWarn'), esc(_('res.mvArcWarnText', { arc: nf0.format(maxArc / D2R) })), '']);
+          if (cur.split) rows.push([_('res.mvSplit'), cur.split.map(q => q.error || !q.ok ? '—' : nf1.format(q.lossTot)).join(' / '), _('res.mvSplitUnit')]);
+        }
+        if (s.fuelOut) rows.push([_('res.mvNote'), esc(_('res.mvFuelOut', { t: fmtDur(s.burns[s.burns.length - 1].t1) })), '']);
+      }
+    }
   }
-  rows.push([_('res.mvTot'), nf1.format(p.dv), 'm/s']);
-  if (p.burns.length > 1) rows.push([_('res.mvTof'), fmtDur(p.tof), '']);
-  const avail = dvAvail(M.m0, M.md, M.isp), prop = propMass(M.m0, p.dv, M.isp), unit = _('res.mvPropUnit', { m0: nf0.format(M.m0), isp: nf0.format(M.isp) });
-  if (p.dv <= avail) { rows.push([_('res.mvProp'), nf1.format(prop), unit]); rows.push([_('res.mvLeft'), nf1.format(M.m0 - prop), 'kg']); }
-  else rows.push([_('res.mvProp'), '—', _('res.mvShort', { dv: nf0.format(avail) })]);
-  // the same transfer with the other plane-change option, and the bi-elliptic one against Hohmann
-  const alt = opt => { const q = maneuverPlan(MAN.mu, MAN.R, MAN.o0, o1, { ...MAN.opt, ...opt }); return q.error ? null : q.dv; };
-  const cmp = (l, v) => { if (v != null) rows.push([l, nf1.format(v), _('res.mvCmpUnit', { d: (v >= p.dv ? '+' : '−') + nf1.format(Math.abs(v - p.dv)) })]); };
-  if (Math.abs(o1.i - MAN.o0.i) > 1e-9) { const other = M.plane === 'sep' ? 'comb' : 'sep'; cmp(_('res.mvCmpPlane', { mode: _('mv.plane.' + other) }), alt({ plane: other })); }
-  if (M.type === 'bielliptic') cmp(_('res.mvCmpHoh'), alt({ type: 'hohmann' }));
-  rows.push([_('res.sec.mvSim')]);
-  if (p.burns.length) rows.push([_('res.mvFlown'), nf1.format(r.burns.reduce((a, b) => a + b.dv, 0)), _('res.mvFlownUnit')]);
-  rows.push([_('res.mvFinal'), km(fin.rp - MAN.Re) + ' × ' + km(fin.ra - MAN.Re), _('res.mvFinalUnit', { peri: pn, apo: an })]);
-  rows.push([_('res.mvFinalI'), deg(fin.i), '°']);
-  rows.push([_('res.mvErr'), km(fin.rp - o1.rp) + ' / ' + km(fin.ra - o1.ra), _('res.mvErrUnit', { peri: pn, apo: an, di: nf3.format((fin.i - o1.i) / D2R) })]);
-  rows.push([_('res.mvPeriod'), fmtPeriod(2 * Math.PI * Math.sqrt(fin.a ** 3 / MAN.mu)), '']);
-  rows.push([_('res.integration'), nf0.format(r.steps), _('res.steps')]);
-  if (MAN.j2) {
-    const q = j2Rates(MAN.mu, MAN.j2, MAN.Re, fin.a, fin.e, fin.i), dd = v => (v >= 0 ? '+' : '−') + nf3.format(Math.abs(v / D2R * DAY));
-    rows.push([_('res.sec.mvJ2')]);
-    rows.push([_('res.mvNode'), dd(q.dO), _('res.degDay')]);
-    rows.push([_('res.mvApse'), dd(q.dw), _('res.degDay')]);
-    const notes = [];
-    if (MAN.key === 'earth' && Math.abs(q.dO / D2R * DAY - 360 / 365.2421897) < 0.02) notes.push(_('res.mvSSO'));
-    if (fin.e > 1e-3 && Math.abs(q.dw / D2R * DAY) < 0.02) notes.push(_('res.mvCrit'));
-    notes.push(_('res.mvOsc'));
-    for (const t of notes) rows.push([_('res.mvNote'), esc(t), '']);
+  // what the integration flew and reached
+  let cls = 'good', txt = _('chip.mvDone');
+  if (r) {
+    const fin = r.done || rv2el(MAN.mu, r.end.slice(0, 3), r.end.slice(3));
+    const dev = Math.max(Math.abs(fin.rp - o1.rp), Math.abs(fin.ra - o1.ra)), dI = Math.abs(fin.i - o1.i);
+    // with J2 the elements right after the last burn are osculating: within the short-period swing (≈ 3·J2·Re²/a in
+    // radius, 3·J2·(Re/a)² in inclination) the target counts as reached
+    const a1 = (o1.rp + o1.ra) / 2, swing = MAN.j2 ? 3 * MAN.j2 * MAN.Re * MAN.Re / a1 : 1e3, swingI = MAN.j2 ? 3 * MAN.j2 * (MAN.Re / a1) ** 2 : 1e-4;
+    txt = _(MAN.j2 && dev > 1e3 ? 'chip.mvDoneJ2' : 'chip.mvDone', { d: fmtDist(dev) });
+    if (r.impact >= 0) { cls = 'bad'; txt = _('chip.impact', { name: S.bodies[0].name }); }
+    else if (r.fuelOut) { cls = 'bad'; txt = _('chip.mvFuel'); }
+    else if (!r.ok) { cls = 'bad'; txt = _('chip.mvFail'); }
+    else if (!p.burns.length && !MAN.spiral) { cls = 'warn'; txt = _('chip.mvNone'); }
+    else if (dev > Math.max(1e3, swing) || dI > Math.max(1e-4, swingI)) { cls = 'warn'; txt = _('chip.mvOff', { d: fmtDist(dev) }); }
+    rows.push([_('res.sec.mvSim')]);
+    if (r.burns.length) rows.push([_('res.mvFlown'), nf1.format(r.burns.reduce((a, b) => a + b.dv, 0)), _('res.mvFlownUnit')]);
+    rows.push([_('res.mvFinal'), km(fin.rp - MAN.Re) + ' × ' + km(fin.ra - MAN.Re), _('res.mvFinalUnit', { peri: pn, apo: an })]);
+    rows.push([_('res.mvFinalI'), deg(fin.i), '°']);
+    rows.push([_('res.mvErr'), km(fin.rp - o1.rp) + ' / ' + km(fin.ra - o1.ra), _('res.mvErrUnit', { peri: pn, apo: an, di: nf3.format((fin.i - o1.i) / D2R) })]);
+    rows.push([_('res.mvPeriod'), fmtPeriod(2 * Math.PI * Math.sqrt(fin.a ** 3 / MAN.mu)), '']);
+    rows.push([_('res.integration'), nf0.format(r.steps), _('res.steps')]);
+    if (MAN.j2) {
+      const q = j2Rates(MAN.mu, MAN.j2, MAN.Re, fin.a, fin.e, fin.i), dd = v => (v >= 0 ? '+' : '−') + nf3.format(Math.abs(v / D2R * DAY));
+      rows.push([_('res.sec.mvJ2')]);
+      rows.push([_('res.mvNode'), dd(q.dO), _('res.degDay')]);
+      rows.push([_('res.mvApse'), dd(q.dw), _('res.degDay')]);
+      const notes = [];
+      if (MAN.key === 'earth' && Math.abs(q.dO / D2R * DAY - 360 / 365.2421897) < 0.02) notes.push(_('res.mvSSO'));
+      if (fin.e > 1e-3 && Math.abs(q.dw / D2R * DAY) < 0.02) notes.push(_('res.mvCrit'));
+      notes.push(_('res.mvOsc'));
+      for (const t of notes) rows.push([_('res.mvNote'), esc(t), '']);
+    }
   }
+  if (busy) { cls = 'warn'; txt = _('chip.mvBusy', { p: nf0.format(MAN.prog) }); }
+  chip.className = 'chip ' + cls; chip.textContent = txt;
   res.innerHTML = resRows(rows);
 }
 function updateResults() {
@@ -1255,7 +1408,8 @@ let solverWorker = null, rejectSolve = null;
 // The same worker code serves the porkchop grid (pc: grid spec; progress = rows done).
 const WORKER_BODY = `
 onmessage = async (e) => {
-  const { list, M, opt, pc } = e.data;
+  const { list, M, opt, pc, mv } = e.data;
+  if (mv) { try { postMessage({ done: maneuverRun(mv, p => postMessage({ p })) }); } catch (err) { postMessage({ error: String(err) }); } return; }
   try {
     const s = buildSystem(list);
     if (pc) { const g = porkchop(s, M, { ...pc, onRow: j => { if (j % 8 === 0) postMessage({ p: j }); } }); postMessage({ done: g }, [g.dv.buffer, g.c3.buffer, g.va.buffer]); return; }
@@ -2145,7 +2299,7 @@ function draw(now) {
   const tNow = ext ? C.T + S.ext : simR.t[si] + (segH > 0 ? sf * segH : 0);
   tNowG = tNow;
   const craft = ext ? orbitPos(tNow, [0, 0, 0]) : segH > 0 ? herm(si, sf, [0, 0, 0]) : [simR.x[si + 1], simR.y[si + 1], simR.z[si + 1]];
-  const pathIdx = ext ? C.pt.length - 1 : Math.min(C.pt.length - 1, C.segStart[si] + Math.floor(sf * (segH > 0 ? SUB : 0)));
+  const pathIdx = ext ? C.pt.length - 1 : Math.min(C.pt.length - 1, C.segStart[si] + Math.floor(sf * (segH > 0 ? C.sub : 0)));
   // a point a little later: the craft's velocity direction (finite difference)
   const dtv = ext ? C.orbit.P / 300 : Math.max(1, (segH > 0 ? segH : 60) * 0.02);
   const t2 = ext ? tNow + dtv : Math.min(C.T, tNow + dtv);
@@ -2232,6 +2386,11 @@ function draw(now) {
         ctx.stroke();
       }
       if (ext) drawTrail(S.ext, cpos);
+      // finite burns: the engine-on arcs (reached ones bright, the rest faint)
+      for (const [i0, i1] of C.burnIdx || []) {
+        if (pathIdx > i0) { ctx.strokeStyle = COL.burn; ctx.lineWidth = 2.6; strokePath(C.fx, C.fy, i0, Math.min(i1, pathIdx)); }
+        if (i1 > pathIdx) { ctx.strokeStyle = hexA(COL.burn, 0.4); ctx.lineWidth = 2; strokePath(C.fx, C.fy, Math.max(i0, pathIdx), i1); }
+      }
       // where the integrated mission ends (orbit insertion, or the mission complete), once reached
       if (S.u >= 1) {
         const e = C.fx.length - 1, x = sx(C.fx[e]), y = sy(C.fy[e]);
@@ -2298,6 +2457,11 @@ function draw(now) {
           ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 16, 0, 6.2832); ctx.fill();
         } else { ctx.strokeStyle = COL.traj; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, 6, 0, 6.2832); ctx.stroke(); }
         ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
+        const td = !ext ? thrustNow(tNow, craft) : null;
+        if (td) { // the thrust direction while the engine burns, in the view plane
+          const X = FP.X, Y = FP.Y, ax = td[0] * X[0] + td[1] * X[1] + td[2] * X[2], ay = -(td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2]);
+          arrow(x, y, ax, ay, COL.burn, 34);
+        }
         const vx = sx(cpos2[0]) - x, vy = sy(cpos2[1]) - y, vl = Math.hypot(vx, vy);
         if (vl > 1e-6) {
           const ux = vx / vl, uy = vy / vl, L = 22;
@@ -2327,12 +2491,16 @@ function draw(now) {
     setT('#r-t', _('hud.tplus', { t: fmtDur(tNow, true) }));
     setT('#tplus', _('hud.tplus', { t: fmtDur(tNow, true) }));
     if (S.model === 'real') setT('#r-date', fmtDate(dateAt(tNow)));
+    const row4 = S.kind === 'man' && !!(MAN && simR.m); // the mass row: flights with an engine
+    if ($('#r-l4').hidden === row4) $('#r-l4').hidden = $('#r-v4').hidden = !row4;
     if (S.kind === 'man' && MAN) { // altitude above the equatorial radius, speed, osculating apsis altitudes
       const rr = [absX - SP[0], absY - SP[1], absZ - SP[2]], vv = [vx - SV[0], vy - SV[1], vz - SV[2]], el = rv2el(MAN.mu, rr, vv);
       setT('#r-l1', _('hud.alt', { name: A })); setT('#r-v1', fmtDist(Math.max(0, dA - MAN.Re)));
       setT('#r-l2', _('hud.rel', { name: A })); setT('#r-v2', fmtSpeed(Math.hypot(...vv)));
       setT('#r-l3', _('hud.osc'));
       setT('#r-v3', el.a > 0 && el.e < 1 ? nf0.format((el.rp - MAN.Re) / 1e3) + ' × ' + nf0.format((el.ra - MAN.Re) / 1e3) + ' km' : '—');
+      const m = ext ? (simR.mEnd || NaN) : massAt(tNow); // finite flights: the mass, and whether the engine burns
+      setT('#r-l4', _(!ext && burnAt(tNow) >= 0 ? 'hud.massOn' : 'hud.mass')); setT('#r-v4', Number.isFinite(m) ? nf1.format(m) + ' kg' : '—');
     } else {
       const B = S.bodies[1].name, near = dB - sys.R[1] < dA - sys.R[0] ? 1 : 0;
       setT('#r-l1', _('hud.alt', { name: A })); setT('#r-v1', fmtDist(Math.max(0, dA - sys.R[0])));

@@ -563,13 +563,23 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   // their targets; with J2 within the short-period swing of the osculating elements (≈ 3·J2·Re²/a)
   const { BODIES: B } = require('../js/bodies.js');
   for (const sc of SCENARIOS.filter(q => q.model === 'man')) {
-    const M = sc.M, d = B[M.body], Re = d.j2[1] * 1e3, mu = d.gm * 1e9, { o0, o1, opt } = C.mvOrbits(M, Re);
-    const q = C.maneuverPlan(mu, d.radius * 1e3, o0, o1, opt), J2 = M.j2 ? d.j2[0] * 1e-6 : 0;
-    const sim = C.maneuverSim({ mu, R: d.radius * 1e3, J2, Re, rot: C.laplaceFrame(-90, 90), O0: M.O0 * D }, q);
+    const M = sc.M, d = B[M.body], Re = d.j2[1] * 1e3, mu = d.gm * 1e9, { o0, o1, opt } = C.mvOrbits(M, Re), J2 = M.j2 ? d.j2[0] * 1e-6 : 0;
+    const c = { mu, R: d.radius * 1e3, J2, Re, rot: C.laplaceFrame(-90, 90), O0: M.O0 * D }, fin = { F: M.F, isp: M.isp, m0: M.m0, md: M.md, steer: M.steer };
+    if (M.type === 'spiral') { // the ion spiral: Edelbaum's Δv, on the target radius and plane, propellant within the tank
+      const s = C.spiralFlight(c, o0, o1, fin, { cap: 60000 });
+      assert.ok(s.ok && Math.abs(s.done.a / o1.rp - 1) < 3e-3 && Math.abs(s.done.i - o1.i) < 0.1 * D && s.fuel < M.m0 - M.md, `${sc.id}: spiral flown`);
+      continue;
+    }
+    const q = C.maneuverPlan(mu, d.radius * 1e3, o0, o1, opt);
+    const sim = C.maneuverSim(c, q);
     const tol = J2 ? 3 * J2 * Re * Re / ((o1.rp + o1.ra) / 2) : 1;
     assert.ok(!q.error && sim.ok && sim.impact < 0 && sim.burns.length === q.burns.length, `${sc.id}: flown`);
     near(sim.done.rp, o1.rp, tol, `${sc.id}: periapsis`); near(sim.done.ra, o1.ra, tol, `${sc.id}: apoapsis`);
     near(sim.done.i, o1.i, J2 ? 3e-3 : 1e-9, `${sc.id}: inclination`);
+    if (M.thrust === 'fin') { // the 400 N apogee engine in three pieces: lands on the plane, total loss ≈ 9 m/s (the note)
+      const f = C.maneuverFlight(c, q, fin);
+      assert.ok(f.ok && Math.abs(f.done.i - o1.i) < 1e-6 && f.lossTot > 5 && f.lossTot < 15 && Math.max(...f.burns.map(b => b.arc)) < Math.PI / 3, `${sc.id}: finite burns (loss ${f.lossTot.toFixed(1)} m/s)`);
+    }
   }
   near(C.maneuverPlan(B.earth.gm * 1e9, 6e6, ...Object.values(C.mvOrbits(SCENARIOS.find(q => q.id === 'mv_leo_geo').M, 6378.137e3)).slice(0, 2), { type: 'hohmann', plane: 'comb', k: 1 }).dv,
     3935.22, 0.05, 'mv_leo_geo scenario = Vallado 6-1');
@@ -615,6 +625,71 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   C.keplerStep(mu, y0.slice(0, 3), y0.slice(3), P, rates, out);
   const ang = Math.atan2(out[1], out[0]) - Math.atan2(y0[1], y0[0]);
   assert.ok(Math.abs(ang - rates.dO * P) < 1e-9, 'J2 drift: Ω turns by Ω̇·Δt');
+
+  // 29) Finite burns (Phase 6b): the flight reaches the impulsive flight's orbit; the loss vanishes in the short-burn
+  // limit as the square of the burn time; the rocket equation holds for every burn
+  {
+    const muV = 398600.4418e9, ReV = 6378.1363e3, c = { mu: muV, R: 6371e3, rot: C.laplaceFrame(-90, 90), O0: 0 };
+    const near = (a, b, tol, m) => assert.ok(Math.abs(a - b) <= tol, `${m}: ${a} vs ${b}`);
+    const circ = (h, i = 0) => ({ rp: ReV + h * 1e3, ra: ReV + h * 1e3, i: i * D });
+    const plan = (o0, o1, opt) => C.maneuverPlan(muV, ReV, o0, o1, { type: 'hohmann', plane: 'comb', k: 1, ...opt });
+    const leoGeo = plan(circ(300), circ(35786)), fly = (p, fin) => C.maneuverFlight(c, p, { m0: 2000, md: 300, isp: 300, steer: 'local', ...fin });
+    const Fs = [1e4, 1e5, 1e6], runs = Fs.map(F => fly(leoGeo, { F })), ve = 300 * C.G0;
+    for (const [j, s] of runs.entries()) {
+      assert.ok(s.ok && s.burns.length === 2, 'finite LEO → GEO flown');
+      for (const b of s.burns) { // Δv = c·ln(m₀/m₁) = ∫F/m dt; duration = Δm/ṁ
+        assert.ok(Math.abs(b.dvAcc - b.dv) < 1e-9 * b.dv, `Tsiolkovsky: c·ln(m0/m1) ${b.dv} = ∫F/m dt ${b.dvAcc}`);
+        near(b.t1 - b.t0, (b.m0 - b.m1) / (Fs[j] / ve), 1e-6 * (b.t1 - b.t0), 'burn time = Δm/ṁ');
+        near(b.m1, b.m0 * Math.exp(-b.dv / ve), 1e-9 * b.m0, 'mass after the burn');
+      }
+      near(s.fuel, 2000 - s.burns[1].m1, 1e-9, 'propellant = m₀ − m₁');
+      near(s.burns[0].el.w, 0, 1e-6, 'centred: the transfer orbit\'s apse line stays on the burn line');
+    }
+    const [l4, l5, l6] = runs.map(s => s.loss), [d4, d5] = runs.map(s => Math.abs(s.done.ra - leoGeo.o1.ra));
+    assert.ok(l4 / l5 > 70 && l4 / l5 < 140 && l5 / l6 > 70 && l5 / l6 < 140, `loss ∝ t_b²: ${l4}, ${l5}, ${l6} m/s`);
+    assert.ok(Math.abs(l6) < 0.01 && Math.abs(runs[2].fuel - runs[2].fuelImp) < 0.01, 'short-burn limit: finite = impulsive (Δv, propellant)');
+    assert.ok(d4 / d5 > 70 && runs[2].trim < 1e-3, `what is left of the target is second order in the burn time (${d4} m, ${d5} m)`);
+    for (const r of runs) near(r.dvImp, leoGeo.dv, 1e-3, 'the impulsive reference = the plan (J2 off)');
+    // a plane change lands on the planned inclination, whatever the steering; the separate turn costs little extra
+    for (const steer of ['local', 'inertial']) {
+      const s = fly(plan(circ(185, 28.5), circ(35786)), { F: 2e4, steer });
+      assert.ok(s.ok && Math.abs(s.done.i) < 1e-6 && s.loss < 10, `${steer}: combined plane change lands (loss ${s.loss.toFixed(2)} m/s)`);
+    }
+    const sep = fly(plan(circ(185, 28.5), circ(35786), { plane: 'sep' }), { F: 2e4 });
+    assert.ok(sep.ok && Math.abs(sep.done.i) < 1e-6 && sep.loss < 20, `separate plane change, local steering (loss ${sep.loss.toFixed(2)} m/s)`);
+    // splitting a long apogee burn: the loss (with the trim to the target) falls with k
+    const gto = { rp: ReV + 250e3, ra: ReV + 35786e3, i: 28.5 * D }, gf = { F: 400, m0: 3500, md: 1900, isp: 320 };
+    const tot = [1, 2, 4].map(k => C.maneuverFlight(c, plan(gto, circ(35786), { k }), { steer: 'local', ...gf }).lossTot);
+    assert.ok(tot[0] > tot[1] && tot[1] > tot[2] && tot[2] < 0.15 * tot[0], `k = 1, 2, 4: ${tot.map(v => v.toFixed(1)).join(' / ')} m/s`);
+    // more than 60° of arc: the run offers k = 1, 2, 4
+    const job = { c, o0: gto, o1: circ(35786), opt: { type: 'hohmann', plane: 'comb', k: 1, rb: 0 }, fin: { ...gf, F: 120, steer: 'local' } };
+    const run = C.maneuverRun(job);
+    assert.ok(run.sim.burns[0].arc > Math.PI / 3 && run.split && run.split.length === 3 && run.split[2].lossTot < run.split[0].lossTot, 'long burn: k = 1, 2, 4 offered');
+    // out of propellant: the engine stops at the dry mass
+    const dry = fly(leoGeo, { F: 1e4, md: 1500 });
+    assert.ok(!dry.ok && dry.fuelOut && Math.abs(dry.mEnd - 1500) < 1e-6, 'dry mass reached: engine off');
+  }
+
+  // 30) Low-thrust spiral (Edelbaum): coplanar Δv = v₀ − v₁, with a plane change Edelbaum's Δv lands on the target
+  // inclination; revolutions and time agree with the averaged estimate; timing printed
+  {
+    const muV = 398600.4418e9, ReV = 6378.1363e3, c = { mu: muV, R: 6371e3, rot: C.laplaceFrame(-90, 90), O0: 0 };
+    const circ = (h, i = 0) => ({ rp: ReV + h * 1e3, ra: ReV + h * 1e3, i: i * D }), fin = { F: 1, m0: 1000, md: 500, isp: 2000 };
+    let t = Date.now();
+    const s = C.spiralFlight(c, circ(400), circ(35786), fin, { cap: 60000 }), b = s.burns[0];
+    const ms = Date.now() - t, v0 = Math.sqrt(muV / circ(400).rp), v1 = Math.sqrt(muV / circ(35786).rp);
+    assert.ok(s.ok && Math.abs(b.dv / (v0 - v1) - 1) < 1e-3, `coplanar spiral Δv ${b.dv.toFixed(1)} vs v0 − v1 ${(v0 - v1).toFixed(1)} m/s`);
+    assert.ok(Math.abs(b.revs / s.est.revs - 1) < 0.01 && Math.abs(b.t1 / s.est.t - 1) < 0.01, `revolutions ${b.revs.toFixed(1)} vs estimate ${s.est.revs.toFixed(1)}`);
+    assert.ok(Math.abs(b.el.a / circ(35786).rp - 1) < 1e-6, 'spiral ends at the target radius');
+    assert.ok(s.t.length < 60000 * 1.3, 'samples within the cap');
+    console.log(`spiral LEO → GEO, 1 N: ${b.revs.toFixed(0)} revolutions, ${ms} ms`);
+    const e = C.spiralFlight(c, circ(400, 10), circ(35786, 0), fin, { cap: 60000 }), be = e.burns[0];
+    assert.ok(Math.abs(be.dv / e.est.dv - 1) < 1e-6 && Math.abs(be.el.i) < 0.1 * D && Math.abs(be.el.a / circ(35786).rp - 1) < 1e-3,
+      `Edelbaum Δi = 10°: Δv ${be.dv.toFixed(1)} m/s, i ${(be.el.i / D).toFixed(3)}°`);
+    assert.ok(e.est.dv > b.dv, 'a plane change costs more');
+    assert.strictEqual(C.spiralFlight(c, { rp: ReV + 300e3, ra: ReV + 900e3, i: 0 }, circ(35786), fin).error, 'err.mvSpiralCirc');
+    assert.strictEqual(C.spiralFlight(c, circ(400), circ(35786), { ...fin, F: 0.001 }).error, 'err.mvSpiralRevs');
+  }
 
   // 28) The Moon's IAU pole (PCK, with its 0.1°+ periodic terms) keeps its equator ≈ 1.54° from the ecliptic
   // (Cassini's laws), whatever the node's phase in its 18.6-year cycle

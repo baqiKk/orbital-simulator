@@ -239,6 +239,8 @@ function upload3() {
     V3.line('sim', 'park', C.orbit.ring, C.orbit.ring.length / 3, { color: COL.traj, opacity: 0.3, width: 1.2, closed: true });
   }
   C.ring3.forEach((e, g) => V3.line('sim', 'ring' + g, e, e.length / 3, { color: C.rings[g].col, opacity: C.rings[g].a, width: 1, closed: true }));
+  // finite burns: the engine-on arcs, drawn up to the craft
+  (C.burnIdx || []).forEach(([i0, i1], g) => { if (i1 > i0) V3.line('sim', 'burn' + g, C.f3.subarray(3 * i0, 3 * (i1 + 1)), i1 - i0 + 1, { color: COL.burn, width: 2.6 }); });
   V3.dyn('sim', 'conn', 2, { color: COL.traj, width: 1.8 });
   V3.dyn('sim', 'trail', TRAIL_REVS * QUALITY.normal.trailK + 4, { color: '#ffffff', vertexColors: true, additive: true, width: 1.6 });
   if (S.model === 'real' && S.frame === 'inertial') V3.line('sim', 'gamma', new Float64Array([0, 0, 0, 50 * AU, 0, 0]), 2, { color: COL.cyan, opacity: 0.3, width: 1 });
@@ -330,6 +332,7 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   }
   if (C.orbit && C.orbit.ring) { const b = 3 * C.orbit.body; V3.lineSet('sim', 'park', [BP3[b], BP3[b + 1], BP3[b + 2]], ext, ROT9); }
   for (let g = 0; g < C.ring3.length; g++) V3.lineSet('sim', 'ring' + g, [BP3[0], BP3[1], BP3[2]], true);
+  (C.burnIdx || []).forEach(([i0, i1], g) => { if (i1 > i0) { V3.lineSet('sim', 'burn' + g, null, pathIdx > i0); V3.lineUpTo('sim', 'burn' + g, Math.min(i1, pathIdx) - i0); } });
   V3.lineSet('sim', 'gamma', null, V3S.grid);
   if (ext) trail3(); else V3.dynHide('sim', 'trail');
   grid3(c, V3S.grid);
@@ -384,6 +387,12 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
     addHit('c', 0, x, y, 3.2);
     if (Q.glow) { const g = ctx.createRadialGradient(x, y, 0, x, y, 16); g.addColorStop(0, hexA(COL.traj, 0.6)); g.addColorStop(1, hexA(COL.traj, 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 16, 0, 6.2832); ctx.fill(); }
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
+    const td = !ext ? thrustNow(tNow, craft) : null;
+    if (td) { // the thrust direction while the engine burns: a short step along it, projected
+      const k = c.dist * 0.05, X = FP.X, Y = FP.Y, Z = FP.Z;
+      const q = [CR3[0] + k * (td[0] * X[0] + td[1] * X[1] + td[2] * X[2]), CR3[1] + k * (td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2]), CR3[2] + k * (td[0] * Z[0] + td[1] * Z[1] + td[2] * Z[2])];
+      proj3(q, PJ); if (PJ[2] > 0) arrow(x, y, PJ[0] - x, PJ[1] - y, COL.burn, 34);
+    }
     const vx = PJ2[0] - x, vy = PJ2[1] - y, vl = Math.hypot(vx, vy);
     if (PJ2[2] > 0 && vl > 1e-6) {
       const ux = vx / vl, uy = vy / vl, L = 22;

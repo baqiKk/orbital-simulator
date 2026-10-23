@@ -80,6 +80,7 @@
         <span class="lbl" id="r-l1"></span><b id="r-v1">—</b>
         <span class="lbl" id="r-l2"></span><b id="r-v2">—</b>
         <span class="lbl" id="r-l3"></span><b id="r-v3">—</b>
+        <span class="lbl" id="r-l4" hidden></span><b id="r-v4" hidden>—</b>
       </div>
       </div>
       <div class="glass timeline" id="timeline">
@@ -143,27 +144,41 @@
             <div class="seg full" id="mvTypeSeg" role="group" data-i18n-aria-label="mv.type">
               <button type="button" data-v="hohmann" data-i18n="mv.type.hohmann" data-i18n-title="mv.type.hohmannTip"></button>
               <button type="button" data-v="bielliptic" data-i18n="mv.type.bielliptic" data-i18n-title="mv.type.biellipticTip"></button>
+              <button type="button" data-v="spiral" data-i18n="mv.type.spiral" data-i18n-title="mv.type.spiralTip"></button>
             </div>
           </div>
           <label class="field" id="mvRbWrap" hidden><span id="lbl-rb"></span><input type="number" id="mv-rb" step="any" min="0"></label>
-          <div class="field"><span data-i18n="mv.plane"></span>
+          <small class="mv-hint" id="mvSpiralHint" hidden></small>
+          <div class="field" id="mvPlaneWrap"><span data-i18n="mv.plane"></span>
             <div class="seg full" id="mvPlaneSeg" role="group" data-i18n-aria-label="mv.plane">
               <button type="button" data-v="comb" data-i18n="mv.plane.comb" data-i18n-title="mv.plane.combTip"></button>
               <button type="button" data-v="sep" data-i18n="mv.plane.sep" data-i18n-title="mv.plane.sepTip"></button>
             </div>
           </div>
           <div class="grid2 mv-row">
-            <label class="field" data-i18n-title="mv.kTip"><span data-i18n="mv.k"></span><input type="number" id="mv-k" min="1" max="8" step="1"></label>
+            <label class="field" id="mvKWrap" data-i18n-title="mv.kTip"><span data-i18n="mv.k"></span><input type="number" id="mv-k" min="1" max="8" step="1"></label>
             <label class="chk" data-i18n-title="mv.j2Tip"><input type="checkbox" id="mv-j2"><span data-i18n="mv.j2"></span></label>
           </div>
           <fieldset class="mvbox">
             <legend data-i18n="mv.vehicle"></legend>
-            <div class="grid3">
+            <div class="seg full" id="mvThrSeg" role="group" data-i18n-aria-label="mv.thrust">
+              <button type="button" data-v="imp" data-i18n="mv.thrust.imp" data-i18n-title="mv.thrust.impTip"></button>
+              <button type="button" data-v="fin" data-i18n="mv.thrust.fin" data-i18n-title="mv.thrust.finTip"></button>
+            </div>
+            <div class="grid2">
               <label class="field"><span data-i18n="mv.m0"></span><input type="number" id="mv-m0" step="any" min="0"></label>
               <label class="field"><span data-i18n="mv.md"></span><input type="number" id="mv-md" step="any" min="0"></label>
               <label class="field"><span data-i18n="mv.isp"></span><input type="number" id="mv-isp" step="any" min="0"></label>
+              <label class="field" id="mvFWrap"><span data-i18n="mv.F"></span><input type="number" id="mv-F" step="any" min="0"></label>
+            </div>
+            <div class="field" id="mvSteerWrap"><span data-i18n="mv.steer"></span>
+              <div class="seg full" id="mvSteerSeg" role="group" data-i18n-aria-label="mv.steer">
+                <button type="button" data-v="local" data-i18n="mv.steer.local" data-i18n-title="mv.steer.localTip"></button>
+                <button type="button" data-v="inertial" data-i18n="mv.steer.inertial" data-i18n-title="mv.steer.inertialTip"></button>
+              </div>
             </div>
             <small class="mv-hint" id="mvAvail"></small>
+            <small class="mv-hint" id="mvFinHint" hidden></small>
           </fieldset>
           <details class="adv">
             <summary data-i18n="ui.advanced"></summary>
