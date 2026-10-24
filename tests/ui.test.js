@@ -149,10 +149,11 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(P.VIEW_MODES.includes('3d'));
 }
 
-// 8) Planet images: the low-resource mode never fetches one; every texture exists, is equirectangular (2:1, at most
-// 2048 px wide) and has its source, credit, licence and note texts; nothing in the markup or styles points at them
+// 8) Planet images: the low-resource mode never fetches one; every texture and layer (with its sharper tiers) exists, is
+// equirectangular (2:1; base files at most 2048 px wide, tiers at most 4096) and has its source, credit, licence and
+// note texts; nothing in the markup or styles points at them
 {
-  const { TEX_SRC, DATA_SRC } = require('../js/bodies.js');
+  const { TEX_SRC, DATA_SRC, SKY } = require('../js/bodies.js');
   const appSrc = read('js/app.js'), globe = read('js/globe.js'), m3 = read('js/mode3d.js');
   const prof = n => appSrc.match(new RegExp(`\\n  '?${n}'?:\\s*\\{([^}]*)\\}`))[1];
   assert.ok(/tex: false/.test(prof('low')), 'low-resource profile: no textures');
@@ -175,23 +176,92 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     return null;
   };
   let n = 0;
+  const strip = t => t === null || /rings/.test(t.file);
   for (const [k, b] of Object.entries(BODIES)) {
-    for (const [t, note] of [[b.tex, k], [b.texAlt, k], [b.rings, k + 'Rings']]) {
+    const layers = [[b.tex, k], [b.texAlt, k], [b.rings, k + 'Rings'], [b.rings && b.rings.tau, k + 'Tau'], [b.relief, k + 'Relief'], [b.clouds, k + 'Clouds'], [b.night, k + 'Night'], [b.ocean, k + 'Ocean']];
+    // the Sources window lists the same layers (credLayers in app.js)
+    for (const [, note] of layers) assert.ok(appSrc.includes("'cred.note.' + k + '" + note.slice(k.length) + "'") || note === k, 'credits list layer ' + note);
+    for (const [t, note] of layers) {
       if (!t) continue;
       n++;
-      assert.ok(fs.existsSync(path.join(__dirname, '..', t.file)), `texture file exists: ${t.file}`);
-      const [w, h] = dims(t.file);
-      if (t === b.rings) assert.ok(w > h, 'ring strip is a horizontal strip');
-      else assert.ok(w === 2 * h && w <= 2048, `${t.file}: equirectangular, ≤ 2048 px (${w}×${h})`);
+      const files = [[t.w || 1024, t.file], ...(t.hi || [])];
+      files.forEach(([wantW, file], tier) => {
+        assert.ok(fs.existsSync(path.join(__dirname, '..', file)), `texture file exists: ${file}`);
+        const [w, h] = dims(file);
+        if (strip(t)) assert.ok(w > h, 'ring strip is a horizontal strip');
+        else {
+          assert.ok(Math.abs(w - 2 * h) <= 1 && w === wantW && w <= (tier ? 4096 : 2048), `${file}: equirectangular, ${wantW} px wide (${w}×${h})`);
+          if (tier) assert.ok(wantW > files[tier - 1][0], `${file}: tiers grow`);
+        }
+      });
       assert.ok(TEX_SRC[t.src], `${k}: source ${t.src} has a URL`);
       for (const key of ['cred.src.' + t.src, 'cred.by.' + t.src, 'cred.lic.' + t.src, 'cred.note.' + note]) assert.ok(has(key), `credit text: ${key}`);
     }
+    if (b.relief) assert.ok(b.relief.h[0] < 0 && b.relief.h[1] > 0, k + ': relief height range in metres');
   }
-  assert.ok(n >= 12, 'textures listed');
+  assert.ok(n >= 20, 'textures and layers listed');
+  // the sky: files, sources and texts; 8 bytes per catalogue star
+  for (const [id, t] of Object.entries(SKY)) {
+    assert.ok(fs.existsSync(path.join(__dirname, '..', t.file)), 'sky file exists: ' + t.file);
+    for (const key of ['cred.src.' + t.src, 'cred.by.' + t.src, 'cred.lic.' + t.src, 'cred.sky.' + id, 'cred.note.sky.' + id]) assert.ok(has(key), `credit text: ${key}`);
+  }
+  { const [w, h] = dims(SKY.milky.file); assert.ok(w === 2 * h, 'Milky Way map is 2:1'); }
+  assert.strictEqual(fs.statSync(path.join(__dirname, '..', SKY.stars.file)).size % 8, 0, 'star records are 8 bytes');
+  assert.ok(has('cred.clouds') && P.PREF_KEYS.clouds, 'clouds switch and its saved choice');
   for (const k of Object.keys(DATA_SRC)) assert.ok(has('cred.data.' + k), `data source text: cred.data.${k}`);
   // the real model's untextured planets are the ones the Sources window lists as plain globes
   assert.deepStrictEqual(Object.keys(BODIES).filter(k => BODIES[k].parent === 'sun' && !BODIES[k].tex), ['venus', 'uranus', 'neptune']);
   assert.ok(P.WIN_IDS.includes('credits') && /data-win="credits"/.test(html), 'Sources window');
+}
+
+// 9) Texture tiers and what a look asks for (js/globe.js run in a sandbox; Image counts downloads): nothing in the
+// low-resource mode or below TEX_MIN_PX; the base file first, then the tier the globe's size calls for, never above the
+// mode's cap (2048 in normal 2D, 4096 in 3D, 1024 at ladder step 3); relief and clouds only while the ladder allows.
+// The sky loads only where the profile has stars; one fetch() in all (the star catalogue).
+{
+  const asked = [];
+  const sb = { performance: { now: () => 1e6 }, Image: class { set src(f) { asked.push(f); this._s = f; } get src() { return this._s; } }, Math, Object, Map, Set, Array, Number, console };
+  vm.runInNewContext(read('js/bodies.js') + '\n' + read('js/globe.js') + '\nthis.api = { texTier, globeLook, TEXC, TIER, BIG, TEXOPT, BODIES, TEX_MIN_PX };', sb);
+  const G = sb.api, W3 = [1024, 2048, 4096];
+  // pure tier choice: about one texel per screen pixel, capped, sticky until the lower tier has 25 % to spare
+  assert.strictEqual(G.texTier(W3, 50, 4096), 0);
+  assert.strictEqual(G.texTier(W3, 300, 4096), 1);
+  assert.strictEqual(G.texTier(W3, 1000, 4096), 2);
+  assert.strictEqual(G.texTier(W3, 1000, 2048), 1, 'normal 2D: 2k at most');
+  assert.strictEqual(G.texTier(W3, 1000, 1024), 0, 'ladder step 3: base only');
+  assert.strictEqual(G.texTier(W3, 420, 4096, 2), 2, 'kept while the 2k tier is barely enough');
+  assert.strictEqual(G.texTier(W3, 300, 4096, 2), 1, 'dropped once 2k has room to spare');
+  assert.strictEqual(G.texTier([2048, 3601], 1000, 4096), 1, 'Jupiter: the original 3601 px file on top');
+  const fx = { clouds: true, relief: true, glint: true };
+  const reset = () => { asked.length = 0; G.TEXC.clear(); G.TIER.clear(); G.BIG.clear(); };
+  const loadAll = () => { for (const e of G.TEXC.values()) e.img.onload(); };
+  reset(); G.globeLook('earth', 900, false, false, 4096, fx, 0); G.globeLook('moon', 900, false, false, 4096, fx, 0);
+  assert.strictEqual(asked.length, 0, 'low-resource mode: no request');
+  reset(); G.globeLook('earth', G.TEX_MIN_PX - 1, true, true, 4096, fx, 0);
+  assert.strictEqual(asked.length, 0, 'too small: no request');
+  reset(); G.globeLook('earth', 900, true, false, 4096, fx, 0);
+  assert.strictEqual(asked.length, 0, 'after the quality drop: no new download');
+  reset(); G.globeLook('moon', 900, true, true, 2048, fx, 0); loadAll(); G.globeLook('moon', 900, true, true, 2048, fx, 0);
+  assert.ok(asked.includes('img/planets/moon.jpg') && asked.includes('img/planets/moon_2k.jpg') && !asked.some(f => /_4k/.test(f)), 'normal 2D: base and 2k only: ' + asked);
+  reset(); G.globeLook('moon', 900, true, true, 4096, fx, 0); loadAll(); G.globeLook('moon', 900, true, true, 4096, fx, 0);
+  assert.ok(asked.includes('img/planets/moon_4k.jpg') && asked.includes('img/planets/moon_height_4k.png'), '3D close: 4k colour and heights');
+  // three bodies close up at once: the third gets 2k
+  reset(); for (const k of ['earth', 'moon', 'mars']) G.globeLook(k, 900, true, true, 4096, fx, 0); loadAll(); for (const k of ['earth', 'moon', 'mars']) G.globeLook(k, 900, true, true, 4096, fx, 0);
+  assert.ok(asked.includes('img/planets/earth_4k.jpg') && asked.includes('img/planets/moon_4k.jpg') && !asked.includes('img/planets/mars_4k.jpg') && asked.includes('img/planets/mars_2k.jpg'), 'two 4k bodies at most');
+  reset(); G.globeLook('moon', 900, true, true, 1024, { clouds: false, relief: false, glint: false }, 0);
+  assert.deepStrictEqual([...asked], ['img/planets/moon.jpg'], 'ladder steps 2–3: base colour only');
+  reset(); G.globeLook('earth', 100, true, true, 4096, { clouds: false, relief: true, glint: true }, 0);
+  assert.ok(!asked.some(f => /clouds/.test(f)) && asked.includes('img/planets/earth_night.jpg'), 'ladder step 1: no clouds');
+  G.TEXOPT.clouds = false; reset(); G.globeLook('earth', 100, true, true, 4096, fx, 0); G.TEXOPT.clouds = true;
+  assert.ok(!asked.some(f => /clouds/.test(f)), 'clouds switched off: not fetched');
+  reset(); G.globeLook('moon', 30, true, true, 4096, fx, 0);
+  assert.ok(!asked.some(f => /height/.test(f)), 'relief only once the globe is large enough');
+  // the sky: asked for behind a Q.stars check only; the star catalogue is the one fetch()
+  const m3 = read('js/mode3d.js'), app = read('js/app.js'), globe = read('js/globe.js');
+  assert.ok(/function sky3\(\) \{ if \(Q\.stars\) /.test(m3), '3D sky behind Q.stars');
+  assert.ok(/function makeStars\(\) \{\n  if \(!Q\.stars \|\| MODE === '3d'\) \{[^}]*return; \}\n  const sk = skyReady\(true\)/.test(app), '2D sky behind Q.stars');
+  assert.strictEqual([...(app + m3).matchAll(/skyReady\(/g)].length, 3, 'skyReady callers: makeStars, its rebuild, sky3');
+  assert.strictEqual([...(globe + app + m3 + read('js/view3d.js')).matchAll(/fetch\(/g)].length, 1, 'one fetch: the star catalogue');
 }
 
 console.log('OK — all UI tests passed');

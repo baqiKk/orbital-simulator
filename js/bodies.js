@@ -49,26 +49,48 @@
 //   'J2 (x 10^-6)' and 'Equatorial radius (km)' (1 bar level for the giants), copied as printed (Saturn '16,298.', Neptune
 //   '3411.'). Planets and the Moon.
 // glow: [colour, strength] thin limb glow of an atmosphere (display only; strongest on the lit side, faint at night).
+// haze (Venus, Titan; display only): a thick hazy limb, single scattering in a spherical shell above the drawn surface,
+//   density exp(−h/H) (+ a detached layer [altitude km, width km, density relative to the base]), H scale height (km),
+//   tau the vertical optical depth in visible light, top (km) where the shell ends, g the Henyey–Greenstein asymmetry
+//   (forward scattering: a backlit body shows a bright ring), the body colour as the haze's colour. Approximate literature
+//   values: Titan — haze optical depth ≈ 2.5 near 530 nm and scale height ≈ 65 km from the Huygens DISR descent
+//   (Tomasko et al. 2008, Planet. Space Sci. 56, 669), detached layer near 500 km (Porco et al. 2005, Nature 434, 159);
+//   Venus — the upper haze above the cloud tops (taken as the drawn surface), H ≈ 5 km, optical depth ≈ 0.3 (Venus
+//   Express SPICAV/VMC; Wilquet et al. 2009, J. Geophys. Res. 114, E00B42).
+// phot: 'lambert' — the day side darkens as cos(sun elevation) (Earth); bodies with relief use Lommel–Seeliger (a
+//   regolith surface: flat at full phase, dark towards the terminator); the others keep the plain lit/unlit look.
 // lock: synchronous moon, its prime meridian (texture longitude 0) faces the parent along the orbit (this app's orbit;
 //   the PCK rotation of these moons would disagree with our mean elements by the libration and the orbit phase).
 // tex: surface texture (equirectangular, longitude 0 in the middle, north up), drawn only in the normal 2D and 3D modes
 //   and only once the body is a few pixels across (js/globe.js). src: the TEX_SRC entry; sat: colour saturation
 //   (Mercury's enhanced-colour mosaic is toned down). Every file is a real source image, at most downscaled; credits and
-//   licences are shown in the app (Sources window), the text in js/i18n.js (cred.*). Original files (SHA-1):
-//   mercury  USGS Astrogeology, mercury_messenger_mdis_basemap_enhancedcolor_mosaic_global_1024.jpg (020fa8cb…), as is
+//   licences are shown in the app (Sources window), the text in js/i18n.js (cred.*).
+//   w: width of the base file (1024 when not given); hi: sharper tiers [width px, file], fetched only once the globe is
+//   large enough on screen for them (2048 in the normal 2D mode, up to 4096 in 3D; js/globe.js texTier). The same for
+//   relief / clouds / night / ocean. Downscaling averages in linear light (colour) or the stored values (data).
+//   Original files (SHA-1):
+//   mercury  USGS Astrogeology, mercury_messenger_mdis_basemap_enhancedcolor_mosaic_global_1024.jpg (020fa8cb…), as is;
+//            2k / 4k from Mercury_MESSENGER_MDIS_Basemap_EnhancedColor_Mosaic_Global_665m.tif (23040×11520, 701e89ae…)
 //   venus    NASA 3D Resources "Venus" (Magellan radar, 1440×720, 59c7464b…) -> 1024×512; optional (texAlt), the
 //            default is an untextured cloud-coloured globe
 //   earth    NASA Earth Observatory, Blue Marble: Next Generation with Topography, August 2004,
-//            world.topo.200408.3x5400x2700.jpg (38cb9d5b…) -> 1024×512
-//   moon     NASA SVS 4720 "CGI Moon Kit", lroc_color_poles_1k.jpg (2019 colour map, 50bf929b…), as is
-//   mars     NASA 3D Resources "Mars" (1440×720, 8b028e13…) -> 1024×512
+//            world.topo.200408.3x5400x2700.jpg (EO image record 74418, 38cb9d5b…) -> 1024×512, 2048×1024, 4096×2048
+//   moon     NASA SVS 4720 "CGI Moon Kit", lroc_color_poles_1k.jpg (2019 colour map, 50bf929b…), as is;
+//            lroc_color_poles_2k.tif (c6cdd7d4…) and _4k.tif (079fd0c2…), same size, as JPEG
+//   mars     USGS Astrogeology, Mars Viking MDIM 2.1 colourised global mosaic, the official 1 km browse image
+//            mars_viking_mdim21_clrmosaic_1km.jpg (21339×10670, 47824122…; the 232 m GeoTIFF is 12.7 GB and not cloud
+//            optimised) -> 1024×512, 2048×1024, 4096×2048. Until Phase 5c the 1k file was NASA 3D Resources "Mars"; it was
+//            replaced so the tiers match.
 //   jupiter  NASA Photojournal PIA07782 "Cassini's Best Maps of Jupiter (Cylindrical Map)", PIA07782.jpg
-//            (3601×1801, 81d41667…) -> 2048×1024
+//            (3601×1801, 81d41667…) -> 2048×1024; the 3D top tier is the file itself (3601×1801)
 //   io, europa, ganymede, callisto  NASA 3D Resources "Jupiter - Io (A)", "- Europa", "- Ganymede", "- Callisto"
-//            (1440×720; c3320ddd…, 90333182…, c41ae8a7…, 613f8ac1…) -> 1024×512
+//            (1440×720; c3320ddd…, 90333182…, c41ae8a7…, 613f8ac1…) -> 1024×512. Io stays at 1k: the USGS colour mosaic
+//            (Io_GalileoSSI-Voyager_Global_Mosaic_ClrMerge_1km.tif) takes its red from the 756 nm near-infrared filter, so
+//            it is not true colour.
 //   saturn   NASA Science 3D model Saturn_1_120536.glb (NASA VTAD, 35a05b17…): its 4096×3072 cube-layout base-colour
 //            texture reprojected to equirectangular through the model's own UVs (ray from the centre per output pixel,
-//            barycentric UV, bilinear sample; every pixel covered), 2048×1024 -> 1024×512
+//            barycentric UV, bilinear sample; every pixel covered), 2048×1024 -> 1024×512; the 2k tier is that
+//            reprojection itself (its source cube faces carry no more detail than that)
 //   titan    NASA 3D Resources "Saturn - Titan" (720×360, 92932463…), as is
 //   Uranus and Neptune have no texture (no real global map exists; the NASA textures are illustrative): plain
 //   globes in their colour, with limb darkening, like the cloud-covered Venus.
@@ -76,6 +98,30 @@
 //   inner to the outer edge; r = the GLB ring mesh's inner and outer radius over its planet mesh's equatorial radius
 //   (616.1504 / 500.0371 and 1165.4507 / 500.0371), req = Saturn's equatorial radius from the NSSDC Saturnian Rings
 //   Fact Sheet (60,268 km; there the C ring starts at 1.239 and the F ring is at 2.320 equatorial radii).
+//   tau: the rings' normal optical depth over the same radii, from the Voyager 2 PPS δ Scorpii stellar occultation
+//   (PDS Ring-Moon Systems Node, VG_2801/EASYDATA/KM010/PS1P01.TAB, 10 km bins, 72 000–142 500 km, 1a529c7c…; column
+//   MEDIAN_NORMAL_OPACITY, 99 = opaque, small negative noise read as 0): stored as 1 − e^(−τ) (8192×1 grey PNG), each
+//   pixel the mean transmission over its radii. The shader turns it back into τ: opacity 1 − e^(−τ/μ), the lit and the
+//   unlit face from single scattering (the C ring and the Cassini Division glow when backlit, the dense B ring goes dark),
+//   the F ring's dust forward-scatters.
+// relief: heights (8-bit grey PNG, linear between h[0] and h[1] metres, the same range for every tier) for the shaded
+//   relief and cast shadows; no exaggeration.
+//   moon     NASA SVS 4720 LOLA heights, ldem_4_uint.tif (1440×720, d04bd9aa…) -> 1024×512; ldem_16_uint.tif
+//            (5760×2880, 193594b6…) -> 2048×1024, 4096×2048 (uint16 half-metres over 1727.4 km -> metres over 1737.4 km)
+//   mars     MGS MOLA MEGDR topography (PDS Geosciences Node, mgsl_300x), megt90n000cb.img (4 px/°, 9e11c9e3…),
+//            megt90n000eb.img (16 px/°, eb6b0d11…), megt90n000fb.img (32 px/°, 891bbf03…), metres over the areoid; the
+//            files start at 0° E: turned by half a width so longitude 0 is in the middle
+//   mercury  USGS Astrogeology, MESSENGER global DEM 665 m v2, Mercury_Messenger_USGS_DEM_Global_665m_v2.tif
+//            (23040×11520, 6766bd33…; int16 × 0.5 m over 2439.4 km, no gaps) -> 1024, 2048, 4096 wide
+// clouds / night / ocean (Earth): clouds NASA Visible Earth "Blue Marble: Clouds" (record 57747), cloud_combined_2048.jpg
+//   (e210f504…; -> 1024×512, the 2k tier as is) and cloud_combined_8192.tif (57c8587a… -> 4096×2048); the grey value is
+//   the cloud cover, drawn over the surface, turning slowly eastwards (display only: no real winds), with its shadow; on
+//   or off in the Sources window. Night: NASA Earth Observatory Black Marble 2016 grayscale (record 144897),
+//   BlackMarble_2016_01deg_gray.jpg (3600×1800, b2f6ef90… -> 1024, 2048) and BlackMarble_2016_3km_gray.jpg (13500×6750,
+//   e580163d… -> 4096): city lights on the night side only, with their own exposure (true to scale they would be about
+//   10⁻⁵ of the day side). Ocean: NASA Earth Observatory GEBCO_08 bathymetry (record 73963),
+//   gebco_08_rev_bath_3600x1800_color.jpg (185ca845… -> 1024, 2048), as is: land is black, any other value is water,
+//   where the Sun's glint is drawn.
 // simple: the Phase 1 values of the simplified model, kept as they were so its scenarios reproduce
 //   exactly (mass kg, radius km, circular orbit radius a km). Bodies without it derive them (gm, radius, a).
 
@@ -86,27 +132,33 @@ const BODIES = {
   sun: { parent: null, gm: 1.32712440041e11, radius: 695700, tilt: 7.25, color: '#ffd27a', pole: [286.13, 0, 63.87, 0, 84.176, 14.18440],
     simple: { mass: 1.98847e30, radius: 695700, a: 0 } },
   mercury: { parent: 'sun', gm: 22031.868551, radius: 2439.4, tilt: 0.03, j2: [50.3, 2440.5], color: '#a9a49c', pole: [281.0103, -0.0328, 61.4155, -0.0049, 329.5988, 6.1385108],
-    tex: { file: 'img/planets/mercury.jpg', src: 'usgs', sat: 0.3 },
+    tex: { file: 'img/planets/mercury.jpg', src: 'usgs', sat: 0.3, hi: [[2048, 'img/planets/mercury_2k.jpg'], [4096, 'img/planets/mercury_4k.jpg']] },
+    relief: { file: 'img/planets/mercury_height.png', src: 'usgsDem', h: [-5400, 4500], hi: [[2048, 'img/planets/mercury_height_2k.png'], [4096, 'img/planets/mercury_height_4k.png']] },
     simple: { mass: 3.3011e23, radius: 2439.7, a: 57909050 },
     orb: { jpl: [[0.38709927, 0.20563593, 7.00497902, 252.25032350, 77.45779628, 48.33076593],
                  [0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081]] } },
   venus: { parent: 'sun', gm: 324858.592, radius: 6051.8, tilt: 177.36, j2: [4.458, 6051.8], color: '#e8c98f', pole: [272.76, 0, 67.16, 0, 160.20, -1.4813688],
-    texAlt: { file: 'img/planets/venus_radar.jpg', src: 'nasa3d' }, atm: [60, 180], atmR: 6051.8, glow: ['#f2dca0', 0.3],
+    texAlt: { file: 'img/planets/venus_radar.jpg', src: 'nasa3d' }, atm: [60, 180], atmR: 6051.8, haze: { H: 5, tau: 0.3, top: 40, g: 0.7 },
     simple: { mass: 4.8675e24, radius: 6051.8, a: 108210000 },
     orb: { jpl: [[0.72333566, 0.00677672, 3.39467605, 181.97909950, 131.60246718, 76.67984255],
                  [0.00000390, -0.00004107, -0.00078890, 58517.81538729, 0.00268329, -0.27769418]] } },
   earth: { parent: 'sun', gm: 398600.435507, radius: 6371.0084, tilt: 23.44, j2: [1082.63, 6378.137], color: '#5b9cf0', pole: [0, -0.641, 90, -0.557, 190.147, 360.9856235],
-    tex: { file: 'img/planets/earth.jpg', src: 'bmng' }, atm: [50, 120], atmR: 6371, glow: ['#4d8dff', 1],
+    tex: { file: 'img/planets/earth.jpg', src: 'bmng', hi: [[2048, 'img/planets/earth_2k.jpg'], [4096, 'img/planets/earth_4k.jpg']] }, phot: 'lambert',
+    clouds: { file: 'img/planets/earth_clouds.jpg', src: 'eoClouds', hi: [[2048, 'img/planets/earth_clouds_2k.jpg'], [4096, 'img/planets/earth_clouds_4k.jpg']] },
+    night: { file: 'img/planets/earth_night.jpg', src: 'blackMarble', hi: [[2048, 'img/planets/earth_night_2k.jpg'], [4096, 'img/planets/earth_night_4k.jpg']] },
+    ocean: { file: 'img/planets/earth_ocean.jpg', src: 'gebco', hi: [[2048, 'img/planets/earth_ocean_2k.jpg']] }, atm: [50, 120], atmR: 6371, glow: ['#4d8dff', 1],
     simple: { mass: 5.9722e24, radius: 6371, a: 149598000 },
     orb: { jpl: [[1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0.0],
                  [0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0.0]] } },
   moon: { parent: 'earth', gm: 4902.800118, radius: 1737.4, tilt: 6.68, j2: [202.7, 1738.1], color: '#cbc8bf', lock: true, axis: [269.9949, 0.0031, 66.5392, 0.0130, [[-3.8787, 1.5419, 0, 125.045, -1935.5364525], [-0.1204, 0, 0, 250.089, -3871.0729050]]],
-    tex: { file: 'img/planets/moon.jpg', src: 'svs' },
+    tex: { file: 'img/planets/moon.jpg', src: 'svs', hi: [[2048, 'img/planets/moon_2k.jpg'], [4096, 'img/planets/moon_4k.jpg']] },
+    relief: { file: 'img/planets/moon_height.png', src: 'svs', h: [-9200, 10800], hi: [[2048, 'img/planets/moon_height_2k.png'], [4096, 'img/planets/moon_height_4k.png']] },
     simple: { mass: 7.342e22, radius: 1737.4, a: 384400 },
     orb: { sat: [384400, 0.0554, 318.15, 135.27, 5.16, 125.08, 27.322, 5.997, 18.600] } },
   mars: { parent: 'sun', gm: 42828.37362, radius: 3389.5, tilt: 25.19, j2: [1960.45, 3396.2], color: '#e0703f', pole: [317.269202, -0.10927547, 54.432516, -0.05827105, 176.049863, 350.891982443297,
       [[0.419057, 0, 0, 79.398797, 0.5042615], [0, 1.591274, 0, 166.325722, 0.5042615], [0, 0, 0.584542, 95.391654, 0.5042615]]],
-    tex: { file: 'img/planets/mars.jpg', src: 'nasa3d' }, atm: [50, 120], atmR: 3389.5, glow: ['#e8a478', 0.25],
+    tex: { file: 'img/planets/mars.jpg', src: 'mdim', hi: [[2048, 'img/planets/mars_2k.jpg'], [4096, 'img/planets/mars_4k.jpg']] },
+    relief: { file: 'img/planets/mars_height.png', src: 'mola', h: [-8300, 21300], hi: [[2048, 'img/planets/mars_height_2k.png'], [4096, 'img/planets/mars_height_4k.png']] }, atm: [50, 120], atmR: 3389.5, glow: ['#e8a478', 0.25],
     simple: { mass: 6.4171e23, radius: 3389.5, a: 227939000 },
     orb: { jpl: [[1.52371034, 0.09339410, 1.84969142, -4.55343205, -23.94362959, 49.55953891],
                  [0.00001847, 0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343]] } },
@@ -116,7 +168,7 @@ const BODIES = {
   deimos: { parent: 'mars', gm: 9.6156e-5, radius: 6.2, tilt: 0, color: '#9a8c7f', lock: true,
     orb: { sat: [23457, 0.000, 0.0, 205.0, 1.8, 54.3, 1.2625, 0.0, 56.2], lp: [316.6, 53.5, 0.9] } },
   jupiter: { parent: 'sun', gm: 126686531.9, radius: 69911, tilt: 3.13, j2: [14736, 71492], color: '#d9b48c', pole: [268.056595, -0.006499, 64.495303, 0.002413, 284.95, 870.5360000],
-    tex: { file: 'img/planets/jupiter.jpg', src: 'pj' },
+    tex: { file: 'img/planets/jupiter.jpg', src: 'pj', w: 2048, hi: [[3601, 'img/planets/jupiter_4k.jpg']] },
     simple: { mass: 1.89813e27, radius: 69911, a: 778570000 },
     orb: { jpl: [[5.20288700, 0.04838624, 1.30439695, 34.39644051, 14.72847983, 100.47390909],
                  [-0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668, 0.20469106]] } },
@@ -130,11 +182,11 @@ const BODIES = {
   callisto: { parent: 'jupiter', gm: 7179.283089, radius: 2410.3, tilt: 0, color: '#8a7f70', lock: true, tex: { file: 'img/planets/callisto.jpg', src: 'nasa3d' },
     orb: { sat: [1882700, 0.007, 43.8, 87.4, 0.3, 309.1, 16.690440, 277.921, 577.264], lp: [268.7, 64.8, 0.4] } },
   saturn: { parent: 'sun', gm: 37931206.234, radius: 58232, tilt: 26.73, j2: [16298, 60268], color: '#e3cc94', pole: [40.589, -0.036, 83.537, -0.004, 38.90, 810.7939024],
-    tex: { file: 'img/planets/saturn.jpg', src: 'vtad' },
-    rings: { file: 'img/planets/saturn_rings.png', src: 'vtad', r: [616.1504 / 500.0371, 1165.4507 / 500.0371], req: 60268 },
+    tex: { file: 'img/planets/saturn.jpg', src: 'vtad', hi: [[2048, 'img/planets/saturn_2k.jpg']] },
+    rings: { file: 'img/planets/saturn_rings.png', src: 'vtad', r: [616.1504 / 500.0371, 1165.4507 / 500.0371], req: 60268, tau: { file: 'img/planets/saturn_rings_tau.png', src: 'pps' } },
     orb: { jpl: [[9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448],
                  [-0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794]] } },
-  titan: { parent: 'saturn', gm: 8978.138845, radius: 2574.7, tilt: 0.3, color: '#d9a85b', lock: true, tex: { file: 'img/planets/titan.jpg', src: 'nasa3d' }, atm: [300, 1000], atmR: 2575, glow: ['#eaa83c', 0.35],
+  titan: { parent: 'saturn', gm: 8978.138845, radius: 2574.7, tilt: 0.3, color: '#d9a85b', lock: true, tex: { file: 'img/planets/titan.jpg', src: 'nasa3d', w: 720 }, atm: [300, 1000], atmR: 2575, haze: { H: 65, tau: 2.5, top: 600, g: 0.6, layer: [500, 25, 0.004] },
     orb: { sat: [1221900, 0.029, 78.3, 11.7, 0.3, 78.6, 15.945448, 346.680, 687.370], lp: [36.4, 84.0, 0.6] } },
   uranus: { parent: 'sun', gm: 5794556.4, radius: 25362, tilt: 97.77, j2: [3343.43, 25559], color: '#9fd7dc', pole: [257.311, 0, -15.175, 0, 203.81, -501.1600928], atm: [10, 1500], atmR: 25559,
     orb: { jpl: [[19.18916464, 0.04725744, 0.77263783, 313.23810451, 170.95427630, 74.01692503],
@@ -155,7 +207,23 @@ const TEX_SRC = {
   svs: 'https://svs.gsfc.nasa.gov/4720/',
   pj: 'https://science.nasa.gov/photojournal/cassinis-best-maps-of-jupiter-cylindrical-map/',
   vtad: 'https://science.nasa.gov/resource/saturn-3d-model/',
+  mdim: 'https://astrogeology.usgs.gov/search/map/mars_viking_colorized_global_mosaic_232m',
+  mola: 'https://pds-geosciences.wustl.edu/missions/mgs/megdr.html',
+  usgsDem: 'https://astrogeology.usgs.gov/search/map/mercury_messenger_global_dem_665m',
+  eoClouds: 'https://science.nasa.gov/earth/earth-observatory/the-blue-marble-true-color-global-imagery-at-1km-resolution/',
+  blackMarble: 'https://science.nasa.gov/earth/earth-observatory/earth-at-night/maps/',
+  gebco: 'https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/topography-bathymetry-maps/',
+  pps: 'https://pds-rings.seti.org/holdings/volumes/VG_28xx/VG_2801/',
+  svsStars: 'https://svs.gsfc.nasa.gov/4851/',
+  bsc: 'https://cdsarc.cds.unistra.fr/viz-bin/cat/V/50',
 };
+// The sky (normal 2D and 3D modes; never in the low-resource mode): the Milky Way — NASA SVS 4851 "Deep Star Maps 2020",
+// milkyway_2020_4k.exr (4096×2048 half-float, linear, celestial ICRF/J2000 plate carrée centred on 0h, right ascension
+// increasing to the left; the map without the Hipparcos/Tycho stars, 57dd45a9…) -> 2048×1024 sRGB with one gain
+// (99.9th luminance percentile -> 1); stars — the Yale Bright Star Catalogue, 5th ed. (Hoffleit & Warren 1991, CDS V/50,
+// catalog.gz, 6c533fd0…): the 9096 entries with a position and V magnitude, packed 8 bytes each (little-endian):
+// uint16 RA·65536/360°, int16 Dec·32767/90°, int16 V·100, int16 (B−V)·1000 (−32768: no colour index; 310 stars).
+const SKY = { milky: { file: 'img/sky/milkyway.jpg', src: 'svsStars' }, stars: { file: 'img/sky/bsc5.bin', src: 'bsc' } };
 const DATA_SRC = {
   jpl: 'https://ssd.jpl.nasa.gov/planets/approx_pos.html',
   sat: 'https://ssd.jpl.nasa.gov/sats/elem/',
@@ -174,4 +242,4 @@ function atmAltitudes(key) {
   return b.atm.map(h => b.atmR + h - b.radius);
 }
 
-if (typeof module !== 'undefined') module.exports = { BODIES, EPHEM_YEARS, atmAltitudes, TEX_SRC, DATA_SRC };
+if (typeof module !== 'undefined') module.exports = { BODIES, EPHEM_YEARS, atmAltitudes, TEX_SRC, DATA_SRC, SKY };

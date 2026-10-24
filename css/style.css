@@ -266,7 +266,7 @@ details.adv>summary:hover{color:var(--ink)}
 .credits a{color:var(--cyan);text-decoration:none;border-bottom:1px solid var(--line2)}
 .credits a:hover{color:var(--ink);border-color:var(--line3)}
 .credits table{border-collapse:collapse;width:100%}
-.credits th,.credits td{text-align:left;vertical-align:top;padding:5px 6px;border-bottom:1px solid var(--line)}
+.credits th,.credits td{text-align:left;vertical-align:top;padding:5px 6px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
 .credits th{font:600 10px/1.2 var(--f-disp);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
 .credits td:first-child{color:var(--ink);white-space:nowrap}
 .credits .chk{margin-top:2px}

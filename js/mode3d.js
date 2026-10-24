@@ -278,10 +278,31 @@ function sunDir3(b, sunIdx, tNow, out) {
 // how body b of the mission is drawn at rpx px: its look (js/globe.js) and axes in the view frame, or null
 const AX = new Array(9);
 function bodyLook3(b, rpx, tNow) {
-  const look = globeLook(S.bodies[b].key, rpx, Q.tex, !lowQ);
+  const look = globeLook(S.bodies[b].key, rpx, Q.tex, !lowQ, texCap(), FXON, S.M.t0 * DAY + tNow);
   if (!look) return null;
   bodyAxes(S.bodies[b].key, S.M.t0 * DAY + tNow, SP, SV, b, sys.parent[b], AX);
-  return { look, rot: axesIn(FP.X, FP.Y, FP.Z, AX, new Array(9)), mix: texMix(look.tex) };
+  return { look, rot: axesIn(FP.X, FP.Y, FP.Z, AX, new Array(9)), mix: texMix(look.tex && look.tex.base) };
+}
+// the sky (Milky Way, stars): handed to the renderer once loaded (modes with stars only)
+function sky3() { if (Q.stars) V3.skySet(skyReady(true)); }
+// the Sun's glare at view-frame point p (or, far away, direction p from the camera when dir), disc radius rs px: how much
+// of the disc is in view (9 points on it, against the bodies drawn this frame) and on screen; null when none
+function glare3(p, dir, rs, skip) {
+  if (!Q.glow || lowQ || !FXON.glare) return null;
+  const e = CB.e, q = dir ? [e[0] + p[0] * 1e18, e[1] + p[1] * 1e18, e[2] + p[2] * 1e18] : p;
+  proj3(q, PJ); if (!(PJ[2] > 0)) return null;
+  const L = glareL(rs), x = PJ[0], y = PJ[1], out = Math.max(0, -x, x - W, -y, y - H);
+  if (out > 4 * L) return null;
+  // sample points on the disc: in front of every body drawn (the Sun itself excepted)
+  const R = rs * PJ[2] / CB.f, pt = [0, 0, 0];
+  let vis = 0;
+  for (let k = 0; k < 9; k++) {
+    const a = k * 0.785398, f = k ? 0.75 : 0;
+    for (let c = 0; c < 3; c++) pt[c] = q[c] + R * f * (Math.cos(a) * CB.r[c] + Math.sin(a) * CB.u[c]);
+    if (!behind3(pt, 0, skip)) vis++;
+  }
+  const i = vis / 9 * (1 - out / (4 * L));
+  return i > 0 ? { x, y, L, i } : null;
 }
 
 function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
@@ -293,6 +314,7 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   if (C.nodes3.length) CAPTION.push(_('v3.nodes'));
   setCaption();
   if (V3sys !== sys) { V3.bodies('sim', S.bodies.map(b => ({ color: b.key === 'sun' ? '#fff3d6' : b.color, sun: b.key === 'sun' }))); V3sys = sys; }
+  sky3();
   if (needFit) fit3();
   if (ext) trailUpdate(S.ext);
   frameAt(t2); tf3(craft2[0], craft2[1], craft2[2], CR3b);
@@ -317,7 +339,7 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
     const r = dispR(sys.R[b], PJ[2], b < 2 ? 5 : 4, V3caps[b]);
     const sd = sunIdx >= 0 ? sunDir3(b, sunIdx, tNow, [0, 0, 0]) : SUN3;
     rpx[b] = PJ[2] > 0 ? r * CB.f / PJ[2] : 0; scr.push([PJ[0], PJ[1], PJ[2]]);
-    V3.body('sim', b, [BP3[3 * b], BP3[3 * b + 1], BP3[3 * b + 2]], r, sd, true, glow, bodyLook3(b, rpx[b], tNow));
+    V3.body('sim', b, [BP3[3 * b], BP3[3 * b + 1], BP3[3 * b + 2]], r, sd, true, bodyLook3(b, rpx[b], tNow));
     OCC.push([BP3[3 * b], BP3[3 * b + 1], BP3[3 * b + 2], r, b]);
   }
   // lines
@@ -336,7 +358,10 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   V3.lineSet('sim', 'gamma', null, V3S.grid);
   if (ext) trail3(); else V3.dynHide('sim', 'trail');
   grid3(c, V3S.grid);
-  V3.render({ stars: Q.stars });
+  // the Sun: in the mission, or (real model) far away along its direction from the first body
+  const gl3 = sunIdx >= 0 ? glare3([BP3[3 * sunIdx], BP3[3 * sunIdx + 1], BP3[3 * sunIdx + 2]], false, rpx[sunIdx], sunIdx)
+    : S.model === 'real' ? glare3(SUN3, true, CB.f * sunAngOf(S.bodies[0].key), -1) : null;
+  V3.render({ stars: Q.stars, sky: ROT9, glare: glow ? gl3 : null });
 
   // ---- overlay ----
   // SOI
@@ -503,6 +528,7 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
   if (!MAP3) {
     MAP3 = { orbKey: '', trajC: null, nodes: [], caps: new Float64Array(mapSys.N).fill(Infinity) };
     V3.bodies('map', MAPK.map((k, i) => ({ color: i === MSUN ? '#fff3d6' : BODIES[k].color, sun: i === MSUN })));
+    sky3();
     states(mapSys, MAP.today, MP, MV);
     for (let i = 0; i < mapSys.N; i++) { const p = MPAR[i]; if (p < 0) continue; const a = Math.hypot(MP[3 * i] - MP[3 * p], MP[3 * i + 1] - MP[3 * p + 1], MP[3 * i + 2] - MP[3 * p + 2]); MAP3.caps[i] = Math.min(MAP3.caps[i], 0.25 * a); MAP3.caps[p] = Math.min(MAP3.caps[p], 0.25 * a); }
   }
@@ -534,15 +560,16 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
     const r = MAP.log ? floor * Math.max(PJ[2], 1) / CB.f : dispR(mapSys.R[i], PJ[2], floor, MAP3.caps[i]);
     const l = Math.hypot(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]) || 1;
     rpx[i] = PJ[2] > 0 ? r * CB.f / PJ[2] : 0;
-    const look = show[i] ? globeLook(MAPK[i], rpx[i], Q.tex, !lowQ) : null; // map axes are the ecliptic ones
-    const o = look ? { look, rot: bodyAxes(MAPK[i], T, MP, MV, i, MPAR[i], new Array(9)), mix: texMix(look.tex) } : null;
-    V3.body('map', i, [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], r, i === MSUN ? null : [-pos[3 * i] / l, -pos[3 * i + 1] / l, -pos[3 * i + 2] / l], !!show[i], glow, o);
+    const look = show[i] ? globeLook(MAPK[i], rpx[i], Q.tex, !lowQ, texCap(), FXON, T) : null; // map axes are the ecliptic ones
+    const o = look ? { look, rot: bodyAxes(MAPK[i], T, MP, MV, i, MPAR[i], new Array(9)), mix: texMix(look.tex && look.tex.base) } : null;
+    V3.body('map', i, [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], r, i === MSUN ? null : [-pos[3 * i] / l, -pos[3 * i + 1] / l, -pos[3 * i + 2] / l], !!show[i], o);
     if (show[i]) OCC.push([pos[3 * i], pos[3 * i + 1], pos[3 * i + 2], r, i]);
     if (mapSys.orb[i]) V3.lineSet('map', 'orb' + i, moon ? [pos[3 * p], pos[3 * p + 1], pos[3 * p + 2]] : null, !!show[i]);
   }
   if (tr && craft) { V3.lineSet('map', 'traj', null, true); V3.lineSet('map', 'trajB', null, true); V3.lineUpTo('map', 'trajB', pathIdx); }
   grid3(c, V3S.grid && !MAP.log);
-  V3.render({ stars: Q.stars });
+  sky3();
+  V3.render({ stars: Q.stars, sky: null, glare: glow ? glare3([pos[3 * MSUN], pos[3 * MSUN + 1], pos[3 * MSUN + 2]], false, rpx[MSUN], MSUN) : null });
 
   // overlay: nodes, craft, labels (Sun and planets first, a label overlapping another is skipped)
 

@@ -77,13 +77,21 @@ if (reduceMotion) S.playing = false;
 // View-mode quality profiles. sub: Hermite sub-samples per integrator step; trackK: body-track points;
 // hudMs: HUD text refresh period (0 = every 4th frame); fpsCap: 0 = display rate; ellK: points per orbit ellipse;
 // tex: planet textures and lit globes (js/globe.js) — never in the low-resource mode, which then downloads no image.
+const COARSE = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 const QUALITY = {
-  normal: { stars: true, glow: true, tex: true, dprMax: 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0, ellK: 180, trailK: 96, trailFade: true },
-  low:    { stars: false, glow: false, tex: false, dprMax: 1, fpsCap: 30, sub: 2, trackK: 140, hudMs: 250, ellK: 72, trailK: 36, trailFade: false },
-  // 3D (js/mode3d.js): the normal profile, drawn with WebGL; phones render at a lower pixel ratio
-  '3d':   { stars: true, glow: true, tex: true, dprMax: window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 1.25 : 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0, ellK: 180, trailK: 96, trailFade: true },
+  normal: { stars: true, glow: true, tex: true, texMax: 2048, dprMax: 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0, ellK: 180, trailK: 96, trailFade: true },
+  low:    { stars: false, glow: false, tex: false, texMax: 0, dprMax: 1, fpsCap: 30, sub: 2, trackK: 140, hudMs: 250, ellK: 72, trailK: 36, trailFade: false },
+  // 3D (js/mode3d.js): the normal profile, drawn with WebGL; phones render at a lower pixel ratio and get 2k tiers at most
+  '3d':   { stars: true, glow: true, tex: true, texMax: COARSE ? 2048 : 4096, dprMax: COARSE ? 1.25 : 1.5, fpsCap: 0, sub: 5, trackK: 420, hudMs: 0, ellK: 180, trailK: 96, trailFade: true },
 };
 let MODE = 'normal', Q = QUALITY.normal;
+// Quality ladder (normal and 3D modes): when frames stay slow, effects go one step at a time — 1: the Sun's glare and
+// Earth's clouds, 2: relief, cast shadows and the glint on water, 3: sharper texture tiers; then the old last step
+// (lowQ: pixel ratio 1, no glow, no new downloads, the "lighter mode?" tip).
+const FX = { lvl: 0 }, FXON = { glare: true, clouds: true, relief: true, glint: true };
+function fxSet(l) { FX.lvl = l; FXON.glare = FXON.clouds = l < 1; FXON.relief = FXON.glint = l < 2; }
+// widest texture tier now: the mode's, the GPU's limit (3D), base files only from ladder step 3
+const texCap = () => (lowQ || FX.lvl >= 3 ? 1024 : Math.min(Q.texMax, V3 ? V3.renderer.capabilities.maxTextureSize : 4096));
 const LS = (() => { try { return window.localStorage; } catch (e) { return null; } })();
 const SS = (() => { try { return window.sessionStorage; } catch (e) { return null; } })();
 
@@ -937,20 +945,44 @@ function resize() {
   if (V3) V3.size(W, H, DPR);
   makeStars();
 }
+// Normal 2D background: the real sky, fixed (it does not turn with the view frame): looking down the ecliptic's south
+// pole (the 2D view looks along −z, screen x = ecliptic x, y up = ecliptic y), gnomonic, 100° across the larger side;
+// the Milky Way (SVS Deep Star Maps) and the bright stars (Yale BSC). Built once per size, after both have loaded.
+let skyKey = '';
 function makeStars() {
-  if (!Q.stars || MODE === '3d') { stars = null; return; }
+  if (!Q.stars || MODE === '3d') { stars = null; skyKey = ''; return; }
+  const sk = skyReady(true); if (!sk) { stars = null; skyKey = 'wait'; return; }
+  skyKey = W + 'x' + H + '@' + DPR;
   stars = document.createElement('canvas'); stars.width = cv.width; stars.height = cv.height;
-  const g = stars.getContext('2d'); g.scale(DPR, DPR);
-  let seed = 1234567; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const hz = g.createRadialGradient(W * 0.72, H * 0.3, 0, W * 0.72, H * 0.3, Math.max(W, H) * 0.8);
-  hz.addColorStop(0, 'rgba(60,80,140,0.10)'); hz.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = hz; g.fillRect(0, 0, W, H);
-  const n = Math.round(W * H / 1800);
-  for (let i = 0; i < n; i++) {
-    const x = rnd() * W, y = rnd() * H, m = rnd(), r = m > 0.985 ? 1.3 : m > 0.9 ? 0.9 : 0.55;
-    const tint = rnd(); g.fillStyle = tint > 0.85 ? `rgba(255,214,170,${0.25 + rnd() * 0.5})` : tint > 0.7 ? `rgba(170,200,255,${0.25 + rnd() * 0.5})` : `rgba(230,236,248,${0.15 + rnd() * 0.45})`;
+  const g = stars.getContext('2d'), f = Math.max(W, H) / 2 / Math.tan(50 * Math.PI / 180);
+  // Milky Way at half resolution: each pixel's direction -> celestial plate carrée (RA increasing to the left)
+  const mi = sk.milky.img, mc = document.createElement('canvas'); mc.width = mi.naturalWidth; mc.height = mi.naturalHeight;
+  const mg = mc.getContext('2d'); mg.drawImage(mi, 0, 0); const md = mg.getImageData(0, 0, mc.width, mc.height).data, mw = mc.width, mh = mc.height;
+  const w2 = Math.ceil(W / 2), h2 = Math.ceil(H / 2), half = document.createElement('canvas'); half.width = w2; half.height = h2;
+  const hg = half.getContext('2d'), im = hg.createImageData(w2, h2), ce = Math.cos(OBLIQ), se = Math.sin(OBLIQ), vd = linC(COL.void), gain = SKY_GAIN;
+  const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }, srgb = c => 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+  for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) {
+    const ex = (2 * x + 1 - W / 2) / f, ey = (H / 2 - 2 * y - 1) / f, l = Math.hypot(ex, ey, 1);
+    const e = [ex / l, ey / l, -1 / l], q = [e[0], ce * e[1] - se * e[2], se * e[1] + ce * e[2]];
+    let u = 0.5 - Math.atan2(q[1], q[0]) / (2 * Math.PI); u -= Math.floor(u);
+    const v = 0.5 - Math.asin(q[2]) / Math.PI, k = 4 * (Math.min(mh - 1, Math.floor(v * mh)) * mw + Math.min(mw - 1, Math.floor(u * mw))), o = 4 * (y * w2 + x);
+    for (let c = 0; c < 3; c++) im.data[o + c] = srgb(vd[c] + lin(md[k + c]) * gain);
+    im.data[o + 3] = 255;
+  }
+  hg.putImageData(im, 0, 0);
+  g.imageSmoothingEnabled = true; g.drawImage(half, 0, 0, w2, h2, 0, 0, w2 * 2 * DPR, h2 * 2 * DPR);
+  // stars: the same brightness law as in 3D (peak from the V magnitude, brighter ones wider)
+  g.scale(DPR, DPR); g.globalCompositeOperation = 'lighter';
+  const S = sk.stars;
+  for (let i = 0; i < S.n; i++) {
+    const dz = S.dir[3 * i + 2]; if (dz >= -0.05) continue;
+    const x = W / 2 + f * S.dir[3 * i] / -dz, y = H / 2 - f * S.dir[3 * i + 1] / -dz; if (x < -4 || x > W + 4 || y < -4 || y > H + 4) continue;
+    const p = starPeak(S.mag[i]); if (p < 0.02) continue;
+    const a = Math.min(1, p), r = 0.7 * Math.min(4, Math.max(1, Math.pow(p, 0.35)));
+    g.fillStyle = `rgba(${Math.round(srgb(S.col[3 * i]))},${Math.round(srgb(S.col[3 * i + 1]))},${Math.round(srgb(S.col[3 * i + 2]))},${a.toFixed(3)})`;
     g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill();
   }
+  g.globalCompositeOperation = 'source-over';
 }
 const ro = new ResizeObserver(() => {
   resize();
@@ -2018,12 +2050,8 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
     if (x < -40 || x > W + 40 || y < -40 || y > H + 40) continue;
     const r = Math.max(i === MSUN ? 4.5 : moon ? 1.6 : 2.6, MAP.log ? 0 : mapSys.R[i] * sc);
     addHit('m', i, x, y, r);
-    if (i === MSUN && glow) {
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r * 4);
-      g.addColorStop(0, hexA(col, 0.5)); g.addColorStop(1, hexA(col, 0));
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 4, 0, 6.2832); ctx.fill();
-    }
     if (i === MSUN || !globeMap(i, x, y, r, T)) { ctx.fillStyle = i === MSUN ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); }
+    if (i === MSUN && glow) glare2d(x, y, r);
     if (k === keyA || k === keyB) { ctx.strokeStyle = k === keyA ? COL.traj : COL.orbit; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.2832); ctx.stroke(); }
     if (moon && (!Q.glow || moonR(i) < 22)) continue; // low-resource mode: planet labels only
     const txt = _('body.' + k).toLocaleUpperCase(DICT['meta.locale']), w = ctx.measureText(txt).width;
@@ -2245,13 +2273,20 @@ function drawMark(m, x, y, bx, by, reached, placed) {
 // lit (textured) globe of mission body b at (x, y), r px, in the normal 2D mode; false: draw the plain disc
 function globe2d(b, sunIdx, x, y, r, tNow) {
   const o = bodyLook3(b, r, tNow); if (!o) return false;
-  return drawGlobe(ctx, x, y, r, W, H, DPR, { rot: o.rot, sun: sunDir3(b, sunIdx, tNow, [0, 0, 0]), color: S.bodies[b].color, tex: o.look.tex, sat: o.look.sat, limb: o.look.limb, ring: o.look.ring, glow: o.look.glow });
+  return drawGlobe(ctx, x, y, r, W, H, DPR, { rot: o.rot, sun: sunDir3(b, sunIdx, tNow, [0, 0, 0]), color: S.bodies[b].color, look: o.look });
 }
 // the same on the map (ecliptic axes, lit from the Sun at the origin; after states(mapSys, T, …))
 function globeMap(i, x, y, r, T) {
-  const look = globeLook(MAPK[i], r, Q.tex, !lowQ); if (!look) return false;
+  const look = globeLook(MAPK[i], r, Q.tex, !lowQ, texCap(), FXON, T); if (!look) return false;
   const p = [hx(i), hy(i), MP[3 * i + 2] - MP[3 * MSUN + 2]], l = Math.hypot(...p) || 1;
-  return drawGlobe(ctx, x, y, r, W, H, DPR, { rot: bodyAxes(MAPK[i], T, MP, MV, i, MPAR[i], new Array(9)), sun: p.map(c => -c / l), color: BODIES[MAPK[i]].color, tex: look.tex, sat: look.sat, limb: look.limb, ring: look.ring, glow: look.glow });
+  return drawGlobe(ctx, x, y, r, W, H, DPR, { rot: bodyAxes(MAPK[i], T, MP, MV, i, MPAR[i], new Array(9)), sun: p.map(c => -c / l), color: BODIES[MAPK[i]].color, look });
+}
+// the Sun's glare in 2D (normal mode): the same profile as in 3D, drawn additively
+function glare2d(x, y, rs) {
+  if (!FXON.glare) return;
+  const L = glareL(rs), e = L * GLARE_EXT;
+  if (x + e < 0 || x - e > W || y + e < 0 || y - e > H) return;
+  ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(glareSprite(), x - e, y - e, 2 * e, 2 * e); ctx.globalCompositeOperation = 'source-over';
 }
 const _txt = new Map();
 function setT(sel, v) { if (_txt.get(sel) !== v) { _txt.set(sel, v); document.querySelector(sel).textContent = v; } }
@@ -2263,18 +2298,21 @@ function draw(now) {
   // frame cap (low-resource mode); the small slack keeps 60 Hz displays at an even 30 fps
   if (Q.fpsCap && now - last < 1000 / Q.fpsCap - 4) { requestAnimationFrame(draw); return; }
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
-  // adaptive quality (normal and 3D modes): if frames stay slow, drop glow, render at 1x pixel ratio and suggest
-  // a lighter mode
-  if (MODE !== 'low') {
+  // adaptive quality (normal and 3D modes): if frames stay slow, the ladder (FX) turns effects off one step at a time,
+  // then drops glow, renders at 1x pixel ratio and suggests a lighter mode
+  if (MODE !== 'low' && !lowQ) {
     frameAvg = frameAvg * 0.95 + dt * 0.05;
-    if (!lowQ && frameAvg > 0.03 && ++slowFrames > 90) { lowQ = true; resize(); showPerfTip(); }
+    if (frameAvg > 0.03 && ++slowFrames > 90) {
+      slowFrames = 0; frameAvg = 1 / 60;
+      if (FX.lvl < 3) fxSet(FX.lvl + 1); else { lowQ = true; resize(); showPerfTip(); }
+    }
   }
   const glow = Q.glow && !lowQ;
   HITS = []; CAPTION.length = 0;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   const v3 = is3d(); // 3D: the WebGL canvas below draws the scene, this one only the overlay
   if (v3) ctx.clearRect(0, 0, W, H);
-  else { ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H); if (stars) ctx.drawImage(stars, 0, 0, W, H); }
+  else { if (skyKey === 'wait' && skyReady(true)) makeStars(); ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H); if (stars) ctx.drawImage(stars, 0, 0, W, H); }
   if (!sys || !simR || !C) {
     if (MAP.on) { if (v3) drawMap3(mapTime(0), glow, null, 0, 0); else { drawMap(mapTime(0), glow, null, 0, 0); if (!MAP.log) drawScale(); } }
     else if (v3) { V3.setActive('none'); V3.render({ stars: Q.stars }); }
@@ -2430,10 +2468,8 @@ function draw(now) {
         if (!Q.glow) { // low-resource: flat discs, no gradients
           ctx.fillStyle = isSun ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
         } else if (isSun) {
-          const g = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 4.5);
-          g.addColorStop(0, hexA(col, 0.55)); g.addColorStop(0.25, hexA(col, 0.18)); g.addColorStop(1, hexA(col, 0));
-          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 4.5, 0, 6.2832); ctx.fill();
           ctx.fillStyle = '#fff3d6'; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+          if (glow) glare2d(x, y, r);
         } else if (!globe2d(b, sunIdx, x, y, r, tNow)) {
           let lx = -0.6, ly = -0.8;
           if (sunIdx >= 0) { const dx = sx(bpos[sunIdx][0]) - x, dy = sy(bpos[sunIdx][1]) - y, d = Math.hypot(dx, dy); if (d > 0) { lx = dx / d; ly = dy / d; } }
@@ -2532,16 +2568,20 @@ function drawScale(scale = cam.scale) {
 // ===================== Sources (credits) =====================
 // Data sources, then every texture with its source, credit line and what was done to it, the licence notes of the
 // sources used and the disclaimer. Built from js/bodies.js (TEX_SRC, DATA_SRC, tex / texAlt / rings) and cred.* texts.
+// a body's image layers with the key of their note text (cred.note.*)
+const credLayers = (k, b) => [[b.tex, 'cred.note.' + k], [b.texAlt, 'cred.note.' + k], [b.rings, 'cred.note.' + k + 'Rings'], [b.rings && b.rings.tau, 'cred.note.' + k + 'Tau'],
+  [b.relief, 'cred.note.' + k + 'Relief'], [b.clouds, 'cred.note.' + k + 'Clouds'], [b.night, 'cred.note.' + k + 'Night'], [b.ocean, 'cred.note.' + k + 'Ocean']];
 const link = (url, txt) => `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(txt)}</a>`;
 function renderCredits() {
   const rows = [], used = new Set();
   for (const [k, b] of Object.entries(BODIES)) {
-    for (const [t, note] of [[b.tex, 'cred.note.' + k], [b.texAlt, 'cred.note.' + k], [b.rings, 'cred.note.' + k + 'Rings']]) {
+    for (const [t, note] of credLayers(k, b)) {
       if (!t) continue;
       used.add(t.src);
       rows.push(`<tr><td>${esc(_('body.' + k))}</td><td>${link(TEX_SRC[t.src], _('cred.src.' + t.src))}<br>${esc(_('cred.by.' + t.src))}</td><td>${esc(_(note))}</td></tr>`);
     }
   }
+  for (const [id, t] of Object.entries(SKY)) { used.add(t.src); rows.push(`<tr><td>${esc(_('cred.sky.' + id))}</td><td>${link(TEX_SRC[t.src], _('cred.src.' + t.src))}<br>${esc(_('cred.by.' + t.src))}</td><td>${esc(_('cred.note.sky.' + id))}</td></tr>`); }
   rows.push(`<tr><td>${esc(_('cred.plainBodies'))}</td><td>—</td><td>${esc(_('cred.note.plain'))}</td></tr>`);
   $('#credBody').innerHTML = `<p>${esc(_('cred.intro'))}</p>
     <h3>${esc(_('cred.h.data'))}</h3>
@@ -2549,15 +2589,17 @@ function renderCredits() {
     <h3>${esc(_('cred.h.img'))}</h3>
     <table><thead><tr><th>${esc(_('cred.col.body'))}</th><th>${esc(_('cred.col.src'))}</th><th>${esc(_('cred.col.note'))}</th></tr></thead><tbody>${rows.join('')}</tbody></table>
     <label class="chk"><input type="checkbox" id="venusRadar"${TEXOPT.venusRadar ? ' checked' : ''}><span>${esc(_('cred.venusRadar'))}</span></label>
+    <label class="chk"><input type="checkbox" id="earthClouds"${TEXOPT.clouds ? ' checked' : ''}><span>${esc(_('cred.clouds'))}</span></label>
     <h3>${esc(_('cred.h.lic'))}</h3>
     <ul>${[...used].map(s => `<li><b>${esc(_('cred.src.' + s))}</b>: ${esc(_('cred.lic.' + s))}</li>`).join('')}</ul>
     <p>${esc(_('cred.disclaimer'))}</p>`;
 }
 $('#credBody').addEventListener('change', e => {
-  if (e.target.id !== 'venusRadar') return;
-  TEXOPT.venusRadar = e.target.checked; writePref(LS, PREF_KEYS.venusRadar, e.target.checked ? '1' : '0');
+  if (e.target.id === 'venusRadar') { TEXOPT.venusRadar = e.target.checked; writePref(LS, PREF_KEYS.venusRadar, e.target.checked ? '1' : '0'); }
+  if (e.target.id === 'earthClouds') { TEXOPT.clouds = e.target.checked; writePref(LS, PREF_KEYS.clouds, e.target.checked ? '1' : '0'); }
 });
 TEXOPT.venusRadar = readPref(LS, PREF_KEYS.venusRadar) === '1';
+TEXOPT.clouds = readPref(LS, PREF_KEYS.clouds) !== '0';
 
 // ===================== Glossary =====================
 const GLOSS = DICT['gloss'];
@@ -2716,7 +2758,7 @@ function setMode(m, save) {
   const flip = (m === '3d') !== (MODE === '3d');
   MODE = m; Q = QUALITY[m]; SUB = Q.sub;
   document.documentElement.dataset.q = m;
-  if (m !== 'low') { lowQ = false; slowFrames = 0; frameAvg = 1 / 60; }
+  if (m !== 'low') { lowQ = false; slowFrames = 0; frameAvg = 1 / 60; fxSet(0); }
   if (flip) { needFit = true; MAP.needFit = true; }
   sync3dUI();
   resize();
