@@ -371,7 +371,7 @@ export function create(canvas, opts) {
       for (let j = 0; j < m; j++) { const k = at(i0 + j); a[3 * j] = (pts[k] - o[0]) * KM; a[3 * j + 1] = (pts[k + 1] - o[1]) * KM; a[3 * j + 2] = (pts[k + 2] - o[2]) * KM; }
       const geo = new LineGeometry(); geo.setPositions(a);
       if (opts.colors) { const c = new Float32Array(3 * m); for (let j = 0; j < m; j++) { const k = at(i0 + j); c[3 * j] = opts.colors[k]; c[3 * j + 1] = opts.colors[k + 1]; c[3 * j + 2] = opts.colors[k + 2]; } geo.setColors(c); }
-      const add = mat => { const l = new LineSegments2(geo, mat); l.position.set(o[0] * KM, o[1] * KM, o[2] * KM); h.group.add(l); return l; };
+      const add = mat => { const l = new LineSegments2(geo, mat); l.position.set(o[0] * KM, o[1] * KM, o[2] * KM); if (h.dashed) l.computeLineDistances(); h.group.add(l); return l; };
       h.chunks.push({ i0, i1, geo, lines: h.mats.map(add) });
       i0 = i1;
     }
@@ -380,6 +380,7 @@ export function create(canvas, opts) {
     lineDrop(set, id);
     const h = { group: new THREE.Group(), anchor: [0, 0, 0], chunks: [], mats: [], show: true };
     h.mats.push(material(opts.color || '#ffffff', opts.opacity == null ? 1 : opts.opacity, opts.width || 1, { vertexColors: !!opts.colors, additive: opts.additive }));
+    if (opts.dash > 0) { const m = h.mats[0]; m.dashed = true; m.dashSize = m.gapSize = opts.dash * KM; m.dashScale = 1; h.dashed = true; }
     if (opts.glow) h.mats.push(material(opts.color || '#ffffff', opts.glow[1], opts.glow[0], { additive: true }));
     if (n >= 2) chunkLine(h, pts, n, opts);
     roots[set].add(h.group); lines[set].set(id, h);

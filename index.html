@@ -68,6 +68,7 @@
           <label class="chk" id="tSoiWrap"><input type="checkbox" id="tSoi"><span data-i18n="ui.soi"></span></label>
           <label class="chk" id="tTracksWrap"><input type="checkbox" id="tTracks" checked><span data-i18n="ui.tracks"></span></label>
           <label class="chk" id="tGridWrap" hidden><input type="checkbox" id="tGrid" checked><span data-i18n="v3.grid"></span></label>
+          <label class="chk" id="tOscWrap" data-i18n-title="ui.oscTip"><input type="checkbox" id="tOsc" checked><span data-i18n="ui.osc"></span></label>
           <label class="chk sky" id="tSkyWrap" data-i18n-title="ui.skyTip"><span data-i18n="ui.sky"></span><input type="range" id="tSky" min="0" max="200" step="5" value="100" data-i18n-aria-label="ui.skyTip"></label>
         </div>
       </div>
@@ -97,7 +98,7 @@
       </div>
       <div class="glass timeline" id="timeline">
         <button class="play" id="play" type="button"></button>
-        <div class="tl-time"><span id="tplus" data-i18n="ui.tplusInit"></span><span id="tend">/ —</span></div>
+        <div class="tl-time"><span id="tplus" data-i18n="ui.tplusInit"></span><span id="tend">/ —</span><span class="slowtag" id="slowTag" hidden></span></div>
         <div class="scrub"><input type="range" id="scrub" min="0" max="10000" value="0" data-i18n-aria-label="ui.scrub"><div class="ticks" id="ticks"></div></div>
         <div class="tl-opts">
           <select id="speed" data-i18n-aria-label="ui.speed">
@@ -110,6 +111,7 @@
           </select>
           <label class="chk" data-i18n-title="ui.focusTip"><input type="checkbox" id="focus" checked><span data-i18n="ui.focus"></span></label>
           <label class="chk" data-i18n-title="ui.loopTip"><input type="checkbox" id="loop"><span data-i18n="ui.loop"></span></label>
+          <label class="chk" data-i18n-title="ui.slowTip"><input type="checkbox" id="slow" checked><span data-i18n="ui.slow"></span></label>
         </div>
       </div>
     </div>

@@ -239,10 +239,13 @@ function upload3() {
   if (C.orbit && C.orbit.ring) { // the parking orbit around its body, ecliptic axes (turned into the frame each frame)
     V3.line('sim', 'park', C.orbit.ring, C.orbit.ring.length / 3, { color: COL.traj, opacity: 0.3, width: 1.2, closed: true });
   }
-  C.ring3.forEach((e, g) => V3.line('sim', 'ring' + g, e, e.length / 3, { color: C.rings[g].col, opacity: C.rings[g].a, width: 1, closed: true }));
+  // the target orbit dashed, as in 2D (about 120 dashes around)
+  const per = e => { let L = 0; for (let k = 3; k < e.length; k += 3) L += Math.hypot(e[k] - e[k - 3], e[k + 1] - e[k - 2], e[k + 2] - e[k - 1]); return L; };
+  C.ring3.forEach((e, g) => V3.line('sim', 'ring' + g, e, e.length / 3, { color: C.rings[g].col, opacity: C.rings[g].a, width: 1, closed: true, dash: C.rings[g].dash ? per(e) / 240 : 0 }));
   // finite burns: the engine-on arcs, drawn up to the craft
   (C.burnIdx || []).forEach(([i0, i1], g) => { if (i1 > i0) V3.line('sim', 'burn' + g, C.f3.subarray(3 * i0, 3 * (i1 + 1)), i1 - i0 + 1, { color: COL.burn, width: 2.6 }); });
   V3.dyn('sim', 'conn', 2, { color: COL.traj, width: 1.8 });
+  V3.dyn('sim', 'osc', 201, { color: COL.traj, opacity: 0.42, width: 1.3 });
   V3.dyn('sim', 'trail', TRAIL_REVS * QUALITY.normal.trailK + 4, { color: '#ffffff', vertexColors: true, additive: true, width: 1.6 });
   if (S.model === 'real' && S.frame === 'inertial') V3.line('sim', 'gamma', new Float64Array([0, 0, 0, 50 * AU, 0, 0]), 2, { color: COL.cyan, opacity: 0.3, width: 1 });
 }
@@ -360,6 +363,7 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   (C.burnIdx || []).forEach(([i0, i1], g) => { if (i1 > i0) { V3.lineSet('sim', 'burn' + g, null, pathIdx > i0); V3.lineUpTo('sim', 'burn' + g, Math.min(i1, pathIdx) - i0); } });
   V3.lineSet('sim', 'gamma', null, V3S.grid);
   if (ext) trail3(); else V3.dynHide('sim', 'trail');
+  osc3();
   grid3(c, V3S.grid);
   // the Sun: in the mission, or (real model) far away along its direction from the first body
   const gl3 = sunIdx >= 0 ? glare3([BP3[3 * sunIdx], BP3[3 * sunIdx + 1], BP3[3 * sunIdx + 2]], false, rpx[sunIdx], sunIdx)
@@ -447,6 +451,18 @@ function trail3() {
   const j = n - 1; TRAIL3[3 * j] = CR3[0]; TRAIL3[3 * j + 1] = CR3[1]; TRAIL3[3 * j + 2] = CR3[2];
   TRAIL3C[3 * j] = col[0] * 0.9; TRAIL3C[3 * j + 1] = col[1] * 0.9; TRAIL3C[3 * j + 2] = col[2] * 0.9;
   V3.dynSet('sim', 'trail', TRAIL3, n, TRAIL3C);
+}
+// the osculating orbit (app.js OSCF) about its body, frame coordinates
+let OSC3 = null;
+function osc3() {
+  const o = OSCF; if (!o) { V3.dynHide('sim', 'osc'); return; }
+  const n = o.c.n, m = n + (o.c.closed ? 1 : 0), X = FP.X, Y = FP.Y, Z = FP.Z, p = o.pts, b = 3 * o.b;
+  if (!OSC3 || OSC3.length < 3 * m) OSC3 = new Float64Array(3 * 201);
+  for (let j = 0; j < m; j++) {
+    const k = 3 * (j % n), x = p[k], y = p[k + 1], z = p[k + 2];
+    OSC3[3 * j] = BP3[b] + x * X[0] + y * X[1] + z * X[2]; OSC3[3 * j + 1] = BP3[b + 1] + x * Y[0] + y * Y[1] + z * Y[2]; OSC3[3 * j + 2] = BP3[b + 2] + x * Z[0] + y * Z[1] + z * Z[2];
+  }
+  V3.dynSet('sim', 'osc', OSC3, m, null);
 }
 // ascending (▲) / descending (▼) node mark
 function nodeMark(x, y, asc, col) {

@@ -729,3 +729,52 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   }
   console.log('orbit maneuvers ok');
 }
+
+// ===== Phase 6c: the osculating orbit drawn each frame =====
+{
+  const muE = 398600.4418e9, D = Math.PI / 180, out = new Float64Array(3 * 400);
+  const dist = (k, r) => Math.hypot(out[3 * k] - r[0], out[3 * k + 1] - r[1], out[3 * k + 2] - r[2]);
+  // 31) An ellipse from a state: the conic closes, every point is on r = p/(1 + e cos ν), the apsides are a(1 ∓ e), the
+  // state itself is on it (to the sampling), the points lie in the orbit plane
+  {
+    const r = [7000e3, 0, 0], v = [0, 8500 * Math.cos(30 * D), 8500 * Math.sin(30 * D)], c = C.conicPoints(muE, r, v, 360, 1e12, out), el = C.rv2el(muE, r, v);
+    assert.ok(c && c.closed && Math.abs(c.e - el.e) < 1e-12 && Math.abs(c.a / el.a - 1) < 1e-12, 'ellipse: e and a as rv2el');
+    let rmin = Infinity, rmax = 0, off = 0, near = Infinity;
+    for (let k = 0; k < c.n; k++) {
+      const q = [out[3 * k], out[3 * k + 1], out[3 * k + 2]], rr = Math.hypot(...q);
+      rmin = Math.min(rmin, rr); rmax = Math.max(rmax, rr); off = Math.max(off, Math.abs(q[0] * el.n[0] + q[1] * el.n[1] + q[2] * el.n[2]) / rr);
+      const cnu = (q[0] * out[0] + q[1] * out[1] + q[2] * out[2]) / (rr * Math.hypot(out[0], out[1], out[2]));
+      assert.ok(Math.abs(rr - c.p / (1 + c.e * cnu)) < 1e-6 * rr, 'on the conic equation');
+      near = Math.min(near, dist(k, r));
+    }
+    assert.ok(Math.abs(rmin / el.rp - 1) < 1e-9 && Math.abs(rmax / el.ra - 1) < 1e-3 && off < 1e-12, `apsides ${(rmin / 1e3).toFixed(1)} / ${(rmax / 1e3).toFixed(1)} km, in plane`);
+    assert.ok(near < 2 * Math.PI * el.a / 360, 'the craft lies on its drawn orbit');
+  }
+  // 32) Open orbits: a hyperbola stays inside its asymptotes and within rMax, its v∞ is √(v² − 2μ/r); a near-parabola
+  // works; nothing beyond rMax; a radial state draws nothing
+  {
+    const r = [7000e3, 0, 0], v = [0, 12000, 0], c = C.conicPoints(muE, r, v, 200, 1e9, out), vinf = Math.sqrt(144e6 - 2 * muE / 7000e3);
+    assert.ok(c && !c.closed && c.e > 1 && Math.abs(c.vinf / vinf - 1) < 1e-12, `hyperbola v∞ ${(c.vinf / 1e3).toFixed(4)} km/s`);
+    const nuInf = Math.acos(-1 / c.e);
+    for (let k = 0; k < c.n; k++) {
+      const q = [out[3 * k], out[3 * k + 1], out[3 * k + 2]], rr = Math.hypot(...q), nu = Math.atan2(q[1], q[0]);
+      assert.ok(rr <= 1e9 * (1 + 1e-9) && Math.abs(nu) < nuInf, 'within rMax and the asymptotes');
+    }
+    C.conicPoints(muE, r, v, 200, 1e8, out);
+    assert.ok(Math.abs(Math.hypot(out[0], out[1], out[2]) - 1e8) < 1, 'a branch reaching past rMax ends there');
+    const vp = Math.sqrt(2 * muE / 7000e3), cp = C.conicPoints(muE, r, [0, vp, 0], 100, 1e9, out);
+    assert.ok(cp && !cp.closed && Number.isFinite(out[0]) && Math.abs(Math.hypot(out[0], out[1], out[2]) - 1e9) < 1e3, 'parabola');
+    assert.strictEqual(C.conicPoints(muE, r, v, 100, 6000e3, out), null, 'the whole branch beyond rMax');
+    assert.strictEqual(C.conicPoints(muE, r, [1000, 0, 0], 100, 1e9, out), null, 'radial: no conic');
+  }
+  // 33) The body to draw it about: the innermost sphere of influence holding the craft (Earth–Moon: near the Moon the
+  // Moon, outside its SOI the Earth even when the Moon is nearer than the Earth would suggest)
+  {
+    const P = new Float64Array(6); C.states(s, 0, P, new Float64Array(6));
+    const mx = P[3], my = P[4], soi = s.soi[1];
+    assert.strictEqual(C.domBody(s, P, mx + 0.5 * soi, my, 0), 1, 'inside the Moon’s SOI: the Moon');
+    assert.strictEqual(C.domBody(s, P, mx + 1.2 * soi, my, 0), 0, 'outside it: the Earth');
+    assert.strictEqual(C.domBody(s, P, 1e15, 0, 0), s.root, 'far away: the root');
+  }
+  console.log('osculating orbit ok');
+}

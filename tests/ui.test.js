@@ -299,4 +299,17 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/function sceneTouch\(\) \{ FLY\.on = false;/.test(app), 'camera input stops a move');
 }
 
+// 12) Phase 6c-1: the osculating orbit and the slow motion are switches with saved choices (on unless saved off); the
+// slow motion and the turn of an impulsive burn are off in the low-resource mode and with reduced motion; the burn
+// schedule goes into both results views and its rows move the timeline
+{
+  const app = read('js/app.js');
+  assert.ok(P.PREF_KEYS.osc && P.PREF_KEYS.slow && /id="tOsc"/.test(html) && /id="slow"/.test(html), 'switches and saved keys');
+  assert.ok(/S\.osc = readPref\(LS, PREF_KEYS\.osc\) !== '0';/.test(app) && /S\.slow = readPref\(LS, PREF_KEYS\.slow\) !== '0';/.test(app), 'on by default');
+  assert.ok(/const slowOn = \(\) => S\.slow && Q\.glow && !lowQ && !reduceMotion;/.test(app), 'slow motion only where animations run');
+  assert.strictEqual([...app.matchAll(/res\.innerHTML = resRows\(rows\) \+ schedHtml\(\);/g)].length, 2, 'schedule in transfer and maneuver results');
+  assert.ok(/tr\.sch[\s\S]{0,120}S\.u = tToU\(\+tr\.dataset\.t\)/.test(app), 'a schedule row jumps to its burn');
+  assert.ok(has('osc.morph') && /SLOW\.morph/.test(app), 'the impulsive turn is labelled a visual aid');
+}
+
 console.log('OK — all UI tests passed');

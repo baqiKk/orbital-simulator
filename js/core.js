@@ -1228,6 +1228,43 @@ function rv2el(mu, r, v) {
   return { a, e, i, O, w, rp: a * (1 - e), ra: a * (1 + e), p: hn * hn / mu, n: h.map(q => q / hn) };
 }
 
+// Osculating conic of a state (r, v about a body of GM mu; any axes, the points come back in the same ones), for drawing:
+// r(ν) = p/(1 + e·cos ν) in the orbit's plane, p = h²/μ. An ellipse: K points evenly in the eccentric anomaly (closed);
+// a hyperbola or a parabola: its one branch, ν within the asymptotes (a little short of them) and out to rMax, K points
+// evenly in ν. out: Float64Array(3K) or larger (reused). Returns { n, closed, e, a, p, vinf } (vinf: hyperbolic excess
+// speed, open orbits), or null for a radial state or when the whole branch lies beyond rMax.
+function conicPoints(mu, r, v, K, rMax, out) {
+  const rn = Math.hypot(r[0], r[1], r[2]), v2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2], rv = r[0] * v[0] + r[1] * v[1] + r[2] * v[2];
+  const h = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]], hn = Math.hypot(h[0], h[1], h[2]);
+  if (!(hn > 1e-9 * rn * Math.sqrt(v2))) return null;
+  const ev = [0, 1, 2].map(j => ((v2 - mu / rn) * r[j] - rv * v[j]) / mu), e = Math.hypot(ev[0], ev[1], ev[2]), p = hn * hn / mu;
+  const P = e > 1e-9 ? ev.map(q => q / e) : r.map(q => q / rn), hu = h.map(q => q / hn);
+  const Q = [hu[1] * P[2] - hu[2] * P[1], hu[2] * P[0] - hu[0] * P[2], hu[0] * P[1] - hu[1] * P[0]];
+  const put = (k, x, y) => { for (let j = 0; j < 3; j++) out[3 * k + j] = x * P[j] + y * Q[j]; };
+  if (e < 1 - 1e-6) {
+    const a = p / (1 - e * e), b = a * Math.sqrt(1 - e * e);
+    for (let k = 0; k < K; k++) { const E = 2 * Math.PI * k / K; put(k, a * (Math.cos(E) - e), b * Math.sin(E)); }
+    return { n: K, closed: true, e, a, p, vinf: 0 };
+  }
+  let lim = (e > 1 ? Math.acos(-1 / e) : Math.PI) - 0.02;
+  const c = (p / rMax - 1) / e;
+  if (c >= 1) return null;
+  if (c > -1) lim = Math.min(lim, Math.acos(c));
+  if (!(lim > 0)) return null;
+  for (let k = 0; k < K; k++) { const nu = -lim + 2 * lim * k / (K - 1), rr = p / (1 + e * Math.cos(nu)); put(k, rr * Math.cos(nu), rr * Math.sin(nu)); }
+  return { n: K, closed: false, e, a: e > 1 ? -p / (e * e - 1) : Infinity, p, vinf: e > 1 ? Math.sqrt(mu * (e * e - 1) / p) : 0 };
+}
+// The body whose sphere of influence holds point (x, y, z), states P (3 per body): the innermost one (the smallest
+// SOI that contains it); the root's is unbounded (patched conics: the body the craft's conic is drawn about)
+function domBody(s, P, x, y, z) {
+  let best = s.root, bs = Infinity;
+  for (let i = 0; i < s.N; i++) {
+    const so = s.soi[i];
+    if (so < bs && Math.hypot(x - P[3 * i], y - P[3 * i + 1], z - P[3 * i + 2]) < so) { best = i; bs = so; }
+  }
+  return best;
+}
+
 // Secular J2 rates (rad/s) of Ω, ω and the mean anomaly for a, e, i (Vallado ch. 9; Curtis ch. 4):
 // Ω̇ = −(3/2)·n·J2·(Re/p)²·cos i, ω̇ = (3/4)·n·J2·(Re/p)²·(5cos²i − 1), Ṁ − n = (3/4)·n·J2·(Re/p)²·√(1−e²)·(3cos²i − 1).
 function j2Rates(mu, J2, Re, a, e, i) {
@@ -1743,5 +1780,5 @@ if (typeof module !== 'undefined') module.exports = {
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed,
   G0, visViva, burnDv, propMass, dvAvail, planeSplit, maneuverPlan, mvOrbits, rv2el, j2Rates, keplerStep, equatorFrame, orbitPoint, maneuverSim,
-  mvImpulse, maneuverFlight, spiralEstimate, spiralFlight, maneuverRun,
+  mvImpulse, maneuverFlight, spiralEstimate, spiralFlight, maneuverRun, conicPoints, domBody,
 };

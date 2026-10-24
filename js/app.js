@@ -779,6 +779,19 @@ function buildCache() {
   C.spans = S.kind === 'man' && r.burns && r.burns.length && r.burns[0].t1 != null ? r.burns.map(b => [b.t0, b.t1, !!b.spiral]) : [];
   const idx = t => { let lo = 0, hi = C.pt.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (C.pt[m] < t) lo = m + 1; else hi = m; } return lo; };
   C.burnIdx = C.spans.filter(s => !s[2]).map(([a, b]) => [idx(a), Math.max(idx(a), idx(b) - (C.pt[idx(b)] > b ? 1 : 0))]);
+  // impulsive burns, for the slow-motion turn of the osculating orbit: the velocity before and after (the two samples at
+  // the burn; a departure burn at t = 0 has only the one after: before = after less Δv along the velocity about its body)
+  C.imp = [];
+  for (const e of r.events) {
+    if ((e.type !== 'burn' && e.type !== 'aero') || e.finite || e.spiral) continue;
+    let k = segAtTime(e.t); while (k > 0 && r.t[k] > e.t - 1e-6) k--; while (k < n - 1 && r.t[k] < e.t - 1e-6) k++;
+    const vb = j => [r.vx[j], r.vy[j], r.vz[j]], two = k + 1 < n && Math.abs(r.t[k + 1] - e.t) < 1e-6;
+    states(sys, S.M.t0 * DAY + e.t, SPo, SVo);
+    const b = S.kind === 'man' ? 0 : domBody(sys, SPo, r.x[k], r.y[k], r.z[k]);
+    let va = vb(k), vB = two ? vb(k + 1) : vb(k);
+    if (!two) { const rel = [0, 1, 2].map(j => vB[j] - SVo[3 * b + j]), l = Math.hypot(...rel) || 1; va = vB.map((q, j) => q - (e.dv || 0) * rel[j] / l); }
+    C.imp.push({ t: e.t, b, va, vb: vB });
+  }
 }
 // the thrust direction (ecliptic) at mission time t for the craft at abs, or null with the engine off
 function thrustNow(t, abs) {
@@ -1312,7 +1325,7 @@ $('#play').addEventListener('click', () => { if (!S.playing && S.u >= 1 && !(C &
 $('#loop').addEventListener('change', e => { S.loop = e.target.checked; });
 let scrubbing = false;
 const scrub = $('#scrub');
-scrub.addEventListener('input', () => { S.u = +scrub.value / 10000; S.ext = 0; });
+scrub.addEventListener('input', () => { S.u = +scrub.value / 10000; S.ext = 0; slowJump(); });
 scrub.addEventListener('pointerdown', () => { scrubbing = true; });
 window.addEventListener('pointerup', () => { scrubbing = false; });
 // "r<seconds>" values play in real time (simulated seconds per second); the others scale the whole mission
@@ -1326,7 +1339,92 @@ function renderTicks() {
   box.innerHTML = (C.spans || []).map(([a, b]) => { const u0 = tToU(a) * 100, u1 = tToU(b) * 100; return `<span class="band" style="left:${u0.toFixed(3)}%;width:${Math.max(0.4, u1 - u0).toFixed(3)}%"></span>`; }).join('') + C.markers.map(m => `<button type="button" class="tick ${m.type}" style="left:${(tToU(m.t) * 100).toFixed(3)}%" title="${esc(_('tick.title', { label: m.label, t: fmtDur(m.t) }))}" aria-label="${esc(m.label)}" data-t="${m.t}"></button>`).join('');
   $('#tend').textContent = '/ ' + fmtDur(C.T);
 }
-$('#ticks').addEventListener('click', e => { const b = e.target.closest('.tick'); if (!b) return; S.u = tToU(+b.dataset.t); });
+$('#ticks').addEventListener('click', e => { const b = e.target.closest('.tick'); if (!b) return; S.u = tToU(+b.dataset.t); slowJump(); });
+
+// ===================== Osculating orbit, burns in slow motion =====================
+// The osculating orbit: each frame the Kepler conic of the craft's state (position and velocity from the integrated
+// samples, so a finite burn's thrust is in it; after the integrated span the analytic orbit) about the body whose sphere
+// of influence holds it (core.js domBody; maneuvers: the central body), drawn faint (Q.ellK points; open orbits: the
+// branch out to that SOI). Switch #tOsc, saved.
+S.osc = readPref(LS, PREF_KEYS.osc) !== '0';
+S.slow = readPref(LS, PREF_KEYS.slow) !== '0';
+$('#tOsc').checked = S.osc; $('#slow').checked = S.slow;
+$('#tOsc').addEventListener('change', e => { S.osc = e.target.checked; writePref(LS, PREF_KEYS.osc, S.osc ? '1' : '0'); });
+$('#slow').addEventListener('change', e => { S.slow = e.target.checked; writePref(LS, PREF_KEYS.slow, S.slow ? '1' : '0'); });
+const OSC_PTS = new Float64Array(3 * 200), OSC_R = [0, 0, 0], OSC_V = [0, 0, 0];
+let OSCF = null; // this frame's: { b, c (conicPoints result), pts } or null
+const ease3 = x => x * x * (3 - 2 * x);
+function oscFrame(tNow, craft, ext) {
+  states(sys, S.M.t0 * DAY + tNow, SPo, SVo);
+  const m = SLOW.morph;
+  let b;
+  if (ext) { b = C.orbit.body; C.orbit.rel(tNow - C.T, RELo); for (let j = 0; j < 3; j++) { OSC_R[j] = RELo[j]; OSC_V[j] = RELo[3 + j]; } }
+  else {
+    // standing on an impulsive burn not yet shown (a jump to it, a pause): the orbit before it
+    const pend = !m && slowOn() ? (C.imp || []).find(e => e.t > SLOW.last && Math.abs(e.t - tNow) < 1e-6) : null;
+    b = m ? m.b : pend ? pend.b : S.kind === 'man' ? 0 : domBody(sys, SPo, craft[0], craft[1], craft[2]);
+    let v;
+    if (pend) v = pend.va;
+    else if (m) { const f = ease3(clamp(m.age / SLOW_MS, 0, 1)); v = [0, 1, 2].map(j => m.va[j] + (m.vb[j] - m.va[j]) * f); }
+    else { const i = segAtTime(tNow), h = simR.t[i + 1] - simR.t[i]; v = h > 0 ? hermV(i, clamp((tNow - simR.t[i]) / h, 0, 1), [0, 0, 0]) : [simR.vx[i + 1], simR.vy[i + 1], simR.vz[i + 1]]; }
+    for (let j = 0; j < 3; j++) { OSC_R[j] = craft[j] - SPo[3 * b + j]; OSC_V[j] = v[j] - SVo[3 * b + j]; }
+  }
+  const rn = Math.hypot(...OSC_R), rMax = Number.isFinite(sys.soi[b]) ? sys.soi[b] : Math.max(4 * rn, ...Array.from(sys.a).map(a => 2 * a));
+  const c = conicPoints(sys.mu[b], OSC_R, OSC_V, Math.min(Q.ellK, 199), S.kind === 'man' ? 30 * rn : rMax, OSC_PTS);
+  if (!c) return null;
+  if (!c.closed) CAPTION.push(_('osc.escape', { body: S.bodies[b].name, v: nf2.format(c.vinf / 1e3) }));
+  else if (S.kind !== 'man' && sys.N > 1) CAPTION.push(_('osc.about', { body: S.bodies[b].name }));
+  if (m) CAPTION.push(_('osc.morph'));
+  return { b, c, pts: OSC_PTS };
+}
+// 2D: about body b's screen position (bpos: frame coordinates of the bodies)
+function drawOsc2(o, bpos) {
+  const X = FP.X, Y = FP.Y, p = o.pts, cx = bpos[o.b][0], cy = bpos[o.b][1], n = o.c.n;
+  ctx.strokeStyle = hexA(COL.traj, SLOW.morph ? 0.75 : 0.42); ctx.lineWidth = 1.2; ctx.beginPath();
+  for (let k = 0; k < n; k++) {
+    const x = sx(cx + p[3 * k] * X[0] + p[3 * k + 1] * X[1] + p[3 * k + 2] * X[2]), y = sy(cy + p[3 * k] * Y[0] + p[3 * k + 1] * Y[1] + p[3 * k + 2] * Y[2]);
+    k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  if (o.c.closed) ctx.closePath();
+  ctx.stroke();
+}
+// Slow motion. Finite burns: while the engine burns (and from half a second of playback before), time runs at most at
+// a third of the burn per second, so every burn lasts ≥ 3 s on screen; the change eases in and out (SLOW.k). Impulsive
+// burns: playback stops at the burn for SLOW_MS while the osculating orbit turns from the one before into the one after
+// (the velocity eased between them) — a visual aid only, the burn itself is instantaneous. Neither in the low-resource
+// mode or with reduced motion; switch #slow, saved.
+const SLOW = { k: 0, last: -1, prev: 0, morph: null }, SLOW_MS = 1.2;
+const slowOn = () => S.slow && Q.glow && !lowQ && !reduceMotion;
+// after a jump (scrub, tick, schedule row) a burn exactly at the new time still gets its turn; earlier ones do not
+function slowJump() { if (C && simR) { SLOW.last = uToT(S.u) - 1e-6; SLOW.prev = SLOW.last; } SLOW.morph = null; }
+// playback advance for this frame (dt real seconds), u < 1: the next u
+function playStep(dt) {
+  const t0 = uToT(S.u);
+  if (t0 < SLOW.prev - 1e-6) SLOW.last = t0 - 1e-6; // time went back (loop, reset): its burns come again
+  SLOW.prev = t0;
+  if (SLOW.morph) { // holding at an impulsive burn
+    SLOW.morph.age += dt;
+    if (SLOW.morph.age < SLOW_MS) return S.u;
+    SLOW.morph = null;
+  }
+  let t1 = S.rate ? t0 + dt * S.rate : uToT(Math.min(1, S.u + dt * S.speed / 30));
+  const rate0 = (t1 - t0) / Math.max(dt, 1e-6);
+  let eff = rate0, cap = Infinity;
+  if (slowOn()) {
+    // the burn under way or starting within half a second of playback
+    for (const [a, b, sp] of C.spans || []) if (!sp && b > t0 && a <= t0 + rate0 * 0.5) { cap = Math.min(cap, (b - a) / 3); break; }
+    SLOW.k += ((cap < rate0 ? 1 : 0) - SLOW.k) * (1 - Math.exp(-dt / 0.25));
+    if (cap < rate0) eff = rate0 + (cap - rate0) * SLOW.k;
+    else if (SLOW.k > 0.01 && SLOW.cap < rate0) eff = rate0 + (SLOW.cap - rate0) * SLOW.k; // easing out after the burn
+    if (cap < Infinity) SLOW.cap = cap;
+    t1 = t0 + eff * dt;
+    // an impulsive burn in this step: stop at it, start the turn
+    for (const e of C.imp || []) if (e.t > SLOW.last && e.t >= t0 - 1e-9 && e.t <= t1) { t1 = e.t; SLOW.last = e.t; SLOW.morph = { ...e, age: 0 }; break; }
+  } else SLOW.k = 0;
+  const tag = $('#slowTag'), slow = rate0 / Math.max(eff, 1e-9);
+  if (!SLOW.morph && slow > 1.15) { tag.hidden = false; setT('#slowTag', _('tl.slow', { k: nf0.format(slow) })); } else if (!tag.hidden) tag.hidden = true;
+  return t1 >= C.T ? 1 : Math.max(S.u, tToU(t1));
+}
 
 // ===================== Results =====================
 const resRows = rows => rows.map(([l, v, u]) => v == null ? `<tr class="sec"><th scope="rowgroup" colspan="2">${esc(l)}</th></tr>`
@@ -1437,8 +1535,52 @@ function updateResultsMan() {
   }
   if (busy) { cls = 'warn'; txt = _('chip.mvBusy', { p: nf0.format(MAN.prog) }); }
   chip.className = 'chip ' + cls; chip.textContent = txt;
-  res.innerHTML = resRows(rows);
+  res.innerHTML = resRows(rows) + schedHtml();
 }
+// Burn schedule (Results): per burn where (apsis, node), when (T+, UTC; a finite burn's start, end and duration), Δv and
+// why it is done there; a row moves the timeline to the burn's start.
+function schedHtml() {
+  if (!simR || !C) return '';
+  const real = S.model === 'real', man = S.kind === 'man' && MAN, [pn, an] = man ? apsNames(MAN.key).map(cap1) : ['', ''];
+  const nodes = man && (MAN.o0.i > 1e-6 || MAN.o1.i > 1e-6);
+  const out = [];
+  let no = 0;
+  for (const e of simR.events) {
+    if (e.type !== 'burn' && e.type !== 'aero') continue;
+    const t0 = e.t0 != null ? e.t0 : e.t, t1 = e.t1 != null ? e.t1 : null, why = [];
+    let place;
+    if (e.spiral) { place = _('sch.spiral'); why.push(_('why.spiral')); }
+    else if (man) {
+      const n = MAN.plan.nodes[e.node]; if (!n) continue;
+      let at = 'circ';
+      for (const a of [n.a1, n.a2]) { const o = 2 * a - n.r; if (Math.abs(o - n.r) > 1e-9 * n.r) { at = n.r < o ? 'peri' : 'apo'; break; } }
+      place = (at === 'apo' ? an : at === 'peri' ? pn : _('res.mvCircle')) + (nodes ? ' · ' + _(n.side ? 'sch.desc' : 'sch.asc') : '');
+      const raise = n.a2 > n.a1;
+      if (n.sep) why.push(_('why.sep'));
+      else if (S.M.type === 'bielliptic' && e.node === 1) why.push(_('why.bi'));
+      else why.push(_(at === 'peri' ? (raise ? 'why.periRaise' : 'why.periLower') : at === 'apo' ? (raise ? 'why.apoRaise' : 'why.apoLower') : raise ? 'why.circRaise' : 'why.circLower'));
+      if (!n.sep && n.di > 1e-7) why.push(_('why.turn', { di: nf2.format(n.di / D2R) }));
+      if (e.pieces > 1) why.push(_('why.piece', { j: e.piece, k: e.pieces }));
+    } else {
+      const A = S.bodies[0].name, B = S.bodies[1].name;
+      if (e.type === 'aero') { place = _('sch.aero', { name: B }); why.push(_('why.aero')); }
+      else if (e.body === 0) { place = _('sch.park', { name: A }); why.push(_('why.depart')); }
+      else if (e.label === 'ev.raise') { place = _('sch.apo', { name: B }); why.push(_('why.raise')); }
+      else { place = _('sch.at', { name: B, peri: peri(1) }); why.push(_('why.capture')); }
+    }
+    no++;
+    const when = [_('hud.tplus', { t: fmtDur(t0, true) })];
+    if (real) when.push(fmtDate(dateAt(t0)));
+    if (t1 != null) when.push(_('sch.dur', { d: fmtBurn(t1 - t0) }));
+    out.push(`<tr class="sch" data-t="${t0}"><th scope="row"><button type="button" class="sch-go" aria-label="${esc(_('sch.go'))}">${no} · ${esc(place)}</button></th><td>${e.dv != null ? nf1.format(e.dv) : '—'}<em>m/s</em></td></tr>`
+      + `<tr class="sch sch-d" data-t="${t0}"><td colspan="2">${esc(when.join(' · '))}<br><i>${esc(why.join(' '))}</i></td></tr>`);
+  }
+  return out.length ? resRows([[_('res.sec.sched')]]) + out.join('') : '';
+}
+$('#res').addEventListener('click', e => {
+  const tr = e.target.closest('tr.sch'); if (!tr || !C) return;
+  S.u = tToU(+tr.dataset.t); S.ext = 0; slowJump();
+});
 function updateResults() {
   if (S.kind === 'man') { updateResultsMan(); return; }
   const chip = $('#chip'), res = $('#res');
@@ -1493,7 +1635,7 @@ function updateResults() {
     rows.push([_('res.oop'), nf0.format(tr.oop), _('res.oopUnit')]);
     if (tr.vEntry) rows.push([_('res.vEntry'), nf3.format(tr.vEntry / 1e3), 'km/s']);
   }
-  res.innerHTML = resRows(rows);
+  res.innerHTML = resRows(rows) + schedHtml();
 }
 // the overview window repeats the mission status, so picks and solver progress show where the user clicked
 function setStatus(t) { $('#status').textContent = t; $('#ovStatus').textContent = t; }
@@ -2102,7 +2244,7 @@ function setMap(on) {
 }
 function syncMapUI() {
   $('#mapBtn').setAttribute('aria-pressed', String(MAP.on));
-  for (const s of ['#frameSeg', '#followSeg', '#tSoiWrap', '#tTracksWrap']) $(s).hidden = MAP.on;
+  for (const s of ['#frameSeg', '#followSeg', '#tSoiWrap', '#tTracksWrap', '#tOscWrap']) $(s).hidden = MAP.on;
   for (const s of ['#mapSeg', '#mapMoonsWrap']) $(s).hidden = !MAP.on;
   setSeg('#mapSeg', MAP.log ? 'log' : 'lin');
 }
@@ -2535,9 +2677,8 @@ function draw(now) {
       if (S.loop) { hold += dt; if (hold > 1.6) { S.u = 0; S.ext = 0; hold = 0; } }
       else if (C.orbit) S.ext += dt * (S.rate || S.speed * C.orbit.P / 8);
       else { S.playing = false; setPlayIcon(); }
-    } else if (S.rate) { const tn = uToT(S.u) + dt * S.rate; S.u = tn >= C.T ? 1 : Math.max(S.u, tToU(tn)); }
-    else S.u = Math.min(1, S.u + dt * S.speed / 30);
-  }
+    } else S.u = playStep(dt);
+  } else if (!$('#slowTag').hidden) $('#slowTag').hidden = true;
   if (S.u < 1) S.ext = 0;
   const ext = S.ext > 0 && C.orbit;
   const [si, sf] = uToSeg(S.u);
@@ -2550,6 +2691,7 @@ function draw(now) {
   const dtv = ext ? C.orbit.P / 300 : Math.max(1, (segH > 0 ? segH : 60) * 0.02);
   const t2 = ext ? tNow + dtv : Math.min(C.T, tNow + dtv);
   const craft2 = ext ? orbitPos(t2, [0, 0, 0]) : posAtTime(t2, [0, 0, 0]);
+  OSCF = S.osc && !MAP.on ? oscFrame(tNow, craft, ext) : null;
 
   if (v3) { if (MAP.on) drawMap3(mapTime(tNow), glow, craft, tNow, pathIdx); else draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow); }
   else {
@@ -2634,6 +2776,7 @@ function draw(now) {
         ctx.stroke();
       }
       if (ext) drawTrail(S.ext, cpos);
+      if (OSCF) drawOsc2(OSCF, bpos);
       // finite burns: the engine-on arcs (reached ones bright, the rest faint)
       for (const [i0, i1] of C.burnIdx || []) {
         if (pathIdx > i0) { ctx.strokeStyle = COL.burn; ctx.lineWidth = 2.6; strokePath(C.fx, C.fy, i0, Math.min(i1, pathIdx)); }

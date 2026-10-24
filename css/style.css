@@ -64,6 +64,12 @@ button,.seg button,.rail-btn,.wbtn,.btn,.ghost{transition:color .12s,background-
 .chk{display:inline-flex;align-items:center;gap:6px;font:500 11.5px/1 var(--f-disp);letter-spacing:.04em;color:var(--dim);cursor:pointer;white-space:nowrap}
 .chk input{accent-color:var(--accent);margin:0}
 .chk.sky input{width:76px}
+/* burn schedule (Results): each burn a clickable pair of rows */
+#res tr.sch{cursor:pointer}
+#res tr.sch:hover th,#res tr.sch:hover td{color:var(--ink)}
+#res tr.sch-d td{text-align:left;font:400 11px/1.4 var(--f-body);color:var(--dim);padding-top:0}
+#res tr.sch-d i{font-style:normal;color:var(--faint)}
+.sch-go{background:none;border:0;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
 
 .hud-bot{position:absolute;left:12px;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:flex-end;gap:6px;pointer-events:none}
 .hud-bot>*{pointer-events:auto}
@@ -80,7 +86,8 @@ button,.seg button,.rail-btn,.wbtn,.btn,.ghost{transition:color .12s,background-
 .play:hover{background:var(--accent);color:var(--accent-ink)}
 .play svg{width:14px;height:14px}
 .tl-time{display:flex;flex-direction:column;gap:2px;font:500 12.5px/1.1 var(--f-mono);font-variant-numeric:tabular-nums;min-width:128px}
-.tl-time span:last-child{color:var(--faint);font-size:11px}
+.tl-time span:nth-child(2){color:var(--faint);font-size:11px}
+.tl-time .slowtag{color:var(--burn);font-size:10.5px;letter-spacing:.03em}
 .scrub{position:relative;flex:1;min-width:160px;height:28px;display:flex;align-items:center}
 .scrub input{position:relative;z-index:2}
 .ticks{position:absolute;left:8px;right:8px;top:0;bottom:0;pointer-events:none;z-index:3}
@@ -343,5 +350,6 @@ html[data-q=low] *,html[data-q=low] *::before,html[data-q=low] *::after{transiti
   .readout b{font-size:11.5px}
   .tl-time{min-width:0}
   .scrub{order:5;flex-basis:100%}
+  .tl-opts{flex-wrap:wrap;row-gap:6px}
 }
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
