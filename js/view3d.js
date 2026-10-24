@@ -92,7 +92,9 @@ void main() {
   #include <colorspace_fragment>
 }`;
 // Sky: the Milky Way on a sphere around the camera (object space = ecliptic J2000 axes; the mesh is turned into the
-// view frame), the map in celestial coordinates (right ascension increasing to the left, 0h in the middle)
+// view frame), the map in celestial coordinates (right ascension increasing to the left, 0h in the middle). Soft on
+// purpose: a cubic B-spline (four bilinear taps) from mip level SKY_LOD or coarser, so the map's JPEG blocks and grain
+// never show when it is magnified; the stars are separate sharp points (STAR_*).
 const SKY_VS = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_vertex>
@@ -108,14 +110,26 @@ const SKY_FS = /* glsl */`
 uniform sampler2D uMilky;
 uniform float uGain;
 varying vec3 vD;
+vec3 skyCubic(vec2 uv, int l) {
+  vec2 sz = vec2(textureSize(uMilky, l)), p = uv * sz - 0.5, f = fract(p), i = p - f;
+  vec2 w0 = (1.0 - f) * (1.0 - f) * (1.0 - f) / 6.0, w3 = f * f * f / 6.0, w1 = 2.0 / 3.0 - f * f * (1.0 - 0.5 * f), w2 = 1.0 - w0 - w1 - w3;
+  vec2 g0 = w0 + w1, g1 = w2 + w3, s0 = (i - 0.5 + w1 / g0) / sz, s1 = (i + 1.5 + w3 / g1) / sz;
+  float L = float(l);
+  return g0.y * (g0.x * textureLod(uMilky, s0, L).rgb + g1.x * textureLod(uMilky, vec2(s1.x, s0.y), L).rgb)
+       + g1.y * (g0.x * textureLod(uMilky, vec2(s0.x, s1.y), L).rgb + g1.x * textureLod(uMilky, s1, L).rgb);
+}
 void main() {
   #include <logdepthbuf_fragment>
   vec3 e = normalize(vD);
   const float c = 0.9174820621, s = 0.3977771559; // J2000 obliquity: ecliptic -> equatorial
   vec3 q = vec3(e.x, c * e.y - s * e.z, s * e.y + c * e.z);
   float u = 0.5 - atan(q.y, q.x) / 6.2831853, u2 = fract(u + 0.5) - 0.5;
-  vec2 uv = vec2(fwidth(u) <= fwidth(u2) + 1e-6 ? u : u2, 0.5 + asin(clamp(q.z, -1.0, 1.0)) / 3.1415927);
-  gl_FragColor = vec4(texture(uMilky, uv).rgb * uGain, 1.0);
+  vec2 uv = vec2(fract(u), 0.5 + asin(clamp(q.z, -1.0, 1.0)) / 3.1415927);
+  // the screen footprint in texels of the full map (the u seam has a jump in u, not in u2)
+  vec2 fp = vec2(min(fwidth(u), fwidth(u2)), fwidth(uv.y)) * vec2(textureSize(uMilky, 0));
+  float lod = max(${SKY_LOD.toFixed(1)}, log2(max(max(fp.x, fp.y), 1e-6))), l0 = floor(lod);
+  vec3 m = mix(skyCubic(uv, int(l0)), skyCubic(uv, int(l0) + 1), lod - l0);
+  gl_FragColor = vec4(m * uGain, 1.0);
   #include <colorspace_fragment>
 }`;
 // bright stars: points along their directions (ecliptic axes, same mesh turning), a Gaussian of the pixel ratio's size

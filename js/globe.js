@@ -497,8 +497,10 @@ function starRGB(bv) {
 // star brightness on screen: peak (linear, 1 = white) of a point of V magnitude m; brighter ones grow instead (STAR_M0
 // shows as a just-white point)
 const STAR_M0 = 1.0;
-// the Milky Way's display gain (the map's 99.9th percentile is 1): faint behind the orbits, as the eye sees it next to the Sun's lit bodies
-const SKY_GAIN = 0.08;
+// the Milky Way's display gain (the map's 99.9th percentile is 1): near black, as next to the Sun's lit bodies (median
+// sky ≈ sRGB 2/255, the brightest band ≈ 37/255); and the finest map level it is drawn from (1 = 1024 wide, ≈ 0.35° per
+// texel, smoothed further by the cubic filter): the 2048 map's grain and JPEG blocks stay below what shows
+const SKY_GAIN = 0.02, SKY_LOD = 1;
 const starPeak = m => Math.pow(10, -0.4 * (m - STAR_M0));
 
 // ---------- the Sun's glare ----------

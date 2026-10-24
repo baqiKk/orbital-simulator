@@ -957,16 +957,23 @@ function makeStars() {
   const g = stars.getContext('2d'), f = Math.max(W, H) / 2 / Math.tan(50 * Math.PI / 180);
   // Milky Way at half resolution: each pixel's direction -> celestial plate carrée (RA increasing to the left)
   const mi = sk.milky.img, mc = document.createElement('canvas'); mc.width = mi.naturalWidth; mc.height = mi.naturalHeight;
-  const mg = mc.getContext('2d'); mg.drawImage(mi, 0, 0); const md = mg.getImageData(0, 0, mc.width, mc.height).data, mw = mc.width, mh = mc.height;
+  const mg = mc.getContext('2d'); mg.drawImage(mi, 0, 0); const md = mg.getImageData(0, 0, mc.width, mc.height).data;
+  const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }, srgb = c => 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+  // soft, as in 3D (SKY_LOD): the map averaged down 2^SKY_LOD times in linear light, then sampled bilinearly
+  const sc = 1 << SKY_LOD, mw = mc.width / sc, mh = mc.height / sc, M = new Float32Array(3 * mw * mh), LUT = new Float32Array(256).map((_, i) => lin(i));
+  for (let y = 0; y < mc.height; y++) for (let x = 0; x < mc.width; x++) for (let c = 0; c < 3; c++) M[3 * ((y / sc | 0) * mw + (x / sc | 0)) + c] += LUT[md[4 * (y * mc.width + x) + c]] / (sc * sc);
   const w2 = Math.ceil(W / 2), h2 = Math.ceil(H / 2), half = document.createElement('canvas'); half.width = w2; half.height = h2;
   const hg = half.getContext('2d'), im = hg.createImageData(w2, h2), ce = Math.cos(OBLIQ), se = Math.sin(OBLIQ), vd = linC(COL.void), gain = SKY_GAIN;
-  const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }, srgb = c => 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
   for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) {
     const ex = (2 * x + 1 - W / 2) / f, ey = (H / 2 - 2 * y - 1) / f, l = Math.hypot(ex, ey, 1);
     const e = [ex / l, ey / l, -1 / l], q = [e[0], ce * e[1] - se * e[2], se * e[1] + ce * e[2]];
     let u = 0.5 - Math.atan2(q[1], q[0]) / (2 * Math.PI); u -= Math.floor(u);
-    const v = 0.5 - Math.asin(q[2]) / Math.PI, k = 4 * (Math.min(mh - 1, Math.floor(v * mh)) * mw + Math.min(mw - 1, Math.floor(u * mw))), o = 4 * (y * w2 + x);
-    for (let c = 0; c < 3; c++) im.data[o + c] = srgb(vd[c] + lin(md[k + c]) * gain);
+    const v = 0.5 - Math.asin(q[2]) / Math.PI, px = u * mw - 0.5, py = Math.min(mh - 1, Math.max(0, v * mh - 0.5)), x0 = Math.floor(px), y0 = Math.floor(py), fx = px - x0, fy = py - y0;
+    const a = 3 * (y0 * mw + (x0 + mw) % mw), b = 3 * (y0 * mw + (x0 + 1) % mw), y1 = Math.min(mh - 1, y0 + 1) - y0, o = 4 * (y * w2 + x);
+    for (let c = 0; c < 3; c++) {
+      const m = (1 - fy) * ((1 - fx) * M[a + c] + fx * M[b + c]) + fy * ((1 - fx) * M[a + 3 * mw * y1 + c] + fx * M[b + 3 * mw * y1 + c]);
+      im.data[o + c] = srgb(vd[c] + m * gain);
+    }
     im.data[o + 3] = 255;
   }
   hg.putImageData(im, 0, 0);
