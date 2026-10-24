@@ -145,7 +145,23 @@
               <label class="field"><span data-i18n="mv.inc"></span><input type="number" id="mv-i0" step="any" min="0" max="180"></label>
             </div>
           </fieldset>
-          <fieldset class="mvbox">
+          <fieldset class="mvbox" id="mvBurnBox" hidden>
+            <legend data-i18n="mv.burn"></legend>
+            <div class="seg full" id="mvAtSeg" role="group" data-i18n-aria-label="mv.at">
+              <button type="button" data-v="0" id="mvAt0"></button>
+              <button type="button" data-v="1" id="mvAt1"></button>
+            </div>
+            <div class="grid2">
+              <label class="field"><span data-i18n="mv.T"></span><input type="number" id="mv-T" step="any" min="0"></label>
+              <label class="field"><span data-i18n="mv.dir"></span><select id="mv-dir">
+                <option value="pro" data-i18n="mv.dir.pro"></option><option value="retro" data-i18n="mv.dir.retro"></option>
+                <option value="norm" data-i18n="mv.dir.norm"></option><option value="anti" data-i18n="mv.dir.anti"></option>
+                <option value="out" data-i18n="mv.dir.out"></option><option value="in" data-i18n="mv.dir.in"></option>
+              </select></label>
+            </div>
+            <small class="mv-hint" id="mvBurnHint"></small>
+          </fieldset>
+          <fieldset class="mvbox" id="mvTargetBox">
             <legend data-i18n="mv.target"></legend>
             <div class="grid3">
               <label class="field"><span id="lbl-hp1"></span><input type="number" id="mv-hp1" step="any" min="0"></label>
@@ -159,6 +175,7 @@
               <button type="button" data-v="hohmann" data-i18n="mv.type.hohmann" data-i18n-title="mv.type.hohmannTip"></button>
               <button type="button" data-v="bielliptic" data-i18n="mv.type.bielliptic" data-i18n-title="mv.type.biellipticTip"></button>
               <button type="button" data-v="spiral" data-i18n="mv.type.spiral" data-i18n-title="mv.type.spiralTip"></button>
+              <button type="button" data-v="burn" data-i18n="mv.type.burn" data-i18n-title="mv.type.burnTip"></button>
             </div>
           </div>
           <label class="field" id="mvRbWrap" hidden><span id="lbl-rb"></span><input type="number" id="mv-rb" step="any" min="0"></label>
@@ -175,6 +192,7 @@
           </div>
           <fieldset class="mvbox">
             <legend data-i18n="mv.vehicle"></legend>
+            <label class="field row-field"><span data-i18n="mv.veh"></span><select id="mv-veh"></select></label>
             <div class="seg full" id="mvThrSeg" role="group" data-i18n-aria-label="mv.thrust">
               <button type="button" data-v="imp" data-i18n="mv.thrust.imp" data-i18n-title="mv.thrust.impTip"></button>
               <button type="button" data-v="fin" data-i18n="mv.thrust.fin" data-i18n-title="mv.thrust.finTip"></button>
@@ -184,6 +202,17 @@
               <label class="field"><span data-i18n="mv.md"></span><input type="number" id="mv-md" step="any" min="0"></label>
               <label class="field"><span data-i18n="mv.isp"></span><input type="number" id="mv-isp" step="any" min="0"></label>
               <label class="field" id="mvFWrap"><span data-i18n="mv.F"></span><input type="number" id="mv-F" step="any" min="0"></label>
+            </div>
+            <div class="grid3" id="mvLimWrap">
+              <label class="field" data-i18n-title="mv.tMaxTip"><span data-i18n="mv.tMax"></span><input type="number" id="mv-tMax" step="any" min="0"></label>
+              <label class="field" data-i18n-title="mv.nMaxTip"><span data-i18n="mv.nMax"></span><input type="number" id="mv-nMax" step="1" min="0"></label>
+              <label class="field" data-i18n-title="mv.waitTip"><span data-i18n="mv.wait"></span><input type="number" id="mv-wait" step="any" min="0"></label>
+            </div>
+            <small class="mv-hint" id="mvLimHint" hidden></small>
+            <div class="veh-save">
+              <input type="text" id="mv-vname" maxlength="40" data-i18n-placeholder="mv.vname" data-i18n-aria-label="mv.vname">
+              <button class="btn sm" type="button" id="mvVehSave" data-i18n="mv.vsave"></button>
+              <button class="btn sm" type="button" id="mvVehDel" data-i18n="mv.vdel" hidden></button>
             </div>
             <div class="field" id="mvSteerWrap"><span data-i18n="mv.steer"></span>
               <div class="seg full" id="mvSteerSeg" role="group" data-i18n-aria-label="mv.steer">
@@ -373,6 +402,7 @@
 <script src="js/i18n.js"></script>
 <script src="js/prefs.js"></script>
 <script src="js/bodies.js"></script>
+<script src="js/vehicles.js"></script>
 <script id="core" src="js/core.js"></script>
 <script src="js/globe.js"></script>
 <script src="js/mode3d.js"></script>

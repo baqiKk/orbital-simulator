@@ -307,9 +307,31 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(P.PREF_KEYS.osc && P.PREF_KEYS.slow && /id="tOsc"/.test(html) && /id="slow"/.test(html), 'switches and saved keys');
   assert.ok(/S\.osc = readPref\(LS, PREF_KEYS\.osc\) !== '0';/.test(app) && /S\.slow = readPref\(LS, PREF_KEYS\.slow\) !== '0';/.test(app), 'on by default');
   assert.ok(/const slowOn = \(\) => S\.slow && Q\.glow && !lowQ && !reduceMotion;/.test(app), 'slow motion only where animations run');
-  assert.strictEqual([...app.matchAll(/res\.innerHTML = resRows\(rows\) \+ schedHtml\(\);/g)].length, 2, 'schedule in transfer and maneuver results');
+  assert.strictEqual([...app.matchAll(/res\.innerHTML = resRows\(rows\) \+ schedHtml\(\);/g)].length, 3, 'schedule in transfer, maneuver and single-firing results');
   assert.ok(/tr\.sch[\s\S]{0,120}S\.u = tToU\(\+tr\.dataset\.t\)/.test(app), 'a schedule row jumps to its burn');
   assert.ok(has('osc.morph') && /SLOW\.morph/.test(app), 'the impulsive turn is labelled a visual aid');
+}
+
+// 13) Phase 6c-2 vehicles: every ready-made vehicle is usable, has its name, note and sources (links and texts); the
+// derived values follow from the published ones as js/vehicles.js says; saved vehicles are read defensively
+{
+  const { VEHICLES, VEH_SRC } = require('../js/vehicles.js');
+  assert.ok(/<script src="js\/vehicles\.js"><\/script>[\s\S]*<script src="js\/app\.js">/.test(html), 'vehicles.js loads before app.js');
+  for (const v of VEHICLES) {
+    assert.ok(v.F > 0 && v.isp > 0 && v.m0 > v.md && v.md > 0 && v.tMax >= 0 && Number.isInteger(v.nMax) && v.nMax >= 0 && v.wait >= 0, 'usable vehicle ' + v.id);
+    assert.ok(has('veh.' + v.id) && has('cred.veh.' + v.id) && v.src.length && v.src.every(s => VEH_SRC[s] && has('cred.vsrc.' + s)), 'texts and sources of ' + v.id);
+  }
+  const V = Object.fromEntries(VEHICLES.map(v => [v.id, v])), lb = 0.45359237, g0 = 9.80665;
+  assert.ok(Math.abs(V.centaur.tMax - 20830 / (V.centaur.F / (V.centaur.isp * g0))) < 1, 'Centaur: the whole load in one burn');
+  assert.ok(Math.abs(V.csm.m0 - 63493 * lb) < 0.1 && Math.abs(V.csm.md - (63493 - 39641.8) * lb) < 0.1 && Math.abs(V.csm.F - 20500 * 4.4482216) < 0.1, 'CSM: from the press kit and the handbook');
+  assert.ok(V.mex.m0 === 1223 - 71 && V.mex.md === 1223 - 71 - 427 && V.smart1.md === 367 - 82.5 && V.smart1.tMax === 240 * 3600 && Math.abs(V.lp.md - (296.4 - 137.7)) < 1e-9, 'masses as derived');
+  assert.deepStrictEqual(P.parseVehicles('not json'), []);
+  assert.deepStrictEqual(P.parseVehicles('{"a":1}'), []);
+  const ok = { name: ' A ', F: 400, isp: 320, m0: 1000, md: 500, tMax: 600, nMax: 3.5, wait: -1 };
+  assert.deepStrictEqual(P.parseVehicles(JSON.stringify([ok, { ...ok, md: 2000 }, { ...ok, F: 0 }, { ...ok, name: '' }, null])),
+    [{ name: 'A', F: 400, isp: 320, m0: 1000, md: 500, tMax: 600, nMax: 0, wait: 0 }], 'bad entries dropped, limits cleaned');
+  assert.strictEqual(P.parseVehicles(JSON.stringify(Array.from({ length: 80 }, (_, j) => ({ ...ok, name: 'v' + j })))).length, 50, '50 at most');
+  assert.ok(P.PREF_KEYS.vehicles && /<button type="button" data-v="burn"/.test(html) && ['pro', 'retro', 'norm', 'anti', 'out', 'in'].every(d => html.includes(`<option value="${d}"`) && has('mv.dir.' + d)), 'the single firing: six directions');
 }
 
 console.log('OK — all UI tests passed');

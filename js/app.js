@@ -155,7 +155,7 @@ function loadScenario(id) {
   const sc = SCENARIOS.find(s => s.id === id) || SCENARIOS[0];
   S.scenario = sc.id; S.kind = sc.model === 'man' ? 'man' : 'transfer';
   S.M = { ...sc.M };
-  if (S.kind === 'man') { S.model = 'real'; S.bodies = [bodyFromPreset(S.M.body)]; } // dated: lighting, rotation
+  if (S.kind === 'man') { S.M = { ...MV_DEF, ...sc.M }; S.model = 'real'; S.bodies = [bodyFromPreset(S.M.body)]; } // dated: lighting, rotation
   else {
     S.model = sc.model;
     S.bodies = sc.bodies.map(b => bodyFromPreset(b.k, { parent: b.parent, ...(b.a != null ? { a: b.a } : {}), phase: b.phase || 0 }));
@@ -502,21 +502,71 @@ $('#sideSeg').addEventListener('click', e => { const b = e.target.closest('butto
 // apsis names for the maneuver labels: the body's own pair when the table has both, else periapsis / apoapsis
 const apsNames = k => { const a = APSIS[k]; return a && a[1] ? a : [_('apsis.generic'), _('apsis.genericApo')]; };
 const cap1 = s => s[0].toLocaleUpperCase(DICT['meta.locale']) + s.slice(1);
-const MVF = ['hp0', 'ha0', 'i0', 'hp1', 'e1', 'i1', 'rb', 'k', 'm0', 'md', 'isp', 'F', 'O0'];
-// the engine runs: finite burns, or the spiral (always with the engine)
-const mvFinite = M => M.type === 'spiral' || M.thrust === 'fin';
+const MVF = ['hp0', 'ha0', 'i0', 'hp1', 'e1', 'i1', 'rb', 'k', 'm0', 'md', 'isp', 'F', 'O0', 'tMax', 'nMax', 'wait', 'T'];
+// what a maneuver setup has when its scenario leaves it out: no vehicle limits, the single firing's point, length, way
+const MV_DEF = { veh: '', tMax: 0, nMax: 0, wait: 0, at: 0, T: 60, dir: 'pro' };
+const VEH_F = ['F', 'isp', 'm0', 'md', 'tMax', 'nMax', 'wait'];
+// the engine runs: finite burns, the spiral and the single firing (always with the engine)
+const mvFinite = M => M.type === 'spiral' || M.type === 'burn' || M.thrust === 'fin';
+// the vehicle planner splits the burns: finite apsis burns with a firing or ignition limit
+const mvLim = M => M.type !== 'spiral' && M.type !== 'burn' && M.thrust === 'fin' && (M.tMax > 0 || M.nMax > 0);
+// Vehicles: the ready-made ones (js/vehicles.js) and the viewer's, saved by name (prefs.js parseVehicles); the select
+// holds 'p:<id>', 's:<index>' or '' (the values typed in)
+let SAVED_VEH = parseVehicles(readPref(LS, PREF_KEYS.vehicles));
+function renderVehSel() {
+  const sel = $('#mv-veh'), cur = S.M.veh || '';
+  sel.innerHTML = `<option value="">${esc(_('mv.vehCustom'))}</option><optgroup label="${esc(_('mv.vehPresets'))}">${VEHICLES.map(v => `<option value="p:${v.id}">${esc(_('veh.' + v.id))}</option>`).join('')}</optgroup>`
+    + (SAVED_VEH.length ? `<optgroup label="${esc(_('mv.vehSaved'))}">${SAVED_VEH.map((v, j) => `<option value="s:${j}">${esc(v.name)}</option>`).join('')}</optgroup>` : '');
+  sel.value = cur; if (sel.value !== cur) { sel.value = ''; S.M.veh = ''; }
+  $('#mvVehDel').hidden = !(S.M.veh || '').startsWith('s:');
+}
+function applyVehicle(val) {
+  const v = val.startsWith('p:') ? VEHICLES.find(q => q.id === val.slice(2)) : val.startsWith('s:') ? SAVED_VEH[+val.slice(2)] : null;
+  S.M.veh = v ? val : '';
+  if (v) { for (const f of VEH_F) S.M[f] = v[f]; if (S.M.type !== 'spiral' && S.M.type !== 'burn') S.M.thrust = 'fin'; }
+  syncMan(); rebuild({ resetU: true });
+}
+$('#mv-veh').addEventListener('change', e => applyVehicle(e.target.value));
+$('#mvVehSave').addEventListener('click', () => {
+  const name = ($('#mv-vname').value.trim() || _('mv.vauto', { n: SAVED_VEH.length + 1 })).slice(0, 40), q = { name };
+  for (const f of VEH_F) q[f] = +S.M[f] || 0;
+  const list = SAVED_VEH.filter(v => v.name !== name).concat([q]), ok = parseVehicles(JSON.stringify(list));
+  if (ok.length !== list.length) { setStatus(_('mv.vbad')); return; }
+  SAVED_VEH = ok; writePref(LS, PREF_KEYS.vehicles, JSON.stringify(ok));
+  S.M.veh = 's:' + ok.findIndex(v => v.name === name); $('#mv-vname').value = '';
+  syncMan(); setStatus(_('mv.vsaved', { name }));
+});
+$('#mvVehDel').addEventListener('click', () => {
+  if (!(S.M.veh || '').startsWith('s:')) return;
+  SAVED_VEH.splice(+S.M.veh.slice(2), 1); writePref(LS, PREF_KEYS.vehicles, JSON.stringify(SAVED_VEH));
+  S.M.veh = ''; syncMan();
+});
+$('#mvAtSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.M.at = +b.dataset.v; syncMan(); rebuild({ resetU: true }); });
+$('#mv-dir').addEventListener('change', e => { S.M.dir = e.target.value; syncMan(); rebuild({ resetU: true }); });
 function syncMan() {
   const M = S.M, [pn, an] = apsNames(M.body).map(cap1), sel = $('#mv-body'), spiral = M.type === 'spiral', fin = mvFinite(M);
   if (sel.options.length !== KEYS_MV.length) sel.innerHTML = KEYS_MV.map(k => `<option value="${k}">${esc(_('body.' + k))}</option>`).join('');
   sel.value = M.body;
-  for (const f of MVF) { const el = $('#mv-' + f); if (document.activeElement !== el) { el.value = +(+M[f]).toFixed(6); el.setAttribute('aria-invalid', 'false'); } }
+  for (const f of MVF) { const el = $('#mv-' + f); if (document.activeElement !== el) { el.value = +(+(M[f] != null ? M[f] : MV_DEF[f] || 0)).toFixed(6); el.setAttribute('aria-invalid', 'false'); } }
+  // the single firing: where, how long, which way (the target and the plan's options do not apply)
+  const burn = M.type === 'burn', lim = mvLim(M);
+  $('#mvBurnBox').hidden = !burn; $('#mvTargetBox').hidden = burn;
+  $('#mvAt0').textContent = pn; $('#mvAt1').textContent = an; setSeg('#mvAtSeg', String(M.at || 0)); $('#mv-dir').value = M.dir || 'pro';
+  renderVehSel();
   $('#mv-j2').checked = !!M.j2;
   $('#lbl-hp0').textContent = $('#lbl-hp1').textContent = _('mv.hp', { peri: pn });
   $('#lbl-ha0').textContent = _('mv.ha', { apo: an }); $('#lbl-rb').textContent = _('mv.rb', { apo: an });
   setSeg('#mvTypeSeg', M.type); setSeg('#mvPlaneSeg', M.plane); setSeg('#mvThrSeg', fin ? 'fin' : 'imp'); setSeg('#mvSteerSeg', M.steer);
   // the spiral has its own steering (Edelbaum), no pieces, no separate plane change, and always the engine
   $('#mvRbWrap').hidden = M.type !== 'bielliptic';
-  $('#mvPlaneWrap').hidden = $('#mvKWrap').hidden = $('#mvThrSeg').hidden = spiral;
+  $('#mvPlaneWrap').hidden = spiral || burn; $('#mvKWrap').hidden = spiral || burn || lim; $('#mvThrSeg').hidden = spiral || burn;
+  $('#mvLimHint').hidden = !lim; if (lim) $('#mvLimHint').textContent = _('mv.limHint');
+  if (burn) { // what the firing burns: ṁ·T (or what is left), and its Δv
+    const mdot = M.F / (M.isp * G0), fuel = Math.min(mdot * M.T, M.m0 - M.md), bh = $('#mvBurnHint');
+    bh.classList.toggle('warn', mdot * M.T > M.m0 - M.md || (M.tMax > 0 && M.T > M.tMax));
+    bh.textContent = _('mv.burnHint', { fuel: nf1.format(fuel), dv: nf1.format(M.isp * G0 * Math.log(M.m0 / (M.m0 - fuel))) })
+      + (mdot * M.T > M.m0 - M.md ? ' ' + _('mv.burnHintDry', { t: nf0.format((M.m0 - M.md) / mdot) }) : '') + (M.tMax > 0 && M.T > M.tMax ? ' ' + _('res.vOverT', { t: fmtBurn(M.tMax) }) : '');
+  }
   $('#mvFWrap').hidden = !fin; $('#mvSteerWrap').hidden = !fin || spiral; $('#mvFinHint').hidden = !fin;
   const d = BODIES[M.body], Re = d.j2[1], ra = (Re + M.hp1) * (1 + M.e1) / (1 - M.e1), a = (Re + M.hp1 + ra) / 2;
   $('#mvHa').textContent = M.e1 > 0 ? _('mv.haHint', { apo: an, h: nf0.format(ra - Re), a: nf0.format(a) }) : _('mv.circHint', { a: nf0.format(a) });
@@ -536,13 +586,15 @@ function syncMan() {
 }
 // value checks per field (cross-field ones, like apoapsis ≥ periapsis, come back from maneuverPlan)
 const MV_OK = { hp0: v => v > 0, ha0: v => v > 0, hp1: v => v > 0, rb: v => v > 0, e1: v => v >= 0 && v <= 0.99, i0: v => v >= 0 && v <= 180, i1: v => v >= 0 && v <= 180,
-  k: v => Number.isInteger(v) && v >= 1 && v <= 8, m0: v => v > 0, md: v => v > 0, isp: v => v > 0, F: v => v > 0, O0: () => true };
+  k: v => Number.isInteger(v) && v >= 1 && v <= 8, m0: v => v > 0, md: v => v > 0, isp: v => v > 0, F: v => v > 0, O0: () => true,
+  tMax: v => v >= 0, nMax: v => Number.isInteger(v) && v >= 0 && v <= 1000, wait: v => v >= 0, T: v => v > 0 };
 for (const f of MVF) {
   $('#mv-' + f).addEventListener('input', e => {
     const v = parseNum(e.target.value), bad = !Number.isFinite(v) || !MV_OK[f](v);
     e.target.setAttribute('aria-invalid', String(bad));
     if (bad) return;
-    S.M[f] = v; syncMan(); scheduleRebuild();
+    S.M[f] = v; if (VEH_F.includes(f)) S.M.veh = ''; // edited by hand: no longer the vehicle chosen
+    syncMan(); scheduleRebuild();
   });
 }
 function setCentral(k) {
@@ -616,38 +668,45 @@ function eqFrame(k, t) {
   return k === 'earth' ? laplaceFrame(-90, 90) : d.pole ? equatorFrame(d.pole, t, 6) : equatorFrame(d.axis, t, 4);
 }
 function rebuildMan(o = {}) {
-  const M = S.M, k = M.body, d = BODIES[k], t0 = M.t0 * DAY, spiral = M.type === 'spiral', fin = mvFinite(M);
+  const M = S.M, k = M.body, d = BODIES[k], t0 = M.t0 * DAY, spiral = M.type === 'spiral', burn = M.type === 'burn', fin = mvFinite(M);
   sys = buildSystem(sysList()); guess = null;
   const mu = d.gm * 1e9, R = d.radius * 1e3, Re = d.j2[1] * 1e3, rot = eqFrame(k, t0);
   const { o0, o1, opt } = mvOrbits(M, Re);
   const bad = MVF.some(f => !Number.isFinite(M[f]) || !MV_OK[f](M[f]));
   // the spiral flies no impulsive plan; its Hohmann counterpart is the comparison
   const hoh = maneuverPlan(mu, R, o0, o1, { ...opt, type: 'hohmann', plane: 'comb', k: 1 });
-  const plan = bad ? { error: 'err.mvApsis' } : spiral ? (o0.ra === o0.rp && o1.ra === o1.rp ? (hoh.error ? hoh : { burns: [], nodes: [], dv: 0, tof: 0, o0, o1 }) : { error: 'err.mvSpiralCirc' })
-    : maneuverPlan(mu, R, o0, o1, opt);
-  if (plan.error) { mvStop(); showErr(_(plan.error), 'err.mvFix'); simR = null; C = null; MAN = null; updateResults(); renderTicks(); return; }
+  // the single firing has no plan (the worker flies it); a vehicle's limits split the plan's burns (core.js splitPlan)
+  let plan = bad ? { error: 'err.mvApsis' } : spiral ? (o0.ra === o0.rp && o1.ra === o1.rp ? (hoh.error ? hoh : { burns: [], nodes: [], dv: 0, tof: 0, o0, o1 }) : { error: 'err.mvSpiralCirc' })
+    : burn ? { burns: [], nodes: [], dv: 0, tof: 0, o0, o1: o0 } : maneuverPlan(mu, R, o0, o1, opt);
+  const sp = !plan.error && mvLim(M) ? splitPlan(mu, R, o0, o1, opt, { F: M.F, isp: M.isp, m0: M.m0, md: M.md, tMax: M.tMax, nMax: M.nMax }) : null;
+  if (sp) plan = sp.error ? sp : sp.plan;
+  if (plan.error) { mvStop(); showErr(_(plan.error, vehParams(plan.params)), 'err.mvFix'); simR = null; C = null; MAN = null; updateResults(); renderTicks(); return; }
   showErr('');
   const c = { mu, R, J2: M.j2 ? d.j2[0] * 1e-6 : 0, Re, rot, O0: M.O0 * D2R }, prev = MAN;
-  // impulsive: flown here at once (also what a finite flight shows until the worker returns); the spiral keeps the
-  // previous spiral on screen meanwhile
-  if (!spiral) simR = maneuverSim(c, plan, { tol: 1e-10 });
-  else if (!(prev && prev.spiral && prev.res)) { simR = null; C = null; }
+  // impulsive: flown here at once (also what a finite flight shows until the worker returns); the spiral and the
+  // single firing keep the previous one on screen meanwhile
+  const keep = prev && prev.res && ((spiral && prev.spiral) || (burn && prev.burn));
+  if (!spiral && !burn) simR = maneuverSim(c, plan, { tol: 1e-10 });
+  else if (!keep) { simR = null; C = null; }
   // frames (ecliptic axes): the equator, the initial and the target orbit planes (x along the line of nodes ℓ)
   const ecl = u => [0, 1, 2].map(j => rot[3 * j] * u[0] + rot[3 * j + 1] * u[1] + rot[3 * j + 2] * u[2]);
   const O0 = M.O0 * D2R, L = ecl([Math.cos(O0), Math.sin(O0), 0]);
   const plane = i => { const n = ecl([Math.sin(i) * Math.sin(O0), -Math.sin(i) * Math.cos(O0), Math.cos(i)]); return { x: L, y: [n[1] * L[2] - n[2] * L[1], n[2] * L[0] - n[0] * L[2], n[0] * L[1] - n[1] * L[0]], n }; };
   const fr = { eq: { x: [rot[0], rot[3], rot[6]], y: [rot[1], rot[4], rot[7]], n: [rot[2], rot[5], rot[8]] }, p0: plane(o0.i), p1: plane(o1.i) };
-  MAN = { key: k, mu, R, Re, rot, plan, hoh, o0, o1, opt, fr, j2: c.J2, spiral, fin, res: null, busy: fin, prog: 0, fit: !!o.fit || !simR };
-  if (spiral && simR) MAN.res = prev.res; // shown until the new one arrives
+  MAN = { key: k, mu, R, Re, rot, plan, hoh, o0, o1: burn ? o0 : o1, opt, fr, j2: c.J2, spiral, burn, sp: sp && !sp.error ? sp : null, fin, res: null, busy: fin, prog: 0, fit: !!o.fit || !simR };
+  if ((spiral || burn) && simR) MAN.res = prev.res; // shown until the new one arrives
   if (!['eq', 'p0', 'p1'].includes(S.frame)) S.frame = 'eq';
   if (o.resetU) { S.u = 0; S.ext = 0; }
   if (simR) { PLANE = planeBasis(simR.normal); buildCache(); }
   if (o.fit) needFit = true;
   $('#dateWarn').hidden = inEphem(M.t0);
-  if (fin) mvStart({ c, o0, o1, opt: { ...opt, type: M.type }, fin: { F: M.F, isp: M.isp, m0: M.m0, md: M.md, steer: M.steer }, cap: MODE === 'low' ? 20000 : 60000 }, MAN);
+  if (fin) mvStart({ c, o0, o1, opt: { ...opt, type: M.type, at: M.at, T: M.T, dir: M.dir }, fin: { F: M.F, isp: M.isp, m0: M.m0, md: M.md, steer: M.steer },
+    lim: mvLim(M) ? { tMax: M.tMax, nMax: M.nMax, wait: M.wait } : null, cap: MODE === 'low' ? 20000 : 60000 }, MAN);
   else mvStop();
   updateResults(); renderTicks(); renderFrameSeg(); pcSync();
 }
+// the vehicle planner's refusals, their numbers in display form
+const vehParams = p => (p ? { ...p, need: p.need != null ? nf0.format(p.need) : '', avail: p.avail != null ? nf0.format(p.avail) : '', arc: p.arc != null ? nf0.format(p.arc / D2R) : '' } : p);
 // Finite burns and spirals fly in a worker (core.js maneuverRun); a newer job replaces a running one. Without workers
 // the job runs here, after this frame.
 const MVJ = { worker: null, busy: false, id: 0 };
@@ -752,7 +811,7 @@ function buildCache() {
   const cum = new Float64Array(n);
   C = { sub, orbit, px: Float64Array.from(px), py: Float64Array.from(py), pz: Float64Array.from(pz), pt: Float64Array.from(pt), segStart, cum, T, n, fx: null, fy: null, frameKey: '' };
   // maneuvers: the initial and the target orbit as reference rings about the body (ecliptic axes)
-  C.rings = S.kind === 'man' && MAN ? [{ p: mvRing(MAN.o0, S.M.O0 * D2R, Q.ellK), col: COL.dim, a: 0.5 }, { p: mvRing(MAN.o1, S.M.O0 * D2R, Q.ellK), col: COL.cyan, a: 0.55, dash: true }] : [];
+  C.rings = S.kind === 'man' && MAN ? [{ p: mvRing(MAN.o0, S.M.O0 * D2R, Q.ellK), col: COL.dim, a: 0.5 }, ...(MAN.burn ? [] : [{ p: mvRing(MAN.o1, S.M.O0 * D2R, Q.ellK), col: COL.cyan, a: 0.55, dash: true }])] : [];
   rebuildCum();
   let nodeNo = 0, lastNode = -1;
   C.markers = r.events.filter(e => e.type !== 'impact' || true).map(e => {
@@ -826,6 +885,10 @@ function massAt(t) {
 function thrustDir(j, r, v, m) {
   const b = simR.burns[j], st = b.steer, vl = Math.hypot(...v);
   const h = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]], hl = Math.hypot(...h);
+  if (st.dir) { // the single firing: along ±v, ±h or ±r
+    const d = st.dir, s = d === 'retro' || d === 'anti' || d === 'in' ? -1 : 1, rl = Math.hypot(...r);
+    return d === 'norm' || d === 'anti' ? h.map(q => s * q / hl) : d === 'out' || d === 'in' ? r.map(q => s * q / rl) : v.map(q => s * q / vl);
+  }
   if (st.spiral) { // Edelbaum: β from the Δv delivered so far, out of the plane with the sign of cos u
     const s = st.ve * Math.log(st.m0 / m), be = Math.atan2(st.sb, st.cb - s), sg = st.sgI * (r[0] * st.L[0] + r[1] * st.L[1] + r[2] * st.L[2] >= 0 ? 1 : -1);
     return [0, 1, 2].map(k => Math.cos(be) * v[k] / vl + Math.sin(be) * sg * h[k] / hl);
@@ -1442,6 +1505,34 @@ function updateResultsMan() {
     for (const a of [n.a1, n.a2]) { const o = 2 * a - n.r; if (Math.abs(o - n.r) > 1e-9 * n.r) return n.r < o ? pn : an; }
     return _('res.mvCircle');
   };
+  if (MAN.burn) { // the single firing: how long, what it gave, the orbit it leaves; the same Δv at once, for comparison
+    const at = M.at ? an : pn;
+    rows.push([_('res.sec.vburn', { at, dir: _('mv.dir.' + (M.dir || 'pro')) })]);
+    let cls = 'warn', txt = _('chip.mvBusy', { p: nf0.format(MAN.prog) });
+    if (!cur) rows.push([_('res.mvFinBusy'), nf0.format(MAN.prog) + ' %', '']);
+    else if (cur.sim.burns.length) {
+      const s = cur.sim, b = s.burns[0], dn = s.done, im = s.imp, Re = MAN.Re, apsU = _('res.mvFinalUnit', { peri: pn, apo: an });
+      rows.push([_('res.vT'), fmtBurn(b.t1 - b.t0), b.fuelOut ? _('res.vDry') : '']);
+      rows.push([_('res.vDv'), nf1.format(b.dv), 'm/s']);
+      rows.push([_('res.vFuel'), nf1.format(s.fuel), 'kg']);
+      rows.push([_('res.mvLeft'), nf1.format(b.m1), 'kg']);
+      if (dn.e < 1 && dn.a > 0) {
+        rows.push([_('res.vOrbit'), km(dn.rp - Re) + ' × ' + km(dn.ra - Re), apsU]);
+        rows.push([_('res.mvFinalI'), deg(dn.i), '°']);
+        rows.push([_('res.mvPeriod'), fmtPeriod(2 * Math.PI * Math.sqrt(dn.a ** 3 / MAN.mu)), '']);
+      } else { const vinf = Math.sqrt(-MAN.mu / dn.a); rows.push([_('res.vEscape'), nf3.format(vinf / 1e3), 'km/s']); rows.push([_('res.vC3'), nf2.format(vinf * vinf / 1e6), 'km²/s²']); }
+      if (im.e < 1 && im.a > 0 && dn.e < 1 && dn.a > 0) {
+        rows.push([_('res.vImp'), km(im.rp - Re) + ' × ' + km(im.ra - Re), apsU]);
+        rows.push([_('res.vDiff'), km(dn.rp - im.rp) + ' / ' + km(dn.ra - im.ra), apsU]);
+      }
+      if (M.tMax > 0 && M.T > M.tMax) rows.push([_('res.mvNote'), esc(_('res.vOverT', { t: fmtBurn(M.tMax) })), '']);
+      cls = cur.sim.impact >= 0 ? 'bad' : b.fuelOut ? 'warn' : 'good';
+      txt = cur.sim.impact >= 0 ? _('chip.impact', { name: S.bodies[0].name }) : _(b.fuelOut ? 'chip.vDry' : 'chip.vDone');
+    } else { cls = 'bad'; txt = _('chip.impact', { name: S.bodies[0].name }); }
+    chip.className = 'chip ' + cls; chip.textContent = txt;
+    res.innerHTML = resRows(rows) + schedHtml();
+    return;
+  }
   if (MAN.spiral) { // the spiral: revolutions, time, Δv against Edelbaum and the impulsive Hohmann, propellant
     rows.push([_('res.sec.mvSpiral', { F: NF(M.F < 1 ? 2 : 0).format(M.F), isp: nf0.format(M.isp) })]);
     if (!cur) rows.push([_('res.mvFinBusy'), nf0.format(MAN.prog) + ' %', '']);
@@ -1474,6 +1565,18 @@ function updateResultsMan() {
     if (M.type === 'bielliptic') cmp(_('res.mvCmpHoh'), alt({ type: 'hohmann' }));
     if (MAN.fin) { // the engine: per burn duration, Δv, propellant, arc; totals; the difference from the impulsive flight
       rows.push([_('res.sec.mvFin', { F: NF(M.F < 1 ? 2 : 0).format(M.F), isp: nf0.format(M.isp) })]);
+      if (MAN.sp) { // the vehicle planner: ignitions per burn; from the flight, the longest firing and the whole span
+        rows.push([_('res.vIgn'), nf0.format(MAN.sp.n), _('res.vIgnUnit', { k: MAN.sp.kNode.join(' + ') })]);
+        if (cur) {
+          const bs = cur.sim.burns, longest = Math.max(0, ...bs.map(q => q.t1 - q.t0));
+          rows.push([_('res.vLongest'), fmtBurn(longest), M.tMax > 0 ? _('res.vLongestUnit', { t: fmtBurn(M.tMax) }) : '']);
+          if (bs.length > 1) {
+            rows.push([_('res.vSpan'), fmtDur(cur.sim.tLast - cur.sim.tFirst), '']);
+            if (M.wait > 0) rows.push([_('res.vWait'), fmtBurn(Math.min(...bs.slice(1).map((q, j) => q.t0 - bs[j].t1))), _('res.vLongestUnit', { t: fmtBurn(M.wait) })]);
+          }
+        }
+        if (MAN.sp.maxArc > Math.PI / 3) rows.push([_('res.mvNote'), esc(_('res.vArc')), '']);
+      }
       if (!cur) rows.push([_('res.mvFinBusy'), nf0.format(MAN.prog) + ' %', '']);
       else {
         const s = cur.sim;
@@ -1550,6 +1653,7 @@ function schedHtml() {
     const t0 = e.t0 != null ? e.t0 : e.t, t1 = e.t1 != null ? e.t1 : null, why = [];
     let place;
     if (e.spiral) { place = _('sch.spiral'); why.push(_('why.spiral')); }
+    else if (man && MAN.burn) { place = S.M.at ? an : pn; why.push(_('why.vburn', { dir: _('mv.dir.' + (S.M.dir || 'pro')) })); }
     else if (man) {
       const n = MAN.plan.nodes[e.node]; if (!n) continue;
       let at = 'circ';
@@ -2945,6 +3049,8 @@ function renderCredits() {
     <table><thead><tr><th>${esc(_('cred.col.body'))}</th><th>${esc(_('cred.col.src'))}</th><th>${esc(_('cred.col.note'))}</th></tr></thead><tbody>${rows.join('')}</tbody></table>
     <label class="chk"><input type="checkbox" id="venusRadar"${TEXOPT.venusRadar ? ' checked' : ''}><span>${esc(_('cred.venusRadar'))}</span></label>
     <label class="chk"><input type="checkbox" id="earthClouds"${TEXOPT.clouds ? ' checked' : ''}><span>${esc(_('cred.clouds'))}</span></label>
+    <h3>${esc(_('cred.h.veh'))}</h3>
+    <ul>${VEHICLES.map(v => `<li><b>${esc(_('veh.' + v.id))}</b> — ${esc(_('cred.veh.' + v.id))} ${v.src.map(s => link(VEH_SRC[s], _('cred.vsrc.' + s))).join(' · ')}</li>`).join('')}</ul>
     <h3>${esc(_('cred.h.lic'))}</h3>
     <ul>${[...used].map(s => `<li><b>${esc(_('cred.src.' + s))}</b>: ${esc(_('cred.lic.' + s))}</li>`).join('')}</ul>
     <p>${esc(_('cred.disclaimer'))}</p>`;

@@ -1,7 +1,7 @@
 // Persisted UI preferences: view mode and window layout.
 // DOM-free: the storage object is passed in (localStorage, sessionStorage, a stub or null), so Node tests can run it.
 // Every storage access is wrapped: private windows, blocked site data and quota errors must never break the page.
-const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow' };
+const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1' };
 const VIEW_MODES = ['low', 'normal', '3d'];
 // placement order: overview's default spot sits under Results, so it comes after it
 const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'gloss', 'model', 'credits'];
@@ -10,6 +10,26 @@ const WIN_DEFAULT_OPEN = { mission: true, results: true };
 function readPref(store, key) { try { return store ? store.getItem(key) : null; } catch (e) { return null; } }
 function writePref(store, key, v) { try { if (!store) return false; store.setItem(key, v); return true; } catch (e) { return false; } }
 function clearPref(store, key) { try { if (store) store.removeItem(key); } catch (e) { /* ignore */ } }
+
+// Saved vehicles (orbit maneuvers): a JSON list of { name, F, isp, m0, md, tMax, nMax, wait }. Entries that are not
+// usable are dropped (thrust, Isp and masses positive, dry below wet, limits ≥ 0, a name of 1–40 characters), 50 at most;
+// anything unreadable gives the empty list (the ready-made vehicles remain).
+function parseVehicles(raw) {
+  let d;
+  try { d = JSON.parse(raw); } catch (e) { return []; }
+  if (!Array.isArray(d)) return [];
+  const num = (v, min) => (typeof v === 'number' && Number.isFinite(v) && v >= min ? v : NaN);
+  const out = [];
+  for (const q of d) {
+    if (!q || typeof q !== 'object' || typeof q.name !== 'string') continue;
+    const name = q.name.trim().slice(0, 40), F = num(q.F, 0), isp = num(q.isp, 0), m0 = num(q.m0, 0), md = num(q.md, 0);
+    if (!name || !(F > 0 && isp > 0 && m0 > 0 && md > 0 && md < m0)) continue;
+    const lim = v => (num(v, 0) >= 0 ? v : 0);
+    out.push({ name, F, isp, m0, md, tMax: lim(q.tMax), nMax: Number.isInteger(q.nMax) && q.nMax >= 0 ? q.nMax : 0, wait: lim(q.wait) });
+    if (out.length >= 50) break;
+  }
+  return out;
+}
 
 // the viewer's sky brightness (the slider, 0–2× the default): a saved number in range, else 1
 function skyGainOf(v) { const x = v == null || v === '' ? NaN : +v; return Number.isFinite(x) ? Math.min(2, Math.max(0, x)) : 1; }
@@ -87,4 +107,4 @@ function trailAlpha(age, fade, keep = TRAIL_REVS, span = TRAIL_FADE) {
   return fade && age > keep - span ? (keep - age) / span : 1;
 }
 
-if (typeof module !== 'undefined') module.exports = { PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
