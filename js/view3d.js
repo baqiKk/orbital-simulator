@@ -216,7 +216,8 @@ function globeUniforms(white) {
   const U = { uSun: new THREE.Vector3(1, 0, 0), uCam: new THREE.Vector3(0, 0, 5), uColor: new THREE.Color(1, 1, 1), uGlow: new THREE.Vector4(),
     uTex: 0, uMix: 0, uMix2: 0, uSat: 1, uLimb: 0, uRing: 0, uRingHas: 0, uTauHas: 0, uPhot: 0, uEmit: 0, uCloudRot: 0,
     uMap: white, uMap2: white, uRingMap: white, uTau: white, uClouds: white, uNight: white, uOcean: white, uRelief: white,
-    uRingR: new THREE.Vector2(1, 2), uLayers: new THREE.Vector4(), uRelief4: new THREE.Vector4(), uHaze: new THREE.Vector4(), uHazeC: new THREE.Vector4(), uHazeL: new THREE.Vector3(0, 1, 0) };
+    uRingR: new THREE.Vector2(1, 2), uLayers: new THREE.Vector4(), uRelief4: new THREE.Vector4(), uHaze: new THREE.Vector4(), uHazeC: new THREE.Vector4(), uHazeL: new THREE.Vector3(0, 1, 0),
+    uVoid: new THREE.Vector4(), uVoidZ: new THREE.Vector2() };
   const o = {}; for (const k in U) o[k] = { value: U[k] }; return o;
 }
 
@@ -321,7 +322,7 @@ export function create(canvas, opts) {
     u.uSat.value = L ? L.sat : 1; u.uLimb.value = L && L.limb ? 1 : 0;
     const U = lookUniforms(L);
     u.uLayers.value.fromArray(U.layers); u.uRelief4.value.fromArray(U.relief); u.uHaze.value.fromArray(U.haze); u.uHazeC.value.fromArray(U.hazeC); u.uHazeL.value.fromArray(U.hazeL);
-    u.uCloudRot.value = U.cloudRot; u.uPhot.value = U.phot;
+    u.uCloudRot.value = U.cloudRot; u.uPhot.value = U.phot; u.uVoid.value.fromArray(U.void); u.uVoidZ.value.fromArray(U.voidZ);
     u.uClouds.value = L && L.clouds ? texOf(L.clouds.img, true, true) : white; u.uNight.value = L && L.night ? texOf(L.night.img, true) : white;
     u.uOcean.value = L && L.ocean ? texOf(L.ocean.img, true, true) : white; u.uRelief.value = L && L.relief ? texOf(L.relief.e.img, true, true) : white;
     const ring = L && L.ring && show ? ringOf(b, L.ring.r) : null;

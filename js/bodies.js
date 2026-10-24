@@ -116,6 +116,9 @@
 //   vesta    USGS Astrogeology, Vesta Dawn FC HAMO global mosaic 60 m (DLR, 2013; shifted by USGS to the IAU "Claudia
 //            double prime" longitudes that the PCK rotation below uses), Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif
 //            (26704×13352, d95355b7…) -> 1024, 2048, 4096 wide; the dark north was in its winter night during the survey
+//   nodata (Ceres, Vesta): the source's black, data-less cap (lat: the latitude band it lies in, deg) is drawn in the body's
+//            mean tone instead (js/globe.js voidFill; the files stay as they are): tone = the area-weighted mean of the
+//            4k map's data pixels (value > 12) in linear light, Ceres 136/255, Vesta 88/255
 //   Uranus and Neptune have no texture (no real global map exists; the NASA textures are illustrative): plain
 //   globes in their colour, with limb darkening, like the cloud-covered Venus.
 // rings (Saturn): ring strip from the same GLB (saturn_rings_25sat_outterRings.png, 4096×16 RGBA, as is), u from the
@@ -192,10 +195,10 @@ const BODIES = {
   deimos: { parent: 'mars', gm: 9.6156e-5, radius: 6.2, tilt: 0, color: '#9a8c7f', lock: true,
     orb: { sat: [23457, 0.000, 0.0, 205.0, 1.8, 54.3, 1.2625, 0.0, 56.2], lp: [316.6, 53.5, 0.9] } },
   vesta: { parent: 'sun', gm: 17.2882844, radius: 261.385, tilt: 27.43, color: '#a8a39a', pole: [309.031, 0, 42.235, 0, 285.39, 1617.3329428],
-    tex: { file: 'img/planets/vesta.jpg', src: 'dawnVesta', hi: [[2048, 'img/planets/vesta_2k.jpg'], [4096, 'img/planets/vesta_4k.jpg']] },
+    tex: { file: 'img/planets/vesta.jpg', src: 'dawnVesta', nodata: { lat: [45, 90], tone: '#585858' }, hi: [[2048, 'img/planets/vesta_2k.jpg'], [4096, 'img/planets/vesta_4k.jpg']] },
     orb: { sb: [2461200.5, 2.361365965127599, 0.09020374382834395, 7.143925545058711, 103.701293265032, 151.4686478221564, 81.19015607686903, 0.2716183613599909] } },
   ceres: { parent: 'sun', gm: 62.6284, radius: 469.7, tilt: 4.04, color: '#8e8a84', pole: [291.418, 0, 66.764, 0, 170.650, 952.1532],
-    tex: { file: 'img/planets/ceres.jpg', src: 'dawnCeres', hi: [[2048, 'img/planets/ceres_2k.jpg'], [4096, 'img/planets/ceres_4k.jpg']] },
+    tex: { file: 'img/planets/ceres.jpg', src: 'dawnCeres', nodata: { lat: [-90, -60], tone: '#888888' }, hi: [[2048, 'img/planets/ceres_2k.jpg'], [4096, 'img/planets/ceres_4k.jpg']] },
     orb: { sb: [2461200.5, 2.765552595034094, 0.07969229514816586, 10.58802780183462, 80.24862682043221, 73.29421453021587, 274.4193463761342, 0.21430445064843] } },
   jupiter: { parent: 'sun', gm: 126686531.9, radius: 69911, tilt: 3.13, j2: [14736, 71492], color: '#d9b48c', pole: [268.056595, -0.006499, 64.495303, 0.002413, 284.95, 870.5360000],
     tex: { file: 'img/planets/jupiter.jpg', src: 'pj', w: 2048, hi: [[3601, 'img/planets/jupiter_4k.jpg']] },

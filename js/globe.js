@@ -160,12 +160,23 @@ uniform vec4 uRelief4;  // lowest and highest height (body radii), cast shadows 
 uniform vec4 uHaze;     // on, scale height, vertical optical depth, top (body radii)
 uniform vec4 uHazeC;    // haze colour (linear), Henyey–Greenstein g
 uniform vec3 uHazeL;    // detached layer: altitude, width (body radii), density relative to the base
+uniform vec4 uVoid;     // a mosaic's data-less cap: fill tone (linear), on
+uniform vec2 uVoidZ;    // the latitude band (sine) it lies in
 vec2 globeUV(vec3 b) {
   float u = atan(b.y, b.x) / 6.2831853 + 0.5, v = 0.5 + asin(clamp(b.z, -1.0, 1.0)) / 3.1415927;
   float u2 = fract(u + 0.5) - 0.5;
   return vec2(fwidth(u) <= fwidth(u2) + 1e-6 ? u : u2, v);
 }
 vec2 dirUV(vec3 b) { return vec2(atan(b.y, b.x) / 6.2831853 + 0.5, 0.5 + asin(clamp(b.z, -1.0, 1.0)) / 3.1415927); }
+// a mosaic's black, data-less cap (Ceres' south pole, Vesta's north) filled with the body's mean tone: black pixels in the
+// band, and over the gap's edge the map fades into the tone (where its 256-wide mip level, ~1.4° a texel, is dark)
+vec3 voidFill(sampler2D m, vec3 t, vec2 uv, float z) {
+  float band = smoothstep(uVoidZ.x - 0.04, uVoidZ.x, z) * (1.0 - smoothstep(uVoidZ.y, uVoidZ.y + 0.04, z));
+  if (band <= 0.0) return t;
+  float g = dot(textureLod(m, uv, log2(float(textureSize(m, 0).x) / 256.0)).rgb, vec3(1.0 / 3.0)) / max(uVoid.g, 1e-3);
+  float w = max(1.0 - smoothstep(0.006, 0.04, dot(t, vec3(1.0 / 3.0))), 1.0 - smoothstep(0.08, 0.4, g));
+  return mix(t, uVoid.rgb, band * w);
+}
 vec3 satur(vec3 c, float s) { return mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, s); }
 float globeDay(vec3 n, vec3 s) { return smoothstep(-0.06, 0.3, dot(n, s)); }
 // night side stays nearly black (the albedo is sRGB: 0.035 linear would still show as a dull 20 % grey)
@@ -241,7 +252,11 @@ vec3 globeColor(vec3 n, vec3 s, vec3 v, float rs) {
   vec3 base = uColor;
   if (uTex > 0.5) {
     vec3 t = satur(texture(uMap, uv).rgb, uSat);
-    if (uMix2 > 0.0) t = mix(t, satur(texture(uMap2, uv).rgb, uSat), uMix2);
+    if (uVoid.a > 0.5) t = voidFill(uMap, t, uv, n.z);
+    if (uMix2 > 0.0) {
+      vec3 t2 = satur(texture(uMap2, uv).rgb, uSat);
+      t = mix(t, uVoid.a > 0.5 ? voidFill(uMap2, t2, uv, n.z) : t2, uMix2);
+    }
     base = mix(uColor, t, uMix);
   }
   if (uEmit > 0.5) return base * 4.0; // the Sun: well above white, compressed by the tone mapping
@@ -341,7 +356,7 @@ void main() {
   oC = col.a > 0.0 ? vec4(toSRGB(toneMap(col.rgb / col.a)) * col.a, col.a) : vec4(0.0);
 }`;
 const GLB_UNI = ['uRect', 'uRot', 'uSun', 'uColor', 'uTex', 'uSat', 'uLimb', 'uMix', 'uMix2', 'uPx', 'uRing', 'uRingR', 'uRingHas', 'uTauHas', 'uGlow', 'uPhot', 'uEmit',
-  'uCloudRot', 'uLayers', 'uRelief4', 'uHaze', 'uHazeC', 'uHazeL'];
+  'uCloudRot', 'uLayers', 'uRelief4', 'uHaze', 'uHazeC', 'uHazeL', 'uVoid', 'uVoidZ'];
 const GLB_SAMP = ['uMap', 'uMap2', 'uRingMap', 'uTau', 'uClouds', 'uNight', 'uOcean', 'uRelief']; // texture units 0..7
 function globeInit() {
   if (GLB.gl || GLB.fail) return !!GLB.gl;
@@ -389,6 +404,8 @@ function lookUniforms(L) {
     hazeL: L && L.haze && L.haze.layer ? L.haze.layer : [0, 1, 0],
     cloudRot: L && L.clouds ? L.cloudRot : 0,
     phot: L && L.phot ? 1 : 0,
+    void: L && L.nodata ? [...linC(L.nodata.tone), 1] : [0, 0, 0, 0],
+    voidZ: L && L.nodata ? L.nodata.lat.map(a => Math.sin(a * Math.PI / 180)) : [0, 0],
   };
 }
 // Draw a globe of radius r px centred at (x, y) onto ctx (W×H css px, pixel ratio dpr). o: rot (body -> screen,
@@ -417,7 +434,7 @@ function drawGlobe(ctx, x, y, r, W, H, dpr, o) {
   bind(4, L.clouds && L.clouds.img, true, true); bind(5, L.night && L.night.img, true, false); bind(6, L.ocean && L.ocean.img, true, true); bind(7, L.relief && L.relief.e.img, true, true);
   const U = lookUniforms(L);
   gl.uniform4fv(u.uLayers, U.layers); gl.uniform4fv(u.uRelief4, U.relief); gl.uniform4fv(u.uHaze, U.haze); gl.uniform4fv(u.uHazeC, U.hazeC); gl.uniform3fv(u.uHazeL, U.hazeL);
-  gl.uniform1f(u.uCloudRot, U.cloudRot); gl.uniform1f(u.uPhot, U.phot);
+  gl.uniform1f(u.uCloudRot, U.cloudRot); gl.uniform1f(u.uPhot, U.phot); gl.uniform4fv(u.uVoid, U.void); gl.uniform2fv(u.uVoidZ, U.voidZ);
   gl.uniform4fv(u.uGlow, L.glow || [0, 0, 0, 0]);
   gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -446,7 +463,7 @@ function globeLook(key, r, allow, fetch, cap, fx, t) {
   const rel = layer(b.relief, fx && fx.relief && r >= RELIEF_PX);
   const cl = layer(b.clouds, fx && fx.clouds && TEXOPT.clouds), ni = layer(b.night, true), oc = layer(b.ocean, fx && fx.glint);
   if (!want || (!tx && !L.limb && !L.rings && !b.haze)) return null;
-  return { tex: tx, sat: L.sat, limb: L.limb, glow: b.haze ? [0, 0, 0, 0] : L.glow, phot: b.phot === 'lambert',
+  return { tex: tx, sat: L.sat, limb: L.limb, nodata: tx && L.tex.nodata, glow: b.haze ? [0, 0, 0, 0] : L.glow, phot: b.phot === 'lambert',
     ring: L.rings ? { e: ring, tau, r: L.rings.r.map(q => q * L.rings.req / b.radius) } : null,
     relief: rel ? { e: rel.e, h: b.relief.h.map(m => m / 1000 / b.radius) } : null, shadow: !!rel && r >= SHADOW_PX, sunAng: sunAngOf(key),
     clouds: cl && cl.e, cloudRot: ((t || 0) / (20 * 86400)) % 1, night: ni && ni.e, ocean: oc && oc.e,

@@ -198,7 +198,11 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
       for (const key of ['cred.src.' + t.src, 'cred.by.' + t.src, 'cred.lic.' + t.src, 'cred.note.' + note]) assert.ok(has(key), `credit text: ${key}`);
     }
     if (b.relief) assert.ok(b.relief.h[0] < 0 && b.relief.h[1] > 0, k + ': relief height range in metres');
+    // a data-less cap is filled in the shader (voidFill): a polar latitude band and a grey tone
+    if (b.tex && b.tex.nodata) { const d = b.tex.nodata; assert.ok(d.lat[0] < d.lat[1] && (d.lat[0] === -90 || d.lat[1] === 90) && /^#([0-9a-f]{2})\1\1$/.test(d.tone), k + ': nodata band and tone'); }
   }
+  assert.deepStrictEqual(Object.keys(BODIES).filter(k => BODIES[k].tex && BODIES[k].tex.nodata), ['vesta', 'ceres'], 'Ceres and Vesta fill their no-data caps');
+  assert.ok(/uniform vec4 uVoid;/.test(globe) && /'uVoid', 'uVoidZ'/.test(globe) && /uVoid: new THREE\.Vector4\(\)/.test(read('js/view3d.js')), 'no-data fill wired in 2D and 3D');
   assert.ok(n >= 20, 'textures and layers listed');
   // the sky: files, sources and texts; 8 bytes per catalogue star
   for (const [id, t] of Object.entries(SKY)) {
