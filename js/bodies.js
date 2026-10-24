@@ -267,11 +267,16 @@ const TEX_SRC = {
 };
 // The sky (normal 2D and 3D modes; never in the low-resource mode): the Milky Way — NASA SVS 4851 "Deep Star Maps 2020",
 // milkyway_2020_4k.exr (4096×2048 half-float, linear, celestial ICRF/J2000 plate carrée centred on 0h, right ascension
-// increasing to the left; the map without the Hipparcos/Tycho stars, 57dd45a9…) -> 2048×1024 sRGB with one gain
-// (99.9th luminance percentile -> 1); stars — the Yale Bright Star Catalogue, 5th ed. (Hoffleit & Warren 1991, CDS V/50,
+// increasing to the left; the map without the Hipparcos/Tycho stars, 57dd45a9…, values 0..1) through one contrast curve
+// on its luminance Y (Rec. 709), each pixel's RGB scaled by S(Y)/Y so the colours stay the source's (5644 pixels of the
+// core scaled down to keep their hue at a channel of 1): x = s·ln(1 + e^((Y − b)/s)), S = min(1, x/(Yw − b))^γ with
+// b = 0.018 (above the median: the dark sky and its faint grain go to near black, smoothly), s = 0.004, Yw = 0.6,
+// γ = 1.1; stored as sRGB JPEG (4:4:4, quality 94): 4096×2048 (the hi tier, fetched only where the screen magnifies the
+// base) and 2048×1024 (the base, averaged down in linear light); the app shows S × SKY_GAIN × the viewer's gain × the eye
+// adaptation. Stars — the Yale Bright Star Catalogue, 5th ed. (Hoffleit & Warren 1991, CDS V/50,
 // catalog.gz, 6c533fd0…): the 9096 entries with a position and V magnitude, packed 8 bytes each (little-endian):
 // uint16 RA·65536/360°, int16 Dec·32767/90°, int16 V·100, int16 (B−V)·1000 (−32768: no colour index; 310 stars).
-const SKY = { milky: { file: 'img/sky/milkyway.jpg', src: 'svsStars' }, stars: { file: 'img/sky/bsc5.bin', src: 'bsc' } };
+const SKY = { milky: { file: 'img/sky/milkyway.jpg', w: 2048, src: 'svsStars', hi: [[4096, 'img/sky/milkyway_4k.jpg']] }, stars: { file: 'img/sky/bsc5.bin', src: 'bsc' } };
 const DATA_SRC = {
   jpl: 'https://ssd.jpl.nasa.gov/planets/approx_pos.html',
   sat: 'https://ssd.jpl.nasa.gov/sats/elem/',

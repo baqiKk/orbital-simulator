@@ -63,6 +63,7 @@ button,.seg button,.rail-btn,.wbtn,.btn,.ghost{transition:color .12s,background-
 .toggles{padding:6px 10px;display:flex;gap:14px}
 .chk{display:inline-flex;align-items:center;gap:6px;font:500 11.5px/1 var(--f-disp);letter-spacing:.04em;color:var(--dim);cursor:pointer;white-space:nowrap}
 .chk input{accent-color:var(--accent);margin:0}
+.chk.sky input{width:76px}
 
 .hud-bot{position:absolute;left:12px;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:flex-end;gap:6px;pointer-events:none}
 .hud-bot>*{pointer-events:auto}

@@ -284,7 +284,7 @@ function bodyLook3(b, rpx, tNow) {
   return { look, rot: axesIn(FP.X, FP.Y, FP.Z, AX, new Array(9)), mix: texMix(look.tex && look.tex.base) };
 }
 // the sky (Milky Way, stars): handed to the renderer once loaded (modes with stars only)
-function sky3() { if (Q.stars) V3.skySet(skyReady(true)); }
+function sky3() { if (Q.stars) V3.skySet(skyReady(true, skyHi((H / 2) / Math.tan(FOV3 * Math.PI / 360) * Math.PI / 180))); }
 // the Sun's glare at view-frame point p (or, far away, direction p from the camera when dir), disc radius rs px: how much
 // of the disc is in view (9 points on it, against the bodies drawn this frame) and on screen; null when none
 function glare3(p, dir, rs, skip) {
@@ -340,6 +340,7 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
     const sd = sunIdx >= 0 ? sunDir3(b, sunIdx, tNow, [0, 0, 0]) : SUN3;
     rpx[b] = PJ[2] > 0 ? r * CB.f / PJ[2] : 0; scr.push([PJ[0], PJ[1], PJ[2]]);
     V3.body('sim', b, [BP3[3 * b], BP3[3 * b + 1], BP3[3 * b + 2]], r, sd, true, bodyLook3(b, rpx[b], tNow));
+    if (b !== sunIdx && PJ[2] > 0) { const e = CB.e, vx = e[0] - BP3[3 * b], vy = e[1] - BP3[3 * b + 1], vz = e[2] - BP3[3 * b + 2], vl = Math.hypot(vx, vy, vz) || 1; skyLit(PJ[0], PJ[1], rpx[b], (sd[0] * vx + sd[1] * vy + sd[2] * vz) / vl, S.bodies[b].key, !!BODIES[S.bodies[b].key].rings); }
     OCC.push([BP3[3 * b], BP3[3 * b + 1], BP3[3 * b + 2], r, b]);
   }
   // lines
@@ -361,7 +362,8 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   // the Sun: in the mission, or (real model) far away along its direction from the first body
   const gl3 = sunIdx >= 0 ? glare3([BP3[3 * sunIdx], BP3[3 * sunIdx + 1], BP3[3 * sunIdx + 2]], false, rpx[sunIdx], sunIdx)
     : S.model === 'real' ? glare3(SUN3, true, CB.f * sunAngOf(S.bodies[0].key), -1) : null;
-  V3.render({ stars: Q.stars, sky: ROT9, glare: glow ? gl3 : null });
+  if (gl3) skySun(gl3.i, sunIdx >= 0 ? rpx[sunIdx] : CB.f * sunAngOf(S.bodies[0].key));
+  V3.render({ stars: Q.stars, sky: ROT9, skyGain: skyGain(), glare: glow ? gl3 : null });
 
   // ---- overlay ----
   // SOI
@@ -564,12 +566,15 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
     const o = look ? { look, rot: bodyAxes(MAPK[i], T, MP, MV, i, MPAR[i], new Array(9)), mix: texMix(look.tex && look.tex.base) } : null;
     V3.body('map', i, [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], r, i === MSUN ? null : [-pos[3 * i] / l, -pos[3 * i + 1] / l, -pos[3 * i + 2] / l], !!show[i], o);
     if (show[i]) OCC.push([pos[3 * i], pos[3 * i + 1], pos[3 * i + 2], r, i]);
+    if (show[i] && i !== MSUN && PJ[2] > 0) { const e = CB.e, vx = e[0] - pos[3 * i], vy = e[1] - pos[3 * i + 1], vz = e[2] - pos[3 * i + 2]; skyLit(PJ[0], PJ[1], rpx[i], -(pos[3 * i] * vx + pos[3 * i + 1] * vy + pos[3 * i + 2] * vz) / (l * (Math.hypot(vx, vy, vz) || 1)), MAPK[i], !!BODIES[MAPK[i]].rings); }
     if (mapSys.orb[i]) V3.lineSet('map', 'orb' + i, moon ? [pos[3 * p], pos[3 * p + 1], pos[3 * p + 2]] : null, !!show[i]);
   }
   if (tr && craft) { V3.lineSet('map', 'traj', null, true); V3.lineSet('map', 'trajB', null, true); V3.lineUpTo('map', 'trajB', pathIdx); }
   grid3(c, V3S.grid && !MAP.log);
   sky3();
-  V3.render({ stars: Q.stars, sky: null, glare: glow ? glare3([pos[3 * MSUN], pos[3 * MSUN + 1], pos[3 * MSUN + 2]], false, rpx[MSUN], MSUN) : null });
+  const glm = glow ? glare3([pos[3 * MSUN], pos[3 * MSUN + 1], pos[3 * MSUN + 2]], false, rpx[MSUN], MSUN) : null;
+  if (glm) skySun(glm.i, rpx[MSUN]);
+  V3.render({ stars: Q.stars, sky: null, skyGain: skyGain(), glare: glm });
 
   // overlay: nodes, craft, labels (Sun and planets first, a label overlapping another is skipped)
 

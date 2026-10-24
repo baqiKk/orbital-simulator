@@ -473,11 +473,14 @@ function globeLook(key, r, allow, fetch, cap, fx, t) {
 
 // ---------- sky ----------
 // Milky Way image and the bright stars (unit vectors in ecliptic J2000 axes, V magnitude, linear colour from B−V), loaded
-// the first time a mode with stars asks (Q.stars); null until both are in.
-const SKYC = { stars: null, req: false, milky: null };
+// the first time a mode with stars asks (Q.stars); null until both are in. The map's base comes first; hi: the sharper
+// tier may be fetched too (the screen magnifies the base, see skyHiNeed); the sharpest one loaded is used.
+const SKYC = { stars: null, req: false };
 const OBLIQ = 23.4392911 * Math.PI / 180; // J2000 obliquity: equatorial -> ecliptic about +x
-function skyReady(want) {
-  const m = texReady(SKY.milky.file, want);
+function skyReady(want, hi) {
+  const T = tiersOf(SKY.milky);
+  let m = null;
+  T.forEach(([, f], i) => { const e = texReady(f, want && (i === 0 || (!!hi && i === T.length - 1))); if (e) m = e; });
   if (want && !SKYC.req) {
     SKYC.req = true;
     fetch(SKY.stars.file).then(r => (r.ok ? r.arrayBuffer() : null)).then(buf => { if (buf) SKYC.stars = starsFrom(new DataView(buf)); }).catch(() => {});
@@ -514,10 +517,13 @@ function starRGB(bv) {
 // star brightness on screen: peak (linear, 1 = white) of a point of V magnitude m; brighter ones grow instead (STAR_M0
 // shows as a just-white point)
 const STAR_M0 = 1.0;
-// the Milky Way's display gain (the map's 99.9th percentile is 1): near black, as next to the Sun's lit bodies (median
-// sky ≈ sRGB 2/255, the brightest band ≈ 37/255); and the finest map level it is drawn from (1 = 1024 wide, ≈ 0.35° per
-// texel, smoothed further by the cubic filter): the 2048 map's grain and JPEG blocks stay below what shows
-const SKY_GAIN = 0.02, SKY_LOD = 1;
+// the Milky Way's display gain on the stored curve (js/bodies.js SKY) at the viewer's gain 1 and an unadapted eye: dark
+// sky ≈ sRGB 2/255 (median), the band ≈ 48–103/255 (90th–99th percentile), the core ≈ 152/255 (99.9th); the finest map
+// level it is drawn from (0: the loaded tier itself, smoothed by the cubic filter in 3D)
+const SKY_GAIN = 0.5, SKY_LOD = 0;
+// the sharper Milky Way tier is wanted where the base map would show magnified by more than 1.3× (pxPerDeg: screen
+// pixels per degree of sky at the view's centre)
+const skyHiNeed = pxPerDeg => pxPerDeg > 1.3 * tiersOf(SKY.milky)[0][0] / 360;
 const starPeak = m => Math.pow(10, -0.4 * (m - STAR_M0));
 
 // ---------- the Sun's glare ----------

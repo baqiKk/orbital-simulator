@@ -943,54 +943,84 @@ function resize() {
   W = Math.max(1, r.width); H = Math.max(1, r.height); DPR = lowQ ? 1 : Math.min(Q.dprMax, window.devicePixelRatio || 1);
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
   if (V3) V3.size(W, H, DPR);
-  makeStars();
+  if (stars) skyLater(); else makeStars(); // the old sky stretches meanwhile
 }
 // Normal 2D background: the real sky, fixed (it does not turn with the view frame): looking down the ecliptic's south
 // pole (the 2D view looks along −z, screen x = ecliptic x, y up = ecliptic y), gnomonic, 100° across the larger side;
-// the Milky Way (SVS Deep Star Maps) and the bright stars (Yale BSC). Built once per size, after both have loaded.
-let skyKey = '';
+// the Milky Way (SVS Deep Star Maps) and the bright stars (Yale BSC). Built once per size, map tier and viewer's gain,
+// after both have loaded; the eye adaptation dims it when drawn (draw()).
+let skyKey = '', skyTimer = 0;
+const skyPx2d = () => Math.max(W, H) / 2 / Math.tan(50 * Math.PI / 180) * Math.PI / 180; // screen px per degree
 function makeStars() {
   if (!Q.stars || MODE === '3d') { stars = null; skyKey = ''; return; }
-  const sk = skyReady(true); if (!sk) { stars = null; skyKey = 'wait'; return; }
-  skyKey = W + 'x' + H + '@' + DPR;
+  const sk = skyReady(true, skyHi(skyPx2d())); if (!sk) { stars = null; skyKey = 'wait'; return; }
+  const mi = sk.milky.img, mw = mi.naturalWidth, mh = mi.naturalHeight;
+  skyKey = [W, H, DPR, mw, SKYU.user].join('|');
   stars = document.createElement('canvas'); stars.width = cv.width; stars.height = cv.height;
   const g = stars.getContext('2d'), f = Math.max(W, H) / 2 / Math.tan(50 * Math.PI / 180);
-  // Milky Way at half resolution: each pixel's direction -> celestial plate carrée (RA increasing to the left)
-  const mi = sk.milky.img, mc = document.createElement('canvas'); mc.width = mi.naturalWidth; mc.height = mi.naturalHeight;
-  const mg = mc.getContext('2d'); mg.drawImage(mi, 0, 0); const md = mg.getImageData(0, 0, mc.width, mc.height).data;
+  // Milky Way at css-pixel resolution: each pixel's direction -> celestial plate carrée (RA increasing to the left),
+  // sampled bilinearly in linear light, dithered (no banding in the dark gradients)
+  const mc = document.createElement('canvas'); mc.width = mw; mc.height = mh;
+  const mg = mc.getContext('2d', { willReadFrequently: true }); mg.drawImage(mi, 0, 0); const md = mg.getImageData(0, 0, mw, mh).data;
   const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }, srgb = c => 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
-  // soft, as in 3D (SKY_LOD): the map averaged down 2^SKY_LOD times in linear light, then sampled bilinearly
-  const sc = 1 << SKY_LOD, mw = mc.width / sc, mh = mc.height / sc, M = new Float32Array(3 * mw * mh), LUT = new Float32Array(256).map((_, i) => lin(i));
-  for (let y = 0; y < mc.height; y++) for (let x = 0; x < mc.width; x++) for (let c = 0; c < 3; c++) M[3 * ((y / sc | 0) * mw + (x / sc | 0)) + c] += LUT[md[4 * (y * mc.width + x) + c]] / (sc * sc);
-  const w2 = Math.ceil(W / 2), h2 = Math.ceil(H / 2), half = document.createElement('canvas'); half.width = w2; half.height = h2;
-  const hg = half.getContext('2d'), im = hg.createImageData(w2, h2), ce = Math.cos(OBLIQ), se = Math.sin(OBLIQ), vd = linC(COL.void), gain = SKY_GAIN;
-  for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) {
-    const ex = (2 * x + 1 - W / 2) / f, ey = (H / 2 - 2 * y - 1) / f, l = Math.hypot(ex, ey, 1);
-    const e = [ex / l, ey / l, -1 / l], q = [e[0], ce * e[1] - se * e[2], se * e[1] + ce * e[2]];
-    let u = 0.5 - Math.atan2(q[1], q[0]) / (2 * Math.PI); u -= Math.floor(u);
-    const v = 0.5 - Math.asin(q[2]) / Math.PI, px = u * mw - 0.5, py = Math.min(mh - 1, Math.max(0, v * mh - 0.5)), x0 = Math.floor(px), y0 = Math.floor(py), fx = px - x0, fy = py - y0;
-    const a = 3 * (y0 * mw + (x0 + mw) % mw), b = 3 * (y0 * mw + (x0 + 1) % mw), y1 = Math.min(mh - 1, y0 + 1) - y0, o = 4 * (y * w2 + x);
+  const LUT = new Float32Array(256).map((_, i) => lin(i));
+  const w1 = Math.ceil(W), h1 = Math.ceil(H), c1 = document.createElement('canvas'); c1.width = w1; c1.height = h1;
+  const hg = c1.getContext('2d'), im = hg.createImageData(w1, h1), ce = Math.cos(OBLIQ), se = Math.sin(OBLIQ), vd = linC(COL.void), gain = SKY_GAIN * SKYU.user;
+  for (let y = 0; y < h1; y++) for (let x = 0; x < w1; x++) {
+    const ex = (x + 0.5 - W / 2) / f, ey = (H / 2 - y - 0.5) / f, l = Math.hypot(ex, ey, 1);
+    const e0 = ex / l, e1 = ey / l, e2 = -1 / l, q1 = ce * e1 - se * e2, q2 = se * e1 + ce * e2;
+    let u = 0.5 - Math.atan2(q1, e0) / (2 * Math.PI); u -= Math.floor(u);
+    const v = 0.5 - Math.asin(q2) / Math.PI, px = u * mw - 0.5, py = Math.min(mh - 1, Math.max(0, v * mh - 0.5)), x0 = Math.floor(px), y0 = Math.floor(py), fx = px - x0, fy = py - y0;
+    const a = 4 * (y0 * mw + (x0 + mw) % mw), b = 4 * (y0 * mw + (x0 + 1) % mw), dy = 4 * mw * (Math.min(mh - 1, y0 + 1) - y0), o = 4 * (y * w1 + x);
     for (let c = 0; c < 3; c++) {
-      const m = (1 - fy) * ((1 - fx) * M[a + c] + fx * M[b + c]) + fy * ((1 - fx) * M[a + 3 * mw * y1 + c] + fx * M[b + 3 * mw * y1 + c]);
-      im.data[o + c] = srgb(vd[c] + m * gain);
+      const m = (1 - fy) * ((1 - fx) * LUT[md[a + c]] + fx * LUT[md[b + c]]) + fy * ((1 - fx) * LUT[md[a + dy + c]] + fx * LUT[md[b + dy + c]]);
+      im.data[o + c] = srgb(Math.min(1, vd[c] + m * gain)) + Math.random() - 0.5;
     }
     im.data[o + 3] = 255;
   }
   hg.putImageData(im, 0, 0);
-  g.imageSmoothingEnabled = true; g.drawImage(half, 0, 0, w2, h2, 0, 0, w2 * 2 * DPR, h2 * 2 * DPR);
+  g.imageSmoothingEnabled = true; g.drawImage(c1, 0, 0, w1, h1, 0, 0, w1 * DPR, h1 * DPR);
   // stars: the same brightness law as in 3D (peak from the V magnitude, brighter ones wider)
   g.scale(DPR, DPR); g.globalCompositeOperation = 'lighter';
   const S = sk.stars;
+  const sg = SKYU.user;
   for (let i = 0; i < S.n; i++) {
     const dz = S.dir[3 * i + 2]; if (dz >= -0.05) continue;
     const x = W / 2 + f * S.dir[3 * i] / -dz, y = H / 2 - f * S.dir[3 * i + 1] / -dz; if (x < -4 || x > W + 4 || y < -4 || y > H + 4) continue;
-    const p = starPeak(S.mag[i]); if (p < 0.02) continue;
+    const p = starPeak(S.mag[i]) * sg; if (p < 0.02) continue;
     const a = Math.min(1, p), r = 0.7 * Math.min(4, Math.max(1, Math.pow(p, 0.35)));
     g.fillStyle = `rgba(${Math.round(srgb(S.col[3 * i]))},${Math.round(srgb(S.col[3 * i + 1]))},${Math.round(srgb(S.col[3 * i + 2]))},${a.toFixed(3)})`;
     g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill();
   }
   g.globalCompositeOperation = 'source-over';
 }
+// rebuild the 2D sky a moment after its inputs changed (size, the viewer's gain)
+function skyLater() { clearTimeout(skyTimer); skyTimer = setTimeout(() => { skyTimer = 0; makeStars(); }, 150); }
+// the sharper Milky Way tier: where the screen magnifies the base, not after the quality drop or on touch devices
+const skyHi = px => !lowQ && FX.lvl < 3 && !COARSE && skyHiNeed(px);
+// Sky brightness: the viewer's gain (slider, saved) and the eye adaptation. Each frame the bodies drawn add their sunlit
+// share of the screen (disc area on screen × the lit fraction of the disc seen × albedo from their colour; a ringed
+// planet's rings add their own lit face) and the Sun's disc or glare adds a lot: the more light in view, the dimmer the sky, eased over time (darkening
+// in ~0.5 s, brightening in ~2 s, like an eye). Looking into empty space or at a night side, the sky comes back.
+const SKYU = { user: skyGainOf(readPref(LS, PREF_KEYS.sky)), adapt: 1, lit: 0 };
+const ALB = {};
+function skyLit(x, y, r, cosA, key, ring) {
+  if (!Q.stars || !(r > 0)) return;
+  const cx = Math.max(0, Math.min(W, x + r) - Math.max(0, x - r)), cy = Math.max(0, Math.min(H, y + r) - Math.max(0, y - r));
+  if (!cx || !cy) return;
+  if (ALB[key] == null) { const c = linC(BODIES[key] ? BODIES[key].color : '#888888'); ALB[key] = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; }
+  // the rings: about twice the disc's area, their lit face whatever the planet's phase
+  SKYU.lit += Math.PI / 4 * cx * cy / (W * H) * ALB[key] * (Math.max(0, (1 + cosA) / 2) + (ring ? 1.2 : 0));
+}
+// the Sun in view: i = how much of its disc or glare shows, rs its radius (px): a small one dazzles a little, a large one a lot
+function skySun(i, rs) { if (Q.stars) SKYU.lit += i * Math.min(0.5, 0.02 + 6 * Math.PI * rs * rs / (W * H)); }
+function skyAdapt(dt) {
+  const tgt = clamp(1 / (1 + 22 * SKYU.lit), 0.1, 1), tau = tgt < SKYU.adapt ? 0.5 : 2;
+  SKYU.adapt += (tgt - SKYU.adapt) * (1 - Math.exp(-dt / tau)); SKYU.lit = 0;
+}
+const skyGain = () => SKYU.user * SKYU.adapt;
+$('#tSky').value = Math.round(SKYU.user * 100);
+$('#tSky').addEventListener('input', e => { SKYU.user = skyGainOf(+e.target.value / 100); writePref(LS, PREF_KEYS.sky, String(SKYU.user)); if (!is3d()) skyLater(); });
 const ro = new ResizeObserver(() => {
   resize();
   $('#wins').style.setProperty('--tl-h', Math.ceil(stage.getBoundingClientRect().bottom - $('#timeline').getBoundingClientRect().top + 8) + 'px');
@@ -2057,6 +2087,7 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
     if (x < -40 || x > W + 40 || y < -40 || y > H + 40) continue;
     const r = Math.max(i === MSUN ? 4.5 : moon ? 1.6 : 2.6, MAP.log ? 0 : mapSys.R[i] * sc);
     addHit('m', i, x, y, r);
+    if (i === MSUN) skySun(x > 0 && x < W && y > 0 && y < H ? 1 : 0, r); else skyLit(x, y, r, 0, k, !!BODIES[k].rings); // lit from the side: half the disc
     if (i === MSUN || !globeMap(i, x, y, r, T)) { ctx.fillStyle = i === MSUN ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); }
     if (i === MSUN && glow) glare2d(x, y, r);
     if (k === keyA || k === keyB) { ctx.strokeStyle = k === keyA ? COL.traj : COL.orbit; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.2832); ctx.stroke(); }
@@ -2217,7 +2248,7 @@ function drawTrail(ext, cpos) {
   ctx.beginPath(); ctx.moveTo(sx(tr.x[i1]), sy(tr.y[i1])); ctx.lineTo(sx(cpos[0]), sy(cpos[1])); ctx.stroke();
 }
 let last = performance.now(), hold = 0, hudTick = 0, hudLast = 0, frameAvg = 1 / 60, slowFrames = 0, lowQ = false;
-const tmp = [0, 0], tmp2 = [0, 0];
+const tmp = [0, 0], tmp2 = [0, 0], tmp3 = [0, 0, 0];
 
 // Clip each segment to the viewport (no giant coordinates reach the rasterizer)
 // and drop sub-pixel steps (dense parking-orbit clusters collapse to a few vertices).
@@ -2319,11 +2350,17 @@ function draw(now) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   const v3 = is3d(); // 3D: the WebGL canvas below draws the scene, this one only the overlay
   if (v3) ctx.clearRect(0, 0, W, H);
-  else { if (skyKey === 'wait' && skyReady(true)) makeStars(); ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H); if (stars) ctx.drawImage(stars, 0, 0, W, H); }
+  else {
+    // the sky: built once the map and stars are in, again when the sharper map tier arrives; dimmed by the eye adaptation
+    // (alpha on sRGB values ≈ the linear gain^(1/2.2))
+    if (Q.stars && !skyTimer && (skyKey === 'wait' || stars)) { const sk = skyReady(true, skyHi(skyPx2d())); if (sk && (skyKey === 'wait' || sk.milky.img.naturalWidth !== +skyKey.split('|')[3])) makeStars(); }
+    ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H);
+    if (stars) { ctx.globalAlpha = Math.pow(SKYU.adapt, 1 / 2.2); ctx.drawImage(stars, 0, 0, W, H); ctx.globalAlpha = 1; }
+  }
   if (!sys || !simR || !C) {
     if (MAP.on) { if (v3) drawMap3(mapTime(0), glow, null, 0, 0); else { drawMap(mapTime(0), glow, null, 0, 0); if (!MAP.log) drawScale(); } }
-    else if (v3) { V3.setActive('none'); V3.render({ stars: Q.stars }); }
-    frameEnd(); requestAnimationFrame(draw); return;
+    else if (v3) { V3.setActive('none'); V3.render({ stars: Q.stars, skyGain: skyGain() }); }
+    skyAdapt(dt); frameEnd(); requestAnimationFrame(draw); return;
   }
   if (S.kind === 'man' && !MAP.on) { CAPTION.push(_('mv.caption')); setCaption(); } // before fitting: an obstacle
   if (!v3) frameCache();
@@ -2471,6 +2508,7 @@ function draw(now) {
         const r = Math.max(minR, sys.R[b] * cam.scale);
         if (x + r < -60 || x - r > W + 60 || y + r < -60 || y - r > H + 60) continue;
         addHit('b', b, x, y, r);
+        if (isSun) skySun(x > 0 && x < W && y > 0 && y < H ? 1 : 0, r); else skyLit(x, y, r, sunDir3(b, sunIdx, tNow, tmp3)[2], S.bodies[b].key, !!BODIES[S.bodies[b].key].rings);
         const col = S.bodies[b].color;
         if (!Q.glow) { // low-resource: flat discs, no gradients
           ctx.fillStyle = isSun ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
@@ -2555,6 +2593,7 @@ function draw(now) {
     if (!scrubbing) scrub.value = Math.round(S.u * 10000);
   }
   if (now - ovLast > 500) { ovLast = now; ovDist(); }
+  skyAdapt(dt);
   frameEnd();
   requestAnimationFrame(draw);
 }
@@ -2768,6 +2807,7 @@ function setMode(m, save) {
   if (m !== 'low') { lowQ = false; slowFrames = 0; frameAvg = 1 / 60; fxSet(0); }
   if (flip) { needFit = true; MAP.needFit = true; }
   sync3dUI();
+  $('#tSkyWrap').hidden = !Q.stars;
   resize();
   if (sys && simR) { buildCache(); renderTicks(); }
   PC.base = null; pcSync(); // grid resolution and drawing follow the mode

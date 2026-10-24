@@ -94,7 +94,8 @@ void main() {
 // Sky: the Milky Way on a sphere around the camera (object space = ecliptic J2000 axes; the mesh is turned into the
 // view frame), the map in celestial coordinates (right ascension increasing to the left, 0h in the middle). Soft on
 // purpose: a cubic B-spline (four bilinear taps) from mip level SKY_LOD or coarser, so the map's JPEG blocks and grain
-// never show when it is magnified; the stars are separate sharp points (STAR_*).
+// never show when it is magnified; dithered (no banding in the dark gradients); uGain: SKY_GAIN × the viewer's gain ×
+// the eye adaptation. The stars are separate sharp points (STAR_*), scaled by the same adaptation.
 const SKY_VS = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_vertex>
@@ -110,6 +111,7 @@ const SKY_FS = /* glsl */`
 uniform sampler2D uMilky;
 uniform float uGain;
 varying vec3 vD;
+#include <dithering_pars_fragment>
 vec3 skyCubic(vec2 uv, int l) {
   vec2 sz = vec2(textureSize(uMilky, l)), p = uv * sz - 0.5, f = fract(p), i = p - f;
   vec2 w0 = (1.0 - f) * (1.0 - f) * (1.0 - f) / 6.0, w3 = f * f * f / 6.0, w1 = 2.0 / 3.0 - f * f * (1.0 - 0.5 * f), w2 = 1.0 - w0 - w1 - w3;
@@ -131,6 +133,7 @@ void main() {
   vec3 m = mix(skyCubic(uv, int(l0)), skyCubic(uv, int(l0) + 1), lod - l0);
   gl_FragColor = vec4(m * uGain, 1.0);
   #include <colorspace_fragment>
+  #include <dithering_fragment>
 }`;
 // bright stars: points along their directions (ecliptic axes, same mesh turning), a Gaussian of the pixel ratio's size
 // whose peak follows the flux; brighter than white, it widens instead (the light it carries keeps growing)
@@ -139,13 +142,13 @@ const STAR_VS = /* glsl */`
 #include <logdepthbuf_pars_vertex>
 attribute float aPeak;
 attribute vec3 aCol;
-uniform float uDpr;
+uniform float uDpr, uGain;
 varying vec3 vC;
 varying float vS;
 void main() {
   float g = clamp(pow(aPeak, 0.35), 1.0, 4.0);
   vS = 0.6 * uDpr * g;
-  vC = aCol * min(aPeak, 1.0);
+  vC = aCol * min(aPeak, 1.0) * uGain;
   gl_PointSize = 2.0 * ceil(3.0 * vS) + 1.0;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   #include <logdepthbuf_vertex>
@@ -252,16 +255,17 @@ export function create(canvas, opts) {
   // (drawn first, added onto the clear colour), so bodies cover them ----
   const sky = new THREE.Group(); sky.visible = false; scene.add(sky);
   let milky = null, stars = null;
-  function skySet(d) { // d: js/globe.js skyReady()
-    if (milky || !d) return;
-    milky = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), new THREE.ShaderMaterial({ vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide,
+  function skySet(d) { // d: js/globe.js skyReady(); a sharper map tier replaces the base once it has loaded
+    if (!d) return;
+    if (milky) { milky.material.uniforms.uMilky.value = texOf(d.milky.img, true, false); return; }
+    milky = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), new THREE.ShaderMaterial({ vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, dithering: true,
       depthTest: false, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending, uniforms: { uMilky: { value: texOf(d.milky.img, true, false) }, uGain: { value: SKY_GAIN } } }));
     milky.renderOrder = -11; milky.frustumCulled = false; sky.add(milky);
     const S = d.stars, g = new THREE.BufferGeometry(), pk = new Float32Array(S.n);
     for (let i = 0; i < S.n; i++) pk[i] = starPeak(S.mag[i]);
     g.setAttribute('position', new THREE.BufferAttribute(S.dir, 3)); g.setAttribute('aPeak', new THREE.BufferAttribute(pk, 1)); g.setAttribute('aCol', new THREE.BufferAttribute(S.col, 3));
     stars = new THREE.Points(g, new THREE.ShaderMaterial({ vertexShader: STAR_VS, fragmentShader: STAR_FS, depthTest: false, depthWrite: false, toneMapped: false,
-      blending: THREE.AdditiveBlending, uniforms: { uDpr: { value: 1 } } }));
+      blending: THREE.AdditiveBlending, uniforms: { uDpr: { value: 1 }, uGain: { value: 1 } } }));
     stars.renderOrder = -10; stars.frustumCulled = false; sky.add(stars);
   }
 
@@ -474,8 +478,8 @@ export function create(canvas, opts) {
   }
   const _q = new THREE.Quaternion();
   function setActive(set) { active = set; for (const k in roots) roots[k].visible = k === set; }
-  // opts: stars (draw the sky), sky (ecliptic -> view frame, row-major; null: the ecliptic axes), glare ({ x, y px from
-  // the top left, L px, i intensity } or null)
+  // opts: stars (draw the sky), sky (ecliptic -> view frame, row-major; null: the ecliptic axes), skyGain (the viewer's
+  // gain × the eye adaptation), glare ({ x, y px from the top left, L px, i intensity } or null)
   const _sk = new THREE.Matrix4();
   function render(opts) {
     if (lost) return;
@@ -484,6 +488,8 @@ export function create(canvas, opts) {
       const m = opts.sky; sky.position.copy(camera.position); sky.scale.setScalar(camera.far * 0.5);
       if (m) sky.quaternion.setFromRotationMatrix(_sk.set(m[0], m[1], m[2], 0, m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, 0, 0, 0, 1)); else sky.quaternion.identity();
       stars.material.uniforms.uDpr.value = DPR;
+      const k = opts.skyGain == null ? 1 : opts.skyGain;
+      milky.material.uniforms.uGain.value = SKY_GAIN * k; stars.material.uniforms.uGain.value = k;
     }
     const rel = (p, o) => o.set((p[0] - T[0]) * KM, (p[1] - T[1]) * KM, (p[2] - T[2]) * KM);
     for (const b of sets[active]) {

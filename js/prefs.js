@@ -1,7 +1,7 @@
 // Persisted UI preferences: view mode and window layout.
 // DOM-free: the storage object is passed in (localStorage, sessionStorage, a stub or null), so Node tests can run it.
 // Every storage access is wrapped: private windows, blocked site data and quota errors must never break the page.
-const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds' };
+const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky' };
 const VIEW_MODES = ['low', 'normal', '3d'];
 // placement order: overview's default spot sits under Results, so it comes after it
 const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'gloss', 'model', 'credits'];
@@ -10,6 +10,9 @@ const WIN_DEFAULT_OPEN = { mission: true, results: true };
 function readPref(store, key) { try { return store ? store.getItem(key) : null; } catch (e) { return null; } }
 function writePref(store, key, v) { try { if (!store) return false; store.setItem(key, v); return true; } catch (e) { return false; } }
 function clearPref(store, key) { try { if (store) store.removeItem(key); } catch (e) { /* ignore */ } }
+
+// the viewer's sky brightness (the slider, 0–2× the default): a saved number in range, else 1
+function skyGainOf(v) { const x = v == null || v === '' ? NaN : +v; return Number.isFinite(x) ? Math.min(2, Math.max(0, x)) : 1; }
 
 // Saved mode wins; with nothing valid saved, start in normal mode and ask once.
 function startupMode(store) {
@@ -84,4 +87,4 @@ function trailAlpha(age, fade, keep = TRAIL_REVS, span = TRAIL_FADE) {
   return fade && age > keep - span ? (keep - age) / span : 1;
 }
 
-if (typeof module !== 'undefined') module.exports = { PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

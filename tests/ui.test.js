@@ -263,9 +263,30 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   // the sky: asked for behind a Q.stars check only; the star catalogue is the one fetch()
   const m3 = read('js/mode3d.js'), app = read('js/app.js'), globe = read('js/globe.js');
   assert.ok(/function sky3\(\) \{ if \(Q\.stars\) /.test(m3), '3D sky behind Q.stars');
-  assert.ok(/function makeStars\(\) \{\n  if \(!Q\.stars \|\| MODE === '3d'\) \{[^}]*return; \}\n  const sk = skyReady\(true\)/.test(app), '2D sky behind Q.stars');
+  assert.ok(/function makeStars\(\) \{\n  if \(!Q\.stars \|\| MODE === '3d'\) \{[^}]*return; \}\n  const sk = skyReady\(true, skyHi\(/.test(app), '2D sky behind Q.stars');
+  assert.ok(/const skyHi = px => !lowQ && FX\.lvl < 3 && !COARSE && skyHiNeed\(px\);/.test(app), 'sharper sky: not after the quality drop, ladder step 3 or on touch devices');
   assert.strictEqual([...(app + m3).matchAll(/skyReady\(/g)].length, 3, 'skyReady callers: makeStars, its rebuild, sky3');
   assert.strictEqual([...(globe + app + m3 + read('js/view3d.js')).matchAll(/fetch\(/g)].length, 1, 'one fetch: the star catalogue');
+  // the Milky Way: base first, the 4096 tier only when asked for (hi) and needed (base magnified over 1.3×)
+  const sky = { performance: sb.performance, Image: sb.Image, Math, Object, Map, Set, Array, Number, console, fetch: () => ({ then: () => ({ then: () => ({ catch: () => {} }) }) }) };
+  vm.runInNewContext(read('js/bodies.js') + '\n' + read('js/globe.js') + '\nthis.api = { skyReady, skyHiNeed, TEXC };', sky);
+  asked.length = 0; sky.api.skyReady(false, true);
+  assert.strictEqual(asked.length, 0, 'sky: nothing unless wanted');
+  sky.api.skyReady(true, false);
+  assert.deepStrictEqual([...asked], ['img/sky/milkyway.jpg'], 'sky: base only without hi');
+  sky.api.skyReady(true, true);
+  assert.ok(asked.includes('img/sky/milkyway_4k.jpg'), 'sky: 4k when hi');
+  assert.ok(!sky.api.skyHiNeed(7) && sky.api.skyHiNeed(8), 'sharper sky past 1.3 × 2048/360 px per degree');
+}
+// 10) Sky brightness: the saved gain is a number in 0–2, anything else is the default 1; the slider lives with the view
+// toggles and is hidden where there is no sky
+{
+  assert.strictEqual(P.skyGainOf(null), 1); assert.strictEqual(P.skyGainOf('abc'), 1); assert.strictEqual(P.skyGainOf(''), 1);
+  assert.strictEqual(P.skyGainOf('1.5'), 1.5); assert.strictEqual(P.skyGainOf(5), 2); assert.strictEqual(P.skyGainOf(-1), 0);
+  assert.ok(/id="tSky"[^>]*min="0" max="200"/.test(html) && P.PREF_KEYS.sky, 'sky slider and its saved value');
+  assert.ok(/\$\('#tSkyWrap'\)\.hidden = !Q\.stars;/.test(read('js/app.js')), 'slider hidden without a sky');
+  const { SKY } = require('../js/bodies.js');
+  assert.ok(SKY.milky.hi && SKY.milky.hi[0][0] === 4096 && fs.existsSync(path.join(__dirname, '..', SKY.milky.hi[0][1])), 'the 4k Milky Way tier exists');
 }
 
 console.log('OK — all UI tests passed');
