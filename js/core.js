@@ -1128,12 +1128,15 @@ function planeSplit(pairs, di) {
 // the craft with velocity v₁ + (j/k)(v₂ − v₁) at the burn point, still horizontal, so the point stays an apsis.
 // Returns { burns, nodes, dv, tof } or { error } (an i18n key). burns: { node, piece, pieces, side, r, dv, di (signed
 // turn), iAfter, rOther (the other apsis after the burn), a (after), now (right after the previous burn), sep }.
+const KMAX = 64; // pieces of one burn at most (the vehicle planner)
 function maneuverPlan(mu, R, o0, o1, opt) {
   for (const o of [o0, o1]) {
     if (!(o.rp > R)) return { error: 'err.mvSurface' };
     if (!(o.ra >= o.rp)) return { error: 'err.mvApsis' };
   }
   const bi = opt.type === 'bielliptic', k = Math.max(1, Math.min(8, Math.round(opt.k || 1)));
+  // pieces per burn: one k for all, or each burn its own (opt.kNode, indexed like the returned nodes: the vehicle planner)
+  const kOf = m => (opt.kNode ? Math.max(1, Math.min(KMAX, Math.round(opt.kNode[m] || 1))) : k);
   if (bi && !(opt.rb > Math.max(o0.ra, o1.ra))) return { error: 'err.mvRb' };
   const a0 = (o0.rp + o0.ra) / 2, a1 = (o1.rp + o1.ra) / 2, DI = o1.i - o0.i, adi = Math.abs(DI), sg = DI < 0 ? -1 : 1;
   const speeds = n => [visViva(mu, n.r, n.a1), visViva(mu, n.r, n.a2)];
@@ -1180,15 +1183,15 @@ function maneuverPlan(mu, R, o0, o1, opt) {
   nodes.forEach((n, m) => {
     const [v1, v2] = speeds(n), x = n.di, dvN = burnDv(v1, v2, x);
     n.v1 = v1; n.v2 = v2; n.dv = dvN; n.iBefore = inc;
-    const now = n.side === prevSide; // a burn at the point the previous one left: right away (the same orbit there)
+    const now = n.side === prevSide, kn = kOf(m); // a burn at the point the previous one left: right away (the same orbit there)
     let phiPrev = 0;
-    for (let j = 1; j <= k; j++) {
-      const f = j / k, ux = v1 + f * (v2 * Math.cos(x) - v1), uy = f * v2 * Math.sin(x);
+    for (let j = 1; j <= kn; j++) {
+      const f = j / kn, ux = v1 + f * (v2 * Math.cos(x) - v1), uy = f * v2 * Math.sin(x);
       const sp = Math.hypot(ux, uy), phi = Math.atan2(uy, ux), a = 1 / (2 / n.r - sp * sp / mu);
       if (!(a > 0)) { err = 'err.mvEscape'; break; }
       const rO = 2 * a - n.r;
       if (Math.min(rO, n.r) < R) { err = 'err.mvLow'; break; }
-      burns.push({ node: m, piece: j, pieces: k, side: n.side, r: n.r, dv: dvN / k, di: sg * (phi - phiPrev), iAfter: n.iBefore + sg * phi,
+      burns.push({ node: m, piece: j, pieces: kn, side: n.side, r: n.r, dv: dvN / kn, di: sg * (phi - phiPrev), iAfter: n.iBefore + sg * phi,
         rOther: rO, a, now: j === 1 && now, sep: !!n.sep });
       phiPrev = phi;
     }
@@ -1556,16 +1559,20 @@ function maneuverFlight(c, plan, fin, opts = {}) {
   F.h = F.period(y) / 400;
   out.normal = ecl(unit(cross(y, y.subarray(3, 6))));
   if (record) F.push();
-  let tRef = -Infinity, fuelOut = false, aPlan = (plan.o0.rp + plan.o0.ra) / 2;
+  // opts.wait (s): the shortest coast between one cut-off and the next ignition; a burn meant to follow the previous one
+  // right away then waits for its point's next pass
+  const wait = opts.wait > 0 ? opts.wait : 0;
+  let tRef = -Infinity, fuelOut = false, aPlan = (plan.o0.rp + plan.o0.ra) / 2, lastCut = -Infinity;
   for (const [j, b] of burns.entries()) {
     if (!out.ok) break;
+    const bNow = b.now && !wait;
     const inPlane = Math.abs(b.a - aPlan) > 1e-7 * b.a; // what the plan changes here: the orbit, or the plane alone
     aPlan = b.a;
     let yImp, tImp;
-    if (b.now) { yImp = Float64Array.from(y); tImp = F.t; }
-    else { // where the impulsive burn would be: coast to the burn point, then back
-      const save = { t: F.t, y: Float64Array.from(y), h: F.h }, P = F.period(y);
-      const r = F.seg(F.t + 4 * P, { cross: { side: b.side, after: tRef + 0.1 * P } });
+    if (bNow) { yImp = Float64Array.from(y); tImp = F.t; }
+    else { // where the impulsive burn would be: coast to the burn point, then back (not before the wait is over)
+      const save = { t: F.t, y: Float64Array.from(y), h: F.h }, P = F.period(y), tHalfEst = 0.5 * y[6] / mdot * (1 - Math.exp(-b.dv / ve));
+      const r = F.seg(F.t + 4 * P + wait, { cross: { side: b.side, after: Math.max(tRef + 0.1 * P, lastCut + wait + tHalfEst) } });
       if (r !== 'cross') { if (r === 'end') out.ok = false; break; }
       yImp = Float64Array.from(y); tImp = F.t;
       // an orbit-changing burn goes to the apsis next to the line: earlier finite burns turn the apse line a little
@@ -1586,7 +1593,7 @@ function maneuverFlight(c, plan, fin, opts = {}) {
     }
     const nv = mvImpulse(mu, yImp, b), dvv = [0, 1, 2].map(j => nv[j] - yImp[3 + j]), dvRef = Math.hypot(...dvv), du = dvv.map(q => q / dvRef);
     const tHalf = y[6] / mdot * (1 - Math.exp(-dvRef / (2 * ve)));
-    const tNow = F.t, tStart = b.now ? F.t : Math.max(F.t, tImp - tHalf);
+    const tNow = F.t, tStart = bNow ? F.t : Math.max(F.t, tImp - tHalf, lastCut + wait);
     // steering basis at the impulsive point: along-track (signed) and orbit normal; the thrust leaves the plane by
     // ψ = ψ₀ + ψ₁·(2s/Δv_ref − 1), s the Δv delivered so far (a yaw that turns linearly through the burn)
     const rI = unit([yImp[0], yImp[1], yImp[2]]), nI = unit(cross(yImp, yImp.subarray(3, 6))), tI = cross(nI, rI);
@@ -1632,8 +1639,8 @@ function maneuverFlight(c, plan, fin, opts = {}) {
     // the cut-off; what is left is a second-order error of the far apsis, which the trim Δv below accounts for (forcing
     // it with a pitched thrust in every burn costs far more than fixing it once at the end).
     const turn = Math.abs(b.di) > 1e-9 && inPlane;
-    const ctrl = [...(b.now ? [] : [0]), ...(turn ? [1, 2] : [])];
-    const cons = inPlane ? [...(b.now ? [] : [0]), ...(turn ? [1, 2] : [])] : (b.now ? [] : [1]);
+    const ctrl = [...(bNow ? [] : [0]), ...(turn ? [1, 2] : [])];
+    const cons = inPlane ? [...(bNow ? [] : [0]), ...(turn ? [1, 2] : [])] : (bNow ? [] : [1]);
     let x = [0, psiI, 0];
     if (ctrl.length && ctrl.length === cons.length) {
       const res = q => {
@@ -1670,7 +1677,7 @@ function maneuverFlight(c, plan, fin, opts = {}) {
       arc, el, di: el.i - elI(pre.y), fuelOut, steer: { inertial: fin.steer === 'inertial', psi, psi1: x[2], dvRef, sgP, P: ecl(P0), N: ecl(nI) } };
     out.burns.push(ex);
     out.events.push({ type: 'burn', t: (pre.t + F.t) / 2, t0: pre.t, t1: F.t, dv, body: 0, label: 'ev.mvBurn', node: b.node, piece: b.piece, pieces: b.pieces, di: ex.di, sep: b.sep, finite: true });
-    tRef = b.now ? F.t : tImp;
+    tRef = bNow ? F.t : tImp; lastCut = F.t;
     if (fuelOut) { out.ok = false; out.fuelOut = true; out.events.push({ type: 'impact', body: 0, t: F.t, label: 'ev.fuelOut', fuel: true }); break; }
   }
   if (out.burns.length) out.done = out.burns[out.burns.length - 1].el;
@@ -1754,14 +1761,101 @@ function spiralFlight(c, o0, o1, fin, opts = {}) {
   return out;
 }
 
-// Worker entry for the finite-thrust maneuvers: job { c, o0, o1, opt, fin, cap }. The spiral, or the plan flown with the
-// engine; when a burn sweeps more than 60° of its orbit, the same flight with k = 1, 2 and 4 pieces (their losses).
+// The vehicle planner: an impulsive plan split to fit a vehicle (v: F N, isp s, m0, md kg; tMax s, the longest single
+// firing; nMax, the most ignitions; 0 = no limit). Each planned burn j gets its own number of pieces k_j: with the mass m
+// at its start, one piece of tMax delivers at most Δv_max = −c·ln(1 − tMax·ṁ/m), so k_j = ⌈Δv_j/Δv_max⌉ (equal Δv pieces:
+// the first, heaviest one is the longest and fits), on successive passes of the same point. Refusals, with what it would
+// take: the propellant (Δv needed against c·ln(m₀/m_dry)), more than KMAX pieces, a piece sweeping more than half its
+// orbit (thrust too low for apsis burns: the spiral), more ignitions than nMax. Returns { plan, kNode, n, maxArc }.
+function splitPlan(mu, R, o0, o1, opt, v) {
+  const base = maneuverPlan(mu, R, o0, o1, { ...opt, k: 1, kNode: null });
+  if (base.error) return base;
+  const ve = v.isp * G0, mdot = v.F / ve, avail = dvAvail(v.m0, v.md, v.isp);
+  if (base.dv > avail * (1 + 1e-9)) return { error: 'err.vehFuel', params: { need: base.dv, avail } };
+  // the pieces are sized on the impulsive Δv; a finite piece needs a little more (its loss): 2 % of tMax kept in hand
+  const kNode = [], tCap = 0.98 * v.tMax;
+  let m = v.m0, maxArc = 0;
+  for (const n of base.nodes) {
+    let k = 1;
+    if (v.tMax > 0 && m / mdot * (1 - Math.exp(-n.dv / ve)) > tCap) {
+      const x = 1 - tCap * mdot / m;
+      k = x > 0 ? Math.ceil(n.dv / (-ve * Math.log(x)) - 1e-9) : 1;
+    }
+    if (k > KMAX) return { error: 'err.vehMany', params: { k, max: KMAX } };
+    kNode.push(k);
+    // the longest piece and the arc it sweeps about the burn point (angular speed v/r there)
+    const tP = m / mdot * (1 - Math.exp(-n.dv / k / ve));
+    maxArc = Math.max(maxArc, tP * Math.max(n.v1, n.v2) / n.r);
+    m *= Math.exp(-n.dv / ve);
+  }
+  if (maxArc > Math.PI) return { error: 'err.vehSpiral', params: { arc: maxArc } };
+  const n = kNode.reduce((a, q) => a + q, 0);
+  if (v.nMax > 0 && n > v.nMax) return { error: 'err.vehIgn', params: { need: n, max: v.nMax } };
+  const plan = maneuverPlan(mu, R, o0, o1, { ...opt, kNode });
+  return plan.error ? plan : { plan, kNode, n, maxArc };
+}
+
+// The reverse problem: one firing of T seconds (fin: F, isp, m0, md) centred in time on an apsis of orbit o0 (at: 0 its
+// periapsis, on the line of nodes ℓ as in the maneuvers; 1 its apoapsis), the thrust held along a local direction (dir:
+// 'pro' / 'retro' along ±v, 'norm' / 'anti' along ±h, 'out' / 'in' along ±r), re-pointed all along. A quarter turn of
+// coast before, the burn (cut short by the dry mass), then a period of coast (two of the initial orbit when it escapes).
+// Returns a flight like maneuverFlight's: samples, events, burns[0] (t0, t1, m0, m1, Δv = c·ln(m₀/m₁), arc, el), done
+// (the orbit at cut-off), imp (the orbit of the same Δv applied at once at the apsis, same direction), fuel, fuelOut.
+function burnFor(c, o0, fin, opt) {
+  const mu = c.mu, F = flight(c, fin, { tol: opt.tol || 1e-10, maxSteps: opt.maxSteps }), { T, out, ve, mdot } = F, y = F.y, rot = c.rot, O0 = c.O0 || 0;
+  const a0 = (o0.rp + o0.ra) / 2, e0 = (o0.ra - o0.rp) / (o0.ra + o0.rp), n0 = Math.sqrt(mu / (a0 * a0 * a0)), P0 = 2 * Math.PI / n0;
+  const Tb = Math.max(0, +opt.T || 0), lead = 0.25 * P0, MA = opt.at ? Math.PI : 0, Ms = MA - n0 * (Tb / 2 + lead);
+  const nuOf = M => { const E = keplerE(M, e0); return 2 * Math.atan2(Math.sqrt(1 + e0) * Math.sin(E / 2), Math.sqrt(1 - e0) * Math.cos(E / 2)); };
+  const dirOf = (q, o) => {
+    const rl = Math.hypot(q[0], q[1], q[2]), vl = Math.hypot(q[3], q[4], q[5]);
+    const hx = q[1] * q[5] - q[2] * q[4], hy = q[2] * q[3] - q[0] * q[5], hz = q[0] * q[4] - q[1] * q[3], hl = Math.hypot(hx, hy, hz);
+    const d = opt.dir, s = d === 'retro' || d === 'anti' || d === 'in' ? -1 : 1;
+    if (d === 'norm' || d === 'anti') { o[0] = s * hx / hl; o[1] = s * hy / hl; o[2] = s * hz / hl; }
+    else if (d === 'out' || d === 'in') { o[0] = s * q[0] / rl; o[1] = s * q[1] / rl; o[2] = s * q[2] / rl; }
+    else { o[0] = s * q[3] / vl; o[1] = s * q[4] / vl; o[2] = s * q[5] / vl; }
+  };
+  const ecl = u => rot ? [0, 1, 2].map(j => rot[3 * j] * u[0] + rot[3 * j + 1] * u[1] + rot[3 * j + 2] * u[2]) : u.slice();
+  y.set([...orbitPoint(mu, o0, O0, nuOf(Ms)), fin.m0, 0]);
+  F.h = P0 / 400;
+  const h0 = [y[1] * y[5] - y[2] * y[4], y[2] * y[3] - y[0] * y[5], y[0] * y[4] - y[1] * y[3]], hl0 = Math.hypot(...h0);
+  out.normal = ecl(h0.map(q => q / hl0));
+  F.push();
+  if (F.seg(lead, { rec: true }) !== 'end') return out;
+  const t0 = F.t, m0 = y[6], ys = Float64Array.from(y);
+  let arc = 0;
+  T.dir = dirOf; T.on = Tb > 0;
+  if (Tb > 0) F.h = Math.min(F.h, Math.max(1e-3, Tb / 20));
+  const r = Tb > 0 ? F.seg(t0 + Tb, { g: q => (q[6] - fin.md) / fin.m0, rec: true, onStep: (a, q) => { arc += sweep(a, q); } }) : 'end';
+  T.on = false;
+  if (r === 'impact' || r === 'steps') { out.tEnd = F.t; out.end = Array.from(y.subarray(0, 6)); out.mEnd = y[6]; return out; }
+  const m1 = y[6], dv = ve * Math.log(m0 / m1), el = rv2el(mu, [y[0], y[1], y[2]], [y[3], y[4], y[5]]), fuelOut = m1 <= fin.md * (1 + 1e-9);
+  out.burns.push({ node: 0, piece: 1, pieces: 1, t0, t1: F.t, m0, m1, dv, dvAcc: y[7] - ys[7], arc, el, fuelOut, steer: { dir: opt.dir } });
+  out.events.push({ type: 'burn', t: (t0 + F.t) / 2, t0, t1: F.t, dv, body: 0, label: 'ev.vBurn', node: 0, piece: 1, pieces: 1, di: el.i - elI(ys), finite: true });
+  // the same Δv at once at the apsis, in the same local direction
+  const ya = orbitPoint(mu, o0, O0, MA), u = [0, 0, 0]; dirOf(ya, u);
+  out.imp = rv2el(mu, ya.slice(0, 3), [0, 1, 2].map(j => ya[3 + j] + dv * u[j]));
+  out.done = el; out.fuelOut = fuelOut; out.ok = !fuelOut || Tb <= (m0 - fin.md) / mdot * (1 + 1e-9);
+  if (fuelOut) out.events.push({ type: 'impact', body: 0, t: F.t, label: 'ev.fuelOut', fuel: true });
+  F.seg(F.t + (el.e < 1 && el.a > 0 ? Math.min(2 * Math.PI * Math.sqrt(el.a ** 3 / mu), 20 * P0) : 2 * P0), { rec: true });
+  out.tEnd = F.t; out.end = Array.from(y.subarray(0, 6)); out.mEnd = y[6];
+  out.dvFin = dv; out.fuel = fin.m0 - m1; out.tFirst = t0; out.tLast = t0 + (out.burns[0].t1 - t0);
+  return out;
+}
+
+// Worker entry for the finite-thrust maneuvers: job { c, o0, o1, opt, fin, cap, lim }. The spiral; the single firing
+// (opt.type 'burn'); or the plan flown with the engine — split by the vehicle planner when lim (tMax, nMax, wait) limits
+// it, else with the chosen k, and when a burn sweeps more than 60° of its orbit, the same flight with k = 1, 2 and 4
+// pieces (their losses).
 function maneuverRun(job, onProgress) {
-  const { c, o0, o1, opt, fin } = job;
+  const { c, o0, o1, opt, fin } = job, lim = job.lim || {};
   if (opt.type === 'spiral') { const sim = spiralFlight(c, o0, o1, fin, { cap: job.cap, onProgress }); return sim.error ? sim : { sim }; }
-  const plan = maneuverPlan(c.mu, c.R, o0, o1, opt);
+  if (opt.type === 'burn') return { sim: burnFor(c, o0, fin, opt) };
+  const sp = lim.tMax > 0 || lim.nMax > 0 ? splitPlan(c.mu, c.R, o0, o1, opt, { ...fin, tMax: lim.tMax, nMax: lim.nMax }) : null;
+  if (sp && sp.error) return sp;
+  const plan = sp ? sp.plan : maneuverPlan(c.mu, c.R, o0, o1, opt);
   if (plan.error) return { error: plan.error };
-  const sim = maneuverFlight(c, plan, fin);
+  const sim = maneuverFlight(c, plan, fin, { wait: lim.wait });
+  if (sp) return { sim, sp: { kNode: sp.kNode, n: sp.n, maxArc: sp.maxArc } };
   let split = null;
   if (sim.burns.some(b => b.arc > Math.PI / 3)) {
     split = [1, 2, 4].map((k, j) => {
@@ -1780,5 +1874,5 @@ if (typeof module !== 'undefined') module.exports = {
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed,
   G0, visViva, burnDv, propMass, dvAvail, planeSplit, maneuverPlan, mvOrbits, rv2el, j2Rates, keplerStep, equatorFrame, orbitPoint, maneuverSim,
-  mvImpulse, maneuverFlight, spiralEstimate, spiralFlight, maneuverRun, conicPoints, domBody,
+  mvImpulse, maneuverFlight, spiralEstimate, spiralFlight, maneuverRun, conicPoints, domBody, splitPlan, burnFor, KMAX,
 };

@@ -778,3 +778,59 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   }
   console.log('osculating orbit ok');
 }
+
+// ===== Phase 6c-2: the vehicle planner and the single firing =====
+{
+  const muE = 398600.4418e9, ReE = 6378.137e3, D = Math.PI / 180, G0 = C.G0, c = { mu: muE, R: 6371e3, J2: 0, Re: ReE, rot: null, O0: 0 };
+  const gto = C.mvOrbits({ hp0: 250, ha0: 35786, i0: 28.5, O0: 0, hp1: 35786, e1: 0, i1: 0, type: 'hohmann', rb: 1e5, plane: 'comb', k: 1 }, ReE);
+  const fin = { F: 420, isp: 318, m0: 3500, md: 1900, steer: 'local' }, mdot = fin.F / (fin.isp * G0);
+  // 34) Split to the vehicle: every flown piece within the longest firing, as many ignitions as pieces, the same total
+  // impulsive Δv as unsplit, the target reached; the refusals say what it would take; the wait between ignitions holds
+  {
+    const base = C.maneuverPlan(muE, c.R, gto.o0, gto.o1, gto.opt);
+    for (const tMax of [3960, 1800, 900]) {
+      const sp = C.splitPlan(muE, c.R, gto.o0, gto.o1, gto.opt, { ...fin, tMax, nMax: 0 });
+      assert.ok(!sp.error && sp.n === sp.kNode.reduce((a, q) => a + q, 0) && sp.plan.burns.length === sp.n, `tMax ${tMax}: ${sp.n} ignitions`);
+      assert.ok(Math.abs(sp.plan.dv - base.dv) < 1e-6, 'splitting keeps the impulsive Δv');
+      const s = C.maneuverRun({ c, ...gto, fin, lim: { tMax } }).sim, durs = s.burns.map(b => b.t1 - b.t0);
+      assert.ok(s.ok && durs.length === sp.n && Math.max(...durs) <= tMax, `every firing ≤ ${tMax} s (longest ${Math.max(...durs).toFixed(0)} s)`);
+      // the cut-off lands a; the rest of the shape is the second-order error the trim Δv accounts for
+      assert.ok(Math.abs(s.done.a - gto.o1.rp) < 5e3 && s.trim < 5 && s.done.i < 0.01 * D, `tMax ${tMax}: GEO reached (trim ${s.trim.toFixed(2)} m/s)`);
+    }
+    // fewer, longer firings lose more
+    const loss = t => C.maneuverRun({ c, ...gto, fin, lim: { tMax: t } }).sim.lossTot;
+    assert.ok(loss(900) < loss(1800) && loss(1800) < loss(3960), 'shorter firings, smaller loss');
+    const ign = C.splitPlan(muE, c.R, gto.o0, gto.o1, gto.opt, { ...fin, tMax: 1800, nMax: 2 });
+    assert.ok(ign.error === 'err.vehIgn' && ign.params.need > 2 && ign.params.max === 2, 'too many ignitions: the number needed');
+    const fu = C.splitPlan(muE, c.R, gto.o0, gto.o1, gto.opt, { ...fin, md: 3200, tMax: 0 });
+    assert.ok(fu.error === 'err.vehFuel' && Math.abs(fu.params.avail - fin.isp * G0 * Math.log(3500 / 3200)) < 1e-6 && fu.params.need > fu.params.avail, 'not enough propellant: needed and available Δv');
+    const leo = C.mvOrbits({ hp0: 400, ha0: 400, i0: 0, O0: 0, hp1: 35786, e1: 0, i1: 0, type: 'hohmann', rb: 1e5, plane: 'comb', k: 1 }, ReE);
+    assert.strictEqual(C.splitPlan(muE, c.R, leo.o0, leo.o1, leo.opt, { F: 0.07, isp: 1640, m0: 367, md: 284.5, tMax: 864000, nMax: 0 }).error, 'err.vehSpiral', 'low thrust: the spiral');
+    const w = 15 * 3600, sw = C.maneuverRun({ c, ...gto, fin, lim: { tMax: 1800, wait: w } }).sim, b = sw.burns;
+    assert.ok(sw.ok && b.slice(1).every((q, i) => q.t0 - b[i].t1 >= w - 1), 'the wait between ignitions holds');
+    assert.ok(Math.abs(sw.done.ra - gto.o1.ra) < 50e3, 'and the target is still reached');
+  }
+  // 35) One firing: Δv = c·ln(m₀/m₁) = ∫F/m dt, propellant ṁT; each of the six directions changes what it should (to first
+  // order: prograde raises the far apsis, retrograde lowers it, normal / antinormal turn the plane, radial tilts the
+  // apse line with a unchanged); centred on the apsis it matches the same Δv applied at once to third order in T; the
+  // dry mass cuts it short; enough of it escapes
+  {
+    const L = C.mvOrbits({ hp0: 400, ha0: 400, i0: 28.5, O0: 0, hp1: 400, e1: 0, i1: 28.5, type: 'hohmann', rb: 1e5, plane: 'comb', k: 1 }, ReE), o0 = L.o0;
+    const run = (dir, T, f = fin) => C.burnFor(c, o0, f, { at: 0, T, dir });
+    const s = run('pro', 120), b = s.burns[0];
+    assert.ok(Math.abs(b.dv - fin.isp * G0 * Math.log(b.m0 / b.m1)) < 1e-9 && Math.abs(b.dv - b.dvAcc) < 1e-6 && Math.abs(s.fuel - mdot * 120) < 1e-6, 'Tsiolkovsky, ∫F/m and ṁT agree');
+    const d = q => q.done, km = 1e3;
+    assert.ok(d(s).ra - o0.ra > 40 * km && Math.abs(d(s).rp - o0.rp) < km, 'prograde raises the far apsis');
+    const r = run('retro', 120); assert.ok(o0.rp - d(r).rp > 40 * km && Math.abs(d(r).ra - o0.ra) < km, 'retrograde lowers the far apsis');
+    const n = run('norm', 120), an = run('anti', 120);
+    assert.ok(d(n).i - o0.i > 0.05 * D && o0.i - d(an).i > 0.05 * D && Math.abs(d(n).a - (o0.rp + o0.ra) / 2) < km, 'normal and antinormal turn the plane');
+    const ro = run('out', 120); assert.ok(d(ro).e > 1e-3 && Math.abs(d(ro).a - (o0.rp + o0.ra) / 2) < km, 'radial: eccentric, the same a');
+    const diff = T => { const q = run('pro', T); return Math.abs(q.done.ra - q.imp.ra); };
+    assert.ok(diff(240) / diff(120) > 6 && diff(120) < 100, `finite vs impulsive: third order in T (${diff(120).toFixed(1)} m at 120 s)`);
+    const dry = run('pro', 3000, { ...fin, md: 3400 });
+    assert.ok(dry.fuelOut && Math.abs(dry.burns[0].t1 - dry.burns[0].t0 - 100 / mdot) < 1e-3, 'the dry mass ends the firing');
+    const esc = run('pro', 600, { F: 99200, isp: 450.5, m0: 23073, md: 2243 });
+    assert.ok(esc.done.e > 1 && esc.done.a < 0, 'a long, strong firing escapes');
+  }
+  console.log('vehicle planner and single firing ok');
+}
