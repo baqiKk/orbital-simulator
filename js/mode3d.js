@@ -325,6 +325,7 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   const fb = S.follow === 'A' ? 0 : S.follow === 'B' ? 1 : S.follow[0] === 'b' ? +S.follow.slice(1) : -1;
   if (S.follow === 'craft') c.t = [...CR3];
   else if (fb >= 0 && fb < N) c.t = [BP3[3 * fb], BP3[3 * fb + 1], BP3[3 * fb + 2]];
+  fly3(c, S.follow !== 'free');
   c.dist = Math.max(c.dist, minDist3());
   const B = camBasis(c);
   V3.view(c.t, B.r, B.u, B.d, c.dist, B.cx, B.cy);
@@ -547,6 +548,7 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
   const c = CAM3.map;
   if (MAP.follow != null) c.t = [pos[3 * MAP.follow], pos[3 * MAP.follow + 1], pos[3 * MAP.follow + 2]];
   if (SCENE.on) sceneAim3(pos, c);
+  fly3(c, MAP.follow != null);
   c.dist = Math.max(c.dist, minDist3());
   const B = camBasis(c);
   V3.view(c.t, B.r, B.u, B.d, c.dist, B.cx, B.cy);

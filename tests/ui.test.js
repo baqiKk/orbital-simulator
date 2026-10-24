@@ -289,4 +289,14 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(SKY.milky.hi && SKY.milky.hi[0][0] === 4096 && fs.existsSync(path.join(__dirname, '..', SKY.milky.hi[0][1])), 'the 4k Milky Way tier exists');
 }
 
+// 11) Overview picks and double taps move the camera smoothly (fly2 / fly3 after the follow in every view), instantly in
+// the low-resource mode and with reduced motion; the viewer's camera input stops a move
+{
+  const app = read('js/app.js'), m3 = read('js/mode3d.js');
+  assert.ok(/function centerBody[\s\S]*?const a = flyFrom\(\); followBody\(i\); flyTo\(a\);[\s\S]*?const a = flyFrom\(\); mapCenter\(k\); flyTo\(a\);/.test(app), 'overview pick: flyFrom, zoom, flyTo');
+  assert.ok(/function flyTo\(a\) \{\n  FLY\.on = false;\n  if \(!Q\.glow \|\| reduceMotion/.test(app), 'instant without glow (low-resource) or with reduced motion');
+  assert.ok(/fly2\(S\.follow !== 'free'\)/.test(app) && /fly2\(MAP\.follow != null\)/.test(app) && /fly3\(c, S\.follow !== 'free'\)/.test(m3) && /fly3\(c, MAP\.follow != null\)/.test(m3), 'all four views apply the move');
+  assert.ok(/function sceneTouch\(\) \{ FLY\.on = false;/.test(app), 'camera input stops a move');
+}
+
 console.log('OK — all UI tests passed');

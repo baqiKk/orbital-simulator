@@ -115,6 +115,11 @@
 - Gökyüzü kutup düzeltmesi: 3B'de Samanyolu haritasının kutuplarına (güney gök kutbu Dünya–Ay yandan görünümünde kadrajda) bakınca ışınsal çizgiler vardı (izotropik mip seçimi); |dek| > ~55°'de donanım anizotropik süzmesine (`textureGrad`) geçiş. Kutbun ~2° çevresinde çok sönük bir iz kalır (anizotropi 8:1 sınırı).
 - Denetlendi: 2B ve 3B'de iki manzara, 2B → 3B geçişinde manzara korunuyor, 375 px'te kart başlık satırlarıyla çakışmıyor, yatay kaydırma yok, konsol temiz.
 
+## Genel bakışta yumuşak odaklanma ✅ tamamlandı (2026-10-25)
+- Genel bakışta ada tıklama cisme odaklanır ve aynı anda çift tıklamadaki gibi yakınlaşır (görev cismi: görevdeki uyduları ya da etki küresi; harita: tüm uyduları; logaritmik ölçekte yalnız takip). Görev görünümünde ve haritada, 2B ve 3B'de. Geçiş ~0,85 s: hedef ekranda düz bir çizgide boş alanın ortasına kayar, ölçek (2B) ya da uzaklık (3B) geometrik değişir; takip edilen cisim hareket etse de bitiş noktası onu izler. Çift tıklama da aynı geçişi kullanır. Düşük kaynakta ve azaltılmış harekette anlık; sürükleme, tekerlek, kıstırma, klavye geçişi keser.
+- 2B takipte cisim artık ekranın değil en büyük boş alanın ortasında (3B'deki gibi; pencerelerin altında kalmıyordu).
+- Tarayıcıda: haritada Satürn → Jüpiter (2B, ölçek 5,9e-7 → 1,5e-7 düzgün), görevde Mars (2B), 3B'de Dünya (1,28e9 → 2,5e6 km) ve Satürn; düşük kaynakta anlık; konsol temiz.
+
 ## Faz 6 — Dünya merkezli yörünge manevraları
 - Yeni görev türü "Yörünge manevrası" (merkez cisim seçilebilir, varsayılan Dünya).
 - Hohmann (LEO→MEO/GEO), bi-eliptik, eğim değişimi (ayrı veya birleşik), çok yanmalı transferler; hedef yörünge: irtifa, eksantrisite, eğim.

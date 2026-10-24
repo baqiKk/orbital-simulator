@@ -1193,6 +1193,7 @@ function hitAt(px, py, minR) {
 }
 // single tap: follow at the current scale; double tap: also zoom onto the body's moons or its SOI
 function focusHit(h, zoom) {
+  const a = zoom ? flyFrom() : null;
   if (h.kind === 'm') {
     if (zoom) mapCenter(MAPK[h.id]);
     MAP.needFit = false; MAP.follow = h.id;
@@ -1201,6 +1202,45 @@ function focusHit(h, zoom) {
     renderFrameSeg();
     if (zoom && h.kind === 'b') followZoom(h.id);
   }
+  if (a) flyTo(a);
+}
+// Smooth camera moves (an overview pick, a double tap): the zoom functions set where the camera should end up; the move
+// starts from where it was and eases there over FLY_MS, the target sliding across the screen in a straight line while
+// the scale (2D) or the distance (3D) changes geometrically; a followed body keeps moving the end point meanwhile.
+// Instant in the low-resource mode and with reduced motion; any camera input of the viewer stops it.
+const FLY = { on: false, t0: 0, a: null, b: null }, FLY_MS = 850;
+// the camera now: call before the zoom, hand the result to flyTo after it
+function flyFrom() { const v3 = is3d(), c = v3 ? cam3() : null; return { v3, map: MAP.on, cx: cam.cx, cy: cam.cy, s: cam.scale, t: c && [...c.t], d: c && c.dist, px: c ? (c.cx == null ? W / 2 : c.cx) : 0, py: c ? (c.cy == null ? H / 2 : c.cy) : 0 }; }
+function flyTo(a) {
+  FLY.on = false;
+  if (!Q.glow || reduceMotion || a.v3 !== is3d() || a.map !== MAP.on) return;
+  const c = a.v3 ? cam3() : null;
+  FLY.b = { cx: cam.cx, cy: cam.cy, s: cam.scale, t: c && [...c.t], d: c && c.dist, px: c ? (c.cx == null ? W / 2 : c.cx) : 0, py: c ? (c.cy == null ? H / 2 : c.cy) : 0 };
+  FLY.a = a; FLY.t0 = performance.now(); FLY.on = true;
+  if (c) { c.t = [...a.t]; c.dist = a.d; c.cx = a.px; c.cy = a.py; } else { cam.cx = a.cx; cam.cy = a.cy; cam.scale = a.s; }
+}
+// eased progress 0..1; the move ends at 1 (or when the view it belongs to is gone)
+function flyE(v3) {
+  if (!FLY.on) return -1;
+  if (FLY.a.v3 !== v3 || FLY.a.map !== MAP.on) { FLY.on = false; return -1; }
+  const x = clamp((performance.now() - FLY.t0) / FLY_MS, 0, 1);
+  if (x >= 1) FLY.on = false;
+  return x * x * (3 - 2 * x);
+}
+// 2D follow: the followed body in the middle of the largest free area, not under a window (as in 3D)
+function followOff2() { const q = insets(); cam.cx -= (q.l - q.r) / 2 / cam.scale; cam.cy += (q.t - q.b) / 2 / cam.scale; }
+const flyLog = (p, q, e) => Math.exp(Math.log(p) + (Math.log(q) - Math.log(p)) * e);
+// 2D, after the follow has put cam.cx, cam.cy on the target this frame (followed), else towards the end centre
+function fly2(followed) {
+  const e = flyE(false); if (e < 0) return;
+  const a = FLY.a, b = FLY.b, s = flyLog(a.s, b.s, e), k = (1 - e) * a.s / s, Tx = followed ? cam.cx : b.cx, Ty = followed ? cam.cy : b.cy;
+  cam.scale = s; cam.cx = Tx - (Tx - a.cx) * k; cam.cy = Ty - (Ty - a.cy) * k;
+}
+// 3D (camera c), the same with the target point, the distance and the principal point
+function fly3(c, followed) {
+  const e = flyE(true); if (e < 0) return;
+  const a = FLY.a, b = FLY.b, d = flyLog(a.d, b.d, e), k = (1 - e) * d / a.d, T = followed ? c.t : b.t;
+  c.t = T.map((v, i) => v + (a.t[i] - v) * k); c.dist = d; c.cx = a.px + (b.px - a.px) * e; c.cy = a.py + (b.py - a.py) * e;
 }
 // drop the follow of the current view; the camera stays where it is
 function unfollow() {
@@ -1982,7 +2022,7 @@ function sceneEnd(toMission) {
 // a window set aside by the scene comes back (rail button, "pick a mission")
 function sceneUnhide(id) { if (!SCENE.hide.delete(id)) return false; winEl(id).classList.remove('scene-hide'); INS = null; return true; }
 // the viewer moved the camera or picked a body: the scene keeps running without its aim
-function sceneTouch() { if (SCENE.on) SCENE.free = true; }
+function sceneTouch() { FLY.on = false; if (SCENE.on) SCENE.free = true; }
 // 2D: Saturn followed, the orbits out to Rhea's in view, breathing slowly; the Earth on one side, the Moon on the other
 function sceneAim2(pos) {
   if (SCENE.free || MAP.follow == null) return;
@@ -2154,6 +2194,8 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
   if (MAP.needFit) fitMap();
   if (MAP.follow != null) { cam.cx = pos[2 * MAP.follow]; cam.cy = pos[2 * MAP.follow + 1]; }
   if (SCENE.on) sceneAim2(pos);
+  if (MAP.follow != null && !(SCENE.on && !SCENE.free)) followOff2(); // the scene's aim places it itself
+  fly2(MAP.follow != null);
   // the Earth–Moon scene shows its bodies enlarged (as the 3D "enlarged" size: the Earth up to BIG_PX on screen, at most
   // BIG_K times), one factor for all so the Earth and the Moon keep their proportions; zooming in brings it back to 1
   SCENE.k2 = SCENE.on && SCENE.kind === 'earth' && !MAP.log ? clamp(BIG_PX / (mapSys.R[MAPK.indexOf('earth')] * cam.scale), 1, BIG_K) : 1;
@@ -2211,7 +2253,8 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
 }
 // map caption: the date, and what the scale or the model leaves out
 function mapNotes(T) {
-  if (SCENE.on) return [_(SCENE.kind === 'earth' ? 'scene.capEarth' : 'scene.capSaturn', { date: fmtDate(daysToUtc(T / DAY)) }), _(reduceMotion ? 'scene.paused' : SCENE.kind === 'earth' ? 'scene.rateEarth' : 'scene.rateSaturn'),
+  // the scene: what it shows (or, once the viewer has moved on, the map's date), how fast time flows, the enlargement
+  if (SCENE.on) return [_(SCENE.free ? 'map.caption' : SCENE.kind === 'earth' ? 'scene.capEarth' : 'scene.capSaturn', { date: fmtDate(daysToUtc(T / DAY)) }), _(reduceMotion ? 'scene.paused' : SCENE.kind === 'earth' ? 'scene.rateEarth' : 'scene.rateSaturn'),
     ...((is3d() ? (SCENE.free ? 1 : SCENE.k3) : SCENE.k2) > 1.01 ? [_('scene.big', { k: nf0.format(is3d() ? SCENE.k3 : SCENE.k2) })] : [])];
   const notes = [_('map.caption', { date: fmtDate(daysToUtc(T / DAY)) })];
   if (MAP.log) notes.push(_('map.logNote'));
@@ -2276,8 +2319,9 @@ $('#ovBody').addEventListener('click', e => {
 function centerBody(k) {
   const i = S.bodies.findIndex(b => b.key === k);
   sceneTouch();
-  if (i >= 0 && sys && !SCENE.on) { setMap(false); followBody(i); }
-  else { setMap(true); mapCenter(k); }
+  // the move starts from the view's camera after the switch (each view keeps its own)
+  if (i >= 0 && sys && !SCENE.on) { setMap(false); const a = flyFrom(); followBody(i); flyTo(a); }
+  else { setMap(true); const a = flyFrom(); mapCenter(k); flyTo(a); }
 }
 
 // Pick the departure or target body: the list becomes the two bodies plus the parents they need,
@@ -2523,6 +2567,8 @@ function draw(now) {
     else if (S.follow === 'A') { cam.cx = bpos[0][0]; cam.cy = bpos[0][1]; }
     else if (S.follow === 'B') { cam.cx = bpos[1][0]; cam.cy = bpos[1][1]; }
     else if (S.follow[0] === 'b' && bpos[+S.follow.slice(1)]) { const p = bpos[+S.follow.slice(1)]; cam.cx = p[0]; cam.cy = p[1]; }
+    if (!MAP.on && S.follow !== 'free') followOff2();
+    if (!MAP.on) fly2(S.follow !== 'free');
 
     if (MAP.on) drawMap(mapTime(tNow), glow, craft, tNow, pathIdx);
     else {
