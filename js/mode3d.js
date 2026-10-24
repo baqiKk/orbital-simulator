@@ -114,6 +114,7 @@ function key3(e) {
   else if (e.key === '+' || e.key === '=') zoom3(W / 2, H / 2, 0.8);
   else if (e.key === '-' || e.key === '_') zoom3(W / 2, H / 2, 1.25);
   else return;
+  sceneTouch();
   e.preventDefault();
 }
 
@@ -284,7 +285,7 @@ function bodyLook3(b, rpx, tNow) {
   return { look, rot: axesIn(FP.X, FP.Y, FP.Z, AX, new Array(9)), mix: texMix(look.tex && look.tex.base) };
 }
 // the sky (Milky Way, stars): handed to the renderer once loaded (modes with stars only)
-function sky3() { if (Q.stars) V3.skySet(skyReady(true, skyHi((H / 2) / Math.tan(FOV3 * Math.PI / 360) * Math.PI / 180))); }
+function sky3() { if (Q.stars && !SCENE.wait) V3.skySet(skyReady(true, skyHi((H / 2) / Math.tan(FOV3 * Math.PI / 360) * Math.PI / 180))); }
 // the Sun's glare at view-frame point p (or, far away, direction p from the camera when dir), disc radius rs px: how much
 // of the disc is in view (9 points on it, against the bodies drawn this frame) and on screen; null when none
 function glare3(p, dir, rs, skip) {
@@ -540,11 +541,12 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
   for (let i = 0; i < N; i++) pos.set(mapXYZ(hx(i), hy(i), hz(i), o), 3 * i);
   mapOrbits3(T); // (cached) its node list goes into the caption, set before fitting
   CAPTION.push(...mapNotes(T));
-  if (MAP3.nodes.length && !MAP.log) CAPTION.push(_('v3.nodes'));
+  if (MAP3.nodes.length && !MAP.log && !SCENE.on) CAPTION.push(_('v3.nodes'));
   setCaption();
   if (MAP.needFit) fitMap3();
   const c = CAM3.map;
   if (MAP.follow != null) c.t = [pos[3 * MAP.follow], pos[3 * MAP.follow + 1], pos[3 * MAP.follow + 2]];
+  if (SCENE.on) sceneAim3(pos, c);
   c.dist = Math.max(c.dist, minDist3());
   const B = camBasis(c);
   V3.view(c.t, B.r, B.u, B.d, c.dist, B.cx, B.cy);
@@ -559,7 +561,7 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
     const orbPx = moon && PJ[2] > 0 ? Math.hypot(MP[3 * i] - MP[3 * p], MP[3 * i + 1] - MP[3 * p + 1], MP[3 * i + 2] - MP[3 * p + 2]) * CB.f / PJ[2] : 0;
     show[i] = !moon || (moonsOn && orbPx > 5);
     const floor = i === MSUN ? 4.5 : moon ? 1.6 : 2.6;
-    const r = MAP.log ? floor * Math.max(PJ[2], 1) / CB.f : dispR(mapSys.R[i], PJ[2], floor, MAP3.caps[i]);
+    const r = MAP.log ? floor * Math.max(PJ[2], 1) / CB.f : dispR(mapSys.R[i] * (SCENE.on && SCENE.free ? 1 : SCENE.k3), PJ[2], floor, MAP3.caps[i]);
     const l = Math.hypot(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]) || 1;
     rpx[i] = PJ[2] > 0 ? r * CB.f / PJ[2] : 0;
     const look = show[i] ? globeLook(MAPK[i], rpx[i], Q.tex, !lowQ, texCap(), FXON, T) : null; // map axes are the ecliptic ones
@@ -567,10 +569,10 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
     V3.body('map', i, [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], r, i === MSUN ? null : [-pos[3 * i] / l, -pos[3 * i + 1] / l, -pos[3 * i + 2] / l], !!show[i], o);
     if (show[i]) OCC.push([pos[3 * i], pos[3 * i + 1], pos[3 * i + 2], r, i]);
     if (show[i] && i !== MSUN && PJ[2] > 0) { const e = CB.e, vx = e[0] - pos[3 * i], vy = e[1] - pos[3 * i + 1], vz = e[2] - pos[3 * i + 2]; skyLit(PJ[0], PJ[1], rpx[i], -(pos[3 * i] * vx + pos[3 * i + 1] * vy + pos[3 * i + 2] * vz) / (l * (Math.hypot(vx, vy, vz) || 1)), MAPK[i], !!BODIES[MAPK[i]].rings); }
-    if (mapSys.orb[i]) V3.lineSet('map', 'orb' + i, moon ? [pos[3 * p], pos[3 * p + 1], pos[3 * p + 2]] : null, !!show[i]);
+    if (mapSys.orb[i]) V3.lineSet('map', 'orb' + i, moon ? [pos[3 * p], pos[3 * p + 1], pos[3 * p + 2]] : null, !!show[i] && (moon || !SCENE.on));
   }
   if (tr && craft) { V3.lineSet('map', 'traj', null, true); V3.lineSet('map', 'trajB', null, true); V3.lineUpTo('map', 'trajB', pathIdx); }
-  grid3(c, V3S.grid && !MAP.log);
+  grid3(c, V3S.grid && !MAP.log && !SCENE.on); // the opening scene stays clean: no grid, no node marks
   sky3();
   const glm = glow ? glare3([pos[3 * MSUN], pos[3 * MSUN + 1], pos[3 * MSUN + 2]], false, rpx[MSUN], MSUN) : null;
   if (glm) skySun(glm.i, rpx[MSUN]);
@@ -578,7 +580,7 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
 
   // overlay: nodes, craft, labels (Sun and planets first, a label overlapping another is skipped)
 
-  if (!MAP.log) for (const nd of MAP3.nodes) {
+  if (!MAP.log && !SCENE.on) for (const nd of MAP3.nodes) {
     proj3(nd.p, PJ); if (!(PJ[2] > 0) || behind3(nd.p, 0, -1) || PJ[0] < -10 || PJ[0] > W + 10 || PJ[1] < -10 || PJ[1] > H + 10) continue;
     nodeMark(PJ[0], PJ[1], nd.asc, BODIES[MAPK[nd.b]].color);
   }
@@ -597,7 +599,7 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
     const [x, y, dep] = scr[i], r = rpx[i], k = MAPK[i], moon = isMoon(i);
     if (!(dep > 0) || x < -40 || x > W + 40 || y < -40 || y > H + 40 || behind3(pos, 3 * i, i)) continue;
     addHit('m', i, x, y, r);
-    if (k === keyA || k === keyB) { ctx.strokeStyle = k === keyA ? COL.traj : COL.orbit; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.2832); ctx.stroke(); }
+    if ((k === keyA || k === keyB) && !SCENE.on) { ctx.strokeStyle = k === keyA ? COL.traj : COL.orbit; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.2832); ctx.stroke(); }
     if (moon && (!Q.glow || (dep > 0 && Math.hypot(MP[3 * i] - MP[3 * MPAR[i]], MP[3 * i + 1] - MP[3 * MPAR[i] + 1]) * CB.f / dep < 22))) continue;
     const txt = _('body.' + k).toLocaleUpperCase(DICT['meta.locale']), w = ctx.measureText(txt).width;
     const lx = x + Math.min(r, 400) * 0.72 + 6, ly = y + 4;

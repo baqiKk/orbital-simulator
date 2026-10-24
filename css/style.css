@@ -287,6 +287,13 @@ details.adv>summary:hover{color:var(--ink)}
 .apsis td{font-family:var(--f-mono);color:var(--ink)}
 .apsis td:first-child{font-family:var(--f-body);color:var(--dim)}
 
+/* ---------- opening scene: welcome card (the mission's readout and timeline wait) ---------- */
+.welcome{position:relative;align-self:center;width:min(440px,100%);margin-bottom:6px;padding:12px 40px 12px 14px;display:flex;flex-direction:column;gap:10px}
+.welcome p{margin:0;font-size:13px;line-height:1.45;color:var(--ink)}
+.wc-act{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.wc-x{position:absolute;top:6px;right:6px}
+html[data-scene] #readout,html[data-scene] #timeline,.win.scene-hide{display:none}
+
 /* ---------- first-run dialog & performance tip ---------- */
 .ask{max-width:min(440px,calc(100vw - 32px));padding:18px 18px 16px;background:var(--panel-lo);color:var(--ink);border:1px solid var(--line2);box-shadow:var(--shadow)}
 .ask::backdrop{background:rgba(2,3,5,.6)}

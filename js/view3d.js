@@ -130,7 +130,12 @@ void main() {
   // the screen footprint in texels of the full map (the u seam has a jump in u, not in u2)
   vec2 fp = vec2(min(fwidth(u), fwidth(u2)), fwidth(uv.y)) * vec2(textureSize(uMilky, 0));
   float lod = max(${SKY_LOD.toFixed(1)}, log2(max(max(fp.x, fp.y), 1e-6))), l0 = floor(lod);
-  vec3 m = mix(skyCubic(uv, int(l0)), skyCubic(uv, int(l0) + 1), lod - l0);
+  // towards the map's poles a pixel covers many columns but few rows: an isotropic level there draws radial streaks,
+  // so beyond ~55° of declination the anisotropic hardware filter takes over (seam-free derivatives)
+  float wp = smoothstep(0.80, 0.90, abs(q.z)), uf = fwidth(u) <= fwidth(u2) ? u : u2;
+  vec2 gx = vec2(dFdx(uf), dFdx(uv.y)), gy = vec2(dFdy(uf), dFdy(uv.y));
+  vec3 m = wp < 1.0 ? mix(skyCubic(uv, int(l0)), skyCubic(uv, int(l0) + 1), lod - l0) : vec3(0.0);
+  if (wp > 0.0) m = mix(m, textureGrad(uMilky, uv, gx, gy).rgb, wp);
   gl_FragColor = vec4(m * uGain, 1.0);
   #include <colorspace_fragment>
   #include <dithering_fragment>

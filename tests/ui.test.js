@@ -262,9 +262,9 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(!asked.some(f => /height/.test(f)), 'relief only once the globe is large enough');
   // the sky: asked for behind a Q.stars check only; the star catalogue is the one fetch()
   const m3 = read('js/mode3d.js'), app = read('js/app.js'), globe = read('js/globe.js');
-  assert.ok(/function sky3\(\) \{ if \(Q\.stars\) /.test(m3), '3D sky behind Q.stars');
-  assert.ok(/function makeStars\(\) \{\n  if \(!Q\.stars \|\| MODE === '3d'\) \{[^}]*return; \}\n  const sk = skyReady\(true, skyHi\(/.test(app), '2D sky behind Q.stars');
-  assert.ok(/const skyHi = px => !lowQ && FX\.lvl < 3 && !COARSE && skyHiNeed\(px\);/.test(app), 'sharper sky: not after the quality drop, ladder step 3 or on touch devices');
+  assert.ok(/function sky3\(\) \{ if \(Q\.stars && !SCENE\.wait\) /.test(m3), '3D sky behind Q.stars');
+  assert.ok(/function makeStars\(\) \{\n  if \(!Q\.stars \|\| MODE === '3d' \|\| SCENE\.wait\) \{[^}]*return; \}\n  const sk = skyReady\(true, skyHi\(/.test(app), '2D sky behind Q.stars (and after the first-run question)');
+  assert.ok(/const skyHi = px => !lowQ && FX\.lvl < 3 && !COARSE && performance\.now\(\) > skyHiAt && skyHiNeed\(px\);/.test(app), 'sharper sky: not after the quality drop, ladder step 3 or on touch devices');
   assert.strictEqual([...(app + m3).matchAll(/skyReady\(/g)].length, 3, 'skyReady callers: makeStars, its rebuild, sky3');
   assert.strictEqual([...(globe + app + m3 + read('js/view3d.js')).matchAll(/fetch\(/g)].length, 1, 'one fetch: the star catalogue');
   // the Milky Way: base first, the 4096 tier only when asked for (hi) and needed (base magnified over 1.3×)

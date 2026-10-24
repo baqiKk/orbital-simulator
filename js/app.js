@@ -583,6 +583,7 @@ function realErr() {
 // mission plane at departure: the two-body views (A, B, rotating A–B) project onto it
 let PLANE = planeBasis([0, 0, 1]);
 function rebuild(o = {}) {
+  if (SCENE.on) sceneEnd(true);
   if (S.kind === 'man') { rebuildMan(o); return; }
   const pre = S.model === 'real' ? realErr() : '';
   const s = pre ? { error: true } : buildSystem(sysList());
@@ -952,7 +953,7 @@ function resize() {
 let skyKey = '', skyTimer = 0;
 const skyPx2d = () => Math.max(W, H) / 2 / Math.tan(50 * Math.PI / 180) * Math.PI / 180; // screen px per degree
 function makeStars() {
-  if (!Q.stars || MODE === '3d') { stars = null; skyKey = ''; return; }
+  if (!Q.stars || MODE === '3d' || SCENE.wait) { stars = null; skyKey = SCENE.wait ? 'wait' : ''; return; }
   const sk = skyReady(true, skyHi(skyPx2d())); if (!sk) { stars = null; skyKey = 'wait'; return; }
   const mi = sk.milky.img, mw = mi.naturalWidth, mh = mi.naturalHeight;
   skyKey = [W, H, DPR, mw, SKYU.user].join('|');
@@ -997,7 +998,8 @@ function makeStars() {
 // rebuild the 2D sky a moment after its inputs changed (size, the viewer's gain)
 function skyLater() { clearTimeout(skyTimer); skyTimer = setTimeout(() => { skyTimer = 0; makeStars(); }, 150); }
 // the sharper Milky Way tier: where the screen magnifies the base, not after the quality drop or on touch devices
-const skyHi = px => !lowQ && FX.lvl < 3 && !COARSE && skyHiNeed(px);
+let skyHiAt = performance.now() + 5000; // not before (ms): the opening view loads first (sceneStart sets it again)
+const skyHi = px => !lowQ && FX.lvl < 3 && !COARSE && performance.now() > skyHiAt && skyHiNeed(px);
 // Sky brightness: the viewer's gain (slider, saved) and the eye adaptation. Each frame the bodies drawn add their sunlit
 // share of the screen (disc area on screen × the lit fraction of the disc seen × albedo from their colour; a ringed
 // planet's rings add their own lit face) and the Sun's disc or glare adds a lot: the more light in view, the dimmer the sky, eased over time (darkening
@@ -1055,8 +1057,8 @@ function measureFree() {
   const sr = stage.getBoundingClientRect(), gap = 12;
   const rel = el => { const r = el.getBoundingClientRect(); return { x0: r.left - sr.left, x1: r.right - sr.left, y0: r.top - sr.top, y1: r.bottom - sr.top }; };
   const shown = el => !el.hidden && el.getClientRects().length > 0;
-  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline'), $('#caption')].filter(shown).map(rel);
-  const wins = floating() ? [...document.querySelectorAll('.win:not([hidden])')].map(rel) : [];
+  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline'), $('#caption'), $('#welcome')].filter(shown).map(rel);
+  const wins = floating() ? [...document.querySelectorAll('.win:not([hidden])')].filter(shown).map(rel) : [];
   const rects = freeRects(W, H, [...hud, ...wins], gap);
   // too little room left between the windows: let them overlap the plot instead (HUD still counts)
   const q = bestRect(rects);
@@ -1127,7 +1129,7 @@ cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
   if (ptrs.size === 1) gest = { x0: e.offsetX, y0: e.offsetY, moved: false, multi: false, touch: e.pointerType !== 'mouse', btn: e.button, pan: e.button === 1 || e.button === 2 || e.shiftKey };
   else if (gest) gest.multi = true;
-  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), s: cam.scale, dist: cam3().dist, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, pan: 0 }; }
+  if (ptrs.size === 2) { sceneTouch(); const [a, b] = [...ptrs.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), s: cam.scale, dist: cam3().dist, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, pan: 0 }; }
 });
 cv.addEventListener('pointermove', e => {
   const p = ptrs.get(e.pointerId);
@@ -1138,7 +1140,7 @@ cv.addEventListener('pointermove', e => {
     if (!gest.moved) {
       dx = e.offsetX - gest.x0; dy = e.offsetY - gest.y0;
       if (Math.hypot(dx, dy) < TAP_PX[gest.touch ? 'touch' : 'mouse']) return;
-      gest.moved = true; cv.classList.add('drag'); hoverPt = null;
+      gest.moved = true; cv.classList.add('drag'); hoverPt = null; sceneTouch();
       if (!is3d() || gest.pan) unfollow();
     }
     if (!is3d()) { cam.cx -= dx / cam.scale; cam.cy += dy / cam.scale; }
@@ -1164,7 +1166,7 @@ const endPtr = e => {
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
 cv.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') hoverPt = null; });
 cv.addEventListener('wheel', e => {
-  e.preventDefault();
+  e.preventDefault(); sceneTouch();
   if (is3d()) zoom3(e.offsetX, e.offsetY, Math.exp(e.deltaY * 0.0015)); else zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0015));
 }, { passive: false });
 function tap(x, y, touch) {
@@ -1173,6 +1175,7 @@ function tap(x, y, touch) {
   // the first tap re-centres the body it hit, so the second one acts on that body, not on where it landed
   const tgt = dbl && lastTap.h ? lastTap.h : h;
   lastTap = dbl ? null : { t: now, x, y, h };
+  if (tgt || dbl) sceneTouch();
   if (tgt) focusHit(tgt, dbl);
   else if (dbl) { if (MAP.on) fitMap(); else { S.follow = 'free'; renderFrameSeg(); fit(); } }
 }
@@ -1935,7 +1938,109 @@ const MAP = { on: false, log: false, moons: true, follow: null, needFit: true, c
 const simCam = { cx: 0, cy: 0, scale: 1e-6 };
 let tNowG = 0, ovLast = 0;
 MAP.today = utcToDays(Date.now()) * DAY;
-const mapTime = t => (S.model === 'real' ? S.M.t0 * DAY : MAP.today) + t;
+const mapTime = t => (SCENE.on ? SCENE.t : (S.model === 'real' ? S.M.t0 * DAY : MAP.today) + t);
+
+// ===================== Opening scene =====================
+// The site opens on a calm view instead of a running mission: Saturn and its moons, or the Earth and the Moon, today,
+// time flowing slowly (SCENE_RATE), the camera drifting gently (not in the low-resource mode or with reduced motion).
+// It is the map's renderer (real bodies, their textures) on its own clock and camera aim; the default mission is loaded
+// behind it, paused, its readout, timeline and windows (mission, results) set aside. A rebuild (picking a scenario,
+// changing the mission), the map button or the M key end it and everything runs as before. Moving the camera or
+// picking a body keeps the scene but stops the aim. The first-run mode question comes first: until it is answered
+// nothing is drawn or fetched (wait).
+const SCENE = { on: false, wait: false, kind: 'saturn', t: 0, dt: 0, age: 0, free: false, s0: 0, i3: false, k2: 1, k3: 1, hide: new Set() };
+const SCENE_RATE = { saturn: 3600, earth: 600 }; // simulated seconds per second
+const sceneDrift = () => Q.glow && !lowQ && !reduceMotion;
+function sceneSet(kind) {
+  Object.assign(SCENE, { kind, free: false, s0: 0, i3: false, k3: 1 });
+  MAP.log = false; MAP.moons = true; $('#tMoons').checked = true; syncMapUI();
+  MAP.needFit = false; MAP.follow = MAPK.indexOf(kind === 'earth' ? 'earth' : 'saturn');
+  setSeg('#wcScene', kind);
+}
+// the mission's readout, timeline and windows step aside (from the first-run question on)
+function sceneAside() {
+  document.documentElement.dataset.scene = '';
+  for (const id of ['mission', 'results']) if (WINS[id].open) { SCENE.hide.add(id); winEl(id).classList.add('scene-hide'); }
+  INS = null;
+}
+function sceneStart() {
+  SCENE.wait = false; SCENE.on = true; SCENE.t = utcToDays(Date.now()) * DAY; SCENE.age = 0;
+  skyHiAt = performance.now() + 5000;
+  S.playing = false; setPlayIcon();
+  setMap(true); sceneAside();
+  $('#welcome').hidden = false;
+  sceneSet('saturn');
+}
+// toMission: back to the mission view, playing as a freshly loaded one does
+function sceneEnd(toMission) {
+  if (!SCENE.on) return;
+  SCENE.on = false; delete document.documentElement.dataset.scene;
+  for (const id of SCENE.hide) winEl(id).classList.remove('scene-hide');
+  SCENE.hide.clear(); $('#welcome').hidden = true; INS = null; MAP.needFit = true;
+  if (toMission) { setMap(false); needFit = true; if (!reduceMotion) { S.playing = true; setPlayIcon(); } }
+}
+// a window set aside by the scene comes back (rail button, "pick a mission")
+function sceneUnhide(id) { if (!SCENE.hide.delete(id)) return false; winEl(id).classList.remove('scene-hide'); INS = null; return true; }
+// the viewer moved the camera or picked a body: the scene keeps running without its aim
+function sceneTouch() { if (SCENE.on) SCENE.free = true; }
+// 2D: Saturn followed, the orbits out to Rhea's in view, breathing slowly; the Earth on one side, the Moon on the other
+function sceneAim2(pos) {
+  if (SCENE.free || MAP.follow == null) return;
+  const q = insets(), fw = W - q.l - q.r, fh = H - q.t - q.b, ox = (q.l - q.r) / 2, oy = (q.t - q.b) / 2;
+  if (SCENE.kind === 'earth') {
+    const e = MAPK.indexOf('earth'), m = MAPK.indexOf('moon'), dx = pos[2 * m] - pos[2 * e], dy = pos[2 * m + 1] - pos[2 * e + 1];
+    cam.scale = Math.min(0.72 * fw / Math.max(Math.abs(dx), 1), 0.72 * fh / Math.max(Math.abs(dy), 1), 0.72 * Math.max(fw, fh) / Math.hypot(dx, dy));
+    cam.cx = pos[2 * e] + dx / 2; cam.cy = pos[2 * e + 1] + dy / 2;
+  } else {
+    if (!SCENE.s0) SCENE.s0 = Math.min(fw, fh) * 0.47 / (1.3 * BODIES.rhea.orb.sat[0] * 1e3);
+    cam.scale = SCENE.s0 * (sceneDrift() ? 1 + 0.035 * Math.sin(SCENE.age * 2 * Math.PI / 50) : 1);
+  }
+  cam.cx -= ox / cam.scale; cam.cy += oy / cam.scale;
+}
+// 3D (map camera c, positions pos 3 per body): Saturn from 18° above its lit ring face, 50° off the Sun, turning slowly.
+// The Earth and the Moon: when the Earth seen from the Moon shows a day and a night side (25–80 % lit), from beyond the
+// Moon along their line, a little above it (the Moon large in front, the Earth above it: an "Earthrise"); else (near
+// full or new moon) from the side, square to the Sun so both are half lit, the bodies enlarged by one common factor (k3)
+function sceneAim3(pos, c) {
+  if (SCENE.free || MAP.follow == null) return;
+  const v = i => [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], nrm = a => { const l = Math.hypot(...a) || 1; return a.map(x => x / l); };
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const look = d => { c.elev = Math.asin(clamp(d[2], -1, 1)); c.yaw = Math.atan2(d[0], -d[1]); };
+  if (SCENE.kind === 'saturn') {
+    if (!SCENE.i3) {
+      SCENE.i3 = true;
+      const i = MAPK.indexOf('saturn'), Ax = bodyAxes('saturn', SCENE.t, MP, MV, i, MPAR[i], new Array(9)), p = [Ax[2], Ax[5], Ax[8]], s = nrm(v(i).map(x => -x));
+      const sp = dot(s, p), h = nrm(s.map((x, k) => x - sp * p[k])), w = cross(p, h), a = 50 * D2R, el = 18 * D2R * (sp >= 0 ? 1 : -1);
+      look([0, 1, 2].map(k => Math.cos(el) * (Math.cos(a) * h[k] + Math.sin(a) * w[k]) + Math.sin(el) * p[k]));
+      frameRad3(c, 1.2 * BODIES.rhea.orb.sat[0] * 1e3, 0.58); // seen from low, the orbits are flattened: fill more
+    }
+    if (sceneDrift()) c.yaw += 0.008 * SCENE.dt;
+    return;
+  }
+  const E = v(MAPK.indexOf('earth')), Mo = v(MAPK.indexOf('moon')), L = Math.hypot(Mo[0] - E[0], Mo[1] - E[1], Mo[2] - E[2]);
+  const u = nrm([Mo[0] - E[0], Mo[1] - E[1], Mo[2] - E[2]]), s = nrm(E.map(x => -x)), z = nrm([-u[2] * u[0], -u[2] * u[1], 1 - u[2] * u[2]]);
+  const us = dot(u, s), b = sceneDrift() ? 2 * D2R * Math.sin(SCENE.age * 2 * Math.PI / 60) : 0, q = insets(), fw = W - q.l - q.r, fh = H - q.t - q.b;
+  const fpx = (H / 2) / Math.tan(FOV3 * Math.PI / 360);
+  if (us > -0.5 && us < 0.6) {
+    const x = 25e6, a = 1 * D2R, side = cross(z, u), d = nrm([0, 1, 2].map(k => Math.cos(a) * (Math.cos(b) * u[k] + Math.sin(b) * side[k]) + Math.sin(a) * z[k]));
+    SCENE.k3 = 1; c.t = E; c.dist = L + x; look(d);
+    c.cx = q.l + fw / 2; c.cy = q.t + fh * 0.3;
+    return;
+  }
+  let n = cross(u, s); if (Math.hypot(...n) < 1e-6) n = cross(u, [0, 0, 1]);
+  n = nrm(n); if (n[2] < 0) n = n.map(x => -x); // from the north side
+  const w = cross(n, u), d = nrm([0, 1, 2].map(k => Math.cos(b) * n[k] + Math.sin(b) * w[k]));
+  c.t = [0, 1, 2].map(k => (E[k] + Mo[k]) / 2); c.dist = fpx * (L / 2) / (0.36 * Math.max(40, Math.min(fw, fh))); look(d);
+  c.cx = q.l + fw / 2; c.cy = q.t + fh / 2;
+  SCENE.k3 = clamp(BIG_PX / (mapSys.R[MAPK.indexOf('earth')] * fpx / Math.hypot(c.dist, L / 2)), 1, BIG_K);
+}
+$('#wcScene').addEventListener('click', e => { const b = e.target.closest('button'); if (b && SCENE.on) sceneSet(b.dataset.v); });
+$('#wcX').addEventListener('click', () => { $('#welcome').hidden = true; INS = null; });
+$('#wcPick').addEventListener('click', () => {
+  sceneUnhide('mission'); setWin('mission', { open: true, collapsed: false });
+  const s = $('#scenario'); s.focus();
+  try { s.showPicker(); } catch (e) { /* not supported: the list has focus */ }
+});
 
 // Logarithmic scale: radial distance from the Sun r -> AU·ln(1 + r/r0); directions are kept.
 const LOG_R0 = 0.05 * AU;
@@ -1948,6 +2053,7 @@ function mapXY(x, y, out) {
 const hx = i => MP[3 * i] - MP[3 * MSUN], hy = i => MP[3 * i + 1] - MP[3 * MSUN + 1];
 
 function setMap(on) {
+  if (!on && SCENE.on) { sceneEnd(true); return; }
   if (on === MAP.on) return;
   if (on) { Object.assign(simCam, cam); Object.assign(cam, MAP.cam); MAP.today = utcToDays(Date.now()) * DAY; }
   else { Object.assign(MAP.cam, cam); Object.assign(cam, simCam); }
@@ -2047,6 +2153,10 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
   CAPTION.push(...mapNotes(T)); setCaption(); // before fitting: the caption box is an obstacle of the free area
   if (MAP.needFit) fitMap();
   if (MAP.follow != null) { cam.cx = pos[2 * MAP.follow]; cam.cy = pos[2 * MAP.follow + 1]; }
+  if (SCENE.on) sceneAim2(pos);
+  // the Earth–Moon scene shows its bodies enlarged (as the 3D "enlarged" size: the Earth up to BIG_PX on screen, at most
+  // BIG_K times), one factor for all so the Earth and the Moon keep their proportions; zooming in brings it back to 1
+  SCENE.k2 = SCENE.on && SCENE.kind === 'earth' && !MAP.log ? clamp(BIG_PX / (mapSys.R[MAPK.indexOf('earth')] * cam.scale), 1, BIG_K) : 1;
   const keyA = S.bodies[0] && S.bodies[0].key, keyB = S.bodies[1] && S.bodies[1].key, sc = cam.scale;
   const moonsOn = MAP.moons && !MAP.log;
   // a moon is shown (linear scale only) once its orbit is a few pixels across
@@ -2057,7 +2167,7 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
   const orb = mapOrbits(T);
   ctx.lineWidth = 1;
   for (let i = 0; i < N; i++) {
-    const e = orb.paths[i]; if (!e || !showBody(i)) continue;
+    const e = orb.paths[i]; if (!e || !showBody(i) || (SCENE.on && !isMoon(i))) continue;
     const p = MPAR[i], cx0 = isMoon(i) ? sx(pos[2 * p]) : sx(0), cy0 = isMoon(i) ? sy(pos[2 * p + 1]) : sy(0);
     const k = MAPK[i], hi = k === keyA || k === keyB;
     ctx.strokeStyle = hexA(BODIES[k].color, hi ? 0.5 : isMoon(i) ? 0.18 : 0.26);
@@ -2085,12 +2195,12 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
     if (!showBody(i)) continue;
     const k = MAPK[i], x = sx(pos[2 * i]), y = sy(pos[2 * i + 1]), col = BODIES[k].color, moon = isMoon(i);
     if (x < -40 || x > W + 40 || y < -40 || y > H + 40) continue;
-    const r = Math.max(i === MSUN ? 4.5 : moon ? 1.6 : 2.6, MAP.log ? 0 : mapSys.R[i] * sc);
+    const r = Math.max(i === MSUN ? 4.5 : moon ? 1.6 : 2.6, MAP.log ? 0 : mapSys.R[i] * sc * SCENE.k2);
     addHit('m', i, x, y, r);
     if (i === MSUN) skySun(x > 0 && x < W && y > 0 && y < H ? 1 : 0, r); else skyLit(x, y, r, 0, k, !!BODIES[k].rings); // lit from the side: half the disc
     if (i === MSUN || !globeMap(i, x, y, r, T)) { ctx.fillStyle = i === MSUN ? '#fff3d6' : col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); }
     if (i === MSUN && glow) glare2d(x, y, r);
-    if (k === keyA || k === keyB) { ctx.strokeStyle = k === keyA ? COL.traj : COL.orbit; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.2832); ctx.stroke(); }
+    if ((k === keyA || k === keyB) && !SCENE.on) { ctx.strokeStyle = k === keyA ? COL.traj : COL.orbit; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.2832); ctx.stroke(); }
     if (moon && (!Q.glow || moonR(i) < 22)) continue; // low-resource mode: planet labels only
     const txt = _('body.' + k).toLocaleUpperCase(DICT['meta.locale']), w = ctx.measureText(txt).width;
     const lx = x + r + 6, ly = y + 4;
@@ -2101,6 +2211,8 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
 }
 // map caption: the date, and what the scale or the model leaves out
 function mapNotes(T) {
+  if (SCENE.on) return [_(SCENE.kind === 'earth' ? 'scene.capEarth' : 'scene.capSaturn', { date: fmtDate(daysToUtc(T / DAY)) }), _(reduceMotion ? 'scene.paused' : SCENE.kind === 'earth' ? 'scene.rateEarth' : 'scene.rateSaturn'),
+    ...((is3d() ? (SCENE.free ? 1 : SCENE.k3) : SCENE.k2) > 1.01 ? [_('scene.big', { k: nf0.format(is3d() ? SCENE.k3 : SCENE.k2) })] : [])];
   const notes = [_('map.caption', { date: fmtDate(daysToUtc(T / DAY)) })];
   if (MAP.log) notes.push(_('map.logNote'));
   if (S.model !== 'real') notes.push(_('map.today'));
@@ -2163,7 +2275,8 @@ $('#ovBody').addEventListener('click', e => {
 // a mission body is followed in the mission view; any other body is centred on the map
 function centerBody(k) {
   const i = S.bodies.findIndex(b => b.key === k);
-  if (i >= 0 && sys) { setMap(false); followBody(i); }
+  sceneTouch();
+  if (i >= 0 && sys && !SCENE.on) { setMap(false); followBody(i); }
   else { setMap(true); mapCenter(k); }
 }
 
@@ -2349,6 +2462,7 @@ function draw(now) {
   HITS = []; CAPTION.length = 0;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   const v3 = is3d(); // 3D: the WebGL canvas below draws the scene, this one only the overlay
+  if (SCENE.wait) { ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H); requestAnimationFrame(draw); return; } // first-run question open
   if (v3) ctx.clearRect(0, 0, W, H);
   else {
     // the sky: built once the map and stars are in, again when the sharper map tier arrives; dimmed by the eye adaptation
@@ -2356,6 +2470,12 @@ function draw(now) {
     if (Q.stars && !skyTimer && (skyKey === 'wait' || stars)) { const sk = skyReady(true, skyHi(skyPx2d())); if (sk && (skyKey === 'wait' || sk.milky.img.naturalWidth !== +skyKey.split('|')[3])) makeStars(); }
     ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H);
     if (stars) { ctx.globalAlpha = Math.pow(SKYU.adapt, 1 / 2.2); ctx.drawImage(stars, 0, 0, W, H); ctx.globalAlpha = 1; }
+  }
+  if (SCENE.on) { // the opening scene: the map on its own clock
+    SCENE.dt = dt; SCENE.age += dt; SCENE.t += dt * (reduceMotion ? 0 : SCENE_RATE[SCENE.kind]);
+    if (v3) drawMap3(SCENE.t, glow, null, 0, 0); else { drawMap(SCENE.t, glow, null, 0, 0); if (!MAP.log) drawScale(); }
+    if (now - ovLast > 500) { ovLast = now; ovDist(); }
+    skyAdapt(dt); frameEnd(); requestAnimationFrame(draw); return;
   }
   if (!sys || !simR || !C) {
     if (MAP.on) { if (v3) drawMap3(mapTime(0), glow, null, 0, 0); else { drawMap(mapTime(0), glow, null, 0, 0); if (!MAP.log) drawScale(); } }
@@ -2743,6 +2863,7 @@ function bringFront(el) { el.style.zIndex = ++zTop; }
 
 document.querySelector('.rail').addEventListener('click', e => {
   const b = e.target.closest('[data-win]'); if (!b) return;
+  if (sceneUnhide(b.dataset.win)) { setWin(b.dataset.win, { open: true, collapsed: false }); return; }
   setWin(b.dataset.win, { open: !WINS[b.dataset.win].open, collapsed: false });
 });
 $('#wins').addEventListener('click', e => {
@@ -2805,7 +2926,7 @@ function setMode(m, save) {
   MODE = m; Q = QUALITY[m]; SUB = Q.sub;
   document.documentElement.dataset.q = m;
   if (m !== 'low') { lowQ = false; slowFrames = 0; frameAvg = 1 / 60; fxSet(0); }
-  if (flip) { needFit = true; MAP.needFit = true; }
+  if (flip) { needFit = true; if (SCENE.on && !SCENE.free) sceneSet(SCENE.kind); else MAP.needFit = true; } // the scene re-aims
   sync3dUI();
   $('#tSkyWrap').hidden = !Q.stars;
   resize();
@@ -2835,6 +2956,7 @@ function askMode() {
   const done = m => {
     setMode(m, true);
     if (d.open) d.close();
+    if (SCENE.wait) sceneStart();
     if (perfTipPending && m === 'normal') showPerfTip();
   };
   $('#askLow').addEventListener('click', () => done('low'));
@@ -2864,6 +2986,7 @@ $('#scenario').innerHTML = `<option value="" hidden>${esc(_('sc.custom.name'))}<
 $('#scenario').addEventListener('change', e => { if (e.target.value) loadScenario(e.target.value); });
 $('#dateWarn').textContent = _('err.dateRange', { from: EPHEM_YEARS[0], to: EPHEM_YEARS[1] });
 const start = startupMode(LS);
+SCENE.wait = start.ask; // nothing is drawn or fetched before the first-run answer
 bind3d();
 setMode(start.mode === '3d' ? 'normal' : start.mode, false);
 if (start.mode === '3d') setMode('3d', false); // normal 2D until Three.js has loaded
@@ -2872,5 +2995,5 @@ setPlayIcon();
 syncMapUI();
 setSeg('#pcMetric', PC.metric);
 for (const id of WIN_IDS) applyWin(id);
-if (start.ask) askMode();
+if (start.ask) { sceneAside(); askMode(); } else sceneStart();
 requestAnimationFrame(t => { last = t; draw(t); });

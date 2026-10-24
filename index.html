@@ -73,6 +73,17 @@
       </div>
     </div>
     <div class="hud-bot" id="hudBot">
+      <div class="glass welcome" id="welcome" role="region" data-i18n-aria-label="wc.aria" hidden>
+        <button type="button" class="ibtn x wc-x" id="wcX" data-i18n-aria-label="wc.close" data-i18n-title="wc.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button>
+        <p data-i18n="wc.text"></p>
+        <div class="wc-act">
+          <button class="btn sm primary" type="button" id="wcPick" data-i18n="wc.pick"></button>
+          <div class="seg" id="wcScene" role="group" data-i18n-aria-label="wc.sceneAria">
+            <button type="button" data-v="saturn" data-i18n="wc.saturn"></button>
+            <button type="button" data-v="earth" data-i18n="wc.earth"></button>
+          </div>
+        </div>
+      </div>
       <div class="hud-row">
       <div class="caption" id="caption" hidden></div>
       <div class="glass readout" id="readout">

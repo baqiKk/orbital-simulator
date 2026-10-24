@@ -107,6 +107,14 @@
 ## Sonraki iş — Plüton ve Charon
 - New Horizons küresel mozaikleri (USGS) var, ancak JPL Tablo 1'de Plüton yok: ayrı bir efemeris (ör. JPL SBDB elemanları ya da Plüton–Charon ağırlık merkezi için ayrı ortalama elemanlar) gerekir. Charon için Plüton sistemi uydu elemanları (JPL sats/elem, PLU0xx).
 
+## Açılış manzarası ✅ tamamlandı (2026-10-24)
+- Site açılınca Dünya–Ay serbest dönüşü oynamaz; sakin bir manzara açılır (varsayılan görev arkada duraklatılmış yüklü). Varsayılan: Satürn ve uyduları, bugünün tarihi, zaman 1 sa/s; ikinci: Dünya ve Ay, 10 dk/s. Haritanın çizicisi (gerçek cisimler, dokular) kendi saatiyle; okuma kutusu, zaman çizelgesi, Görev ve Sonuçlar pencereleri kenara alınır; uydular dışındaki yörünge çizgileri, 3B ızgara ve düğüm işaretleri gizli.
+- Kamera: 2B Satürn takipte, Rhea'nın yörüngesine kadar, yavaş "nefes alan" ölçek; 2B Dünya–Ay iki cisim ekranın iki yanında, ortak çarpanla büyütülmüş (Dünya ≈ 40 px, ×2–3), köşede "Boyutlar büyütülmüştür" notu. 3B Satürn halkaların aydınlık yüzünün 18° üstünden, Güneş'ten 50° yana, yavaşça döner. 3B Dünya–Ay: Dünya Ay'dan bakınca %25–80 aydınlıksa Ay'ın arkasından ("Earthrise": Ay önde büyük, Dünya üstte), değilse (dolunay/yeni ay yakını) iki cisme yandan, Güneş'e dik (ikisi de yarı aydınlık), ortak çarpanla büyütülmüş (×4). Süzülme düşük kaynakta ve azaltılmış hareket tercihinde yok (orada zaman da durur).
+- Karşılama kartı (kapatılabilir): tek cümle, "Bir görev seç" (Görev penceresini açıp senaryo listesine odaklanır), Satürn / Dünya–Ay. Senaryo seçmek, görevi değiştirmek (her yeniden kurulum), Harita düğmesi ya da M manzarayı bitirir ve görev bugünkü gibi oynar; kamerayı oynatmak ya da Genel bakıştan cisim seçmek manzarayı sürdürür, nişanı bırakır.
+- İlk açılışta düşük kaynak sorusu önce gelir; yanıtlanana kadar hiçbir şey çizilmez, hiçbir dosya inmez (tarayıcıda ölçüldü: 0 istek). Açılışta inen (normal 2B, Satürn, 1313×1206): Samanyolu 2k 738 KB, yıldız kataloğu 71 KB, Satürn dokusu 37 KB, halka şeridi 10 KB, optik derinlik 5 KB = ≈ 861 KB; 4k gökyüzü (3,3 MB) manzara başladıktan 5,3 s sonra. Düşük kaynakta görsel inmez.
+- Gökyüzü kutup düzeltmesi: 3B'de Samanyolu haritasının kutuplarına (güney gök kutbu Dünya–Ay yandan görünümünde kadrajda) bakınca ışınsal çizgiler vardı (izotropik mip seçimi); |dek| > ~55°'de donanım anizotropik süzmesine (`textureGrad`) geçiş. Kutbun ~2° çevresinde çok sönük bir iz kalır (anizotropi 8:1 sınırı).
+- Denetlendi: 2B ve 3B'de iki manzara, 2B → 3B geçişinde manzara korunuyor, 375 px'te kart başlık satırlarıyla çakışmıyor, yatay kaydırma yok, konsol temiz.
+
 ## Faz 6 — Dünya merkezli yörünge manevraları
 - Yeni görev türü "Yörünge manevrası" (merkez cisim seçilebilir, varsayılan Dünya).
 - Hohmann (LEO→MEO/GEO), bi-eliptik, eğim değişimi (ayrı veya birleşik), çok yanmalı transferler; hedef yörünge: irtifa, eksantrisite, eğim.
