@@ -67,6 +67,12 @@ function orbitElements(o) {
       O0: O * D2R, O1: O1 * D2R * c, w0: (w - O) * D2R, w1: (w1 - O1) * D2R * c,
       M0: (L - w) * D2R, M1: (L1 - w1) * D2R * c, F: null };
   }
+  if (o.sb) { // JPL Small-Body Database osculating elements: [epoch JD TDB, a au, e, i, Ω, ω, M (deg), n deg/day]; fixed
+    // ellipse (two-body about the Sun), the mean anomaly carried back from the epoch to J2000
+    const [ep, a, e, i, O, w, M, n] = o.sb, n1 = n * D2R / DAY;
+    return { a0: a * AU, a1: 0, e0: e, e1: 0, i0: i * D2R, i1: 0, O0: O * D2R, O1: 0, w0: w * D2R, w1: 0,
+      M0: M * D2R - n1 * (ep - 2451545) * DAY, M1: n1, F: null };
+  }
   // Planetary satellite mean elements: [a km, e, ω, M, i, Ω (deg), P days, Pw yr, Pnode yr].
   // P is the sidereal period (mean-longitude rate); Pw is the period of ω (prograde), Pnode that of Ω
   // (regressing). A zero period means "no precession given" (circular or equatorial orbit).

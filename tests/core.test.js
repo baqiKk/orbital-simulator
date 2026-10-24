@@ -115,13 +115,42 @@ const inclination = st => { const h = cross(st.slice(0, 3), st.slice(3)); return
   C.states(sy, C.utcToDays(Date.UTC(2026, 9, 22)) * DAY, P, V);
   assert.ok([...P, ...V].every(Number.isFinite), 'full system states are finite');
   const sun = keys.indexOf('sun'), helio = k => { const i = keys.indexOf(k); return Math.hypot(P[3 * i] - P[3 * sun], P[3 * i + 1] - P[3 * sun + 1], P[3 * i + 2] - P[3 * sun + 2]) / C.AU; };
-  const planets = keys.filter(k => BODIES[k].parent === 'sun'), d = planets.map(helio);
+  const planets = keys.filter(k => BODIES[k].parent === 'sun' && BODIES[k].orb.jpl), d = planets.map(helio);
   assert.deepStrictEqual(planets, ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune']);
   for (let i = 1; i < d.length; i++) assert.ok(d[i] > d[i - 1], `${planets[i]} beyond ${planets[i - 1]}`);
   assert.ok(Math.abs(helio('earth') - 1) < 0.02 && Math.abs(helio('neptune') - 30) < 0.5, 'Earth ≈ 1 AU, Neptune ≈ 30 AU');
   for (const k of keys.filter(q => BODIES[q].parent && BODIES[q].parent !== 'sun')) {
     const i = keys.indexOf(k), p = sy.parent[i], r = Math.hypot(P[3 * i] - P[3 * p], P[3 * i + 1] - P[3 * p + 1], P[3 * i + 2] - P[3 * p + 2]);
     assert.ok(r < sy.soi[p], `${k} inside the SOI of ${keys[p]}`);
+  }
+}
+
+// 16b) Phase 5c-2 bodies. Ceres and Vesta (SBDB osculating elements, fixed ellipse): at the elements' epoch the
+//    position is JPL Horizons' (heliocentric, ecliptic J2000, AU, fetched 2026-10-24) to < 100 km; the period is the
+//    record's (Ceres 1679.853 d, Vesta 1325.389 d) and perihelion its q; away from the epoch the two-body ellipse
+//    drifts from the real orbit, ≈ 2° (Ceres) and 1.3° (Vesta) in 2000 and 2050 (documented in the Model text).
+//    Saturn's moons (mean elements, SAT441): sidereal period = the table's P, distance within a(1 ± e) of Saturn.
+{
+  const H = { // Horizons vectors: JD -> [x, y, z] au
+    ceres: [[2451545.0, -2.379327705915647, 0.7954860388931395, 0.4630055715902157], [2461200.5, 1.414905393057902, 2.369595284745641, -0.1856420348619075], [2469807.5, -0.6181352238856437, 2.534002319527305, 0.1971352223562529]],
+    vesta: [[2451545.0, -1.353580437607153, -1.673136657862151, 0.2149018113721361], [2461200.5, 2.269028147514296, -0.5440517022896132, -0.2601452414921288], [2469807.5, -1.949918486540614, 1.417227294549071, 0.1958674180185284]] };
+  const ref = { ceres: [1679.853119758983, 2.545159361382861], vesta: [1325.389042911101, 2.148361914524259] }, out = new Float64Array(6);
+  for (const k of ['ceres', 'vesta']) {
+    const o = C.orbitElements(BODIES[k].orb);
+    assert.ok(Math.abs(2 * Math.PI / o.M1 / DAY - ref[k][0]) < 1e-6, k + ': period');
+    assert.ok(Math.abs(o.a0 * (1 - o.e0) / C.AU - ref[k][1]) < 1e-9, k + ': perihelion q');
+    for (const [jd, x, y, z] of H[k]) {
+      C.orbitState(o, (jd - 2451545) * DAY, out, 0);
+      const d = Math.hypot(out[0] - x * C.AU, out[1] - y * C.AU, out[2] - z * C.AU), ang = d / Math.hypot(x, y, z) / C.AU * DEG;
+      if (jd === 2461200.5) assert.ok(d < 1e5, `${k}: Horizons at the epoch, ${(d / 1e3).toFixed(1)} km`);
+      else assert.ok(ang < 2.5, `${k}: drift ${ang.toFixed(2)}° at JD ${jd}`);
+    }
+  }
+  const mk = ['saturn', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'iapetus'], sy = realSys(mk);
+  for (let i = 1; i < sy.N; i++) {
+    const k = mk[i], o = sy.orb[i], P = BODIES[k].orb.sat[6];
+    assert.ok(Math.abs(2 * Math.PI / (o.M1 + o.w1 + o.O1) / DAY - P) < 1e-9, k + ': sidereal period = P');
+    for (let j = 0; j < 50; j++) { const r = norm(relState(sy, i, j * P * DAY / 50)); assert.ok(r > o.a0 * (1 - o.e0) * 0.999999 && r < o.a0 * (1 + o.e0) * 1.000001, k + ': distance within a(1 ± e)'); }
   }
 }
 
@@ -451,7 +480,8 @@ const sEM = realSys(['earth', 'mars', 'sun']);
     assert.ok(Math.abs(dot([x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]], z) - 1) < 1e-12, `${k}: right-handed`);
     // obliquity: spin axis (right-hand rule: the IAU north pole, flipped for retrograde W) vs orbit normal (Sun: ecliptic pole)
     let n = [0, 0, 1];
-    if (b.orb && b.orb.jpl) { const I = b.orb.jpl[0][2] * D, O = b.orb.jpl[0][5] * D; n = [Math.sin(I) * Math.sin(O), -Math.sin(I) * Math.cos(O), Math.cos(I)]; }
+    const io = b.orb && (b.orb.jpl ? [b.orb.jpl[0][2], b.orb.jpl[0][5]] : b.orb.sb ? [b.orb.sb[3], b.orb.sb[4]] : null);
+    if (io) { const I = io[0] * D, O = io[1] * D; n = [Math.sin(I) * Math.sin(O), -Math.sin(I) * Math.cos(O), Math.cos(I)]; }
     const ob = deg(Math.acos(dot(n, z) * Math.sign(b.pole[5])));
     assert.ok(Math.abs(ob - b.tilt) < 0.15, `${k}: obliquity from the PCK pole ${ob.toFixed(2)}° vs table tilt ${b.tilt}°`);
     // one day later the prime meridian has turned by W1 about the pole

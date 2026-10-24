@@ -11,7 +11,7 @@ function simpleData(k) {
   const b = BODIES[k], s = b.simple;
   if (s) return s;
   const o = b.orb;
-  return { mass: b.gm * 1e9 / G, radius: b.radius, a: !o ? 0 : o.jpl ? o.jpl[0][0] * AU_KM : o.sat[0] };
+  return { mass: b.gm * 1e9 / G, radius: b.radius, a: !o ? 0 : o.jpl ? o.jpl[0][0] * AU_KM : o.sb ? o.sb[1] * AU_KM : o.sat[0] };
 }
 
 // model 'simple': t0 in days from the model's epoch. model 'real': t0 in days since J2000 TDB

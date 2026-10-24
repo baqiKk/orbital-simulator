@@ -428,7 +428,7 @@ function drawGlobe(ctx, x, y, r, W, H, dpr, o) {
 function sunAngOf(key) {
   let b = BODIES[key];
   while (b && b.parent && b.parent !== 'sun') b = BODIES[b.parent];
-  const a = b && b.orb && b.orb.jpl ? b.orb.jpl[0][0] : 1;
+  const a = b && b.orb ? (b.orb.jpl ? b.orb.jpl[0][0] : b.orb.sb ? b.orb.sb[1] : 1) : 1;
   return 0.004652 / a;
 }
 // the look of body key drawn r px across: allow = the mode draws globes (Q.tex), fetch = new downloads allowed (not

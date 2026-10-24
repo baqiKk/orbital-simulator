@@ -39,7 +39,18 @@
 //   δ += cδ·cos θ, W += cW·sin θ, θ = θ0 + θ1·T (BODYn_NUT_PREC_ANGLES): Mars (BODY499 RA/DEC/PM coefficients 0.419057,
 //   1.591274, 0.584542 with BODY4 angles 15, 20 and 26) and Neptune (BODY899 0.70, −0.51, −0.48 with BODY8 angle N).
 //   The smaller ones (Mars ≤ 0.00024°, Jupiter ≤ 0.00012°, Mercury's prime meridian ≤ 0.011°) are left out.
-//   Display only (3D view, textured globes).
+//   Display only (3D view, textured globes). Ceres and Vesta from the same file: BODY2000001 and BODY2000004 _POLE_RA,
+//   _POLE_DEC, _PM (no rates on α, δ); their tilt is the angle between that pole and the SBDB orbit normal (4.04°, 27.43°).
+// Saturn's moons Mimas, Enceladus, Tethys, Dione, Rhea, Iapetus (orb.sat as above, ephemeris SAT441; checked against
+//   https://ssd.jpl.nasa.gov/sats/elem/ on 2026-10-24): gm and radius (mean) from JPL SSD "Planetary Satellite Physical
+//   Parameters", https://ssd.jpl.nasa.gov/sats/phys_par/ (SAT441 GM, mean radius), copied as listed. Synchronous (lock);
+//   tilt 0 (not tabulated; these moons' spin axes are close to their orbit normals).
+// Ceres and Vesta (orb.sb): JPL Small-Body Database, https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=1 / 4 with full-prec
+//   (orbit solution JPL, 2021-04-13), heliocentric osculating elements, mean ecliptic and equinox of J2000, copied as
+//   [epoch JD TDB, a au, e, i, Ω, ω, M (deg), n deg/day]; drawn as a fixed ellipse (two-body), so they drift from the
+//   real asteroid away from the epoch (planetary perturbations). gm and radius (diameter / 2) from the same records'
+//   physical parameters: Ceres (Park et al. 2016, Nature 537, 515), Vesta (Park et al. 2025, Nat. Astron.). Both are
+//   drawn as spheres (Vesta is 569 × 554 × 453 km).
 // axis (the Moon): its pole from the same file, BODY301_POLE_RA / _POLE_DEC as [α0, α1, δ0, δ1] and the periodic terms
 //   over 0.1° as [cα, cδ, 0, θ0, θ1] (BODY301_NUT_PREC_RA −3.8787 and _DEC 1.5419 on angle E1, RA −0.1204 on E2; BODY3_NUT_PREC_ANGLES
 //   E1 = 125.045 − 1935.5364525·T, E2 = 250.089 − 3871.0729050·T). Not a rotation (the Moon is drawn as lock): the equator
@@ -92,6 +103,19 @@
 //            barycentric UV, bilinear sample; every pixel covered), 2048×1024 -> 1024×512; the 2k tier is that
 //            reprojection itself (its source cube faces carry no more detail than that)
 //   titan    NASA 3D Resources "Saturn - Titan" (720×360, 92932463…), as is
+//   mimas, enceladus, tethys, dione, rhea, iapetus  Cassini ISS cartographic maps (DLR, Roatsch et al.; PDS Ring-Moon
+//            Systems Node volumes COISS_3006, 3002, 3004, 3003, 3007, 3005), the global simple cylindrical map
+//            <id>_0_0_SIMP.IMG of each (8 bit, photometrically corrected by the producers; planetographic west longitude,
+//            east to the right): SM_1M (5760×2880, 01e46e08…), SE_400K (15840×7920, centred on 180°: turned by half a
+//            width, cb50894c…), ST_1M (11520×5760, 24b1d3be…), SD_1M (23040×11520, 1bf3463a…), SR_1500K (11520×5760,
+//            5693a933…), SI_3M (5760×2880, 533b5d84…) -> 1024, 2048, 4096 wide; grey values kept, averaged as sRGB like
+//            the other grey mosaics. Their brightness is relative (each map's own stretch), not an albedo.
+//   ceres    USGS Astrogeology, Ceres Dawn FC global mosaic 400 m (DLR, 2015), Ceres_Dawn_FC_DLR_global_20ppd_Oct2015.tif
+//            (7383×3691, 0–360° E, 372ca7cb…) -> 1024, 2048, 4096 wide, turned by half a width (longitude 0 in the
+//            middle); the black cap near the south pole has no data in the source
+//   vesta    USGS Astrogeology, Vesta Dawn FC HAMO global mosaic 60 m (DLR, 2013; shifted by USGS to the IAU "Claudia
+//            double prime" longitudes that the PCK rotation below uses), Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif
+//            (26704×13352, d95355b7…) -> 1024, 2048, 4096 wide; the dark north was in its winter night during the survey
 //   Uranus and Neptune have no texture (no real global map exists; the NASA textures are illustrative): plain
 //   globes in their colour, with limb darkening, like the cloud-covered Venus.
 // rings (Saturn): ring strip from the same GLB (saturn_rings_25sat_outterRings.png, 4096×16 RGBA, as is), u from the
@@ -167,6 +191,12 @@ const BODIES = {
     orb: { sat: [9375, 0.015, 216.3, 189.7, 1.1, 169.2, 0.3187, 1.1, 2.3], lp: [317.7, 52.9, 0.0] } },
   deimos: { parent: 'mars', gm: 9.6156e-5, radius: 6.2, tilt: 0, color: '#9a8c7f', lock: true,
     orb: { sat: [23457, 0.000, 0.0, 205.0, 1.8, 54.3, 1.2625, 0.0, 56.2], lp: [316.6, 53.5, 0.9] } },
+  vesta: { parent: 'sun', gm: 17.2882844, radius: 261.385, tilt: 27.43, color: '#a8a39a', pole: [309.031, 0, 42.235, 0, 285.39, 1617.3329428],
+    tex: { file: 'img/planets/vesta.jpg', src: 'dawnVesta', hi: [[2048, 'img/planets/vesta_2k.jpg'], [4096, 'img/planets/vesta_4k.jpg']] },
+    orb: { sb: [2461200.5, 2.361365965127599, 0.09020374382834395, 7.143925545058711, 103.701293265032, 151.4686478221564, 81.19015607686903, 0.2716183613599909] } },
+  ceres: { parent: 'sun', gm: 62.6284, radius: 469.7, tilt: 4.04, color: '#8e8a84', pole: [291.418, 0, 66.764, 0, 170.650, 952.1532],
+    tex: { file: 'img/planets/ceres.jpg', src: 'dawnCeres', hi: [[2048, 'img/planets/ceres_2k.jpg'], [4096, 'img/planets/ceres_4k.jpg']] },
+    orb: { sb: [2461200.5, 2.765552595034094, 0.07969229514816586, 10.58802780183462, 80.24862682043221, 73.29421453021587, 274.4193463761342, 0.21430445064843] } },
   jupiter: { parent: 'sun', gm: 126686531.9, radius: 69911, tilt: 3.13, j2: [14736, 71492], color: '#d9b48c', pole: [268.056595, -0.006499, 64.495303, 0.002413, 284.95, 870.5360000],
     tex: { file: 'img/planets/jupiter.jpg', src: 'pj', w: 2048, hi: [[3601, 'img/planets/jupiter_4k.jpg']] },
     simple: { mass: 1.89813e27, radius: 69911, a: 778570000 },
@@ -186,8 +216,20 @@ const BODIES = {
     rings: { file: 'img/planets/saturn_rings.png', src: 'vtad', r: [616.1504 / 500.0371, 1165.4507 / 500.0371], req: 60268, tau: { file: 'img/planets/saturn_rings_tau.png', src: 'pps' } },
     orb: { jpl: [[9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448],
                  [-0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794]] } },
+  mimas: { parent: 'saturn', gm: 2.50349, radius: 198.2, tilt: 0, color: '#bdbab4', lock: true, tex: { file: 'img/planets/mimas.jpg', src: 'coiss', hi: [[2048, 'img/planets/mimas_2k.jpg'], [4096, 'img/planets/mimas_4k.jpg']] },
+    orb: { sat: [186000, 0.020, 160.4, 275.3, 1.6, 66.2, 0.942422, 0.493, 0.986], lp: [40.6, 83.5, 0.0] } },
+  enceladus: { parent: 'saturn', gm: 7.21037, radius: 252.1, tilt: 0, color: '#eef1f2', lock: true, tex: { file: 'img/planets/enceladus.jpg', src: 'coiss', hi: [[2048, 'img/planets/enceladus_2k.jpg'], [4096, 'img/planets/enceladus_4k.jpg']] },
+    orb: { sat: [238400, 0.005, 119.5, 57.0, 0.0, 0.0, 1.370218, 2.916, 0.000], lp: [40.6, 83.5, 0.0] } },
+  tethys: { parent: 'saturn', gm: 41.21353, radius: 531.1, tilt: 0, color: '#d9d7d2', lock: true, tex: { file: 'img/planets/tethys.jpg', src: 'coiss', hi: [[2048, 'img/planets/tethys_2k.jpg'], [4096, 'img/planets/tethys_4k.jpg']] },
+    orb: { sat: [295000, 0.001, 335.3, 0.0, 1.1, 273.0, 1.887802, 0.005, 4.982], lp: [40.6, 83.5, 0.0] } },
+  dione: { parent: 'saturn', gm: 73.11607, radius: 561.4, tilt: 0, color: '#cbc8c2', lock: true, tex: { file: 'img/planets/dione.jpg', src: 'coiss', hi: [[2048, 'img/planets/dione_2k.jpg'], [4096, 'img/planets/dione_4k.jpg']] },
+    orb: { sat: [377700, 0.002, 116.0, 212.0, 0.0, 0.0, 2.736916, 11.698, 0.000], lp: [40.6, 83.5, 0.0] } },
+  rhea: { parent: 'saturn', gm: 153.94175, radius: 763.5, tilt: 0, color: '#c6c2bb', lock: true, tex: { file: 'img/planets/rhea.jpg', src: 'coiss', hi: [[2048, 'img/planets/rhea_2k.jpg'], [4096, 'img/planets/rhea_4k.jpg']] },
+    orb: { sat: [527200, 0.001, 44.3, 31.5, 0.3, 133.7, 4.517503, 33.939, 35.775], lp: [40.6, 83.5, 0.0] } },
   titan: { parent: 'saturn', gm: 8978.138845, radius: 2574.7, tilt: 0.3, color: '#d9a85b', lock: true, tex: { file: 'img/planets/titan.jpg', src: 'nasa3d', w: 720 }, atm: [300, 1000], atmR: 2575, haze: { H: 65, tau: 2.5, top: 600, g: 0.6, layer: [500, 25, 0.004] },
     orb: { sat: [1221900, 0.029, 78.3, 11.7, 0.3, 78.6, 15.945448, 346.680, 687.370], lp: [36.4, 84.0, 0.6] } },
+  iapetus: { parent: 'saturn', gm: 120.51511, radius: 734.3, tilt: 0, color: '#a39684', lock: true, tex: { file: 'img/planets/iapetus.jpg', src: 'coiss', hi: [[2048, 'img/planets/iapetus_2k.jpg'], [4096, 'img/planets/iapetus_4k.jpg']] },
+    orb: { sat: [3561700, 0.028, 254.5, 74.8, 7.6, 86.5, 79.331002, 1662.900, 3130.302], lp: [288.7, 78.9, 14.8] } },
   uranus: { parent: 'sun', gm: 5794556.4, radius: 25362, tilt: 97.77, j2: [3343.43, 25559], color: '#9fd7dc', pole: [257.311, 0, -15.175, 0, 203.81, -501.1600928], atm: [10, 1500], atmR: 25559,
     orb: { jpl: [[19.18916464, 0.04725744, 0.77263783, 313.23810451, 170.95427630, 74.01692503],
                  [-0.00196176, -0.00004397, -0.00242939, 428.48202785, 0.40805281, 0.04240589]] } },
@@ -215,6 +257,9 @@ const TEX_SRC = {
   gebco: 'https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/topography-bathymetry-maps/',
   pps: 'https://pds-rings.seti.org/holdings/volumes/VG_28xx/VG_2801/',
   svsStars: 'https://svs.gsfc.nasa.gov/4851/',
+  coiss: 'https://pds-rings.seti.org/holdings/volumes/COISS_3xxx/',
+  dawnCeres: 'https://astrogeology.usgs.gov/search/map/ceres_dawn_fc_global_mosaic_400m',
+  dawnVesta: 'https://astrogeology.usgs.gov/search/map/vesta_dawn_fc_hamo_global_mosaic_60m',
   bsc: 'https://cdsarc.cds.unistra.fr/viz-bin/cat/V/50',
 };
 // The sky (normal 2D and 3D modes; never in the low-resource mode): the Milky Way — NASA SVS 4851 "Deep Star Maps 2020",
@@ -227,6 +272,8 @@ const SKY = { milky: { file: 'img/sky/milkyway.jpg', src: 'svsStars' }, stars: {
 const DATA_SRC = {
   jpl: 'https://ssd.jpl.nasa.gov/planets/approx_pos.html',
   sat: 'https://ssd.jpl.nasa.gov/sats/elem/',
+  satPhys: 'https://ssd.jpl.nasa.gov/sats/phys_par/',
+  sbdb: 'https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html',
   pck: 'https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc',
   amat: 'https://github.com/athulpg007/AMAT',
   rings: 'https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html',
