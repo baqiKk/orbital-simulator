@@ -242,7 +242,7 @@ const I18N = {
     'cred.plainBodies': 'Venüs, Uranüs, Neptün',
     'cred.note.plain': 'Doku yok: bu gezegenlerin gözle görülen küresel haritası yok (Venüs bulutlarla kaplı). Gerçek renge yakın düz renkli, kenar kararmalı ve gece/gündüz sınırlı küre.',
     'cred.venusRadar': 'Venüs: radar yüzey haritasını göster',
-    'cred.disclaimer': 'NASA logosu, amblemi ya da kurum işaretleri kullanılmaz. Görseller yalnızca küçültüldü ya da belirtildiği gibi dönüştürüldü; içerikleri değiştirilmedi.',
+    'cred.disclaimer': 'NASA logosu, amblemi ya da kurum işaretleri kullanılmaz. Gök cismi, gökyüzü ve NASA fotoğrafı görselleri yalnızca küçültüldü ya da belirtildiği gibi dönüştürüldü; içerikleri değiştirilmedi.',
 
     // ---- 3D view ----
     'v3.sizeAria': 'Cisim boyutu',
@@ -318,6 +318,7 @@ const I18N = {
     'ev.vBurn': 'Ateşleme',
     'cred.h.veh': 'Hazır araçlar',
     'cred.h.cabin': 'Kabin',
+    'cred.cabin.art': 'Kabin illüstrasyonu: Ahmet Baki Kırışgil',
     'cred.cabin.earthrise': 'Dünya doğuşu (Earthrise), AS08-14-2383',
     'cred.cabin.earthriseNote': 'Apollo 8, 24 Aralık 1968, fotoğraf William Anders (NASA, kamu malı). Kabindeki afiş; dosya NASA Görsel Kütüphanesi\'ndeki 1280×1280 kopyanın değiştirilmemiş hâli, afiş yalnızca ekranda kırpar.',
     'cred.cabin.font': 'Playpen Sans yazı tipi',

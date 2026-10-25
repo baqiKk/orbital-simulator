@@ -289,7 +289,12 @@ const DATA_SRC = {
   three: 'https://threejs.org/',
   usage: 'https://www.nasa.gov/nasa-brand-center/images-and-media/',
 };
-// The cabin (kabin-taslak.html, Phase 9 draft): its only image and its handwriting font (credits: i18n cred.cabin.<id>).
+// The cabin (kabin.html; kabin-taslak.html is the Phase 9 vector draft): images and handwriting font (credits: i18n
+// cred.cabin.<id>).
+// art: cabin illustration by Ahmet Baki Kırışgil (room and cat; supplied by the user, decoration only). Originals kept
+//   out of the repo: master.png (JPEG data, 7136×3528, SHA-1 38312f6b13321cb4084ff60ef20d5730a08962ec) and cat.png (RGBA
+//   830×1266, cut from it, SHA-1 8c34ab5d949f2c54dea007693c3e5984836dabca). tools/cabin-art/build.js makes the layers
+//   img/cabin/<1600|2560|3840|7136>/{room,body,tail,earL,earR,shadow}.webp and img/cabin/layout.json from them.
 // earthrise: NASA AS08-14-2383 "Earthrise" (Apollo 8, 24 Dec 1968, W. Anders), public domain; NASA Image and Video
 //   Library file as08-14-2383~medium.jpg (1280×1280), copied unchanged to img/cabin/earthrise.jpg
 //   (SHA-1 9a341faf173a13e7651a31119b7f693e0fc5033c); the poster only crops it on screen.
