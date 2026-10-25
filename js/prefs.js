@@ -1,7 +1,7 @@
 // Persisted UI preferences: view mode and window layout.
 // DOM-free: the storage object is passed in (localStorage, sessionStorage, a stub or null), so Node tests can run it.
 // Every storage access is wrapped: private windows, blocked site data and quota errors must never break the page.
-const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1' };
+const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene' };
 const VIEW_MODES = ['low', 'normal', '3d'];
 // placement order: overview's default spot sits under Results, so it comes after it
 const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'gloss', 'model', 'credits'];
@@ -107,4 +107,27 @@ function trailAlpha(age, fade, keep = TRAIL_REVS, span = TRAIL_FADE) {
   return fade && age > keep - span ? (keep - age) / span : 1;
 }
 
-if (typeof module !== 'undefined') module.exports = { PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+// ---- cabin (kabin.html) ----
+// The art's width tiers (img/cabin/<px>/). The largest one this device may load: 7136 only on a desktop with at least
+// 8 GB (navigator.deviceMemory; unknown counts as enough on a desktop), phones at most 2560, anything else 3840.
+const CAB_TIERS = [1600, 2560, 3840, 7136];
+function cabTierMax(dev) { return dev.phone ? 2560 : dev.desktop && (dev.mem == null || dev.mem >= 8) ? 7136 : 3840; }
+// smallest tier with about one texel per device pixel (need: device px across the whole art), within the limit
+function cabTier(need, max) { const ok = CAB_TIERS.filter(t => t <= max); return ok.find(t => t >= need * 0.9) || ok[ok.length - 1]; }
+// Desk view: the art covers the screen (no bars). Sideways it centres the window on wide screens and slides towards
+// the cat as the screen narrows (portrait shows the cat and the right part of the glass); vertically 15 % of the cut
+// comes off the top, the rest off the desk's front. Returns the scale and the art point at the screen's top left.
+const CAB_FOCUS = [3608, 4250]; // art x: window centre, cat
+function cabCrop(vw, vh, W = 7136, H = 3528) {
+  const s = Math.max(vw / W, vh / H), w = vw / s, h = vh / s, t = Math.min(1, Math.max(0, (1.5 - vw / vh) / 0.7));
+  const fx = CAB_FOCUS[0] + t * (CAB_FOCUS[1] - CAB_FOCUS[0]);
+  return { s, x: Math.min(W - w, Math.max(0, fx - w / 2)), y: 0.15 * (H - h) };
+}
+// Window view: the glass (x0, y0, x1, y1) covers the screen, centred as close to the desk view's focus as it allows.
+function cabGlassCam(vw, vh, g) {
+  const gw = g.x1 - g.x0, gh = g.y1 - g.y0, s = Math.max(vw / gw, vh / gh), w = vw / s, h = vh / s, t = Math.min(1, Math.max(0, (1.5 - vw / vh) / 0.7));
+  const fx = CAB_FOCUS[0] + t * (CAB_FOCUS[1] - CAB_FOCUS[0]);
+  return { s, x: Math.min(g.x1 - w, Math.max(g.x0, fx - w / 2)), y: g.y0 + (gh - h) / 2 };
+}
+
+if (typeof module !== 'undefined') module.exports = { CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

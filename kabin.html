@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kabin · Yörünge Transfer Simülatörü</title>
+<meta name="description" data-i18n-content="kabin.description" content="Yörünge simülatörünün kabini: camın ardında canlı uzay, masada saat ve çay, pervazda dışarıyı izleyen bir kedi.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Playpen+Sans:wght@400&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<!-- Phase 9: the cabin. Room and cat: illustration by Ahmet Baki Kırışgil (layers made by tools/cabin-art, see
+     js/bodies.js CABIN_SRC). Behind the glass: the site's own sky and planet images (globe.js). Poster photo: NASA
+     AS08-14-2383 (public domain). Handwriting: Playpen Sans (SIL OFL 1.1, Google Fonts). -->
+</head>
+<body class="k-page">
+<div class="k-root" id="kRoot">
+  <canvas id="kSpace" aria-hidden="true"></canvas>
+  <div id="kStage" class="k-stage">
+    <div id="kGlow" class="k-glow"></div>
+    <div id="kRoomSlot"></div>
+    <canvas id="kAqua" class="k-cv" aria-hidden="true"></canvas>
+    <div id="kPaper" class="k-paper"><svg id="kArt" class="k-svg" aria-hidden="true"></svg></div>
+    <canvas id="kSteam" class="k-cv" aria-hidden="true"></canvas>
+    <div id="kNight" class="k-night"></div>
+    <div id="kCat" class="k-cat"><svg id="kWhisk" class="k-svg k-whisk" aria-hidden="true"></svg></div>
+    <div id="kEmit" class="k-emit"><svg id="kGlowArt" class="k-svg" aria-hidden="true"></svg></div>
+    <div id="kHits" class="k-hits"></div>
+  </div>
+</div>
+
+<header class="k-hud top">
+  <a class="ghost" href="index.html" data-i18n-aria-label="kab.backAria">← <span data-i18n="kab.back"></span></a>
+</header>
+<footer class="k-hud bot">
+  <div class="seg" id="kScene" role="group" data-i18n-aria-label="wc.sceneAria">
+    <button type="button" data-scene="earth" aria-pressed="true" data-i18n="wc.earth"></button>
+    <button type="button" data-scene="saturn" aria-pressed="false" data-i18n="wc.saturn"></button>
+  </div>
+  <button type="button" class="ghost" id="kLamp" aria-pressed="false" data-i18n="kab.lampOff"></button>
+  <button type="button" class="btn primary" id="kGo" data-i18n="kab.toWindow"></button>
+</footer>
+<div id="kTip" class="k-tip" role="tooltip" hidden></div>
+
+<script src="js/i18n.js"></script>
+<script src="js/prefs.js"></script>
+<script src="js/bodies.js"></script>
+<script src="js/globe.js"></script>
+<script src="js/cabin.js"></script>
+</body>
+</html>

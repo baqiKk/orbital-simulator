@@ -338,4 +338,45 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(P.PREF_KEYS.vehicles && /<button type="button" data-v="burn"/.test(html) && ['pro', 'retro', 'norm', 'anti', 'out', 'in'].every(d => html.includes(`<option value="${d}"`) && has('mv.dir.' + d)), 'the single firing: six directions');
 }
 
+// 14) Phase 9 cabin (kabin.html, js/cabin.js): every text from the dictionary; every art tier holds every layer at its
+// width; 7136 only on a desktop with enough memory, phones at most 2560; the crop covers the screen and keeps the window
+// (wide) or the cat (portrait) in view; planet and sky images only through globeLook / skyReady, never in low mode;
+// storage only through prefs.js; the sources (master.png, cat.png) stay out of the repo.
+{
+  const page = read('kabin.html'), js = read('js/cabin.js');
+  for (const m of page.matchAll(/data-i18n(?:-[a-z-]+)?="([^"]+)"/g)) assert.ok(has(m[1]), `kabin.html key missing from dictionary: ${m[1]}`);
+  for (const m of js.matchAll(/'((?:kab|kabin|wc)\.[A-Za-z0-9_.]+)'/g)) assert.ok(has(m[1]), `cabin.js key missing from dictionary: ${m[1]}`);
+  assert.ok(page.includes(`content="${DICT['kabin.description']}"`) && page.includes(`<title>${DICT['kabin.title']}</title>`), 'kabin.html static title and description match the dictionary');
+  assert.ok(/<script src="js\/globe\.js"><\/script>\s*<script src="js\/cabin\.js">/.test(page), 'cabin.js loads after globe.js');
+  assert.ok(!/img\/planets|img\/sky/.test(page + js), 'cabin images of bodies and sky only through globeLook / skyReady');
+  for (const m of js.matchAll(/globeLook\(([^;]*?)\)/g)) assert.ok(/, !LOWQ, !LOWQ,/.test(m[1]), 'cabin globeLook: nothing drawn or fetched in low mode: ' + m[1]);
+  assert.ok(/if \(LOWQ\) SP\.sky = plainSky\(\); else \{ const sk = skyReady\(/.test(js), 'cabin sky: skyReady only outside low mode');
+  assert.ok(!/localStorage\.|sessionStorage\./.test(js.replace(/window\.localStorage/, '')), 'cabin storage only through prefs.js');
+  const L = JSON.parse(read('img/cabin/layout.json'));
+  assert.deepStrictEqual(L.tiers, P.CAB_TIERS, 'layout tiers = CAB_TIERS');
+  const webpW = f => { const b = fs.readFileSync(path.join(__dirname, '..', f)); assert.strictEqual(b.toString('ascii', 12, 16), 'VP8X', f + ' has an alpha (VP8X) header'); return 1 + b.readUIntLE(24, 3); };
+  for (const T of L.tiers) {
+    assert.strictEqual(webpW(`img/cabin/${T}/room.webp`), T, `room tier ${T} width`);
+    for (const [n, e] of Object.entries(L.layers)) assert.ok(Math.abs(webpW(`img/cabin/${T}/${n}.webp`) - e.w * T / L.size[0]) <= 1, `layer ${n} at tier ${T}`);
+  }
+  assert.ok(['shadow', 'tail', 'earL', 'earR', 'body'].every(n => L.layers[n]) && L.layers.tail.pivot && L.layers.earL.pivot && L.layers.earR.pivot, 'cat layers with pivots');
+  assert.ok(/^img\/cabin\/art\/$/m.test(read('.gitignore')), 'illustration sources stay out of the repo');
+  // device limits
+  assert.strictEqual(P.cabTierMax({ phone: true, desktop: false, mem: 8 }), 2560);
+  assert.strictEqual(P.cabTierMax({ phone: false, desktop: true, mem: undefined }), 7136, 'desktop with unknown memory');
+  assert.strictEqual(P.cabTierMax({ phone: false, desktop: true, mem: 4 }), 3840, 'desktop with little memory');
+  assert.strictEqual(P.cabTierMax({ phone: false, desktop: false, mem: 8 }), 3840, 'tablet');
+  assert.strictEqual(P.cabTier(2186, 7136), 2560); assert.strictEqual(P.cabTier(6000, 7136), 7136); assert.strictEqual(P.cabTier(6000, 2560), 2560); assert.strictEqual(P.cabTier(100, 7136), 1600);
+  // crops: cover the screen, inside the art; window centre visible when wide, the cat when portrait
+  const g = L.glass, cat = L.layers.body, W = L.size[0], H = L.size[1];
+  for (const [vw, vh] of [[1920, 1080], [2560, 1080], [1024, 768], [390, 844], [844, 390], [3840, 1080]]) {
+    const c = P.cabCrop(vw, vh, W, H), w = vw / c.s, h = vh / c.s;
+    assert.ok(c.x >= 0 && c.y >= 0 && c.x + w <= W + 1e-6 && c.y + h <= H + 1e-6 && (Math.abs(w - W) < 1e-6 || Math.abs(h - H) < 1e-6), `crop ${vw}×${vh} covers the screen inside the art`);
+    assert.ok(c.x <= cat.x && c.x + w >= cat.x + cat.w, `crop ${vw}×${vh} shows the cat`);
+    if (vw / vh >= 1.3) assert.ok(c.x <= g.x0 && c.x + w >= g.x1, `crop ${vw}×${vh} shows the whole glass`);
+    const wc = P.cabGlassCam(vw, vh, g);
+    assert.ok(wc.x >= g.x0 - 1e-6 && wc.x + vw / wc.s <= g.x1 + 1e-6 && wc.y >= g.y0 - 1e-6 && wc.y + vh / wc.s <= g.y1 + 1e-6, `window view ${vw}×${vh} stays on the glass`);
+  }
+}
+
 console.log('OK — all UI tests passed');
