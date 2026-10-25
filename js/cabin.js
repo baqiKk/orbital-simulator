@@ -170,7 +170,7 @@ function clockTick() {
 }
 
 // the laptop: the free return on a dark map, a dot flying it in six minutes, its mission time
-const LAP = { dot: null, met: null, E: [118, 440], M: [520, 168] };
+const LAP = { dot: null, met: null, today: null, E: [118, 440], M: [520, 168] };
 function buildLaptop() {
   const d = quadBox(1000, 600, LAP_QUAD, 'k-lap', $('#kEmit')), s = svgEl('svg', { viewBox: '0 0 1000 600', width: 1000, height: 600 }, d);
   svgEl('rect', { width: 1000, height: 600, class: 'k-lapbg' }, s);
@@ -183,6 +183,8 @@ function buildLaptop() {
   svgEl('circle', { cx: LAP.M[0], cy: LAP.M[1], r: 8, class: 'k-lapmoon' }, s);
   LAP.dot = svgEl('circle', { r: 7, class: 'k-lapdot' }, s);
   LAP.met = svgEl('text', { x: 36, y: 580, 'font-size': 24, class: 'k-mono k-lapt' }, s);
+  LAP.today = svgEl('text', { x: 36, y: 96, 'font-size': 22, class: 'k-mono k-lapt k-lapday' }, s); // today's focus (the pomodoro)
+  PO.stRaw = undefined;
 }
 function lapTick() {
   const n = TRAJ.length / 2, f = (Date.now() / 360000) % 1, i = f * (n - 1), i0 = Math.floor(i), a = trajAt(LAP.E, LAP.M, i0), b = trajAt(LAP.E, LAP.M, Math.min(n - 1, i0 + 1)), u = i - i0;
@@ -465,7 +467,7 @@ document.addEventListener('pointerdown', e => {
 // (its timers slowed to once a minute), a sleeping computer or a reload changes nothing. An end seen in time rings the
 // bell, flashes the clock and, when allowed and the tab is hidden, sends a notification; one seen late is only told in
 // the panel. Without storage the timer still runs, for this page only.
-const PO = { s: null, raw: null, v: null, late: null, notify: false };
+const PO = { s: null, raw: null, v: null, late: null, notify: false, stRaw: undefined, stDay: '' };
 const PO_PH = { idle: 'kab.pomo.ph.idle', work: 'kab.pomo.ph.work', short: 'kab.pomo.ph.short', long: 'kab.pomo.ph.long', wait: 'kab.pomo.ph.wait' };
 function poLoad() { const raw = readPref(LS, PREF_KEYS.pomo); if (raw == null ? !PO.s : raw !== PO.raw) { PO.raw = raw; PO.s = parsePomo(raw); } }
 // run a timer step (pomoAdvance: just bring it up to now) and deal with what happened
@@ -489,7 +491,7 @@ function poEnded(e) {
 }
 function poShow(now = Date.now()) {
   const s = PO.s, v = PO.v = pomoView(s, now);
-  clockTick();
+  clockTick(); poStats(now);
   if ($('#kPomo').hidden) return;
   const ph = _(PO_PH[v.phase], { k: v.k, n: v.every });
   $('#kPomoPh').textContent = v.paused ? _('kab.pomo.paused', { ph }) : ph;
@@ -498,6 +500,17 @@ function poShow(now = Date.now()) {
   $('#kPomoSkip').disabled = !pomoTimed(v.phase); $('#kPomoReset').disabled = v.phase === 'idle';
   const L = PO.late; $('#kPomoLate').hidden = !L;
   if (L) $('#kPomoLate').textContent = _(L.phase === 'work' ? 'kab.pomo.late.work' : 'kab.pomo.late.break', { m: Math.max(1, Math.round((now - L.at) / 60000)) });
+}
+// daily statistics (prefs.js PREF_KEYS.pomoStats): today and the last seven days, in the panel and on the laptop
+const poDur = ms => { const m = Math.round(ms / 60000); return m >= 60 ? _('kab.pomo.hm', { h: Math.floor(m / 60), m: m % 60 }) : _('kab.pomo.min', { m }); };
+function poStats(now) {
+  const raw = readPref(LS, PREF_KEYS.pomoStats), day = pomoDay(now);
+  if (raw === PO.stRaw && day === PO.stDay) return; PO.stRaw = raw; PO.stDay = day;
+  const st = parsePomoStats(raw), from = pomoDay(now - 6 * 86400000), wk = [0, 0], td = st[day] || [0, 0];
+  for (const [k, d] of Object.entries(st)) if (k >= from && k <= day) { wk[0] += d[0]; wk[1] += d[1]; }
+  $('#kPomoDay').textContent = _('kab.pomo.today', { n: td[0], t: poDur(td[1]) });
+  $('#kPomoWeek').textContent = _('kab.pomo.week', { n: wk[0], t: poDur(wk[1]) });
+  if (LAP.today) LAP.today.textContent = td[1] ? _('kab.pomo.today', { n: td[0], t: poDur(td[1]) }) : '';
 }
 // the panel's settings from the state
 function poSyncSet() {

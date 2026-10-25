@@ -529,6 +529,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/document\.querySelector\('\.k-arow\[data-k=chime\]/.test(cab) && /data-k="chime"/.test(read('kabin.html')), 'the bell has its row in the sound panel');
   assert.ok(!/localStorage|sessionStorage|document|window/.test(po), 'pomodoro.js: no DOM, no storage');
   assert.ok(!/setInterval\(clockTick/.test(cab) && /setInterval\(\(\) => poDo\(pomoAdvance\), 1000\)/.test(cab), 'one tick a second drives the clock');
+  assert.ok(/id="kPomoDay"/.test(read('kabin.html')) && /LAP\.today\.textContent = /.test(cab) && /pomoStatsAdd\(st, ev\)\) writePref\(LS, PREF_KEYS\.pomoStats/.test(cab), 'daily statistics: saved, in the panel and on the laptop');
 }
 
 console.log('OK — all UI tests passed');
