@@ -172,6 +172,50 @@
 - Uydular Dünya merkezli görünümde ve 3B'de gerçek zamanlı gösterilsin, yer izi (ground track) isteğe bağlı. Seçilen bir uydunun yörüngesi manevra modunda başlangıç yörüngesi olarak kullanılabilsin.
 - TLE yaşı gösterilsin; eski TLE'lerde doğruluk uyarısı çıksın.
 
+## Kabin: Pomodoro ve manzara modu
+Simülatörden ayrı bir sekme/sayfa (ör. `#kabin`); simülatör ana ürün olarak kalır.
+
+Genel ilkeler:
+- Uzay gemisinin içinde, sıcak ve "cozy" bir kabinde oturan biri. Masada çay (buharı tüten), dijital saat (pomodoro), tablet ve defter. Masanın arkasında ya da biraz uzakta büyük bir cam: dışarıdaki uzay.
+- Görsel tarz: 2,5B katmanlı illüstrasyon (paralaks, küçük animasyonlar). Pencereden görünen uzay mevcut 3B motorla canlı çizilir ve aracın gerçek konumundan hesaplanır.
+- Saatlerce ikinci ekranda açık kalacak: düşük işlemci kullanımı (kare hızı sınırı, sekme gizliyken çizim durur), bellek sızıntısı yok, isteğe bağlı ekran kararmasın (Wake Lock), tam ekran desteği.
+- Tüm görseller ve sesler lisansı temiz olacak: özgün çizim, CC0 varlıklar (Kenney, Quaternius, Poly Pizza) veya NASA kamu malı; kaynaklar Kaynakça'da.
+
+## Faz 9 — Kabin altyapısı
+- Kabin sayfası ve simülatörle arasında geçiş (tablet ekranından simülatöre geçilir, simülatörden kabine dönülür).
+- Masa görünümü ve cam görünümü; "Cama git" düğmesiyle yumuşak bir kamera animasyonuyla cam mekâna geçiş ve geri dönüş.
+- Masadaki nesneler etkileşimli: saat → pomodoro, tablet → simülatör, defter → notlar ve bilgiler.
+- Önce görsel tasarım taslağı hazırlanıp onaylanacak, çizimler ona göre yapılacak.
+
+## Faz 10 — Pomodoro ve uçuş planı
+- Pomodoro: hazır düzenler (25/5, 50/10, 15/5 ve özel), uzun mola, oturum sayacı; süre bitince yumuşak bir zil ve isteğe bağlı tarayıcı bildirimi. Günlük istatistik localStorage'da.
+- Uçuş planı: çalışma ve mola süreleri gerçek bir görevin evrelerine eşlenir. Örnek: Dünya–Ay serbest dönüş: 15 dk Dünya'dan Ay'a, 5 dk Ay etrafında, 15 dk Ay'dan Dünya'ya, 5 dk Dünya etrafında. Başka planlar: Mars seyri, Satürn uyduları arası, Jüpiter sistemi. Simülasyonun gerçek yörüngesi kullanılır, zaman pomodoro sürelerine göre sıkıştırılır.
+- Camdan görünen manzara aracın o anki konumundan: çalışırken hedef yavaşça büyür, molada yörüngede dönülür. HUD'da sade bir "kalan süre / görev evresi" göstergesi.
+- Kabinin havası evreye göre hafifçe değişebilir (ör. Ay yörüngesinde ışık tonu).
+
+## Faz 11 — Ses
+- Tarayıcıda üretilen (Web Audio) gizemli, sakin uzay ambient müziği; dosya indirmez, tekrar etmez.
+- NASA'nın kamu malı uzay kayıtları (ör. Voyager/Juno plazma dalgası sesleri) isteğe bağlı katman olarak.
+- Beyaz, pembe ve kahverengi gürültü seçenekleri; ayrı ses düzeyleri; pomodoro zili.
+- Ses yalnızca kullanıcı bir düğmeye bastıktan sonra başlar (tarayıcı kuralı).
+
+## Faz 12 — Defter ve tablet
+- Kişisel not defteri: anlık not alma, localStorage'da saklama, metin olarak dışa aktarma.
+- Bilgi sayfaları: roketçilik ve uzay temelleri (roket denklemi, kademeleme, motor türleri, yörünge mekaniği kavramları; sözlükle bağlantılı), kısa ve Türkçe.
+- Tablet: simülatöre geçiş ve son görevin özeti.
+
+## Faz 13 — Takımyıldızlar
+- 88 IAU takımyıldızının sınırları ve çizgileri açık veriden (kaynak ve lisans belirtilerek); simülatörün gökyüzünde, haritada ve kabin camında açılıp kapatılabilir çizgiler ve adlar.
+- Defterde takımyıldız sayfaları: adı, en parlak yıldızları, gökyüzünde nasıl bulunur, kökeni ve hikâyesi. Yunan mitolojisinin yanında Türk gök kültürü (ör. Demirkazık, Ülker, Yedigen) de anlatılsın. Hikâye metinleri özgün yazılsın, kaynaklar belirtilsin.
+- "Kâşif" modu: camdan ya da gökyüzünden bir takımyıldıza tıklayınca defterdeki sayfası açılsın.
+
+## Faz 14 — Manzara presetleri
+- Hazır manzaralar: Satürn ve halkaları, Jüpiter ve Galile uyduları, Ay yörüngesinden Dünya doğuşu, Mars yakın plan, Samanyolu bakışı vb.
+- Ekran koruyucu modu: manzaralar arasında yavaş geçiş, arayüz gizli.
+
+## Notlar
+- Hibrit OTV hazır aracı: itki, Isp, kütle ve tek ateşleme süresini birlikte veren yayımlanmış birincil bir kaynak bulununca eklenecek. Yayımlanmamış şirket verileri kullanılmayacak.
+
 ## SEO notları
 - İngilizce sürüm eklenince `index.html`'e hreflang etiketleri (`<link rel="alternate" hreflang="tr|en|x-default">`), her dil için kendine işaret eden canonical, sitemap.xml'e dil alternatifleri ve JSON-LD `inLanguage` güncellemesi eklenecek.
 - Statik "Hakkında" metni (`about.*`) ve meta metinleri dil değişince birlikte güncellenmeli.
