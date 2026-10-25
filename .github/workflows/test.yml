@@ -1,0 +1,28 @@
+# The two test files on Node 22 and 24 (no dependencies, no npm install): the physics and the UI must hold on any
+# supported Node version and processor (floating point compared with physical tolerances, see CLAUDE.md).
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Physics (tests/core.test.js)
+        run: node tests/core.test.js
+      - name: UI (tests/ui.test.js)
+        run: node tests/ui.test.js

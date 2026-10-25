@@ -414,10 +414,12 @@ const sEM = realSys(['earth', 'mars', 'sun']);
     } else assert.ok(sim.captured && Math.abs(sim.captured.dv / seed.tr.dvA - 1) < 0.03, 'capture Δv ≈ Lambert');
   }
 
-  // 3) Solver converges for capture mode
+  // 3) Solver converges for capture mode. The solver tests check what the solution does (periapsis within 1 km of the
+  //    target, captured, the departure in its window), not the residual: its last digits change with the Node
+  //    version and the processor, the trajectory does not.
   const Mc = { ...M, mode: 'capture', hB: 100, theta: g.theta, dv: g.dv };
-  const o = await C.optimize(s, Mc);
-  assert.ok(o.f < 1e-6, 'capture solve should converge');
+  const o = await C.optimize(s, Mc), oc = C.simulate(s, { ...Mc, ...o }, { tol: 1e-10, hmaxDiv: 500, maxSteps: 120000 });
+  assert.ok(oc.impact < 0 && oc.bPeri && oc.captured && Math.abs((oc.bPeri.d - s.R[1]) / 1e3 - 100) < 1, `capture solve: 100 km perilune (${oc.bPeri && ((oc.bPeri.d - s.R[1]) / 1e3).toFixed(3)} km), captured`);
 
   // 13) Real model solves: Earth→Moon free return on a fixed date; Earth→Mars finds the late-2026 window
   const solveReal = async (keys, Mr) => {
@@ -428,14 +430,16 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   };
   const t26 = C.utcToDays(Date.UTC(2026, 10, 15));
   const fr = await solveReal(['earth', 'moon'], { mode: 'free', side: -1, h0: 185, hB: 250, hRet: 60, t0: t26, theta: 0, dv: 3100, duration: 12 });
-  assert.ok(fr.r.f < 1e-4 && fr.sim.bPeri && fr.sim.aRet, 'real free return converges');
-  assert.ok(Math.abs((fr.sim.bPeri.d - fr.sy.R[1]) / 1e3 - 250) < 5 && Math.abs((fr.sim.aRet.d - fr.sy.R[0]) / 1e3 - 60) < 5, 'real free return: 250 km perilune, 60 km perigee');
+  const km = (d, i, sy) => (d - sy.R[i]) / 1e3;
+  assert.ok(fr.sim.impact < 0 && fr.sim.bPeri && fr.sim.aRet, 'real free return: perilune and return perigee');
+  assert.ok(Math.abs(km(fr.sim.bPeri.d, 1, fr.sy) - 250) < 1 && Math.abs(km(fr.sim.aRet.d, 0, fr.sy) - 60) < 1,
+    `real free return: 250 km perilune (${km(fr.sim.bPeri.d, 1, fr.sy).toFixed(3)}), 60 km perigee (${km(fr.sim.aRet.d, 0, fr.sy).toFixed(3)})`);
   assert.strictEqual(fr.sim.bPeri.dir, -1, 'real free return passes the Moon retrograde');
   const ma = await solveReal(['earth', 'mars', 'sun'], { mode: 'capture', side: 0, h0: 185, hB: 300, hRet: 60, t0: C.utcToDays(Date.UTC(2026, 8, 1)), theta: 0, dv: 3600, duration: 300 });
   const dep = new Date(C.daysToUtc(ma.r.t0));
-  assert.ok(ma.r.f < 1e-6 && ma.sim.captured, 'real Earth→Mars converges and captures');
-  assert.ok(dep.getUTCFullYear() === 2026 && dep.getUTCMonth() >= 9, `Earth→Mars departs in late 2026 (${dep.toISOString().slice(0, 10)})`);
-  assert.ok(Math.abs((ma.sim.bPeri.d - ma.sy.R[1]) / 1e3 - 300) < 5, 'Earth→Mars: 300 km periareion');
+  assert.ok(ma.sim.impact < 0 && ma.sim.bPeri && ma.sim.captured, 'real Earth→Mars reaches Mars and captures');
+  assert.ok(dep.getUTCFullYear() === 2026 && dep.getUTCMonth() >= 9 && dep.getUTCMonth() <= 11, `Earth→Mars departs in the Oct–Dec 2026 window (${dep.toISOString().slice(0, 10)})`);
+  assert.ok(Math.abs(km(ma.sim.bPeri.d, 1, ma.sy) - 300) < 1, `Earth→Mars: 300 km periareion (${km(ma.sim.bPeri.d, 1, ma.sy).toFixed(3)})`);
 
   // 14) The app's real scenarios still hit their targets with the stored values
   for (const sc of SCENARIOS.filter(q => q.model === 'real')) {
@@ -836,34 +840,53 @@ const sEM = realSys(['earth', 'mars', 'sun']);
 }
 
 // ===== Phase 10 flight plans (js/flightplans.js, js/flightdata.js) =====
-// Every track is simulate() output: flown again from its stored mission, the stored points come back (1 m, 1 mm/s).
-// Interpolation reproduces every integrator point within 3·10⁻⁵ of the distance to the nearest body (+ 5 m). The legs: the
-// free return out to a 250 km perilune and back to a 60 km perigee; Mars in eight contiguous slices to a 300 km
-// periareion; the moon tours closed, each leg leaving after the last arrival and reaching its tour altitude. Break
-// orbits start where the leg ends and close after a period; the timer maps onto the legs as the plan says.
+// Every track is simulate() output. Flown again from its stored mission (on any Node version and processor: the step
+// times differ in their last digits, so they are never matched), the new path passes through the stored points: the new
+// integrator points, Hermite-interpolated at the stored times, agree within 10⁻⁶ of the distance to the nearest body
+// + 1 km, the speed within the matching amount (that error over the local time scale d / v) + 1 cm/s; the new run
+// reaches the same periapses within 1 km and a second. The stored, thinned track reproduces every new integrator point
+// within the thinning tolerance (2·10⁻⁵ of the distance) plus the same allowance. The legs: the free return out to a
+// 250 km perilune and back to a 60 km perigee; Mars in eight contiguous slices to a 300 km periareion; the moon tours
+// closed, each leg leaving after the last arrival and reaching its tour altitude (all within 1 km). Break orbits start
+// where the leg ends and close after a period; the timer maps onto the legs as the plan says.
 {
   const F = require('../js/flightplans.js'), { FLIGHT_DATA } = require('../js/flightdata.js'), T = require('../js/pomodoro.js');
   const OPTS = { tol: 1e-10, hmaxDiv: 500, maxSteps: 120000 }, MIN = 60000;
   assert.deepStrictEqual(Object.keys(FLIGHT_DATA), F.FP_IDS, 'data for every plan');
   const alt = (sys, tr, t, k) => { const P = new Float64Array(3 * sys.N), V = new Float64Array(3 * sys.N); C.states(sys, tr.M.t0 * DAY + t, P, V); const y = F.fpTrack(tr, t), i = tr.keys.indexOf(k); return (Math.hypot(y[0] - P[3 * i], y[1] - P[3 * i + 1], y[2] - P[3 * i + 2]) - sys.R[i]) / 1e3; };
+  // the new integrator points up to tEnd (at an impulsive burn, the point before it), as a track
+  const flown = (sim, tEnd) => {
+    const t = [], y = [];
+    for (let i = 0; i < sim.t.length && sim.t[i] <= tEnd; i++) { if (t.length && sim.t[i] === t[t.length - 1]) continue; t.push(sim.t[i]); y.push(sim.x[i], sim.y[i], sim.z[i], sim.vx[i], sim.vy[i], sim.vz[i]); }
+    return { t, y };
+  };
+  // distance to the nearest body and the speed relative to it (after states())
+  const nearest = (sys, P, V, q) => {
+    let d = Infinity, v = 0;
+    for (let b = 0; b < sys.N; b++) { const db = Math.hypot(q[0] - P[3 * b], q[1] - P[3 * b + 1], q[2] - P[3 * b + 2]); if (db < d) { d = db; v = Math.hypot(q[3] - V[3 * b], q[4] - V[3 * b + 1], q[5] - V[3 * b + 2]); } }
+    return [d, v];
+  };
   for (const [id, D] of Object.entries(FLIGHT_DATA)) {
     for (const tr of D.tracks) {
       const sys = F.fpSystem(tr.keys), sim = C.simulate(sys, tr.M, OPTS), P = new Float64Array(3 * sys.N), V = new Float64Array(3 * sys.N), y = new Array(6);
-      let k = 0, worst = 0;
-      for (let i = 0; i < tr.t.length; i++) {
-        while (k < sim.t.length && Math.abs(sim.t[k] - tr.t[i]) > 1e-3) k++;
-        assert.ok(k < sim.t.length, `${id}: point ${i} is an integrator point`);
-        const q = [sim.x[k], sim.y[k], sim.z[k], sim.vx[k], sim.vy[k], sim.vz[k]];
-        for (let j = 0; j < 6; j++) assert.ok(Math.abs(q[j] - tr.y[6 * i + j]) < (j < 3 ? 2 : 1e-3), `${id}: point ${i} as simulated`);
+      const free = tr.M.mode === 'free', ev = free ? sim.aRet : sim.bPeri, tEnd = tr.t[tr.t.length - 1];
+      assert.ok(sim.bPeri && ev && Math.abs(ev.t - tEnd) < 1, `${id}: flown again, it arrives when stored (${ev && (ev.t - tEnd).toFixed(4)} s)`);
+      const km = (d, i) => (d - sys.R[i]) / 1e3;
+      assert.ok(Math.abs(km(sim.bPeri.d, 1) - alt(sys, tr, sim.bPeri.t, tr.keys[1])) < 1 && (!free || Math.abs(km(sim.aRet.d, 0) - alt(sys, tr, sim.aRet.t, tr.keys[0])) < 1), `${id}: the same periapses within 1 km`);
+      const nw = flown(sim, ev.t);
+      let wp = 0, wi = 0;
+      for (let i = 0; i < tr.t.length; i++) { // the stored points on the new path
+        C.states(sys, tr.M.t0 * DAY + tr.t[i], P, V); F.fpTrack(nw, Math.min(tr.t[i], ev.t), y);
+        const q = tr.y.slice(6 * i, 6 * i + 6), [d, v] = nearest(sys, P, V, q), tp = 1e-6 * d + 1e3, tv = tp * v / d + 0.01;
+        wp = Math.max(wp, Math.hypot(y[0] - q[0], y[1] - q[1], y[2] - q[2]) / tp, Math.hypot(y[3] - q[3], y[4] - q[4], y[5] - q[5]) / tv);
       }
-      // interpolation against every integrator point of the track
-      for (let i = 0; i < sim.t.length && sim.t[i] <= tr.t[tr.t.length - 1]; i++) {
-        C.states(sys, tr.M.t0 * DAY + sim.t[i], P, V); F.fpTrack(tr, sim.t[i], y);
-        let d = Infinity; for (let b = 0; b < sys.N; b++) d = Math.min(d, Math.hypot(sim.x[i] - P[3 * b], sim.y[i] - P[3 * b + 1], sim.z[i] - P[3 * b + 2]));
-        const e = Math.hypot(y[0] - sim.x[i], y[1] - sim.y[i], y[2] - sim.z[i]);
-        if (i === 0 || sim.t[i] !== sim.t[i - 1]) worst = Math.max(worst, e / (3e-5 * d + 5)); // the thinning tolerance and the rounding
+      assert.ok(wp <= 1, `${id}: the stored points lie on the path flown again (worst ${wp.toFixed(3)} of the tolerance)`);
+      for (let i = 0; i < nw.t.length; i++) { // the new integrator points on the stored, thinned track
+        C.states(sys, tr.M.t0 * DAY + nw.t[i], P, V); F.fpTrack(tr, nw.t[i], y);
+        const q = nw.y.slice(6 * i, 6 * i + 6), [d] = nearest(sys, P, V, q);
+        wi = Math.max(wi, Math.hypot(y[0] - q[0], y[1] - q[1], y[2] - q[2]) / (2e-5 * d + 1e-6 * d + 1e3));
       }
-      assert.ok(worst <= 1, `${id}: Hermite within tolerance (${worst.toFixed(2)})`);
+      assert.ok(wi <= 1, `${id}: the thinned track within its tolerance (worst ${wi.toFixed(3)})`);
     }
     // break orbits: start at the leg's end, period, closed
     for (const leg of D.legs) {
@@ -880,12 +903,12 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   // the free return: out to the perilune, back to the return perigee, one track, contiguous
   const E = FLIGHT_DATA.em, Es = F.fpSystem(E.tracks[0].keys);
   assert.ok(E.loop && E.legs.length === 2 && E.legs[0].ta === 0 && E.legs[1].ta === E.legs[0].tb && E.legs[0].look === 'moon' && E.legs[1].look === 'earth');
-  assert.ok(Math.abs(alt(Es, E.tracks[0], E.legs[0].tb, 'moon') - 250) < 5 && Math.abs(alt(Es, E.tracks[0], E.legs[1].tb, 'earth') - 60) < 5, 'free return: 250 km perilune, 60 km perigee');
+  assert.ok(Math.abs(alt(Es, E.tracks[0], E.legs[0].tb, 'moon') - 250) < 1 && Math.abs(alt(Es, E.tracks[0], E.legs[1].tb, 'earth') - 60) < 1, 'free return: 250 km perilune, 60 km perigee');
   assert.ok(Math.abs(E.legs[1].brk.rho / 1e3 - Es.R[0] / 1e3 - 185) < 0.01 && E.legs[0].brk.body === 'moon', 'breaks: lunar orbit at the perilune, the 185 km parking orbit');
   // Mars: eight contiguous slices to the periareion, looking back for four; a 300 km orbit after the last
   const Ma = FLIGHT_DATA.mars, Ms = F.fpSystem(Ma.tracks[0].keys);
   assert.ok(!Ma.loop && Ma.legs.length === 8 && Ma.legs.every((l, k) => (k ? l.ta === Ma.legs[k - 1].tb : l.ta === 0) && l.look === (k < 4 ? 'earth' : 'mars') && !!l.brk.cruise === k < 7));
-  assert.ok(Math.abs(alt(Ms, Ma.tracks[0], Ma.legs[7].tb, 'mars') - 300) < 5 && Math.abs(Ma.legs[7].brk.rho / 1e3 - Ms.R[1] / 1e3 - 300) < 5, 'Mars: 300 km');
+  assert.ok(Math.abs(alt(Ms, Ma.tracks[0], Ma.legs[7].tb, 'mars') - 300) < 1 && Math.abs(Ma.legs[7].brk.rho / 1e3 - Ms.R[1] / 1e3 - 300) < 1, 'Mars: 300 km');
   // the tours: closed loops, dates in order, each arrival at the tour altitude
   for (const id of ['saturn', 'jupiter']) {
     const D = FLIGHT_DATA[id], tour = F.FLIGHT_PLANS[id].tour;
