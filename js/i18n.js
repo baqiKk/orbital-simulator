@@ -11,6 +11,8 @@ const I18N = {
 
     // ---- static page (index.html, via data-i18n* attributes) ----
     'ui.title': 'Yörünge Transfer Simülatörü',
+    'ui.cabin': 'Kabin · camın ardında uzay, radyo',
+    'ui.betaTag': 'beta',
     'ui.rail': 'Pencereler',
     'ui.scenario': 'Senaryo',
     'ui.addBody': '+ Cisim ekle',
@@ -383,6 +385,7 @@ const I18N = {
     'wc.aria': 'Hoş geldin',
     'wc.text': 'Gerçek gezegen konumlarıyla yörünge transferlerini ve yörünge manevralarını hesaplayıp canlandıran bir simülatör.',
     'wc.pick': 'Bir görev seç',
+    'wc.cabin': 'Kabine geç',
     'wc.sceneAria': 'Manzara',
     'wc.saturn': 'Satürn',
     'wc.earth': 'Dünya–Ay',

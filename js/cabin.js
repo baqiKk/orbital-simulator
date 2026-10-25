@@ -509,6 +509,9 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   buildArt(); buildHits(); initLife();
   box($('#kLed'), PHONES_LED[0] - PHONES_LED[2], PHONES_LED[1] - PHONES_LED[2], 2 * PHONES_LED[2], 2 * PHONES_LED[2]);
   audSync(); audChip();
+  // the simulator's view comes along (?manzara=saturn|earth) and becomes the saved choice
+  const from = new URLSearchParams(location.search).get('manzara');
+  if (SCENES[from]) writePref(LS, PREF_KEYS.cabScene, from);
   const sc = readPref(LS, PREF_KEYS.cabScene); if (SCENES[sc]) SP.scene = sc;
   for (const b of document.querySelectorAll('#kScene button')) b.setAttribute('aria-pressed', String(b.dataset.scene === SP.scene));
   setLamp(readPref(LS, PREF_KEYS.cabLamp) !== '0', false);
@@ -518,6 +521,12 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   loopStart();
 });
 $('#kGo').addEventListener('click', () => go(view === 'desk' ? 'window' : 'desk'));
+// back to the simulator: through history when we came from it (the browser may hand the page back exactly as it was),
+// else a plain link (the simulator then restores the state it left in sessionStorage)
+$('#kBack').addEventListener('click', e => {
+  let ref = null; try { ref = new URL(document.referrer); } catch (err) { /* none */ }
+  if (ref && ref.origin === location.origin && /\/(index\.html)?$/.test(ref.pathname) && history.length > 1) { e.preventDefault(); history.back(); }
+});
 $('#kLamp').addEventListener('click', () => setLamp($('#kRoot').classList.contains('lamp-off')));
 addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!$('#kAudio').hidden) audPanel(false); else go('desk'); });
 for (const b of document.querySelectorAll('#kScene button')) b.addEventListener('click', () => {

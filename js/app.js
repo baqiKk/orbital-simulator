@@ -3280,6 +3280,31 @@ $('#perfGo').addEventListener('click', () => setMode(MODE === '3d' ? 'normal' : 
 $('#perfX').addEventListener('click', () => { $('#perfTip').hidden = true; });
 
 // ===================== Init =====================
+// ===================== The cabin (kabin.html) =====================
+// The rail's cabin button and the welcome card's "go to the cabin" take the window's view along (the opening scene's
+// Saturn / Earth–Moon) and leave the simulator's state for the way back. Back through the browser's back-forward cache
+// the page simply carries on; reloaded, it restores this snapshot (session only, read once).
+const SNAP_KEYS = ['kind', 'scenario', 'model', 'bodies', 'M', 'frame', 'follow', 'soi', 'tracks', 'focus', 'speed', 'rate', 'playing', 'u', 'ext', 'loop'];
+function toCabin(e) {
+  e.preventDefault();
+  const snap = { at: Date.now(), scene: SCENE.on ? SCENE.kind : '', map: MAP.on, K: KSAVE, S: Object.fromEntries(SNAP_KEYS.map(k => [k, S[k]])) };
+  writePref(SS, PREF_KEYS.simSnap, JSON.stringify(snap));
+  location.href = 'kabin.html?manzara=' + SCENE.kind;
+}
+for (const id of ['#railCabin', '#wcCabin']) $(id).addEventListener('click', toCabin);
+addEventListener('pageshow', e => { if (e.persisted) clearPref(SS, PREF_KEYS.simSnap); }); // back from the cache: nothing to restore
+function snapRestore(o) {
+  Object.assign(S, o.S); if (reduceMotion) S.playing = false;
+  if (o.K) { KSAVE.transfer = o.K.transfer; KSAVE.man = o.K.man; }
+  const u = S.u, ext = S.ext;
+  $('#scenario').value = S.scenario;
+  $('#scNote').textContent = _(S.scenario ? 'sc.' + S.scenario + '.note' : 'sc.custom.note');
+  openRows.clear(); ovReveal(); MAP.needFit = true;
+  syncKind(); syncModel(); renderBodies(); syncMission(); renderFrameSeg();
+  rebuild({ fit: true });
+  S.u = u; S.ext = ext; setPlayIcon();
+}
+
 applyI18n();
 // scenarios grouped by model; the hidden empty option stands for a setup changed by switching the model
 const scGroup = (m, key) => `<optgroup label="${esc(_(key))}">${SCENARIOS.filter(s => s.model === m).map(s => `<option value="${s.id}">${esc(_('sc.' + s.id + '.name'))}</option>`).join('')}</optgroup>`;
@@ -3291,11 +3316,17 @@ SCENE.wait = start.ask; // nothing is drawn or fetched before the first-run answ
 bind3d();
 setMode(start.mode === '3d' ? 'normal' : start.mode, false);
 if (start.mode === '3d') setMode('3d', false); // normal 2D until Three.js has loaded
-loadScenario('em_free');
+const SNAP = parseSimSnap(readPref(SS, PREF_KEYS.simSnap), Date.now()), SNAP_MISSION = SNAP && !SNAP.scene;
+clearPref(SS, PREF_KEYS.simSnap);
+let snapOk = false;
+if (SNAP_MISSION) try { snapRestore(SNAP); snapOk = true; } catch (e) { /* a broken snapshot: start fresh */ }
+if (!snapOk) loadScenario('em_free');
 setPlayIcon();
 syncMapUI();
 setSeg('#pcMetric', PC.metric);
 for (const id of WIN_IDS) applyWin(id);
-if (start.ask) { sceneAside(); askMode(); } else sceneStart();
+if (start.ask) { sceneAside(); askMode(); }
+else if (snapOk) { if (SNAP.map) setMap(true); } // back from the cabin: the mission as it was left
+else { sceneStart(); if (SNAP && SNAP.scene) sceneSet(SNAP.scene); }
 if (location.hash === '#kaynakca') setWin('credits', { open: true, collapsed: false }); // the cabin's sound panel links here
 requestAnimationFrame(t => { last = t; draw(t); });

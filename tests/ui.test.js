@@ -411,4 +411,24 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(P.PREF_KEYS.cabAudio, 'saved under a pref key');
 }
 
+// 16) Simulator ↔ cabin: the rail and the welcome card link to the cabin (a beta badge on the rail); the view goes along
+// as ?manzara=; the snapshot for the way back is read only when fresh and well formed; kabin.html stays noindex and
+// out of the sitemap until Phase 10.
+{
+  assert.ok(/<a class="rail-btn rail-cabin" href="kabin\.html" id="railCabin"[^>]*>[\s\S]*?<span class="rail-beta" data-i18n="ui\.betaTag"><\/span><\/a>/.test(html), 'rail: cabin link with a beta badge');
+  assert.ok(/<a class="btn sm" href="kabin\.html" id="wcCabin" data-i18n="wc\.cabin"><\/a>/.test(html), 'welcome card: go to the cabin');
+  assert.ok(/'kabin\.html\?manzara=' \+ SCENE\.kind/.test(app) && /get\('manzara'\)/.test(read('js/cabin.js')), 'the view goes along');
+  const now = 1e12, ok = { at: now - 1000, scene: '', map: false, S: { kind: 'transfer', bodies: [], M: {} } };
+  assert.deepStrictEqual(P.parseSimSnap(JSON.stringify(ok), now), ok, 'a fresh snapshot is read');
+  assert.strictEqual(P.parseSimSnap(JSON.stringify({ ...ok, at: now - P.SNAP_MAX_MS - 1 }), now), null, 'stale');
+  assert.strictEqual(P.parseSimSnap(JSON.stringify({ ...ok, scene: 'mars' }), now), null, 'unknown view');
+  assert.strictEqual(P.parseSimSnap(JSON.stringify({ ...ok, S: { kind: 'x', bodies: [], M: {} } }), now), null, 'unknown kind');
+  assert.strictEqual(P.parseSimSnap('{', now), null); assert.strictEqual(P.parseSimSnap(null, now), null);
+  // a key written twice silently keeps only the last value (the β label once shadowed the cabin's badge)
+  const seen = new Set(), dup = [];
+  for (const m of read('js/i18n.js').matchAll(/^ {4}'([^']+)':/gm)) { if (seen.has(m[1])) dup.push(m[1]); seen.add(m[1]); }
+  assert.deepStrictEqual(dup, [], 'dictionary keys written twice');
+  assert.ok(/<meta name="robots" content="noindex">/.test(read('kabin.html')) && !/kabin/.test(read('sitemap.xml')), 'kabin.html: noindex, not in the sitemap (until Phase 10)');
+}
+
 console.log('OK — all UI tests passed');

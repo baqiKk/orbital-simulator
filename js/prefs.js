@@ -1,7 +1,7 @@
 // Persisted UI preferences: view mode and window layout.
 // DOM-free: the storage object is passed in (localStorage, sessionStorage, a stub or null), so Node tests can run it.
 // Every storage access is wrapped: private windows, blocked site data and quota errors must never break the page.
-const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1' };
+const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1' };
 const VIEW_MODES = ['low', 'normal', '3d'];
 // placement order: overview's default spot sits under Results, so it comes after it
 const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'gloss', 'model', 'credits'];
@@ -145,5 +145,14 @@ function parseCabAudio(raw) {
   out.noise.type = CAB_NOISE.includes(o.noise && o.noise.type) ? o.noise.type : CAB_AUDIO.noise.type;
   return out;
 }
+// The simulator's state left for the way back from the cabin (sessionStorage, read once): null unless it is a fresh
+// (12 h), well-formed snapshot. scene: the opening scene's view when it was on ('' otherwise).
+const SNAP_MAX_MS = 12 * 3600 * 1000;
+function parseSimSnap(raw, now) {
+  let o = null; try { o = JSON.parse(raw); } catch (e) { return null; }
+  if (!o || typeof o !== 'object' || !(now - o.at >= 0 && now - o.at < SNAP_MAX_MS)) return null;
+  if (!['', 'saturn', 'earth'].includes(o.scene) || !o.S || typeof o.S !== 'object' || !['transfer', 'man'].includes(o.S.kind) || !Array.isArray(o.S.bodies) || !o.S.M || typeof o.S.M !== 'object') return null;
+  return o;
+}
 
-if (typeof module !== 'undefined') module.exports = { CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
