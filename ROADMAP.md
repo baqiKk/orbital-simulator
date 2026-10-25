@@ -186,7 +186,8 @@ Genel ilkeler:
 - Masa görünümü ve cam görünümü; "Cama git" düğmesiyle yumuşak bir kamera animasyonuyla cam mekâna geçiş ve geri dönüş.
 - Masadaki nesneler etkileşimli: saat → pomodoro, tablet → simülatör, defter → notlar ve bilgiler.
 - Önce görsel tasarım taslağı hazırlanıp onaylanacak, çizimler ona göre yapılacak.
-  - Taslak hazır (`kabin-taslak.html`), kullanıcı onayı bekliyor. Kararlar: sıcak retro-fütüristik, ahşap ve kumaş; masa önde, cam arkada, aynı mekân; özgün SVG/CSS (taslaktan sonra gerekirse illüstratör ya da CC0 low-poly 3B ayrıca konuşulacak); ince belli çay bardağı ve kulaklık (ileride ses ayarları); `--cab-*` renk token'ları onaylı.
+  - İlk taslak (masa önde, cam arkada, retro-fütüristik) yapıldı. Kararlar: sıcak retro-fütüristik, ahşap ve kumaş; özgün SVG/CSS (gerekirse illüstratör ya da CC0 low-poly 3B ayrıca konuşulacak); ince belli çay bardağı ve kulaklık (ileride ses ayarları); `--cab-*` renk token'ları onaylı.
+  - İkinci yön hazır (`kabin-taslak.html`), kullanıcı onayı bekliyor: lo-fi çalışma odası havası (yalnızca hava ve kompozisyon referansı; hiçbir eser, karakter ya da marka kopyalanmaz), karakter yok, kamera camın tam karşısında; tepeden vuran lamba ve camdan soğuk ışık; dağınık masa (çaydanlık ve çay, dizüstü gibi kenarda tablet, masada kulaklık, saksılar, defter, kalemler, el yazısı roket denklemli kart); akvaryum; beyaz Van kedisi; afiş için iki seçenek (NASA Earthrise fotoğrafı / sitenin serbest dönüş yörüngesiyle özgün afiş) — seçim kullanıcıda. Bu tur yalnızca yerleşim, ışık ve renk; nesnelerin ince ayrıntıları sonra.
 
 ## Faz 10 — Pomodoro ve uçuş planı
 - Pomodoro: hazır düzenler (25/5, 50/10, 15/5 ve özel), uzun mola, oturum sayacı; süre bitince yumuşak bir zil ve isteğe bağlı tarayıcı bildirimi. Günlük istatistik localStorage'da.
@@ -213,6 +214,9 @@ Genel ilkeler:
 ## Faz 14 — Manzara presetleri
 - Hazır manzaralar: Satürn ve halkaları, Jüpiter ve Galile uyduları, Ay yörüngesinden Dünya doğuşu, Mars yakın plan, Samanyolu bakışı vb.
 - Ekran koruyucu modu: manzaralar arasında yavaş geçiş, arayüz gizli.
+
+## Faz 15 — Benimle çalış
+- Benimle çalış (work with me) sekmesi: kameranın geri çekilip masada ders çalışan özgün bir karakterin görüldüğü, lo-fi çalışma videolarına benzer bir görünüme geçiş. Karakter özgün olacak, mevcut bir eser ya da markaya benzemeyecek; büyük ihtimalle illüstratör çizimi gerekecek.
 
 ## Notlar
 - Hibrit OTV hazır aracı: itki, Isp, kütle ve tek ateşleme süresini birlikte veren yayımlanmış birincil bir kaynak bulununca eklenecek. Yayımlanmamış şirket verileri kullanılmayacak.

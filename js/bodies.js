@@ -289,6 +289,17 @@ const DATA_SRC = {
   three: 'https://threejs.org/',
   usage: 'https://www.nasa.gov/nasa-brand-center/images-and-media/',
 };
+// The cabin (kabin-taslak.html, Phase 9 draft): its only image and its handwriting font (credits: i18n cred.cabin.<id>).
+// earthrise: NASA AS08-14-2383 "Earthrise" (Apollo 8, 24 Dec 1968, W. Anders), public domain; NASA Image and Video
+//   Library file as08-14-2383~medium.jpg (1280×1280), copied unchanged to img/cabin/earthrise.jpg
+//   (SHA-1 9a341faf173a13e7651a31119b7f693e0fc5033c); the poster only crops it on screen.
+// font: Playpen Sans (TypeTogether et al., 2023), SIL Open Font License 1.1, loaded from Google Fonts; it has the Greek
+//   letters the rocket equations need.
+const CABIN_SRC = {
+  earthrise: 'https://images.nasa.gov/details/as08-14-2383',
+  font: 'https://fonts.google.com/specimen/Playpen+Sans',
+  ofl: 'https://openfontlicense.org',
+};
 
 // AMAT [h_low, h_skip] as altitudes above this app's radius (km), or null without atmosphere data.
 function atmAltitudes(key) {

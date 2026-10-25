@@ -3051,6 +3051,9 @@ function renderCredits() {
     <label class="chk"><input type="checkbox" id="earthClouds"${TEXOPT.clouds ? ' checked' : ''}><span>${esc(_('cred.clouds'))}</span></label>
     <h3>${esc(_('cred.h.veh'))}</h3>
     <ul>${VEHICLES.map(v => `<li><b>${esc(_('veh.' + v.id))}</b> — ${esc(_('cred.veh.' + v.id))} ${v.src.map(s => link(VEH_SRC[s], _('cred.vsrc.' + s))).join(' · ')}</li>`).join('')}</ul>
+    <h3>${esc(_('cred.h.cabin'))}</h3>
+    <ul><li>${link(CABIN_SRC.earthrise, _('cred.cabin.earthrise'))} — ${esc(_('cred.cabin.earthriseNote'))}</li>
+      <li>${link(CABIN_SRC.font, _('cred.cabin.font'))} — ${esc(_('cred.cabin.fontNote'))} ${link(CABIN_SRC.ofl, _('cred.cabin.ofl'))}</li></ul>
     <h3>${esc(_('cred.h.lic'))}</h3>
     <ul>${[...used].map(s => `<li><b>${esc(_('cred.src.' + s))}</b>: ${esc(_('cred.lic.' + s))}</li>`).join('')}</ul>
     <p>${esc(_('cred.disclaimer'))}</p>`;
