@@ -532,4 +532,17 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/id="kPomoDay"/.test(read('kabin.html')) && /LAP\.today\.textContent = /.test(cab) && /pomoStatsAdd\(st, ev\)\) writePref\(LS, PREF_KEYS\.pomoStats/.test(cab), 'daily statistics: saved, in the panel and on the laptop');
 }
 
+// 18) Phase 10 flight plans: every plan has its name and the HUD text of every leg; the break label names its body
+{
+  const F = require('../js/flightplans.js'), { FLIGHT_DATA } = require('../js/flightdata.js');
+  for (const id of F.FP_IDS) {
+    const D = FLIGHT_DATA[id]; assert.ok(D && has('fp.name.' + id), 'plan name: ' + id);
+    D.legs.forEach((leg, j) => {
+      const w = F.fpLabel(id, D, { leg: j, mode: 'work', u: 0.5 }); assert.ok(has(w.key), `${id}: ${w.key}`);
+      const b = F.fpLabel(id, D, leg.brk.cruise ? { leg: j, mode: 'cruise' } : { leg: j, mode: 'orbit' }); assert.ok(has(b.key) && (!b.p.b || has('body.' + b.p.b)), `${id}: break ${b.key}`);
+    });
+  }
+  for (const k of ['fp.plan', 'fp.name.none', 'fp.restart', 'fp.note', 'fp.mars.done']) assert.ok(has(k), k);
+}
+
 console.log('OK — all UI tests passed');

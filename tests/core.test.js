@@ -834,3 +834,110 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   }
   console.log('vehicle planner and single firing ok');
 }
+
+// ===== Phase 10 flight plans (js/flightplans.js, js/flightdata.js) =====
+// Every track is simulate() output: flown again from its stored mission, the stored points come back (1 m, 1 mm/s).
+// Interpolation reproduces every integrator point within 3·10⁻⁵ of the distance to the nearest body (+ 5 m). The legs: the
+// free return out to a 250 km perilune and back to a 60 km perigee; Mars in eight contiguous slices to a 300 km
+// periareion; the moon tours closed, each leg leaving after the last arrival and reaching its tour altitude. Break
+// orbits start where the leg ends and close after a period; the timer maps onto the legs as the plan says.
+{
+  const F = require('../js/flightplans.js'), { FLIGHT_DATA } = require('../js/flightdata.js'), T = require('../js/pomodoro.js');
+  const OPTS = { tol: 1e-10, hmaxDiv: 500, maxSteps: 120000 }, MIN = 60000;
+  assert.deepStrictEqual(Object.keys(FLIGHT_DATA), F.FP_IDS, 'data for every plan');
+  const alt = (sys, tr, t, k) => { const P = new Float64Array(3 * sys.N), V = new Float64Array(3 * sys.N); C.states(sys, tr.M.t0 * DAY + t, P, V); const y = F.fpTrack(tr, t), i = tr.keys.indexOf(k); return (Math.hypot(y[0] - P[3 * i], y[1] - P[3 * i + 1], y[2] - P[3 * i + 2]) - sys.R[i]) / 1e3; };
+  for (const [id, D] of Object.entries(FLIGHT_DATA)) {
+    for (const tr of D.tracks) {
+      const sys = F.fpSystem(tr.keys), sim = C.simulate(sys, tr.M, OPTS), P = new Float64Array(3 * sys.N), V = new Float64Array(3 * sys.N), y = new Array(6);
+      let k = 0, worst = 0;
+      for (let i = 0; i < tr.t.length; i++) {
+        while (k < sim.t.length && Math.abs(sim.t[k] - tr.t[i]) > 1e-3) k++;
+        assert.ok(k < sim.t.length, `${id}: point ${i} is an integrator point`);
+        const q = [sim.x[k], sim.y[k], sim.z[k], sim.vx[k], sim.vy[k], sim.vz[k]];
+        for (let j = 0; j < 6; j++) assert.ok(Math.abs(q[j] - tr.y[6 * i + j]) < (j < 3 ? 2 : 1e-3), `${id}: point ${i} as simulated`);
+      }
+      // interpolation against every integrator point of the track
+      for (let i = 0; i < sim.t.length && sim.t[i] <= tr.t[tr.t.length - 1]; i++) {
+        C.states(sys, tr.M.t0 * DAY + sim.t[i], P, V); F.fpTrack(tr, sim.t[i], y);
+        let d = Infinity; for (let b = 0; b < sys.N; b++) d = Math.min(d, Math.hypot(sim.x[i] - P[3 * b], sim.y[i] - P[3 * b + 1], sim.z[i] - P[3 * b + 2]));
+        const e = Math.hypot(y[0] - sim.x[i], y[1] - sim.y[i], y[2] - sim.z[i]);
+        if (i === 0 || sim.t[i] !== sim.t[i - 1]) worst = Math.max(worst, e / (3e-5 * d + 5)); // the thinning tolerance and the rounding
+      }
+      assert.ok(worst <= 1, `${id}: Hermite within tolerance (${worst.toFixed(2)})`);
+    }
+    // break orbits: start at the leg's end, period, closed
+    for (const leg of D.legs) {
+      if (leg.brk.cruise) continue;
+      const tr = D.tracks[leg.tr], sys = F.fpSystem(tr.keys), i = tr.keys.indexOf(leg.brk.body);
+      assert.ok(Math.abs(leg.brk.P - 2 * Math.PI * Math.sqrt(leg.brk.rho ** 3 / sys.mu[i])) < 1e-2, `${id}: break orbit period`);
+      const a0 = F.fpAt(D, { leg: D.legs.indexOf(leg), mode: 'orbit', tau: 0 }), a1 = F.fpAt(D, { leg: D.legs.indexOf(leg), mode: 'orbit', tau: leg.brk.P });
+      const P = new Float64Array(3 * sys.N), V = new Float64Array(3 * sys.N); C.states(sys, tr.M.t0 * DAY + leg.tb + leg.brk.P, P, V);
+      const r1 = [0, 1, 2].map(j => a1.y[j] - P[3 * i + j]), v1 = [0, 1, 2].map(j => a1.y[3 + j] - V[3 * i + j]);
+      assert.ok(Math.abs(Math.hypot(...r1) - leg.brk.rho) < 1 && Math.abs(Math.hypot(...v1) - Math.sqrt(sys.mu[i] / leg.brk.rho)) < 1e-6 * Math.sqrt(sys.mu[i] / leg.brk.rho), `${id}: circular`);
+      if (!(id === 'em' && leg.brk.body === 'earth')) { const e = F.fpTrack(tr, leg.tb); assert.ok(Math.hypot(a0.y[0] - e[0], a0.y[1] - e[1], a0.y[2] - e[2]) < 3e-5 * leg.brk.rho + 2, `${id}: the break orbit starts where the leg ends`); }
+    }
+  }
+  // the free return: out to the perilune, back to the return perigee, one track, contiguous
+  const E = FLIGHT_DATA.em, Es = F.fpSystem(E.tracks[0].keys);
+  assert.ok(E.loop && E.legs.length === 2 && E.legs[0].ta === 0 && E.legs[1].ta === E.legs[0].tb && E.legs[0].look === 'moon' && E.legs[1].look === 'earth');
+  assert.ok(Math.abs(alt(Es, E.tracks[0], E.legs[0].tb, 'moon') - 250) < 5 && Math.abs(alt(Es, E.tracks[0], E.legs[1].tb, 'earth') - 60) < 5, 'free return: 250 km perilune, 60 km perigee');
+  assert.ok(Math.abs(E.legs[1].brk.rho / 1e3 - Es.R[0] / 1e3 - 185) < 0.01 && E.legs[0].brk.body === 'moon', 'breaks: lunar orbit at the perilune, the 185 km parking orbit');
+  // Mars: eight contiguous slices to the periareion, looking back for four; a 300 km orbit after the last
+  const Ma = FLIGHT_DATA.mars, Ms = F.fpSystem(Ma.tracks[0].keys);
+  assert.ok(!Ma.loop && Ma.legs.length === 8 && Ma.legs.every((l, k) => (k ? l.ta === Ma.legs[k - 1].tb : l.ta === 0) && l.look === (k < 4 ? 'earth' : 'mars') && !!l.brk.cruise === k < 7));
+  assert.ok(Math.abs(alt(Ms, Ma.tracks[0], Ma.legs[7].tb, 'mars') - 300) < 5 && Math.abs(Ma.legs[7].brk.rho / 1e3 - Ms.R[1] / 1e3 - 300) < 5, 'Mars: 300 km');
+  // the tours: closed loops, dates in order, each arrival at the tour altitude
+  for (const id of ['saturn', 'jupiter']) {
+    const D = FLIGHT_DATA[id], tour = F.FLIGHT_PLANS[id].tour;
+    D.tracks.forEach((tr, k) => {
+      assert.deepStrictEqual(tr.keys, [tour[k][0], tour[(k + 1) % tour.length][0], F.FLIGHT_PLANS[id].parent], `${id}: leg ${k} bodies`);
+      assert.ok(tr.M.h0 === tour[k][1] && tr.M.hB === tour[(k + 1) % tour.length][1], `${id}: leg ${k} leaves and reaches the tour orbits`);
+      assert.ok(Math.abs(alt(F.fpSystem(tr.keys), tr, D.legs[k].tb, tr.keys[1]) - tr.M.hB) < 1, `${id}: leg ${k} periapsis at ${tr.M.hB} km`);
+      if (k) assert.ok(tr.M.t0 * DAY >= D.tracks[k - 1].M.t0 * DAY + D.legs[k - 1].tb, `${id}: leg ${k} leaves after the last arrival`);
+      assert.strictEqual(D.legs[k].brk.body, tr.keys[1]);
+    });
+    assert.ok(D.loop && D.tracks[0].M.t0 >= C.utcToDays(F.FLIGHT_PLANS[id].from), `${id}: from the plan's date`);
+  }
+  // the timer -> the flight (25/5, long break 15 every 4)
+  const t0 = Date.UTC(2026, 9, 25, 8), s = T.pomoNew('p25'), where = now => F.fpWhere(E, s, T.pomoView(s, now), now);
+  assert.strictEqual(where(t0), null, 'idle: no flight');
+  T.pomoStart(s, t0);
+  let w = where(t0); assert.ok(w.mode === 'work' && w.leg === 0 && F.fpAt(E, w).t === 0, 'the first session leaves Earth');
+  let last = -1;
+  for (let m = 0; m < 25; m += 0.5) { const a = F.fpAt(E, where(t0 + m * MIN)); assert.ok(a.t > last); last = a.t; }
+  assert.ok(Math.abs(F.fpAt(E, where(t0 + 12.5 * MIN)).t - E.legs[0].tb / 2) < 1, 'linear in the session');
+  T.pomoPause(s, t0 + 10 * MIN); const tp = F.fpAt(E, where(t0 + 10 * MIN)).t;
+  assert.strictEqual(F.fpAt(E, where(t0 + 40 * MIN)).t, tp, 'paused: the craft stops');
+  T.pomoStart(s, t0 + 40 * MIN);
+  T.pomoAdvance(s, t0 + 55 * MIN); w = where(t0 + 55 * MIN);
+  assert.ok(w.mode === 'orbit' && w.leg === 0 && w.tau === 0 && F.fpAt(E, w).around === 'moon', 'the break begins in lunar orbit');
+  w = where(t0 + 57.5 * MIN); assert.ok(Math.abs(w.tau - E.legs[0].brk.P / 2) < 1e-6, 'one turn per short break');
+  T.pomoAdvance(s, t0 + 61 * MIN); w = where(t0 + 61 * MIN);
+  assert.ok(s.phase === 'wait' && w.mode === 'orbit' && Math.abs(w.tau - 1.2 * E.legs[0].brk.P) < 1e-6, 'waiting: the orbit goes on');
+  T.pomoStart(s, t0 + 61 * MIN); w = where(t0 + 61 * MIN);
+  assert.ok(w.mode === 'work' && w.leg === 1 && F.fpAt(E, w).t === E.legs[1].ta && F.fpAt(E, w).look === 'earth', 'the second session flies home');
+  s.n = 3; T.pomoAdvance(s, t0 + 86 * MIN); w = where(t0 + 86 * MIN + 7.5 * MIN);
+  assert.ok(s.phase === 'long' && w.leg === 1 && F.fpAt(E, w).around === 'earth' && Math.abs(w.tau - 1.5 * E.legs[1].brk.P) < 1e-6, 'the long break: three turns of the parking orbit');
+  s.flight = 4; s.phase = 'work'; s.t0 = t0; s.paused = 0;
+  assert.strictEqual(F.fpWhere(E, s, T.pomoView(s, t0), t0).leg, 0, 'round and round');
+  // Mars: the cruise breaks roll, the fourth turns the view, the ninth session is in Mars orbit for good
+  const m = T.pomoNew('p25'), mw = now => F.fpWhere(Ma, m, T.pomoView(m, now), now);
+  m.flight = 3; T.pomoStart(m, t0); T.pomoAdvance(m, t0 + 25 * MIN);
+  let a = F.fpAt(Ma, mw(t0 + 27.5 * MIN));
+  assert.ok(a.look === 'earth' && a.look2 === 'mars' && Math.abs(a.mix - 0.5) < 1e-9 && a.t === Ma.legs[3].tb && Math.abs(a.roll - 2 * Math.PI * 2.5 / 20) < 1e-9, 'the fourth break turns from Earth to Mars, rolling');
+  m.flight = 2; a = F.fpAt(Ma, mw(t0 + 27.5 * MIN)); assert.ok(a.mix === 0 && a.look === 'earth', 'other cruise breaks keep their view');
+  m.flight = 8; a = F.fpAt(Ma, mw(t0 + 27.5 * MIN)); assert.strictEqual(a.around, 'mars', 'after the last slice: Mars orbit');
+  m.flight = 9; assert.strictEqual(mw(t0 + 27.5 * MIN).mode, 'done');
+  m.phase = 'work'; m.t0 = t0; assert.strictEqual(mw(t0 + MIN).mode, 'done', 'a finished plan stays in orbit');
+  const lb = F.fpLabel('mars', Ma, { leg: 2, mode: 'work', u: 0.5 });
+  assert.ok(lb.key === 'fp.mars.go' && lb.p.d === Math.floor((Ma.legs[2].ta + Ma.legs[2].tb) / 2 / DAY) && lb.p.n === Math.round(Ma.legs[7].tb / DAY), 'Mars: day of the cruise');
+  // the bodies to draw: the system, extras about their anchors, the Sun's direction
+  const bm = F.fpBodies(Ma, F.fpAt(Ma, { leg: 0, mode: 'work', u: 0.5 })), pe = bm.list.find(b => b.key === 'earth').p, pm = bm.list.find(b => b.key === 'moon').p;
+  assert.ok(Math.abs(Math.hypot(pe[0] - pm[0], pe[1] - pm[1], pe[2] - pm[2]) / 1e6 - 384) < 30 && Math.abs(Math.hypot(...bm.sun) - 1) < 1e-12, 'Mars: the Moon beside the Earth');
+  const bs = F.fpBodies(FLIGHT_DATA.saturn, F.fpAt(FLIGHT_DATA.saturn, { leg: 0, mode: 'work', u: 0.3 }));
+  assert.deepStrictEqual(bs.list.map(b => b.key).sort(), ['dione', 'enceladus', 'iapetus', 'mimas', 'rhea', 'saturn', 'tethys', 'titan'], 'Saturn: every moon once');
+  const ps = bs.list.find(b => b.key === 'saturn').p, pt = bs.list.find(b => b.key === 'tethys').p;
+  assert.ok(Math.abs(Math.hypot(ps[0] - pt[0], ps[1] - pt[1], ps[2] - pt[2]) / 1e6 - 295) < 3, 'Tethys at its distance');
+  assert.ok(bs.sun.every(Number.isFinite) && Math.abs(Math.hypot(...bs.sun) - 1) < 1e-12, 'the Sun from outside the system');
+  console.log('flight plans ok');
+}
