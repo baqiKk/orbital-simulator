@@ -423,8 +423,8 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 }
 
 // 16) Simulator ↔ cabin: the rail and the welcome card link to the cabin (a beta badge on the rail); the view goes along
-// as ?manzara=; the snapshot for the way back is read only when fresh and well formed; kabin.html stays noindex and
-// out of the sitemap until Phase 10.
+// as ?manzara=; the snapshot for the way back is read only when fresh and well formed; since Phase 10 kabin.html is
+// indexed, in the sitemap, with its static title, description and link preview.
 {
   assert.ok(/<a class="rail-btn rail-cabin" href="kabin\.html" id="railCabin"[^>]*>[\s\S]*?<span class="rail-beta" data-i18n="ui\.betaTag"><\/span><\/a>/.test(html), 'rail: cabin link with a beta badge');
   assert.ok(/<a class="btn sm" href="kabin\.html" id="wcCabin" data-i18n="wc\.cabin"><\/a>/.test(html), 'welcome card: go to the cabin');
@@ -439,7 +439,13 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const seen = new Set(), dup = [];
   for (const m of read('js/i18n.js').matchAll(/^ {4}'([^']+)':/gm)) { if (seen.has(m[1])) dup.push(m[1]); seen.add(m[1]); }
   assert.deepStrictEqual(dup, [], 'dictionary keys written twice');
-  assert.ok(/<meta name="robots" content="noindex">/.test(read('kabin.html')) && !/kabin/.test(read('sitemap.xml')), 'kabin.html: noindex, not in the sitemap (until Phase 10)');
+  // Phase 10 done: the cabin is public, in the sitemap, with its own static title, description and link preview
+  const kp = read('kabin.html');
+  assert.ok(!/noindex/.test(kp) && /<loc>https:\/\/baqikk\.github\.io\/orbital-simulator\/kabin\.html<\/loc>/.test(read('sitemap.xml')), 'kabin.html: indexed, in the sitemap');
+  assert.ok(kp.includes(`<meta property="og:title" data-i18n-content="kabin.title" content="${DICT['kabin.title']}">`) && kp.includes(`<meta property="og:description" data-i18n-content="kabin.description" content="${DICT['kabin.description']}">`)
+    && /<link rel="canonical" href="https:\/\/baqikk\.github\.io\/orbital-simulator\/kabin\.html">/.test(kp), 'kabin.html: link preview and canonical URL');
+  assert.ok(/document\.title = _\('kabin\.title'\);/.test(read('js/cabin.js')), 'the page title from the cabin keys');
+  assert.ok(/data-i18n="ui\.model9"/.test(html) && has('ui.model9'), 'the Model window names the illustrative break orbits');
 }
 
 // 17) Phase 10 pomodoro (js/pomodoro.js, a fake clock): wall-clock durations to the millisecond, pause and resume, a
