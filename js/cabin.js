@@ -367,11 +367,175 @@ function compose() {
 const pending = () => { const now = performance.now(); for (const e of TEXC.values()) if (!e.err && (!e.ok || now - e.t < TEX_FADE + 100)) return true; return false; };
 function spaceTick() {
   SP.timer = 0;
+  if (FV.on) return; // the flight has the glass
   if (!SP.sky) { if (LOWQ) SP.sky = plainSky(); else { const sk = skyReady(true, false); if (sk) SP.sky = buildSky(sk); } }
   compose();
   SP.timer = setTimeout(spaceTick, !SP.sky || pending() ? 150 : 60000); // the Earth turns a quarter of a degree a minute
 }
 function spaceSoon() { clearTimeout(SP.timer); SP.timer = setTimeout(spaceTick, 0); }
+
+// ---------- the flight behind the glass (Phase 10) ----------
+// While the pomodoro runs a flight plan (js/flightplans.js), the glass shows the view from the craft: at work towards
+// the leg's target, which grows as the craft closes in (true sizes); in a break along the orbit, tipped down towards
+// the body so the surface turns below; in a cruise break slowly rolling. Drawn by the simulator's 3D renderer
+// (js/view3d.js and Three.js, fetched with import() only here and only then): camera at the craft, ecliptic axes, the
+// site's sky and planet images through skyReady / globeLook. A frame is drawn when the picture has moved by about half
+// a pixel (a slow approach: about once every two seconds; an orbit: up to 20 a second), never while hidden. Low-resource
+// mode, no WebGL 2 or reduced motion: no Three.js and no images, the plain sky and shaded discs at their true places and
+// sizes on the 2D canvas, every 5 s (1 s in a break); with reduced motion the break view looks at the body. A new phase
+// (a jump) fades the glass out and in.
+const FV = { on: false, gl: null, fail: false, V3: null, load: null, cv: $('#kSpace3'), keys: '', sky: false, fov: 45, raf: 0, last: 0, drawn: 0, sig: '', cam: null, rpx: -1, fade: 0, plain: null, timer: 0 };
+const FV_L = 1e9;          // m: the 3D camera's target, this far ahead of the craft (the eye is at the craft)
+const FV_TILT = 25 * deg;  // the break view, tipped down from the flight direction
+const vsub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const vdot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const vcross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const vang = (a, b) => 2 * Math.asin(Math.min(1, Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) / 2)); // unit vectors
+function slerp(a, b, t) {
+  const th = vang(a, b);
+  if (th < 1e-6) return a;
+  if (Math.PI - th < 1e-3) { const k = norm(vcross(a, Math.abs(a[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0])), ph = Math.PI * t; return a.map((c, i) => Math.cos(ph) * c + Math.sin(ph) * k[i]); }
+  const s = Math.sin(th), p = Math.sin((1 - t) * th) / s, q = Math.sin(t * th) / s;
+  return norm(a.map((c, i) => p * c + q * b[i]));
+}
+// the 3D path: not low-resource, no reduced motion, WebGL 2 (checked once), the module loaded fine
+function fvGL() {
+  if (FV.gl == null) FV.gl = !LOWQ && (() => { try { const g = document.createElement('canvas').getContext('webgl2'); if (!g) return false; const x = g.getExtension('WEBGL_lose_context'); if (x) x.loseContext(); return true; } catch (e) { return false; } })();
+  return FV.gl && !FV.fail && !RM.matches;
+}
+// the flight now: plan data, where (fpWhere), the craft (fpAt), the bodies (fpBodies); null without a plan or idle
+function fvState(now) {
+  const s = PO.s, D = s && FLIGHT_DATA[s.plan]; if (!D) return null;
+  const w = fpWhere(D, s, pomoView(s, now), now); if (!w) return null;
+  const a = fpAt(D, w);
+  return { D, w, a, b: fpBodies(D, a) };
+}
+// the camera: forward f, right r, up u (unit, ecliptic axes)
+function fvCam(st) {
+  const { a, b } = st, y = a.y, at = k => b.list.find(q => q.key === k);
+  let f, up;
+  if (a.around) {
+    const q = at(a.around), r = norm(vsub(y, q.p)), v = norm(vsub(y.slice(3), q.v));
+    if (RM.matches) { f = r.map(c => -c); up = v; } else { f = norm(v.map((c, i) => Math.cos(FV_TILT) * c - Math.sin(FV_TILT) * r[i])); up = r; }
+  } else {
+    f = norm(vsub(at(a.look).p, y));
+    if (a.mix) f = slerp(f, norm(vsub(at(a.look2).p, y)), a.mix);
+    up = [0, 0, 1];
+  }
+  let r = vcross(f, up); if (Math.hypot(...r) < 1e-6) r = vcross(f, [0, 1, 0]);
+  r = norm(r); up = vcross(r, f);
+  if (a.roll) { const c = Math.cos(a.roll), s = Math.sin(a.roll), r0 = r; r = r0.map((x, i) => c * x + s * up[i]); up = up.map((x, i) => c * x - s * r0[i]); }
+  return { f, r, u: up };
+}
+// one look at the flight: draw it when the picture moved (or force), fading over a jump
+function fvFrame(force) {
+  const now = Date.now(), st = fvState(now);
+  if (!st) { fvStop(); return; }
+  const cam = fvCam(st), t = performance.now(), sig = st.w.leg + st.w.mode + (st.w.mode === 'work' ? '' : st.a.around || st.a.look);
+  if (FV.sig && sig !== FV.sig && !still()) { // a jump: fade out, draw the new view, fade in
+    FV.sig = sig; FV.fade = t + 450; FV.cam = null; fvCanvas().style.opacity = '0'; return;
+  }
+  FV.sig = sig;
+  if (t < FV.fade) return;
+  const lk = st.a.around || st.a.look, q = st.b.list.find(x => x.key === lk), rpx = SP.F * BODIES[lk].radius * 1e3 / Math.hypot(...vsub(q.p, st.a.y));
+  const moved = FV.cam ? SP.F * Math.max(vang(cam.f, FV.cam.f), vang(cam.u, FV.cam.u)) + Math.abs(rpx - FV.rpx) : Infinity;
+  if (!force && moved < 0.4 && t - FV.drawn < (pending() ? 150 : 2000)) return;
+  if (!force && t - FV.drawn < 50) return; // 20 frames a second at most
+  FV.cam = cam; FV.rpx = rpx; FV.drawn = t;
+  if (FV.V3) fvDraw3(st, cam); else fvDraw2(st, cam);
+  if (FV.fade) { FV.fade = 0; fvCanvas().style.opacity = ''; }
+}
+const fvCanvas = () => (FV.V3 ? FV.cv : SP.cv);
+function fvDraw3(st, cam) {
+  const V3 = FV.V3, { a, b } = st, y = a.y, list = b.list, keys = list.map(q => q.key).join(), T = a.tr.M.t0 * DAY + a.t;
+  V3.setActive('sim');
+  if (keys !== FV.keys) { V3.bodies('sim', list.map(q => ({ color: q.key === 'sun' ? '#fff3d6' : BODIES[q.key].color, sun: q.key === 'sun' }))); FV.keys = keys; }
+  if (!FV.sky) { const sk = skyReady(true, false); if (sk) { V3.skySet(sk); FV.sky = true; } }
+  V3.view(y.slice(0, 3).map((c, i) => c + cam.f[i] * FV_L), cam.r, cam.u, cam.f.map(c => -c), FV_L, SP.G[0], SP.G[1], FV.fov);
+  const n = list.length, P = new Float64Array(3 * n), V = new Float64Array(3 * n), occ = [];
+  list.forEach((q, i) => { P.set(q.p, 3 * i); V.set(q.v, 3 * i); });
+  list.forEach((q, i) => {
+    const R = BODIES[q.key].radius * 1e3, d = vsub(q.p, y), dist = Math.hypot(...d);
+    const rpx = vdot(d, cam.f) > -R ? SP.F * R / Math.sqrt(Math.max(dist * dist - R * R, 1)) : 0;
+    const look = q.key === 'sun' ? null : globeLook(q.key, rpx, !LOWQ, !LOWQ, DEV.phone ? 2048 : 4096, FX, T);
+    const o = look ? { look, rot: bodyAxes(q.key, T, P, V, i, list.findIndex(x => x.key === BODIES[q.key].parent), new Array(9)), mix: texMix(look.tex && look.tex.base) } : null;
+    V3.body('sim', i, q.p, R, q.key === 'sun' ? null : norm(vsub(b.sunP, q.p)), true, o);
+    if (q.key !== 'sun') occ.push([d, R, dist]);
+  });
+  V3.render({ stars: true, sky: null, skyGain: 0.6, glare: fvGlare(st, cam, occ) });
+}
+// the Sun's glare: on screen (or just off it) and not behind a body
+function fvGlare(st, cam, occ) {
+  const d = vsub(st.b.sunP, st.a.y), dist = Math.hypot(...d), z = vdot(d, cam.f); if (z <= 0) return null;
+  const x = SP.G[0] + SP.F * vdot(d, cam.r) / z, y = SP.G[1] - SP.F * vdot(d, cam.u) / z, L = glareL(SP.F * BODIES.sun.radius * 1e3 / dist);
+  const out = Math.max(0, -x, x - FV.cv.width / DPR, -y, y - FV.cv.height / DPR);
+  if (out > 4 * L) return null;
+  for (const [p, R, pd] of occ) if (pd < dist && Math.acos(Math.min(1, vdot(p, d) / (pd * dist))) < Math.asin(Math.min(1, R / pd))) return null;
+  return { x, y, L, i: 1 - out / (4 * L) };
+}
+// the 2D path: the plain sky, shaded discs (far ones first)
+function fvDraw2(st, cam) {
+  const g = SP.cv.getContext('2d'), { a, b } = st, y = a.y, cw = SP.cv.width / DPR, ch = SP.cv.height / DPR, voidC = getComputedStyle(document.documentElement).getPropertyValue('--void');
+  if (!FV.plain) FV.plain = plainSky();
+  g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(FV.plain, 0, 0);
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const vis = b.list.filter(q => q.key !== 'sun').map(q => { const d = vsub(q.p, y); return { q, d, dist: Math.hypot(...d) }; }).sort((p, q) => q.dist - p.dist);
+  for (const { q, d, dist } of vis) {
+    const z = vdot(d, cam.f); if (z <= 0) continue;
+    const R = BODIES[q.key].radius * 1e3, x = SP.G[0] + SP.F * vdot(d, cam.r) / z, yy = SP.G[1] - SP.F * vdot(d, cam.u) / z, r = Math.max(0.8, SP.F * R / Math.sqrt(Math.max(dist * dist - R * R, 1)));
+    if (x + r < 0 || x - r > cw || yy + r < 0 || yy - r > ch) continue;
+    // lit from the Sun's side, as bright as the lit part we see (a body against the Sun is a dark disc)
+    const s = norm(vsub(b.sunP, q.p)), sx = vdot(s, cam.r), sy = vdot(s, cam.u), lit = (1 - vdot(s, d) / dist) / 2;
+    const gr = g.createRadialGradient(x + sx * r * 0.5, yy - sy * r * 0.5, r * 0.1, x, yy, r * 1.05);
+    gr.addColorStop(0, BODIES[q.key].color); gr.addColorStop(1, voidC);
+    g.fillStyle = voidC; g.beginPath(); g.arc(x, yy, r, 0, 6.2832); g.fill();
+    g.globalAlpha = 0.12 + 0.88 * lit; g.fillStyle = gr; g.fill(); g.globalAlpha = 1;
+  }
+}
+// the loops: animation frames for 3D (about 30 a second, each one cheap until something moved), a timer for 2D
+function fvLoop(tp) {
+  FV.raf = 0;
+  if (!FV.on || !FV.V3 || document.hidden) return;
+  FV.raf = requestAnimationFrame(fvLoop);
+  if (tp - FV.last < 33) return; FV.last = tp;
+  fvFrame(false);
+}
+function fvKick() {
+  if (!FV.on || document.hidden) return;
+  if (FV.V3) { fvFrame(true); if (!FV.raf) FV.raf = requestAnimationFrame(fvLoop); return; }
+  clearTimeout(FV.timer);
+  const st = fvState(Date.now()); fvFrame(true);
+  if (FV.on) FV.timer = setTimeout(fvKick, FV.fade ? 470 : st && st.w.mode !== 'work' && !RM.matches ? 1000 : 5000);
+}
+function fvSize() {
+  Object.assign(FV.cv.style, { left: SP.cv.style.left, top: SP.cv.style.top, width: SP.cv.style.width, height: SP.cv.style.height });
+  const cw = SP.cv.width / DPR, ch = SP.cv.height / DPR;
+  FV.fov = 2 * Math.atan(ch / 2 / SP.F) / deg; FV.plain = null; FV.cam = null;
+  if (FV.V3) FV.V3.size(cw, ch, DPR);
+}
+function fvStart() {
+  FV.on = true; FV.sig = ''; FV.cam = null; clearTimeout(SP.timer); $('#kScene').hidden = true;
+  if (!fvGL()) { fvKick(); return; }
+  if (!FV.load) {
+    FV.load = import(new URL('js/view3d.js', location.href).href).then(m => {
+      const css = getComputedStyle(document.documentElement);
+      FV.V3 = m.create(FV.cv, { fov: 45, void: css.getPropertyValue('--void').trim(), grid: css.getPropertyValue('--cyan').trim() }); fvSize();
+    }).catch(() => { FV.fail = true; });
+  }
+  FV.load.then(() => {
+    if (!FV.on) return;
+    if (!FV.V3) { fvKick(); return; }
+    FV.cv.hidden = false; SP.cv.style.visibility = 'hidden'; fvKick();
+  });
+}
+function fvStop() {
+  FV.on = false; cancelAnimationFrame(FV.raf); FV.raf = 0; clearTimeout(FV.timer);
+  FV.cv.hidden = true; FV.cv.style.opacity = ''; SP.cv.style.visibility = ''; SP.cv.style.opacity = ''; FV.fade = 0;
+  $('#kScene').hidden = false; spaceSoon();
+}
+// on or off with the timer (every tick); a change of the 3D conditions restarts it
+// (after the room is in: its images come before the planets')
+function fvSync() { if (!LY || !document.body.classList.contains('k-ready')) return; const want = !!fvState(Date.now()); if (want && !FV.on) fvStart(); else if (!want && FV.on) fvStop(); }
 
 // ---------- camera ----------
 // A camera is the stage's scale s and the art point (x, y) at the screen's top left. The desk view crops the art to
@@ -383,7 +547,7 @@ function apply(c) {
   CAM = c;
   stage.style.transform = `translate(${-c.x * c.s}px,${-c.y * c.s}px) scale(${c.s})`;
   const p = gScreen(c);
-  SP.cv.style.transform = `translate(${p[0] - SP.P0[0]}px,${p[1] - SP.P0[1]}px)`;
+  SP.cv.style.transform = FV.cv.style.transform = `translate(${p[0] - SP.P0[0]}px,${p[1] - SP.P0[1]}px)`;
 }
 const deskCam = () => cabCrop(VW, VH, ...LY.size), winCam = () => cabGlassCam(VW, VH, LY.glass);
 function go(to) {
@@ -491,7 +655,7 @@ function poEnded(e) {
 }
 function poShow(now = Date.now()) {
   const s = PO.s, v = PO.v = pomoView(s, now);
-  clockTick(); poStats(now);
+  clockTick(); poStats(now); hudShow(now); fvSync();
   if ($('#kPomo').hidden) return;
   const ph = _(PO_PH[v.phase], { k: v.k, n: v.every });
   $('#kPomoPh').textContent = v.paused ? _('kab.pomo.paused', { ph }) : ph;
@@ -500,6 +664,26 @@ function poShow(now = Date.now()) {
   $('#kPomoSkip').disabled = !pomoTimed(v.phase); $('#kPomoReset').disabled = v.phase === 'idle';
   const L = PO.late; $('#kPomoLate').hidden = !L;
   if (L) $('#kPomoLate').textContent = _(L.phase === 'work' ? 'kab.pomo.late.work' : 'kab.pomo.late.break', { m: Math.max(1, Math.round((now - L.at) / 60000)) });
+}
+// The flight HUD: the plan's phase ("Ay'a yolculuk · %42", or the timer's phase without a plan) and the time left, the
+// cycle's sessions and breaks as a thin bar. Faint, hidden while idle or the panel is open; H or the panel hides it.
+function hudShow(now) {
+  const h = $('#kFlight'), v = PO.v, s = PO.s, off = v.phase === 'idle' || !PO.hud || !$('#kPomo').hidden;
+  h.hidden = off; if (off) return;
+  const D = FLIGHT_DATA[s.plan], w = D && fpWhere(D, s, v, now), lb = w && fpLabel(s.plan, D, w);
+  let txt = lb ? _(lb.key, { ...lb.p, b: lb.p.b ? _('body.' + lb.p.b) : '' }) : _(PO_PH[v.phase], { k: v.k, n: v.every });
+  if (lb && lb.u != null) txt = _('fp.pct', { l: txt, p: Math.floor(lb.u * 100) });
+  $('#kFlightL').textContent = txt;
+  $('#kFlightT').textContent = v.phase === 'wait' ? _('kab.pomo.hud.wait') : v.paused ? _('kab.pomo.hud.paused', { t: pomoClock(v.left) }) : pomoClock(v.left);
+  h.classList.toggle('brk', v.phase !== 'work');
+  // the bar: a work and a break part per session of the cycle (the last break long), filled up to now
+  const c = s.cfg, bar = $('#kFlightBar'), key = [c.work, c.short, c.long, c.every].join();
+  if (bar.dataset.k !== key) {
+    bar.dataset.k = key; bar.textContent = '';
+    for (let k = 1; k <= c.every; k++) for (const [cls, len] of [['w', c.work], ['b', c.long > 0 && k === c.every ? c.long : c.short]]) { const i = el('i', { class: cls }, bar); i.style.flexGrow = len; el('b', {}, i); }
+  }
+  const cur = v.phase === 'work' ? 2 * (v.k - 1) : v.phase === 'wait' ? 2 * ((s.n - 1) % c.every) + 2 : 2 * (v.k - 1) + 1;
+  [...bar.children].forEach((i, j) => { i.firstChild.style.width = (j < cur ? 100 : j === cur ? v.frac * 100 : 0) + '%'; });
 }
 // daily statistics (prefs.js PREF_KEYS.pomoStats): today and the last seven days, in the panel and on the laptop
 const poDur = ms => { const m = Math.round(ms / 60000); return m >= 60 ? _('kab.pomo.hm', { h: Math.floor(m / 60), m: m % 60 }) : _('kab.pomo.min', { m }); };
@@ -519,18 +703,28 @@ function poSyncSet() {
   $('#kPomoCus').hidden = s.preset !== 'custom';
   for (const i of document.querySelectorAll('#kPomoCus input')) if (document.activeElement !== i) i.value = s.cfg[i.dataset.c];
   $('#kPomoSum').textContent = s.cfg.long ? _('kab.pomo.sum', { m: s.cfg.long, n: s.cfg.every }) : _('kab.pomo.sumNone');
-  $('#kPomoAuto').checked = s.auto; $('#kPomoNotify').checked = PO.notify;
+  $('#kPomoAuto').checked = s.auto; $('#kPomoNotify').checked = PO.notify; $('#kPomoHud').checked = PO.hud;
+  $('#kPomoPlan').value = FLIGHT_DATA[s.plan] ? s.plan : ''; $('#kPomoReplan').hidden = !(FLIGHT_DATA[s.plan] && s.flight > 0);
 }
 function poPanel(open) {
   const p = $('#kPomo'); open = open ?? p.hidden; p.hidden = !open; hideTip();
-  if (open) { audPanel(false); poSyncSet(); poShow(); }
+  if (open) { audPanel(false); poSyncSet(); }
+  poShow(); // the HUD hides behind the panel
 }
 function poNotify(title, body) {
   if (!PO.notify || !document.hidden || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
   try { new Notification(title, { body, tag: 'kabin-pomo', silent: true }); } catch (err) { /* this browser wants a service worker for it */ }
 }
 PO.notify = readPref(LS, PREF_KEYS.pomoNotify) === '1' && typeof Notification !== 'undefined' && Notification.permission === 'granted';
+PO.hud = readPref(LS, PREF_KEYS.pomoHud) !== '0';
 poLoad();
+// flight plans: none or one of js/flightplans.js; a new plan (or "start over") flies from its first leg
+for (const id of ['', ...FP_IDS]) el('option', { value: id }, $('#kPomoPlan')).textContent = _(id ? 'fp.name.' + id : 'fp.name.none');
+$('#kPomoPlan').addEventListener('change', e => poSet(s => { s.plan = e.target.value; s.flight = 0; }));
+$('#kPomoReplan').addEventListener('click', () => poSet(s => { s.flight = 0; }));
+const hudSet = on => { PO.hud = on; writePref(LS, PREF_KEYS.pomoHud, on ? '1' : '0'); $('#kPomoHud').checked = on; poShow(); };
+$('#kPomoHud').addEventListener('change', e => hudSet(e.target.checked));
+addEventListener('keydown', e => { if ((e.key === 'h' || e.key === 'H') && !e.ctrlKey && !e.metaKey && !e.altKey && !/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) hudSet(!PO.hud); });
 $('#kPomoX').addEventListener('click', () => poPanel(false));
 $('#kPomoGo').addEventListener('click', () => poDo(PO.v && PO.v.running ? pomoPause : pomoStart));
 $('#kPomoSkip').addEventListener('click', () => poDo(pomoSkip));
@@ -571,11 +765,11 @@ function layout() {
   SP.cv.width = Math.round(cw * DPR); SP.cv.height = Math.round(ch * DPR);
   Object.assign(SP.cv.style, { left: -SP.M + 'px', top: -SP.M + 'px', width: cw + 'px', height: ch + 'px' });
   SP.P0 = pd; SP.G = [pd[0] + SP.M, pd[1] + SP.M]; // the glass's centre on screen and in canvas px at the desk view
-  SP.F = Math.max(VW, VH) / 2 / Math.tan(50 * deg); SP.sky = null;
+  SP.F = Math.max(VW, VH) / 2 / Math.tan(50 * deg); SP.sky = null; fvSize();
   cancelAnimationFrame(ANIM); ANIM = 0; stage.style.willChange = '';
   apply(cam); wantTier(needTier(cam.s)); sizeLife();
   if (still()) drawStill();
-  spaceSoon();
+  spaceSoon(); fvKick();
 }
 
 // ---------- interaction ----------
@@ -649,6 +843,6 @@ let rsz = 0;
 addEventListener('resize', () => { clearTimeout(rsz); rsz = setTimeout(() => { if (LY) layout(); }, 150); });
 document.addEventListener('visibilitychange', () => {
   document.documentElement.classList.toggle('paused', document.hidden);
-  if (!document.hidden && LY) { loopStart(); lapTick(); poDo(pomoAdvance); spaceSoon(); }
+  if (!document.hidden && LY) { loopStart(); lapTick(); poDo(pomoAdvance); spaceSoon(); FV.cam = null; fvKick(); }
 });
-RM.addEventListener?.('change', () => { if (LY) { if (still()) drawStill(); else loopStart(); } });
+RM.addEventListener?.('change', () => { if (LY) { if (still()) drawStill(); else loopStart(); if (FV.on) { fvStop(); fvSync(); } } });

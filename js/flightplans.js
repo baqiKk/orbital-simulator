@@ -109,31 +109,31 @@ function fpAt(D, w) {
 }
 
 // The bodies to draw at fpAt result a: the track's system exactly, extras about their anchors (from the anchor's own
-// system), and the Sun's direction from the craft (unit). Returns { list: [{ key, p: [x, y, z] }], sun }.
+// system), the Sun's place and its direction from the craft (unit). Returns { list: [{ key, p, v }], sunP, sun }.
 const FP_SUBS = new Map();
 function fpBodies(D, a) {
   const tr = a.tr, sys = fpSys(tr), T = tr.M.t0 * FPX.DAY + a.t, P = new Float64Array(3 * sys.N), V = new Float64Array(3 * sys.N);
   FPX.states(sys, T, P, V);
-  const list = tr.keys.map((key, i) => ({ key, p: [P[3 * i], P[3 * i + 1], P[3 * i + 2]] }));
+  const list = tr.keys.map((key, i) => ({ key, p: [P[3 * i], P[3 * i + 1], P[3 * i + 2]], v: [V[3 * i], V[3 * i + 1], V[3 * i + 2]] }));
   const sub = keys => { const id = keys.join(); if (!FP_SUBS.has(id)) FP_SUBS.set(id, fpSystem(keys)); return FP_SUBS.get(id); };
   const byAnchor = {};
   for (const [k, an] of D.extra) if (!tr.keys.includes(k) && tr.keys.includes(an)) (byAnchor[an] = byAnchor[an] || []).push(k);
   for (const [an, ks] of Object.entries(byAnchor)) {
     const keys = [an, ...ks], s2 = sub(keys), P2 = new Float64Array(3 * s2.N), V2 = new Float64Array(3 * s2.N), ia = tr.keys.indexOf(an);
     FPX.states(s2, T, P2, V2);
-    ks.forEach((k, m) => list.push({ key: k, p: [0, 1, 2].map(j => P[3 * ia + j] + P2[3 * (m + 1) + j] - P2[j]) }));
+    ks.forEach((k, m) => list.push({ key: k, p: [0, 1, 2].map(j => P[3 * ia + j] + P2[3 * (m + 1) + j] - P2[j]), v: [0, 1, 2].map(j => V[3 * ia + j] + V2[3 * (m + 1) + j] - V2[j]) }));
   }
   // the Sun: in the system, or from the root's place about it
-  let sun;
+  let sunP;
   const is = tr.keys.indexOf('sun');
-  if (is >= 0) sun = [0, 1, 2].map(j => P[3 * is + j] - a.y[j]);
+  if (is >= 0) sunP = [P[3 * is], P[3 * is + 1], P[3 * is + 2]];
   else {
     const root = tr.keys[sys.root], s3 = sub(['sun', root]), P3 = new Float64Array(6), V3 = new Float64Array(6);
     FPX.states(s3, T, P3, V3);
-    sun = [0, 1, 2].map(j => P3[j] - P3[3 + j] + P[3 * sys.root + j] - a.y[j]);
+    sunP = [0, 1, 2].map(j => P3[j] - P3[3 + j] + P[3 * sys.root + j]);
   }
-  const l = Math.hypot(...sun);
-  return { list, sun: sun.map(q => q / l) };
+  const sun = [0, 1, 2].map(j => sunP[j] - a.y[j]), l = Math.hypot(...sun);
+  return { list, sunP, sun: sun.map(q => q / l) };
 }
 
 // What the HUD says: a dictionary key and its parameters, and the progress (0–1) through the phase

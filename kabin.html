@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Playpen+Sans:wght@400&display=swap">
 <link rel="stylesheet" href="css/style.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }</script>
 <!-- Phase 9: the cabin. Room and cat: illustration by Ahmet Baki Kırışgil (layers made by tools/cabin-art, see
      js/bodies.js CABIN_SRC). Behind the glass: the site's own sky and planet images (globe.js). Poster photo: NASA
      AS08-14-2383 (public domain). Handwriting: Playpen Sans (SIL OFL 1.1, Google Fonts). Radio: HoliznaCC0 (CC0 1.0); space sounds: NASA/JPL-Caltech plasma-wave
@@ -18,6 +19,7 @@
 <body class="k-page">
 <div class="k-root" id="kRoot">
   <canvas id="kSpace" aria-hidden="true"></canvas>
+  <canvas id="kSpace3" aria-hidden="true" hidden></canvas>
   <div id="kStage" class="k-stage">
     <div id="kGlow" class="k-glow"></div>
     <div id="kRoomSlot"></div>
@@ -63,8 +65,14 @@
     <label class="field"><span data-i18n="kab.pomo.every"></span><input type="number" data-c="every" min="2" max="8" step="1"></label>
   </div>
   <p class="k-acred" id="kPomoSum"></p>
+  <div class="k-pplan">
+    <label class="field"><span data-i18n="fp.plan"></span><select id="kPomoPlan"></select></label>
+    <button type="button" class="btn" id="kPomoReplan" data-i18n="fp.restart" hidden></button>
+  </div>
+  <p class="k-acred" id="kPomoPlanNote" data-i18n="fp.note"></p>
   <p class="k-pstat" id="kPomoStat"><span id="kPomoDay"></span><span id="kPomoWeek"></span></p>
   <label class="chk k-pchk"><input type="checkbox" id="kPomoAuto"><span data-i18n="kab.pomo.auto"></span></label>
+  <label class="chk k-pchk"><input type="checkbox" id="kPomoHud"><span data-i18n="kab.pomo.hud"></span></label>
   <label class="chk k-pchk"><input type="checkbox" id="kPomoNotify"><span data-i18n="kab.pomo.notify"></span></label>
   <p class="k-acred" id="kPomoNote" hidden></p>
 </div>
@@ -76,15 +84,22 @@
   <button type="button" class="ghost" id="kLamp" aria-pressed="false" data-i18n="kab.lampOff"></button>
   <button type="button" class="btn primary" id="kGo" data-i18n="kab.toWindow"></button>
 </footer>
+<div id="kFlight" class="k-flight" hidden>
+  <div class="k-fl1"><span id="kFlightL" class="k-fll"></span><span id="kFlightT" class="k-flt"></span></div>
+  <div class="k-flbar" id="kFlightBar" aria-hidden="true"></div>
+</div>
 <div id="kTip" class="k-tip" role="tooltip" hidden></div>
 
 <script src="js/i18n.js"></script>
 <script src="js/prefs.js"></script>
 <script src="js/bodies.js"></script>
+<script src="js/core.js"></script>
 <script src="js/globe.js"></script>
 <script src="js/sounds.js"></script>
 <script src="js/cabin-audio.js"></script>
 <script src="js/pomodoro.js"></script>
+<script src="js/flightplans.js"></script>
+<script src="js/flightdata.js"></script>
 <script src="js/cabin.js"></script>
 </body>
 </html>

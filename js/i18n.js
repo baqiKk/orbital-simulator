@@ -461,6 +461,9 @@ const I18N = {
     'kab.pomo.n.workB': 'Sıradaki çalışma: {m} dk',
     'kab.pomo.today': 'Bugün {n} seans · {t}',
     'kab.pomo.week': 'Son 7 gün {n} seans · {t}',
+    'kab.pomo.hud': 'Görev göstergesi (H tuşu)',
+    'kab.pomo.hud.wait': 'mola bitti',
+    'kab.pomo.hud.paused': '‖ {t}',
     'kab.pomo.hm': '{h} sa {m} dk',
     'kab.pomo.min': '{m} dk',
     // flight plans (Phase 10, js/flightplans.js): what the HUD says
@@ -486,6 +489,7 @@ const I18N = {
     'fp.mars.cruise': 'Seyirde mola · araç yavaşça dönüyor',
     'fp.mars.done': 'Mars yörüngesinde · görev tamamlandı',
     'fp.orbit': '{b} yörüngesinde mola',
+    'fp.pct': '{l} · %{p}',
     'kab.title': 'Kabin · taslak',
     'kab.description': 'Yörünge simülatörünün kabin modu için görsel tasarım taslağı: masa ve cam görünümü.',
     'kab.back': 'Simülatör',

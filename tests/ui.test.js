@@ -151,6 +151,16 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/logarithmicDepthBuffer: true/.test(v3));
   // the saved 3D mode is restored (Three.js then loads at startup)
   assert.ok(P.VIEW_MODES.includes('3d'));
+  // the cabin's glass (Phase 10): Three.js only through one import() in cabin.js, after the 3D check (never in the
+  // low-resource mode, with reduced motion or without WebGL 2), with its own import map; no script tag
+  const kab = read('kabin.html'), cab = read('js/cabin.js');
+  assert.ok(!/<script[^>]*src="[^"]*(vendor\/three|view3d)/.test(kab), 'kabin.html: no script tag loads Three.js');
+  const kmap = JSON.parse(kab.match(/<script type="importmap">([^<]*)<\/script>/)[1]).imports;
+  assert.deepStrictEqual(kmap, map, 'kabin.html: the same import map');
+  assert.strictEqual([...cab.matchAll(/import\([^)]/g)].length, 1, 'cabin: one dynamic import');
+  assert.ok(/if \(!fvGL\(\)\) \{ fvKick\(\); return; \}\n  if \(!FV\.load\) \{\n    FV\.load = import\(new URL\('js\/view3d\.js'/.test(cab), 'the import only past the 3D check');
+  assert.ok(/if \(FV\.gl == null\) FV\.gl = !LOWQ && /.test(cab) && /return FV\.gl && !FV\.fail && !RM\.matches;/.test(cab), '3D check: not low-resource, WebGL 2, no reduced motion');
+  for (const f of ['js/pomodoro.js', 'js/flightplans.js', 'js/flightdata.js', 'js/cabin-audio.js']) assert.ok(!/vendor\/three|view3d/.test(read(f)), `${f} does not reference Three.js`);
 }
 
 // 8) Planet images: the low-resource mode never fetches one; every texture and layer (with its sharper tiers) exists, is
@@ -347,7 +357,8 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   for (const m of page.matchAll(/data-i18n(?:-[a-z-]+)?="([^"]+)"/g)) assert.ok(has(m[1]), `kabin.html key missing from dictionary: ${m[1]}`);
   for (const m of js.matchAll(/'((?:kab|kabin|wc)\.[A-Za-z0-9_.]+)'/g)) assert.ok(has(m[1]), `cabin.js key missing from dictionary: ${m[1]}`);
   assert.ok(page.includes(`content="${DICT['kabin.description']}"`) && page.includes(`<title>${DICT['kabin.title']}</title>`), 'kabin.html static title and description match the dictionary');
-  assert.ok(/<script src="js\/globe\.js"><\/script>\s*<script src="js\/sounds\.js"><\/script>\s*<script src="js\/cabin-audio\.js"><\/script>\s*<script src="js\/pomodoro\.js"><\/script>\s*<script src="js\/cabin\.js">/.test(page), 'cabin scripts in order: globe, sounds, cabin-audio, pomodoro, cabin');
+  assert.ok(/<script src="js\/bodies\.js"><\/script>\s*<script src="js\/core\.js"><\/script>\s*<script src="js\/globe\.js"><\/script>\s*<script src="js\/sounds\.js"><\/script>\s*<script src="js\/cabin-audio\.js"><\/script>\s*<script src="js\/pomodoro\.js"><\/script>\s*<script src="js\/flightplans\.js"><\/script>\s*<script src="js\/flightdata\.js"><\/script>\s*<script src="js\/cabin\.js">/.test(page),
+    'cabin scripts in order: bodies, core, globe, sounds, cabin-audio, pomodoro, flightplans, flightdata, cabin');
   assert.ok(!/img\/planets|img\/sky/.test(page + js), 'cabin images of bodies and sky only through globeLook / skyReady');
   for (const m of js.matchAll(/globeLook\(([^;]*?)\)/g)) assert.ok(/, !LOWQ, !LOWQ,/.test(m[1]), 'cabin globeLook: nothing drawn or fetched in low mode: ' + m[1]);
   assert.ok(/if \(LOWQ\) SP\.sky = plainSky\(\); else \{ const sk = skyReady\(/.test(js), 'cabin sky: skyReady only outside low mode');

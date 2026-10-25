@@ -472,8 +472,10 @@ export function create(canvas, opts) {
     for (const m of mats) m.resolution.set(w, h);
   }
   // camera: target t (metres), basis rows r (right), u (up), d (target → camera), distance (metres);
-  // the target projects to (cx, cy) px (view offset), so it can sit in the middle of the free plot area
-  function view(t, r, u, d, dist, cx, cy) {
+  // the target projects to (cx, cy) px (view offset), so it can sit in the middle of the free plot area;
+  // fov (optional): a new vertical field of view, degrees (the cabin's glass follows its window)
+  function view(t, r, u, d, dist, cx, cy, fov) {
+    if (fov) camera.fov = fov;
     T[0] = t[0]; T[1] = t[1]; T[2] = t[2];
     camera.position.set(d[0] * dist * KM, d[1] * dist * KM, d[2] * dist * KM);
     camera.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(...r), new THREE.Vector3(...u), new THREE.Vector3(...d)));
