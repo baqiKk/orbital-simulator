@@ -130,15 +130,15 @@ function cabGlassCam(vw, vh, g) {
   return { s, x: Math.min(g.x1 - w, Math.max(g.x0, fx - w / 2)), y: g.y0 + (gh - h) / 2 };
 }
 // Cabin sound settings: the radio (on by default) and three layers (off), each with a volume 0–1; noise colour white /
-// pink / brown; one mute for all. Anything missing or broken falls back per field.
+// pink / brown; the pomodoro's bell (on); one mute for all. Anything missing or broken falls back per field.
 const CAB_NOISE = ['white', 'pink', 'brown'];
-const CAB_AUDIO = { muted: false, music: { on: true, vol: 0.6 }, space: { on: false, vol: 0.5 }, hum: { on: false, vol: 0.4 }, noise: { on: false, vol: 0.3, type: 'pink' } };
+const CAB_AUDIO = { muted: false, music: { on: true, vol: 0.6 }, space: { on: false, vol: 0.5 }, hum: { on: false, vol: 0.4 }, noise: { on: false, vol: 0.3, type: 'pink' }, chime: { on: true, vol: 0.6 } };
 function parseCabAudio(raw) {
   let o = null; try { o = JSON.parse(raw); } catch (e) { /* default */ }
   if (!o || typeof o !== 'object') o = {};
   const vol = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
   const out = { muted: o.muted === true };
-  for (const k of ['music', 'space', 'hum', 'noise']) {
+  for (const k of ['music', 'space', 'hum', 'noise', 'chime']) {
     const s = o[k] && typeof o[k] === 'object' ? o[k] : {}, d = CAB_AUDIO[k];
     out[k] = { on: typeof s.on === 'boolean' ? s.on : d.on, vol: vol(s.vol, d.vol) };
   }

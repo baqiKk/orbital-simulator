@@ -14,7 +14,7 @@
 const POMO_PRESETS = { p25: { work: 25, short: 5, long: 15, every: 4 }, p50: { work: 50, short: 10, long: 30, every: 3 }, p15: { work: 15, short: 5, long: 15, every: 4 } };
 const POMO_LIM = { work: [5, 120], short: [1, 60], long: [0, 60], every: [2, 8] }; // minutes (every: sessions); long 0: no long break
 const POMO_PHASES = ['idle', 'work', 'short', 'long', 'wait'];
-const POMO_LATE = 60000;  // an end seen later than this: no chime, no automatic start
+const POMO_LATE = 120000; // an end seen later than this: no chime, no automatic start (a hidden tab ticks once a minute)
 const POMO_DAYS = 30;     // daily statistics kept
 const POMO_MIN = 60000;
 

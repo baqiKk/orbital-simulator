@@ -44,8 +44,28 @@
   <div class="seg k-noise" id="kNoise" role="group" data-i18n-aria-label="kab.audio.noiseType">
     <button type="button" data-n="white" data-i18n="kab.audio.white"></button><button type="button" data-n="pink" data-i18n="kab.audio.pink"></button><button type="button" data-n="brown" data-i18n="kab.audio.brown"></button>
   </div>
+  <div class="k-arow" data-k="chime"><label class="chk"><input type="checkbox"><span data-i18n="kab.audio.chime"></span></label><input type="range" min="0" max="100" data-i18n-aria-label="kab.audio.volChime"></div>
   <label class="chk k-mute"><input type="checkbox" id="kMute"><span data-i18n="kab.audio.mute"></span></label>
   <p class="k-acred"><span data-i18n="kab.audio.credit"></span> <a href="index.html#kaynakca" data-i18n="kab.audio.sources"></a></p>
+</div>
+<div id="kPomo" class="k-audio k-pomo" role="dialog" data-i18n-aria-label="kab.pomo.title" hidden>
+  <div class="k-audio-h"><span data-i18n="kab.pomo.title"></span><button type="button" class="k-x" id="kPomoX" data-i18n-aria-label="kab.audio.close">×</button></div>
+  <div class="k-pnow" aria-live="polite"><span id="kPomoPh" class="k-pph"></span><span id="kPomoT" class="k-pt"></span></div>
+  <p class="k-acred" id="kPomoLate" hidden></p>
+  <div class="k-pbtns"><button type="button" class="btn primary" id="kPomoGo"></button><button type="button" class="btn" id="kPomoSkip" data-i18n="kab.pomo.skip"></button><button type="button" class="btn" id="kPomoReset" data-i18n="kab.pomo.reset"></button></div>
+  <div class="seg" id="kPomoPre" role="group" data-i18n-aria-label="kab.pomo.preset">
+    <button type="button" data-p="p25" data-i18n="kab.pomo.p25"></button><button type="button" data-p="p50" data-i18n="kab.pomo.p50"></button><button type="button" data-p="p15" data-i18n="kab.pomo.p15"></button><button type="button" data-p="custom" data-i18n="kab.pomo.custom"></button>
+  </div>
+  <div class="k-pcus" id="kPomoCus" hidden>
+    <label class="field"><span data-i18n="kab.pomo.work"></span><input type="number" data-c="work" min="5" max="120" step="1"></label>
+    <label class="field"><span data-i18n="kab.pomo.short"></span><input type="number" data-c="short" min="1" max="60" step="1"></label>
+    <label class="field"><span data-i18n="kab.pomo.long"></span><input type="number" data-c="long" min="0" max="60" step="1"></label>
+    <label class="field"><span data-i18n="kab.pomo.every"></span><input type="number" data-c="every" min="2" max="8" step="1"></label>
+  </div>
+  <p class="k-acred" id="kPomoSum"></p>
+  <label class="chk k-pchk"><input type="checkbox" id="kPomoAuto"><span data-i18n="kab.pomo.auto"></span></label>
+  <label class="chk k-pchk"><input type="checkbox" id="kPomoNotify"><span data-i18n="kab.pomo.notify"></span></label>
+  <p class="k-acred" id="kPomoNote" hidden></p>
 </div>
 <footer class="k-hud bot">
   <div class="seg" id="kScene" role="group" data-i18n-aria-label="wc.sceneAria">
@@ -63,6 +83,7 @@
 <script src="js/globe.js"></script>
 <script src="js/sounds.js"></script>
 <script src="js/cabin-audio.js"></script>
+<script src="js/pomodoro.js"></script>
 <script src="js/cabin.js"></script>
 </body>
 </html>

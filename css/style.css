@@ -460,6 +460,27 @@ html[data-q=low] *,html[data-q=low] *::before,html[data-q=low] *::after{transiti
 .k-mute{padding-top:4px;border-top:1px solid var(--line)}
 .k-acred{margin:0;color:var(--faint);font-size:11px;line-height:1.35}
 .k-acred a{color:var(--dim)}
+/* pomodoro: the desk clock's face by phase (lamp amber at work, screen cyan on a break; blinking while paused or
+   waiting) and its panel at the top right */
+.k-pdot{fill:var(--cab-lamp);opacity:0}
+#kGlowArt.po .k-pdot{opacity:1}
+#kGlowArt.po .k-colon{animation:none}
+#kGlowArt.brk .k-seg7 polygon,#kGlowArt.brk .k-pdot{fill:var(--cab-screen)}
+#kGlowArt.brk{filter:drop-shadow(0 0 8px color-mix(in srgb,var(--cab-screen) 70%,transparent))}
+#kGlowArt.held .k-seg7,#kGlowArt.wait .k-seg7{animation:kBlink 2s steps(1) infinite}
+.k-seg7.ring{animation:kRing .42s ease-in-out 8 alternate}
+@keyframes kRing{to{opacity:.2}}
+.k-pomo{left:auto;right:max(12px,env(safe-area-inset-right,0px));top:max(12px,env(safe-area-inset-top,0px))}
+.k-pnow{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.k-pph{font:500 11.5px/1.25 var(--f-disp);letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.k-pt{font:500 26px/1 var(--f-mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.k-pbtns{display:flex;gap:6px}
+.k-pbtns .btn{flex:1;padding:8px 6px;min-width:0}
+.k-pbtns .btn:disabled{opacity:.4;cursor:default}
+#kPomoPre button{padding:6px 8px;font-size:10.5px}
+.k-pcus{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.k-pcus[hidden]{display:none}
+.k-pchk{white-space:normal;line-height:1.3}
 .k-led{border-radius:50%;background:var(--cab-screen);opacity:0;transition:opacity .4s;box-shadow:0 0 14px 6px color-mix(in srgb,var(--cab-screen) 55%,transparent);pointer-events:none}
 .k-led.on{opacity:.95;animation:kLed 3.2s ease-in-out infinite}
 @keyframes kLed{0%,100%{opacity:.95}50%{opacity:.55}}

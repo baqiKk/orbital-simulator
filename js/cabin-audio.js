@@ -162,3 +162,32 @@ function sndSession() {
   } catch (e) { /* unsupported action */ }
 }
 addEventListener('online', () => { const l = SND.layers.music; if (l && l.deck) l.deck.retryNow(); });
+
+// ---------- the pomodoro's bell (Phase 10) ----------
+// A soft struck bowl, synthesised (no file): three inharmonic partials, each with its own decay, and a quieter second
+// strike; 'break' (a work session is over) sounds a fourth below 'work' (a break is over). The radio ducks to a fifth of
+// its level around it and comes back. Level: the sound panel's bell row; "mute all" silences it too. The context is
+// made here if nothing else made it (the browser lets it start once the page has had a gesture); when no layer plays,
+// it is suspended again afterwards.
+const BOWL = [[1, 1, 2.8], [2.76, 0.35, 1.5], [5.4, 0.12, 0.7]]; // frequency ratio, amplitude, decay (s)
+const sndAny = set => !!set && !set.muted && ['music', 'space', 'hum', 'noise'].some(k => set[k].on);
+function sndChime(set, kind) {
+  if (set.muted || !set.chime.on || !(set.chime.vol > 0)) return;
+  sndInit();
+  const c = SND.ctx; if (c.state !== 'running') c.resume().catch(() => {});
+  const t0 = c.currentTime + 0.05, f0 = kind === 'break' ? 392 : 523.25, out = c.createGain();
+  out.gain.value = 0.32 * set.chime.vol * set.chime.vol; out.connect(SND.master);
+  for (const [at, amp] of [[0, 1], [1.15, 0.45]]) for (const [r, a, d] of BOWL) {
+    const o = c.createOscillator(), g = c.createGain(), t = t0 + at;
+    o.frequency.value = f0 * r;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(a * amp, t + 0.012); g.gain.exponentialRampToValueAtTime(1e-4, t + d);
+    o.connect(g); g.connect(out); o.start(t); o.stop(t + d + 0.05);
+  }
+  const m = SND.layers.music;
+  if (SND.started && m && m.on) {
+    const lv = SND_K.music * set.music.vol * set.music.vol, g = m.g.gain, t = c.currentTime;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0.2 * lv, t + 0.4);
+    g.setValueAtTime(0.2 * lv, t + 3.4); g.linearRampToValueAtTime(lv, t + 4.9);
+  }
+  setTimeout(() => { out.disconnect(); if (!sndAny(SND.set) && c.state === 'running') c.suspend(); }, 5500);
+}

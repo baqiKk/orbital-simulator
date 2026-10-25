@@ -137,25 +137,36 @@ function buildArt() {
   buildClock(); buildLaptop();
 }
 
-// the clock's digits (seven segments; the time of day, the pomodoro comes in Phase 10)
+// the clock's digits (seven segments): the time of day, or the pomodoro's time left while it is on (mm:ss; past 99
+// minutes h:mm), lamp amber at work and screen cyan on a break, with a small dot beside the digits; paused or waiting
+// for the next session, the digits blink
 const SEGS = (() => {
   const h = (x, y, l, t = 5) => `${x},${y} ${x + t / 2},${y - t / 2} ${x + l - t / 2},${y - t / 2} ${x + l},${y} ${x + l - t / 2},${y + t / 2} ${x + t / 2},${y + t / 2}`;
   const v = (x, y, l, t = 5) => `${x},${y} ${x + t / 2},${y + t / 2} ${x + t / 2},${y + l - t / 2} ${x},${y + l} ${x - t / 2},${y + l - t / 2} ${x - t / 2},${y + t / 2}`;
   return { a: h(6, 3, 18), b: v(27, 6, 18), c: v(27, 30, 18), d: h(6, 51, 18), e: v(3, 30, 18), f: v(3, 6, 18), g: h(6, 27, 18) };
 })();
 const DIGIT = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
-const CLOCK = { cells: [], shown: '' };
+const CLOCK = { cells: [], shown: '', g: null };
 function buildClock() {
   const c = LY.clock, k = 2.55, w = 164 * k, h = 54 * k;
-  const g = svgEl('g', { transform: `translate(${c.x0 + (c.x1 - c.x0 - w) / 2 - 4} ${c.y0 + (c.y1 - c.y0 - h) / 2}) scale(${k}) skewX(-6)`, class: 'k-seg7' }, $('#kGlowArt'));
+  const g = CLOCK.g = svgEl('g', { transform: `translate(${c.x0 + (c.x1 - c.x0 - w) / 2 - 4} ${c.y0 + (c.y1 - c.y0 - h) / 2}) scale(${k}) skewX(-6)`, class: 'k-seg7' }, $('#kGlowArt'));
   [0, 38, 96, 134].forEach(x => { const cell = svgEl('g', { transform: `translate(${x} 0)` }, g); for (const [s, p] of Object.entries(SEGS)) svgEl('polygon', { 'data-s': s, points: p }, cell); CLOCK.cells.push(cell); });
+  svgEl('circle', { cx: -16, cy: 27, r: 4.5, class: 'k-pdot' }, g);
   const colon = svgEl('g', { class: 'k-colon' }, g);
   svgEl('polygon', { points: '81,14 86,14 85,20 80,20', class: 'on' }, colon); svgEl('polygon', { points: '79,34 84,34 83,40 78,40', class: 'on' }, colon);
 }
+// four characters (digits or a blank) and the face's classes
+function clockSet(t, cls) {
+  if (t + '|' + cls === CLOCK.shown) return; CLOCK.shown = t + '|' + cls;
+  CLOCK.cells.forEach((c, i) => { const on = t[i] === ' ' ? '' : DIGIT[+t[i]]; for (const p of c.children) p.classList.toggle('on', on.includes(p.dataset.s)); });
+  $('#kGlowArt').setAttribute('class', 'k-svg' + cls);
+}
 function clockTick() {
-  const d = new Date(), t = String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0');
-  if (t === CLOCK.shown) return; CLOCK.shown = t;
-  CLOCK.cells.forEach((c, i) => { const on = DIGIT[+t[i]]; for (const p of c.children) p.classList.toggle('on', on.includes(p.dataset.s)); });
+  const v = PO.v;
+  if (!v || v.phase === 'idle') { const d = new Date(); clockSet(String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0'), ''); return; }
+  const ms = v.phase === 'wait' ? PO.s.cfg.work * POMO_MIN : v.left, m = Math.ceil(ms / 60000);
+  const t = ms > 5999000 ? ' ' + Math.floor(m / 60) + String(m % 60).padStart(2, '0') : pomoClock(ms).replace(':', '');
+  clockSet(t, ' po' + (v.phase === 'work' ? '' : v.phase === 'wait' ? ' wait' : ' brk') + (v.paused ? ' held' : ''));
 }
 
 // the laptop: the free return on a dark map, a dot flying it in six minutes, its mission time
@@ -399,8 +410,8 @@ function go(to) {
 // left asks for a tap. The chip names the track, or says the radio cannot be reached; it and the headphones on the
 // desk open the sound panel. A small light on the headphones shows that something is playing.
 const AUD = { set: parseCabAudio(readPref(LS, PREF_KEYS.cabAudio)) };
-const AUD_K = ['music', 'space', 'hum', 'noise'];
-const audWants = () => !AUD.set.muted && AUD_K.some(k => AUD.set[k].on);
+const AUD_K = ['music', 'space', 'hum', 'noise', 'chime'];
+const audWants = () => sndAny(AUD.set);
 function audChip() {
   const s = SND.state, set = AUD.set, tap = !SND.started && audWants(), lost = SND.started && set.music.on && !set.muted && s.trouble >= RETRY_S.length;
   $('#kRadioT').textContent = tap ? _('kab.audio.tap') : lost ? _('kab.audio.lost') : set.muted ? _('kab.audio.muted')
@@ -420,6 +431,7 @@ function audSet(patch) {
 }
 function audPanel(open) {
   const p = $('#kAudio'); open = open ?? p.hidden; p.hidden = !open; hideTip();
+  if (open) poPanel(false);
   $('#kRadio').setAttribute('aria-expanded', String(open));
 }
 function audGesture() {
@@ -437,9 +449,94 @@ for (const k of AUD_K) {
   r.querySelector('[type=checkbox]').addEventListener('change', e => audSet(s => { s[k].on = e.target.checked; if (s[k].on) s.muted = false; }));
   r.querySelector('[type=range]').addEventListener('input', e => audSet(s => { s[k].vol = e.target.value / 100; }));
 }
+// the bell's level: let it ring once on release
+document.querySelector('.k-arow[data-k=chime] [type=range]').addEventListener('change', () => sndChime(AUD.set, 'work'));
 for (const b of document.querySelectorAll('#kNoise button')) b.addEventListener('click', () => audSet(s => { s.noise.type = b.dataset.n; s.noise.on = true; }));
 $('#kMute').addEventListener('change', e => audSet(s => { s.muted = e.target.checked; }));
-document.addEventListener('pointerdown', e => { const p = $('#kAudio'); if (!p.hidden && !p.contains(e.target) && !$('#kRadio').contains(e.target) && e.target.id !== 'hPhones') audPanel(false); });
+document.addEventListener('pointerdown', e => {
+  const p = $('#kAudio'); if (!p.hidden && !p.contains(e.target) && !$('#kRadio').contains(e.target) && e.target.id !== 'hPhones') audPanel(false);
+  const q = $('#kPomo'); if (!q.hidden && !q.contains(e.target) && e.target.id !== 'hClock') poPanel(false);
+});
+
+// ---------- the pomodoro (js/pomodoro.js) ----------
+// The timer's state lives in localStorage, the one source for every open tab: each step reads it back before moving it
+// on (a session that ends is counted once, by the tab that saw it) and the storage event keeps the other tabs current.
+// A tick a second refreshes the clock and the panel; the time itself comes from wall-clock timestamps, so a hidden tab
+// (its timers slowed to once a minute), a sleeping computer or a reload changes nothing. An end seen in time rings the
+// bell, flashes the clock and, when allowed and the tab is hidden, sends a notification; one seen late is only told in
+// the panel. Without storage the timer still runs, for this page only.
+const PO = { s: null, raw: null, v: null, late: null, notify: false };
+const PO_PH = { idle: 'kab.pomo.ph.idle', work: 'kab.pomo.ph.work', short: 'kab.pomo.ph.short', long: 'kab.pomo.ph.long', wait: 'kab.pomo.ph.wait' };
+function poLoad() { const raw = readPref(LS, PREF_KEYS.pomo); if (raw == null ? !PO.s : raw !== PO.raw) { PO.raw = raw; PO.s = parsePomo(raw); } }
+// run a timer step (pomoAdvance: just bring it up to now) and deal with what happened
+function poDo(fn) {
+  poLoad();
+  const now = Date.now(), ev = fn(PO.s, now);
+  if (ev.length || fn !== pomoAdvance) { PO.raw = JSON.stringify(PO.s); writePref(LS, PREF_KEYS.pomo, PO.raw); }
+  if (ev.some(e => e.type === 'focus')) { const st = parsePomoStats(readPref(LS, PREF_KEYS.pomoStats)); if (pomoStatsAdd(st, ev)) writePref(LS, PREF_KEYS.pomoStats, JSON.stringify(st)); }
+  if (fn !== pomoAdvance) PO.late = null;
+  for (const e of ev) if (e.type === 'end' && !e.skipped) poEnded(e);
+  poShow(now);
+}
+// a settings change: up to now first, then the change
+function poSet(f) { poDo((s, now) => { const ev = pomoAdvance(s, now); f(s); return ev; }); poSyncSet(); }
+function poEnded(e) {
+  if (e.late >= POMO_LATE) { PO.late = e; return; }
+  const brk = e.phase === 'work', g = CLOCK.g;
+  sndChime(AUD.set, brk ? 'break' : 'work');
+  if (g) { g.classList.remove('ring'); requestAnimationFrame(() => g.classList.add('ring')); setTimeout(() => g.classList.remove('ring'), 3400); }
+  poNotify(_(brk ? 'kab.pomo.n.breakT' : 'kab.pomo.n.workT'), brk ? _('kab.pomo.n.breakB', { m: pomoDur(PO.s, e.next) / POMO_MIN }) : _('kab.pomo.n.workB', { m: PO.s.cfg.work }));
+}
+function poShow(now = Date.now()) {
+  const s = PO.s, v = PO.v = pomoView(s, now);
+  clockTick();
+  if ($('#kPomo').hidden) return;
+  const ph = _(PO_PH[v.phase], { k: v.k, n: v.every });
+  $('#kPomoPh').textContent = v.paused ? _('kab.pomo.paused', { ph }) : ph;
+  $('#kPomoT').textContent = pomoClock(pomoTimed(v.phase) ? v.left : s.cfg.work * POMO_MIN);
+  $('#kPomoGo').textContent = _(v.running ? 'kab.pomo.pause' : v.paused ? 'kab.pomo.resume' : 'kab.pomo.start');
+  $('#kPomoSkip').disabled = !pomoTimed(v.phase); $('#kPomoReset').disabled = v.phase === 'idle';
+  const L = PO.late; $('#kPomoLate').hidden = !L;
+  if (L) $('#kPomoLate').textContent = _(L.phase === 'work' ? 'kab.pomo.late.work' : 'kab.pomo.late.break', { m: Math.max(1, Math.round((now - L.at) / 60000)) });
+}
+// the panel's settings from the state
+function poSyncSet() {
+  const s = PO.s;
+  for (const b of document.querySelectorAll('#kPomoPre button')) b.setAttribute('aria-pressed', String(b.dataset.p === s.preset));
+  $('#kPomoCus').hidden = s.preset !== 'custom';
+  for (const i of document.querySelectorAll('#kPomoCus input')) if (document.activeElement !== i) i.value = s.cfg[i.dataset.c];
+  $('#kPomoSum').textContent = s.cfg.long ? _('kab.pomo.sum', { m: s.cfg.long, n: s.cfg.every }) : _('kab.pomo.sumNone');
+  $('#kPomoAuto').checked = s.auto; $('#kPomoNotify').checked = PO.notify;
+}
+function poPanel(open) {
+  const p = $('#kPomo'); open = open ?? p.hidden; p.hidden = !open; hideTip();
+  if (open) { audPanel(false); poSyncSet(); poShow(); }
+}
+function poNotify(title, body) {
+  if (!PO.notify || !document.hidden || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  try { new Notification(title, { body, tag: 'kabin-pomo', silent: true }); } catch (err) { /* this browser wants a service worker for it */ }
+}
+PO.notify = readPref(LS, PREF_KEYS.pomoNotify) === '1' && typeof Notification !== 'undefined' && Notification.permission === 'granted';
+poLoad();
+$('#kPomoX').addEventListener('click', () => poPanel(false));
+$('#kPomoGo').addEventListener('click', () => poDo(PO.v && PO.v.running ? pomoPause : pomoStart));
+$('#kPomoSkip').addEventListener('click', () => poDo(pomoSkip));
+$('#kPomoReset').addEventListener('click', () => poDo(pomoReset));
+for (const b of document.querySelectorAll('#kPomoPre button')) b.addEventListener('click', () => poSet(s => { s.preset = b.dataset.p; if (POMO_PRESETS[s.preset]) s.cfg = { ...POMO_PRESETS[s.preset] }; }));
+for (const i of document.querySelectorAll('#kPomoCus input')) i.addEventListener('change', () => poSet(s => { s.cfg = pomoCfg({ ...s.cfg, [i.dataset.c]: +i.value }); i.value = s.cfg[i.dataset.c]; }));
+$('#kPomoAuto').addEventListener('change', e => poSet(s => { s.auto = e.target.checked; }));
+// notifications: permission is asked only here, on the viewer's own click
+$('#kPomoNotify').addEventListener('change', e => {
+  const note = $('#kPomoNote'), put = on => { PO.notify = on; e.target.checked = on; writePref(LS, PREF_KEYS.pomoNotify, on ? '1' : '0'); };
+  note.hidden = true;
+  if (!e.target.checked) { put(false); return; }
+  if (typeof Notification === 'undefined') { note.textContent = _('kab.pomo.notifyNone'); note.hidden = false; put(false); return; }
+  Promise.resolve(Notification.permission === 'default' ? Notification.requestPermission() : Notification.permission).then(p => {
+    if (p !== 'granted') { note.textContent = _('kab.pomo.notifyDenied'); note.hidden = false; }
+    put(p === 'granted');
+  });
+});
+addEventListener('storage', e => { if (e.key === PREF_KEYS.pomo) { poLoad(); poShow(); if (!$('#kPomo').hidden) poSyncSet(); } });
 
 // ---------- the lamp ----------
 function setLamp(on, save = true) {
@@ -494,7 +591,8 @@ function buildHits() {
   $('#hGlass').addEventListener('click', () => go(view === 'desk' ? 'window' : 'desk'));
   $('#hLamp').addEventListener('click', () => setLamp($('#kRoot').classList.contains('lamp-off')));
   $('#hCat').addEventListener('click', () => { const c = $('#kCat'); c.classList.remove('k-flick'); void c.offsetWidth; c.classList.add('k-flick'); setTimeout(() => c.classList.remove('k-flick'), 950); });
-  for (const id of ['hClock', 'hBook', 'hTea']) $('#' + id).addEventListener('click', e => showTip(e.currentTarget));
+  for (const id of ['hBook', 'hTea']) $('#' + id).addEventListener('click', e => showTip(e.currentTarget));
+  $('#hClock').addEventListener('click', () => poPanel());
   $('#hPhones').addEventListener('click', () => audPanel());
 }
 
@@ -516,7 +614,7 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   for (const b of document.querySelectorAll('#kScene button')) b.setAttribute('aria-pressed', String(b.dataset.scene === SP.scene));
   setLamp(readPref(LS, PREF_KEYS.cabLamp) !== '0', false);
   layout();
-  clockTick(); setInterval(clockTick, 5000);
+  poDo(pomoAdvance); setInterval(() => poDo(pomoAdvance), 1000);
   lapTick(); setInterval(() => { if (!document.hidden) lapTick(); }, 2000);
   loopStart();
 });
@@ -528,7 +626,7 @@ $('#kBack').addEventListener('click', e => {
   if (ref && ref.origin === location.origin && /\/(index\.html)?$/.test(ref.pathname) && history.length > 1) { e.preventDefault(); history.back(); }
 });
 $('#kLamp').addEventListener('click', () => setLamp($('#kRoot').classList.contains('lamp-off')));
-addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!$('#kAudio').hidden) audPanel(false); else go('desk'); });
+addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!$('#kAudio').hidden) audPanel(false); else if (!$('#kPomo').hidden) poPanel(false); else go('desk'); });
 for (const b of document.querySelectorAll('#kScene button')) b.addEventListener('click', () => {
   SP.scene = b.dataset.scene; writePref(LS, PREF_KEYS.cabScene, SP.scene);
   for (const x of document.querySelectorAll('#kScene button')) x.setAttribute('aria-pressed', String(x === b));
@@ -538,6 +636,6 @@ let rsz = 0;
 addEventListener('resize', () => { clearTimeout(rsz); rsz = setTimeout(() => { if (LY) layout(); }, 150); });
 document.addEventListener('visibilitychange', () => {
   document.documentElement.classList.toggle('paused', document.hidden);
-  if (!document.hidden && LY) { loopStart(); lapTick(); clockTick(); spaceSoon(); }
+  if (!document.hidden && LY) { loopStart(); lapTick(); poDo(pomoAdvance); spaceSoon(); }
 });
 RM.addEventListener?.('change', () => { if (LY) { if (still()) drawStill(); else loopStart(); } });

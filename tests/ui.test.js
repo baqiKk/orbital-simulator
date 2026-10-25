@@ -347,7 +347,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   for (const m of page.matchAll(/data-i18n(?:-[a-z-]+)?="([^"]+)"/g)) assert.ok(has(m[1]), `kabin.html key missing from dictionary: ${m[1]}`);
   for (const m of js.matchAll(/'((?:kab|kabin|wc)\.[A-Za-z0-9_.]+)'/g)) assert.ok(has(m[1]), `cabin.js key missing from dictionary: ${m[1]}`);
   assert.ok(page.includes(`content="${DICT['kabin.description']}"`) && page.includes(`<title>${DICT['kabin.title']}</title>`), 'kabin.html static title and description match the dictionary');
-  assert.ok(/<script src="js\/globe\.js"><\/script>\s*<script src="js\/sounds\.js"><\/script>\s*<script src="js\/cabin-audio\.js"><\/script>\s*<script src="js\/cabin\.js">/.test(page), 'cabin scripts in order: globe, sounds, cabin-audio, cabin');
+  assert.ok(/<script src="js\/globe\.js"><\/script>\s*<script src="js\/sounds\.js"><\/script>\s*<script src="js\/cabin-audio\.js"><\/script>\s*<script src="js\/pomodoro\.js"><\/script>\s*<script src="js\/cabin\.js">/.test(page), 'cabin scripts in order: globe, sounds, cabin-audio, pomodoro, cabin');
   assert.ok(!/img\/planets|img\/sky/.test(page + js), 'cabin images of bodies and sky only through globeLook / skyReady');
   for (const m of js.matchAll(/globeLook\(([^;]*?)\)/g)) assert.ok(/, !LOWQ, !LOWQ,/.test(m[1]), 'cabin globeLook: nothing drawn or fetched in low mode: ' + m[1]);
   assert.ok(/if \(LOWQ\) SP\.sky = plainSky\(\); else \{ const sk = skyReady\(/.test(js), 'cabin sky: skyReady only outside low mode');
@@ -406,7 +406,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   // settings
   assert.deepStrictEqual(P.parseCabAudio(null), P.CAB_AUDIO, 'defaults: radio on, layers off');
   assert.deepStrictEqual(P.parseCabAudio('{"music":{"on":false,"vol":2},"noise":{"type":"red","vol":-1},"muted":"yes"}'),
-    { muted: false, music: { on: false, vol: 1 }, space: { on: false, vol: 0.5 }, hum: { on: false, vol: 0.4 }, noise: { on: false, vol: 0, type: 'pink' } }, 'per-field fallback');
+    { muted: false, music: { on: false, vol: 1 }, space: { on: false, vol: 0.5 }, hum: { on: false, vol: 0.4 }, noise: { on: false, vol: 0, type: 'pink' }, chime: { on: true, vol: 0.6 } }, 'per-field fallback');
   assert.strictEqual(P.parseCabAudio('{"noise":{"type":"brown"}}').noise.type, 'brown');
   assert.ok(P.PREF_KEYS.cabAudio, 'saved under a pref key');
 }
@@ -518,6 +518,17 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.strictEqual(T.parsePomo(JSON.stringify({ v: 1, phase: 'short', t0: 5, paused: 0, pausedAt: 3 })).phase, 'idle', 'a pause before the start is broken');
   assert.strictEqual(T.pomoClock(25 * MIN), '25:00'); assert.strictEqual(T.pomoClock(61500), '01:02'); assert.strictEqual(T.pomoClock(-5), '00:00');
   assert.ok(P.PREF_KEYS.pomo && P.PREF_KEYS.pomoStats, 'saved under pref keys');
+  // the page: the clock opens the panel; notification permission is asked only in the switch's own change handler; the
+  // bell is synthesised (no file), follows the level and "mute all", ducks the radio; the timer keeps no storage of its own
+  const cab = read('js/cabin.js'), aud = read('js/cabin-audio.js'), po = read('js/pomodoro.js');
+  assert.ok(/\$\('#hClock'\)\.addEventListener\('click', \(\) => poPanel\(\)\)/.test(cab), 'the clock opens the pomodoro panel');
+  assert.strictEqual([...cab.matchAll(/requestPermission\(/g)].length, 1, 'one permission request');
+  assert.ok(/\$\('#kPomoNotify'\)\.addEventListener\('change', e => \{[^]*?Notification\.requestPermission\(\)[^]*?\n\}\);/.test(cab), 'asked only from the switch');
+  assert.ok(/if \(!PO\.notify \|\| !document\.hidden/.test(cab), 'notifications only while the tab is hidden');
+  assert.ok(/function sndChime\(set, kind\) \{\n  if \(set\.muted \|\| !set\.chime\.on/.test(aud) && /linearRampToValueAtTime\(0\.2 \* lv/.test(aud) && !/audio\/cabin\/[a-z]+\/chime/.test(aud), 'bell: level, mute, ducked radio, no file');
+  assert.ok(/document\.querySelector\('\.k-arow\[data-k=chime\]/.test(cab) && /data-k="chime"/.test(read('kabin.html')), 'the bell has its row in the sound panel');
+  assert.ok(!/localStorage|sessionStorage|document|window/.test(po), 'pomodoro.js: no DOM, no storage');
+  assert.ok(!/setInterval\(clockTick/.test(cab) && /setInterval\(\(\) => poDo\(pomoAdvance\), 1000\)/.test(cab), 'one tick a second drives the clock');
 }
 
 console.log('OK — all UI tests passed');
