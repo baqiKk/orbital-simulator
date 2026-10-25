@@ -27,7 +27,7 @@
     --cab-kraft:#a97c4e; --cab-kraft-lo:#6d4a28;
     --cab-leaf:#3f6e3c; --cab-leaf-hi:#7fae62; --cab-pot:#b5653c; --cab-pot-lo:#7a3f22;
     --cab-tea:#c4511d; --cab-tea-lo:#6e1f08;
-    --cab-cat:#f3eee6; --cab-cat-lo:#b8ad9f; --cab-eye-b:#4fa6e8;
+    --cab-cat:#f6f2ea; --cab-cat-mid:#ddd4c7; --cab-cat-lo:#a99c8c; --cab-ear:#e3a19c; --cab-eye-b:#4fa6e8;
     --cab-water:#174c56; --cab-water-hi:#3f8f98;
     --cab-shadow:#0a0604; --cab-screen-bg:#06141a;
     --cab-lamp:var(--accent); --cab-screen:var(--cyan);
@@ -59,18 +59,14 @@
 
   .khud{position:fixed;z-index:5;display:flex;gap:8px;align-items:center}
   .khud.top{top:max(12px,env(safe-area-inset-top,0px));left:max(12px,env(safe-area-inset-left,0px))}
-  .khud.bot{left:0;right:0;bottom:max(16px,env(safe-area-inset-bottom,0px));justify-content:center;flex-wrap:wrap;padding:0 16px;pointer-events:none}
-  .khud.bot>*{pointer-events:auto}
+  /* the draft's own controls: a small panel in the bottom-left corner, over the empty front of the desk */
+  .khud.bot{left:max(12px,env(safe-area-inset-left,0px));bottom:max(12px,env(safe-area-inset-bottom,0px));gap:6px;flex-wrap:wrap}
   .khud .ghost{text-decoration:none;display:inline-flex;align-items:center;gap:6px;padding:8px 11px}
   .badge{font:600 10px/1 var(--f-disp);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);background:var(--panel);border:1px solid var(--accent-soft);padding:7px 8px;cursor:help}
-  #go{min-width:140px;padding:10px 16px}
-  .khud .seg button{padding:9px 11px}
+  #go{padding:8px 12px;font-size:10.5px}
+  .khud .seg button{padding:7px 9px;font-size:10.5px}
   #tip{position:fixed;z-index:6;pointer-events:none;transform:translate(-50%,-100%);background:var(--panel-lo);border:1px solid var(--line2);padding:6px 9px;font:500 11px/1.2 var(--f-disp);letter-spacing:.06em;text-transform:uppercase;color:var(--ink);white-space:nowrap}
 
-  /* the poster: photo or original */
-  #o-poster .pv-own{display:none}
-  #o-poster.own .pv-own{display:inline}
-  #o-poster.own .pv-photo{display:none}
   .hand{font-family:"Playpen Sans",cursive}
   .disp{font-family:var(--f-disp);font-weight:600}
 
@@ -152,12 +148,6 @@
       <circle cx="0" cy="0" r="5" style="fill:var(--cab-brass-lo)"/><circle cx="140" cy="0" r="5" style="fill:var(--cab-brass-lo)"/>
       <circle cx="0" cy="120" r="5" style="fill:var(--cab-brass-lo)"/><circle cx="140" cy="120" r="5" style="fill:var(--cab-brass-lo)"/>
     </pattern>
-    <pattern id="pKnit" width="26" height="90" patternUnits="userSpaceOnUse" patternTransform="rotate(-16)">
-      <rect width="26" height="30" style="fill:var(--cab-rust)"/>
-      <rect y="30" width="26" height="30" style="fill:var(--cab-mustard)"/>
-      <rect y="60" width="26" height="30" style="fill:var(--cab-cream)"/>
-      <path d="M3 3L13 13L23 3M3 18L13 28L23 18M3 33L13 43L23 33M3 48L13 58L23 48M3 63L13 73L23 63M3 78L13 88L23 78" style="fill:none;stroke:var(--cab-wood-dk);stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round" opacity=".3"/>
-    </pattern>
     <linearGradient id="gWallShade" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" style="stop-color:var(--cab-shadow);stop-opacity:.65"/><stop offset=".35" style="stop-color:var(--cab-shadow);stop-opacity:.1"/>
       <stop offset=".7" style="stop-color:var(--cab-shadow);stop-opacity:.1"/><stop offset="1" style="stop-color:var(--cab-shadow);stop-opacity:.5"/>
@@ -216,15 +206,32 @@
     <linearGradient id="gTea" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" style="stop-color:var(--cab-tea)"/><stop offset="1" style="stop-color:var(--cab-tea-lo)"/>
     </linearGradient>
-    <linearGradient id="gChair" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" style="stop-color:var(--cab-wood)"/><stop offset=".3" style="stop-color:var(--cab-wood-lo)"/><stop offset="1" style="stop-color:var(--cab-wood-dk)"/>
-    </linearGradient>
-    <linearGradient id="gFold" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" style="stop-color:var(--cab-shadow);stop-opacity:0"/><stop offset=".55" style="stop-color:var(--cab-shadow);stop-opacity:.15"/><stop offset="1" style="stop-color:var(--cab-shadow);stop-opacity:.55"/>
+    <linearGradient id="gBottle" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" style="stop-color:var(--cab-metal-lo)"/><stop offset=".3" style="stop-color:var(--cab-metal-hi)"/><stop offset=".55" style="stop-color:var(--cab-metal)"/><stop offset="1" style="stop-color:var(--cab-metal-lo)"/>
     </linearGradient>
     <linearGradient id="gWater" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" style="stop-color:var(--cab-water-hi);stop-opacity:.85"/><stop offset="1" style="stop-color:var(--cab-water);stop-opacity:.95"/>
     </linearGradient>
+    <!-- the cat's shapes: sitting with its back to us (k…), walking in profile facing left (kW…); clips keep the fur shading,
+         the window's rim light and the lamp's warmth inside the silhouette -->
+    <path id="kBody" d="M100 88C66 88 42 116 37 152C33 184 26 206 28 226C30 246 56 254 100 254C144 254 170 246 172 226C174 206 167 184 163 152C158 116 134 88 100 88Z"/>
+    <path id="kHead" d="M100 26C126 26 144 42 145 64C146 74 143 82 139 88L147 93L136 95C128 102 114 106 100 106C86 106 72 102 64 95L53 93L61 88C57 82 54 74 55 64C56 42 74 26 100 26Z"/>
+    <path id="kEarL" d="M63 54L57 6L95 34Z"/>
+    <path id="kEarR" d="M137 54L143 6L105 34Z"/>
+    <clipPath id="cCatBody"><use href="#kBody"/></clipPath>
+    <clipPath id="cCatHead"><use href="#kHead"/></clipPath>
+    <linearGradient id="gRimCat" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="260">
+      <stop offset="0" style="stop-color:var(--cab-screen);stop-opacity:.95"/><stop offset=".4" style="stop-color:var(--cab-screen);stop-opacity:.45"/><stop offset=".8" style="stop-color:var(--cab-screen);stop-opacity:.1"/>
+    </linearGradient>
+    <path id="kWBody" d="M64 190C62 170 78 158 100 160C122 162 142 156 162 160C180 164 188 180 184 200C181 214 168 220 152 218C130 216 108 220 88 218C72 216 65 204 64 190Z"/>
+    <path id="kWHead" d="M52 132C70 132 80 146 79 162C78 176 68 186 54 188C46 189 38 186 32 182C26 182 18 178 16 172C14 166 20 160 26 158C28 142 38 132 52 132Z"/>
+    <path id="kWEar1" d="M34 144L29 108L57 132Z"/>
+    <path id="kWEar2" d="M56 134L69 105L77 141Z"/>
+    <clipPath id="cCatWalk"><use href="#kWBody"/><use href="#kWHead"/><use href="#kWEar1"/><use href="#kWEar2"/></clipPath>
+    <radialGradient id="gCatB" cx=".46" cy=".28" r=".8">
+      <stop offset="0" style="stop-color:var(--cab-cat)"/><stop offset=".55" style="stop-color:var(--cab-cat)"/><stop offset=".85" style="stop-color:var(--cab-cat-mid)"/><stop offset="1" style="stop-color:var(--cab-cat-lo)"/>
+    </radialGradient>
+    <filter id="fRim" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2.2"/></filter>
     <radialGradient id="gCat" cx=".4" cy=".3" r=".8">
       <stop offset="0" style="stop-color:var(--cab-cat)"/><stop offset=".6" style="stop-color:var(--cab-cat)"/><stop offset="1" style="stop-color:var(--cab-cat-lo)"/>
     </radialGradient>
@@ -290,34 +297,38 @@
       <div class="bg" id="wallBg"></div>
       <button class="obj" id="o-glass" data-tip="kab.toWindow" data-i18n-aria-label="kab.toWindow"></button>
 
-      <div class="obj deco" id="o-poster">
+      <div class="obj deco" id="o-photo">
         <svg viewBox="0 0 200 280" aria-hidden="true">
           <rect x="6" y="8" width="200" height="280" style="fill:var(--cab-shadow)" opacity=".5" filter="url(#fBlur4)"/>
-          <g class="pv-photo">
-            <rect width="200" height="280" style="fill:var(--cab-paper)"/>
-            <svg x="10" y="10" width="180" height="228" viewBox="0 0 1280 1280" preserveAspectRatio="xMidYMid slice">
-              <image href="img/cabin/earthrise.jpg" width="1280" height="1280"/>
-            </svg>
-            <text class="disp" x="100" y="259" text-anchor="middle" font-size="9.5" letter-spacing=".6" style="fill:var(--cab-wood-dk)" data-i18n="kab.poster.photoCap"></text>
+          <rect width="200" height="280" style="fill:var(--cab-paper)"/>
+          <svg x="10" y="10" width="180" height="228" viewBox="0 0 1280 1280" preserveAspectRatio="xMidYMid slice">
+            <image href="img/cabin/earthrise.jpg" width="1280" height="1280"/>
+          </svg>
+          <text class="disp" x="100" y="259" text-anchor="middle" font-size="9.5" letter-spacing=".6" style="fill:var(--cab-wood-dk)" data-i18n="kab.poster.photoCap"></text>
+          <rect x="-8" y="-4" width="40" height="13" transform="rotate(-24 12 2)" style="fill:var(--cab-cream-lo)" opacity=".8"/>
+          <rect x="168" y="-4" width="40" height="13" transform="rotate(22 188 2)" style="fill:var(--cab-cream-lo)" opacity=".8"/>
+        </svg>
+      </div>
+
+      <div class="obj deco" id="o-own">
+        <svg viewBox="0 0 200 280" aria-hidden="true">
+          <rect x="6" y="8" width="200" height="280" style="fill:var(--cab-shadow)" opacity=".5" filter="url(#fBlur4)"/>
+          <rect width="200" height="280" style="fill:var(--cab-cream)"/>
+          <rect x="10" y="10" width="180" height="7" style="fill:var(--cab-rust)"/>
+          <rect x="10" y="20" width="180" height="3" style="fill:var(--cab-mustard)"/>
+          <text class="disp" x="100" y="45" text-anchor="middle" font-size="18.5" letter-spacing=".5" style="fill:var(--cab-rust-lo)" data-i18n="kab.poster.title"></text>
+          <text class="disp" x="100" y="60" text-anchor="middle" font-size="8" letter-spacing="3" style="fill:var(--cab-kraft-lo)" data-i18n="kab.poster.sub"></text>
+          <rect x="18" y="70" width="164" height="172" rx="4" style="fill:var(--cab-screen-bg)"/>
+          <g style="fill:var(--cab-cream)" opacity=".7">
+            <circle cx="34" cy="86" r=".9"/><circle cx="62" cy="128" r=".7"/><circle cx="150" cy="96" r="1"/><circle cx="168" cy="150" r=".7"/>
+            <circle cx="40" cy="190" r=".8"/><circle cx="132" cy="208" r=".7"/><circle cx="160" cy="226" r="1"/><circle cx="30" cy="232" r=".7"/><circle cx="78" cy="80" r=".6"/>
           </g>
-          <g class="pv-own">
-            <rect width="200" height="280" style="fill:var(--cab-cream)"/>
-            <rect x="10" y="10" width="180" height="7" style="fill:var(--cab-rust)"/>
-            <rect x="10" y="20" width="180" height="3" style="fill:var(--cab-mustard)"/>
-            <text class="disp" x="100" y="45" text-anchor="middle" font-size="18.5" letter-spacing=".5" style="fill:var(--cab-rust-lo)" data-i18n="kab.poster.title"></text>
-            <text class="disp" x="100" y="60" text-anchor="middle" font-size="8" letter-spacing="3" style="fill:var(--cab-kraft-lo)" data-i18n="kab.poster.sub"></text>
-            <rect x="18" y="70" width="164" height="172" rx="4" style="fill:var(--cab-screen-bg)"/>
-            <g style="fill:var(--cab-cream)" opacity=".7">
-              <circle cx="34" cy="86" r=".9"/><circle cx="62" cy="128" r=".7"/><circle cx="150" cy="96" r="1"/><circle cx="168" cy="150" r=".7"/>
-              <circle cx="40" cy="190" r=".8"/><circle cx="132" cy="208" r=".7"/><circle cx="160" cy="226" r="1"/><circle cx="30" cy="232" r=".7"/><circle cx="78" cy="80" r=".6"/>
-            </g>
-            <circle cx="100" cy="222" r="34" style="fill:none;stroke:var(--cab-mustard)" stroke-width="1" opacity=".25"/>
-            <circle cx="100" cy="222" r="52" style="fill:none;stroke:var(--cab-mustard)" stroke-width="1" opacity=".15"/>
-            <path id="trajPoster" style="fill:none;stroke:var(--cab-mustard);stroke-width:2;stroke-linejoin:round"/>
-            <circle cx="100" cy="222" r="13" style="fill:url(#gTabEarth)"/>
-            <circle cx="100" cy="92" r="6.5" style="fill:var(--cab-cream-lo)"/>
-            <text class="disp" x="100" y="259" text-anchor="middle" font-size="7.4" letter-spacing=".4" style="fill:var(--cab-kraft-lo)" data-i18n="kab.poster.facts"></text>
-          </g>
+          <circle cx="100" cy="222" r="34" style="fill:none;stroke:var(--cab-mustard)" stroke-width="1" opacity=".25"/>
+          <circle cx="100" cy="222" r="52" style="fill:none;stroke:var(--cab-mustard)" stroke-width="1" opacity=".15"/>
+          <path id="trajPoster" style="fill:none;stroke:var(--cab-mustard);stroke-width:2;stroke-linejoin:round"/>
+          <circle cx="100" cy="222" r="13" style="fill:url(#gTabEarth)"/>
+          <circle cx="100" cy="92" r="6.5" style="fill:var(--cab-cream-lo)"/>
+          <text class="disp" x="100" y="259" text-anchor="middle" font-size="7.4" letter-spacing=".4" style="fill:var(--cab-kraft-lo)" data-i18n="kab.poster.facts"></text>
           <rect x="-8" y="-4" width="40" height="13" transform="rotate(-24 12 2)" style="fill:var(--cab-cream-lo)" opacity=".8"/>
           <rect x="168" y="-4" width="40" height="13" transform="rotate(22 188 2)" style="fill:var(--cab-cream-lo)" opacity=".8"/>
         </svg>
@@ -382,37 +393,61 @@
       <button class="obj" id="o-cat" data-pose="sit" data-tip="kab.cat" data-i18n-aria-label="kab.cat">
         <svg viewBox="0 0 200 340" aria-hidden="true">
           <g class="sitG">
-            <ellipse cx="100" cy="250" rx="64" ry="6" style="fill:var(--cab-shadow)" opacity=".55" filter="url(#fBlur4)"/>
-            <path class="tail" d="M142 236C172 240 182 262 176 292C172 314 160 326 148 334" style="fill:none;stroke:var(--cab-cat);stroke-width:17;stroke-linecap:round"/>
-            <path d="M100 84C62 86 42 128 40 176C38 220 52 250 100 252C148 250 162 220 160 176C158 128 138 86 100 84Z" style="fill:url(#gCat)"/>
-            <path d="M100 84C62 86 42 128 40 176C38 220 52 250 100 252C148 250 162 220 160 176C158 128 138 86 100 84Z" style="fill:url(#gWarmL)"/>
-            <path d="M58 212C60 238 80 249 100 251M142 212C140 238 120 249 100 251" style="fill:none;stroke:var(--cab-cat-lo);stroke-width:2" opacity=".7"/>
-            <path d="M100 112V226" style="stroke:var(--cab-cat-lo);stroke-width:3;stroke-linecap:round" opacity=".25"/>
-            <g class="earL"><path d="M68 54L61 13L95 40Z" style="fill:var(--cab-cat)"/><path d="M68 54L61 13L95 40" style="fill:none;stroke:url(#gRim);stroke-width:2.5"/></g>
-            <g class="earR"><path d="M132 54L139 13L105 40Z" style="fill:var(--cab-cat)"/><path d="M132 54L139 13L105 40" style="fill:none;stroke:url(#gRim);stroke-width:2.5"/></g>
-            <ellipse cx="100" cy="68" rx="40" ry="35" style="fill:url(#gCat)"/>
-            <ellipse cx="100" cy="68" rx="40" ry="35" style="fill:none;stroke:url(#gRim);stroke-width:2.5"/>
-            <path d="M100 84C62 86 42 128 40 176C38 220 52 250 100 252C148 250 162 220 160 176C158 128 138 86 100 84Z" style="fill:none;stroke:url(#gRim);stroke-width:2.5"/>
+            <ellipse cx="100" cy="252" rx="80" ry="7" style="fill:var(--cab-shadow)" opacity=".6" filter="url(#fBlur4)"/>
+            <g class="tail">
+              <path d="M150 238C184 242 199 263 193 294C189 316 175 330 162 334" style="fill:none;stroke:var(--cab-cat);stroke-width:21;stroke-linecap:round"/>
+              <path d="M156 246C184 252 192 270 187 296C184 312 174 324 164 330" style="fill:none;stroke:var(--cab-cat-lo);stroke-width:7;stroke-linecap:round" opacity=".35" filter="url(#fRim)"/>
+              <path d="M152 234C182 236 196 256 192 286" style="fill:none;stroke:url(#gRim);stroke-width:5;stroke-linecap:round" opacity=".8"/>
+            </g>
+            <ellipse cx="46" cy="248" rx="21" ry="8" style="fill:var(--cab-cat-mid)"/>
+            <ellipse cx="154" cy="248" rx="21" ry="8" style="fill:var(--cab-cat-mid)"/>
+            <use href="#kBody" style="fill:url(#gCatB)"/>
+            <g clip-path="url(#cCatBody)">
+              <ellipse cx="146" cy="196" rx="30" ry="60" style="fill:var(--cab-cat-lo)" opacity=".42" filter="url(#fBlur12)"/>
+              <ellipse cx="54" cy="200" rx="24" ry="50" style="fill:var(--cab-cat-lo)" opacity=".2" filter="url(#fBlur12)"/>
+              <path d="M52 208C58 238 78 250 100 252M148 208C142 238 122 250 100 252" style="fill:none;stroke:var(--cab-cat-lo);stroke-width:7" opacity=".42" filter="url(#fBlur4)"/>
+              <path d="M84 140q3 5 2 10M116 150q-3 5-2 10M92 178q3 5 2 10M112 194q-3 5-2 10M70 224q3 4 3 9M130 224q-3 4-3 9" style="fill:none;stroke:var(--cab-cat-mid);stroke-width:1.4;stroke-linecap:round" opacity=".5"/>
+              <rect width="200" height="260" style="fill:url(#gWarmL)"/>
+              <use href="#kBody" style="fill:none;stroke:url(#gRimCat);stroke-width:10" filter="url(#fRim)"/>
+              <ellipse cx="100" cy="104" rx="44" ry="12" style="fill:var(--cab-cat-lo)" opacity=".55" filter="url(#fBlur4)"/>
+            </g>
+            <g class="earL"><use href="#kEarL" style="fill:var(--cab-cat)"/><path d="M67 46L62 17L87 35Z" style="fill:var(--cab-ear)" opacity=".85"/><path d="M63 54L57 6L95 34" style="fill:none;stroke:var(--cab-screen);stroke-width:2" opacity=".6"/></g>
+            <g class="earR"><use href="#kEarR" style="fill:var(--cab-cat)"/><path d="M133 46L138 17L113 35Z" style="fill:var(--cab-ear)" opacity=".85"/><path d="M137 54L143 6L105 34" style="fill:none;stroke:var(--cab-screen);stroke-width:2" opacity=".6"/></g>
+            <use href="#kHead" style="fill:url(#gCatB)"/>
+            <g clip-path="url(#cCatHead)">
+              <ellipse cx="126" cy="74" rx="22" ry="30" style="fill:var(--cab-cat-lo)" opacity=".3" filter="url(#fBlur12)"/>
+              <rect width="200" height="110" style="fill:url(#gWarmL)"/>
+              <use href="#kHead" style="fill:none;stroke:url(#gRimCat);stroke-width:10" filter="url(#fRim)"/>
+            </g>
+            <path d="M55 80L33 75M55 84L34 86M145 80L167 75M145 84L166 86" style="fill:none;stroke:var(--cab-cat-mid);stroke-width:1" opacity=".8"/>
           </g>
           <g class="walkG">
-            <ellipse cx="108" cy="250" rx="82" ry="6" style="fill:var(--cab-shadow)" opacity=".55" filter="url(#fBlur4)"/>
+            <ellipse cx="116" cy="252" rx="82" ry="6" style="fill:var(--cab-shadow)" opacity=".55" filter="url(#fBlur4)"/>
             <g class="bob">
-              <path class="wtail" d="M170 196C196 180 200 140 188 118" style="fill:none;stroke:var(--cab-cat);stroke-width:13;stroke-linecap:round"/>
-              <rect class="leg b" x="70" y="206" width="13" height="45" rx="6" style="fill:var(--cab-cat-lo)"/>
-              <rect class="leg a" x="144" y="206" width="13" height="45" rx="6" style="fill:var(--cab-cat-lo)"/>
-              <path d="M58 178C64 160 96 162 120 164C150 166 174 172 176 196C178 216 160 224 130 222C100 220 80 222 66 214C56 206 52 190 58 178Z" style="fill:url(#gCat)"/>
-              <path d="M58 178C64 160 96 162 120 164C150 166 174 172 176 196" style="fill:none;stroke:url(#gRim);stroke-width:2.5"/>
-              <rect class="leg a pawleg" x="80" y="208" width="14" height="44" rx="6" style="fill:var(--cab-cat)"/>
-              <rect class="leg b" x="154" y="208" width="14" height="44" rx="6" style="fill:var(--cab-cat)"/>
-              <path d="M30 146L26 112L49 135Z" style="fill:var(--cab-cat)"/>
-              <path d="M50 136L61 109L68 143Z" style="fill:var(--cab-cat)"/>
-              <circle cx="46" cy="160" r="27" style="fill:url(#gCat)"/>
-              <ellipse cx="24" cy="169" rx="11" ry="9" style="fill:var(--cab-cat)"/>
-              <path d="M30 146L26 112L49 135M50 136L61 109L68 143" style="fill:none;stroke:url(#gRim);stroke-width:2"/>
-              <path d="M13 164L18 162L17 167Z" style="fill:var(--cab-rust-hi)"/>
-              <ellipse class="eye" cx="36" cy="155" rx="5.5" ry="4.2"/>
-              <ellipse cx="37" cy="155" rx="1.4" ry="3.4" style="fill:var(--cab-shadow)"/>
-              <path d="M18 170L-4 166M18 172L-3 175M20 174L0 182" style="fill:none;stroke:var(--cab-cat-lo);stroke-width:1"/>
+              <path class="wtail" d="M182 186C204 170 210 140 198 116C194 108 200 100 208 106" style="fill:none;stroke:var(--cab-cat);stroke-width:13;stroke-linecap:round"/>
+              <g class="leg b"><path d="M78 206C76 224 78 240 77 251H91C91 238 93 222 95 208Z" style="fill:var(--cab-cat-mid)"/></g>
+              <g class="leg a"><path d="M146 204C152 222 150 238 152 251H165C163 236 167 220 161 202Z" style="fill:var(--cab-cat-mid)"/></g>
+              <use href="#kWBody" style="fill:url(#gCatB)"/>
+              <use href="#kWEar2" style="fill:var(--cab-cat-mid)"/>
+              <use href="#kWEar1" style="fill:var(--cab-cat)"/>
+              <path d="M37 138L33 114L51 131Z" style="fill:var(--cab-ear)" opacity=".9"/>
+              <use href="#kWHead" style="fill:url(#gCatB)"/>
+              <g clip-path="url(#cCatWalk)">
+                <ellipse cx="124" cy="216" rx="56" ry="10" style="fill:var(--cab-cat-lo)" opacity=".5" filter="url(#fBlur4)"/>
+                <ellipse cx="60" cy="184" rx="22" ry="7" style="fill:var(--cab-cat-lo)" opacity=".4" filter="url(#fBlur4)"/>
+                <path d="M96 176q5 4 4 10M120 172q5 4 4 10M146 174q5 4 4 10M160 190q4 4 3 9M108 196q4 4 3 9M62 150q4 3 4 8" style="fill:none;stroke:var(--cab-cat-mid);stroke-width:1.3;stroke-linecap:round" opacity=".55"/>
+                <rect width="200" height="260" style="fill:url(#gWarmL)"/>
+                <use href="#kWBody" style="fill:none;stroke:url(#gRimCat);stroke-width:9" filter="url(#fRim)"/>
+                <use href="#kWHead" style="fill:none;stroke:url(#gRimCat);stroke-width:9" filter="url(#fRim)"/>
+              </g>
+              <g class="leg a pawleg"><path d="M84 206C82 224 84 240 83 251H98C97 238 100 222 102 208Z" style="fill:var(--cab-cat)"/></g>
+              <g class="leg b"><path d="M138 192C164 194 175 213 167 230C165 238 167 244 169 251H154C153 243 151 236 147 228Z" style="fill:var(--cab-cat)"/></g>
+              <ellipse class="eye" cx="44" cy="155" rx="5.4" ry="4.2"/>
+              <ellipse cx="45" cy="155" rx="1.4" ry="3.4" style="fill:var(--cab-shadow)"/>
+              <circle cx="43" cy="153.5" r="1" style="fill:var(--cab-light)"/>
+              <path d="M16 167L21 165L20.5 170Z" style="fill:var(--cab-ear)"/>
+              <path d="M21 172q4 3 8 1" style="fill:none;stroke:var(--cab-cat-lo);stroke-width:1"/>
+              <path d="M24 172L0 168M24 174L1 177M26 176L4 184" style="fill:none;stroke:var(--cab-cat-mid);stroke-width:1"/>
             </g>
           </g>
         </svg>
@@ -423,25 +458,58 @@
     <div class="layer" id="lDesk">
       <div class="bg" id="deskBg"></div>
       <button class="obj" id="o-lamp" data-tip="kab.lamp" data-i18n-aria-label="kab.lamp">
-        <svg viewBox="0 0 420 520" aria-hidden="true">
-          <ellipse cx="66" cy="510" rx="70" ry="8" style="fill:var(--cab-shadow)" opacity=".6" filter="url(#fBlur4)"/>
-          <path d="M14 504C0 508-10 514-24 516" style="fill:none;stroke:var(--cab-metal-lo);stroke-width:3;stroke-linecap:round"/>
-          <path d="M14 507C14 488 36 478 60 478C84 478 106 488 106 507Z" style="fill:url(#gEnamel)"/>
-          <ellipse cx="60" cy="507" rx="46" ry="5" style="fill:var(--cab-rust-lo)"/>
-          <path d="M56 482L32 92" style="stroke:var(--cab-brass);stroke-width:7;stroke-linecap:round"/>
-          <path d="M67 482L43 96" style="stroke:var(--cab-brass-lo);stroke-width:3.5;stroke-linecap:round"/>
-          <g transform="translate(50 360) rotate(-3.5)"><path d="M-4 22L4 17L-4 12L4 7L-4 2L4-3L-4-8L4-13L-4-18L4-23" style="fill:none;stroke:var(--cab-brass-lo);stroke-width:2"/></g>
-          <circle cx="60" cy="482" r="8" style="fill:var(--cab-brass)"/>
-          <path d="M36 90L318 58" style="stroke:var(--cab-brass);stroke-width:7;stroke-linecap:round"/>
-          <path d="M40 100L316 70" style="stroke:var(--cab-brass-lo);stroke-width:3;stroke-linecap:round"/>
-          <circle cx="36" cy="90" r="11" style="fill:var(--cab-brass)"/><circle cx="36" cy="90" r="4.5" style="fill:var(--cab-brass-lo)"/>
-          <polygon points="343.5,67.7 405.2,135.3 284.8,164.7 308.5,76.3" style="fill:url(#gShade)"/>
-          <path d="M340 72L398 132" style="stroke:var(--cab-light);stroke-width:3;stroke-linecap:round" opacity=".3"/>
-          <ellipse class="bulb" cx="345" cy="150" rx="62" ry="15" transform="rotate(-13.7 345 150)" style="fill:url(#gBulb)"/>
-          <ellipse cx="326" cy="72" rx="18" ry="5" transform="rotate(-13.7 326 72)" style="fill:var(--cab-rust-lo)"/>
-          <circle cx="320" cy="60" r="8" style="fill:var(--cab-brass)"/>
+        <svg viewBox="0 0 290 340" aria-hidden="true">
+          <ellipse cx="64" cy="330" rx="60" ry="7" style="fill:var(--cab-shadow)" opacity=".6" filter="url(#fBlur4)"/>
+          <path d="M18 324C4 328-6 334-20 336" style="fill:none;stroke:var(--cab-metal-lo);stroke-width:3;stroke-linecap:round"/>
+          <path d="M18 327C18 310 38 300 60 300C82 300 102 310 102 327Z" style="fill:url(#gEnamel)"/>
+          <ellipse cx="60" cy="327" rx="42" ry="4.5" style="fill:var(--cab-rust-lo)"/>
+          <path d="M56 304L32 98" style="stroke:var(--cab-brass);stroke-width:6;stroke-linecap:round"/>
+          <path d="M66 304L42 102" style="stroke:var(--cab-brass-lo);stroke-width:3;stroke-linecap:round"/>
+          <g transform="translate(46 220) rotate(-6.6)"><path d="M-4 18L4 14L-4 10L4 6L-4 2L4-2L-4-6L4-10L-4-14L4-18" style="fill:none;stroke:var(--cab-brass-lo);stroke-width:2"/></g>
+          <circle cx="60" cy="304" r="7" style="fill:var(--cab-brass)"/>
+          <path d="M36 96L176 60" style="stroke:var(--cab-brass);stroke-width:6;stroke-linecap:round"/>
+          <path d="M40 106L176 72" style="stroke:var(--cab-brass-lo);stroke-width:3;stroke-linecap:round"/>
+          <circle cx="36" cy="96" r="9" style="fill:var(--cab-brass)"/><circle cx="36" cy="96" r="3.5" style="fill:var(--cab-brass-lo)"/>
+          <polygon points="197.3,60.4 276.2,98.6 196.6,165.4 172.7,81" style="fill:url(#gShade)"/>
+          <path d="M196 65L266 99" style="stroke:var(--cab-light);stroke-width:2.5;stroke-linecap:round" opacity=".3"/>
+          <ellipse class="bulb" cx="236.4" cy="132" rx="52" ry="13" transform="rotate(-40 236.4 132)" style="fill:url(#gBulb)"/>
+          <ellipse cx="185" cy="70.7" rx="16" ry="5" transform="rotate(-40 185 70.7)" style="fill:var(--cab-rust-lo)"/>
+          <circle cx="178" cy="60" r="7" style="fill:var(--cab-brass)"/>
         </svg>
       </button>
+
+      <button class="obj" id="o-phones" data-tip="kab.phones" data-i18n-aria-label="kab.phones">
+        <svg viewBox="0 0 220 160" aria-hidden="true">
+          <ellipse cx="96" cy="150" rx="88" ry="8" style="fill:var(--cab-shadow)" opacity=".6" filter="url(#fBlur4)"/>
+          <path d="M30 138C8 144 2 154 24 156C50 158 74 150 56 145C38 140-4 150-34 152" style="fill:none;stroke:var(--cab-metal-lo);stroke-width:3;stroke-linecap:round"/>
+          <path d="M104 116C150 110 178 82 164 48C156 30 134 22 116 30" style="fill:none;stroke:var(--cab-metal-lo);stroke-width:11;stroke-linecap:round"/>
+          <path d="M150 96C170 76 170 52 156 38" style="fill:none;stroke:var(--cab-rust);stroke-width:12;stroke-linecap:round"/>
+          <path d="M104 112C148 106 174 80 160 48" style="fill:none;stroke:var(--cab-metal-hi);stroke-width:2" opacity=".4"/>
+          <path d="M26 118Q26 134 68 136Q110 134 110 118V112Q110 100 68 98Q26 100 26 112Z" style="fill:url(#gCream)"/>
+          <path d="M28 126Q68 146 108 126" style="fill:none;stroke:var(--cab-rust-lo);stroke-width:5"/>
+          <ellipse cx="68" cy="110" rx="42" ry="12" style="fill:var(--cab-cream)"/>
+          <ellipse cx="68" cy="110" rx="26" ry="7" style="fill:var(--cab-cream-lo)" opacity=".6"/>
+          <g transform="rotate(-16 80 44)">
+            <ellipse cx="80" cy="44" rx="40" ry="22" style="fill:url(#gCream)"/>
+            <ellipse cx="80" cy="58" rx="33" ry="9" style="fill:var(--cab-rust-lo)"/>
+            <ellipse cx="80" cy="40" rx="24" ry="11" style="fill:var(--cab-cream-lo)" opacity=".5"/>
+          </g>
+          <circle cx="54" cy="36" r="2.4" class="led" style="fill:var(--cab-lamp)"/>
+        </svg>
+      </button>
+
+      <div class="obj deco" id="o-bottle">
+        <svg viewBox="0 0 70 200" aria-hidden="true">
+          <ellipse cx="37" cy="196" rx="30" ry="4" style="fill:var(--cab-shadow)" opacity=".6" filter="url(#fBlur4)"/>
+          <rect x="10" y="50" width="50" height="146" rx="16" style="fill:url(#gBottle)"/>
+          <rect x="10" y="108" width="50" height="38" style="fill:var(--cab-leaf)"/>
+          <circle cx="35" cy="127" r="7" style="fill:var(--cab-mustard)"/>
+          <ellipse cx="35" cy="127" rx="13" ry="3.5" transform="rotate(-16 35 127)" style="fill:none;stroke:var(--cab-cream);stroke-width:1.6"/>
+          <path d="M18 62V184" style="stroke:var(--cab-light);stroke-width:3;stroke-linecap:round" opacity=".35"/>
+          <rect x="16" y="30" width="38" height="24" rx="6" style="fill:var(--cab-metal-lo)"/>
+          <path d="M24 31C24 14 46 14 46 31" style="fill:none;stroke:var(--cab-metal-hi);stroke-width:4"/>
+        </svg>
+      </div>
 
       <div class="obj deco" id="o-teapot">
         <svg viewBox="0 0 200 240" aria-hidden="true">
@@ -586,21 +654,6 @@
         </svg>
       </div>
 
-      <button class="obj" id="o-phones" data-tip="kab.phones" data-i18n-aria-label="kab.phones">
-        <svg viewBox="0 0 240 140" aria-hidden="true">
-          <ellipse cx="120" cy="128" rx="112" ry="9" style="fill:var(--cab-shadow)" opacity=".6" filter="url(#fBlur4)"/>
-          <path d="M20 118C0 124-10 132-34 128" style="fill:none;stroke:var(--cab-metal-lo);stroke-width:3;stroke-linecap:round"/>
-          <path d="M44 104C40 34 200 34 196 104" style="fill:none;stroke:var(--cab-metal-lo);stroke-width:12;stroke-linecap:round"/>
-          <path d="M74 60C100 42 140 42 166 60" style="fill:none;stroke:var(--cab-rust);stroke-width:13;stroke-linecap:round"/>
-          <path d="M44 104C40 34 200 34 196 104" style="fill:none;stroke:var(--cab-metal-hi);stroke-width:2" opacity=".4" transform="translate(0 -3)"/>
-          <ellipse cx="44" cy="106" rx="34" ry="24" style="fill:url(#gCream)"/>
-          <ellipse cx="50" cy="102" rx="20" ry="13" style="fill:var(--cab-rust-lo)"/>
-          <ellipse cx="196" cy="106" rx="34" ry="24" style="fill:url(#gCream)"/>
-          <ellipse cx="190" cy="102" rx="20" ry="13" style="fill:var(--cab-rust-lo)"/>
-          <circle cx="24" cy="112" r="2.4" class="led" style="fill:var(--cab-lamp)"/>
-        </svg>
-      </button>
-
       <a class="obj" id="o-tablet" href="index.html" data-tip="kab.tablet" data-i18n-aria-label="kab.tablet">
         <svg viewBox="0 0 360 250" aria-hidden="true">
           <ellipse cx="180" cy="244" rx="176" ry="9" style="fill:var(--cab-shadow)" opacity=".6" filter="url(#fBlur4)"/>
@@ -627,23 +680,6 @@
       </a>
     </div>
 
-    <!-- near: the chair's arm with a knitted blanket, a little out of focus -->
-    <div class="layer" id="lFront">
-      <div class="obj deco" id="o-blanket">
-        <svg viewBox="0 0 600 400" aria-hidden="true">
-          <g filter="url(#fSoft)">
-            <path d="M0 128C160 98 360 138 470 258C520 318 540 368 548 400H0Z" style="fill:url(#gChair)"/>
-            <path d="M0 132C160 102 360 142 468 262" style="fill:none;stroke:var(--cab-wood-hi);stroke-width:6;stroke-linecap:round" opacity=".35"/>
-            <path d="M0 176C90 150 200 160 290 205C330 228 352 290 362 400H0Z" style="fill:url(#pKnit)"/>
-            <path d="M0 176C90 150 200 160 290 205C330 228 352 290 362 400H0Z" style="fill:url(#gFold)"/>
-            <path d="M60 210C110 240 130 300 120 400" style="fill:none;stroke:var(--cab-shadow);stroke-width:18;stroke-linecap:round" opacity=".22"/>
-            <path d="M190 200C240 250 250 320 236 400" style="fill:none;stroke:var(--cab-shadow);stroke-width:14;stroke-linecap:round" opacity=".2"/>
-            <path d="M292 210l10 12M306 222l9 13M318 236l7 14M327 252l6 14M334 268l5 15M340 285l4 15M345 302l3 15M349 319l3 15M352 336l2 15M355 353l2 15M357 370l1 15" style="fill:none;stroke:var(--cab-cream);stroke-width:3.2;stroke-linecap:round" opacity=".85"/>
-          </g>
-        </svg>
-      </div>
-    </div>
-
     <!-- light: the room darkens away from the lamp's pool; warm lamp light and cool window light added on top -->
     <div class="layer" id="lShade"></div>
     <div class="layer" id="lLight"></div>
@@ -660,10 +696,6 @@
   <div class="seg" id="sceneSeg" role="group" data-i18n-aria-label="wc.sceneAria">
     <button type="button" data-scene="saturn" aria-pressed="true" data-i18n="wc.saturn"></button>
     <button type="button" data-scene="earth" aria-pressed="false" data-i18n="wc.earth"></button>
-  </div>
-  <div class="seg" id="posterSeg" role="group" data-i18n-aria-label="kab.posterAria">
-    <button type="button" data-poster="photo" aria-pressed="true" data-i18n="kab.posterPhoto"></button>
-    <button type="button" data-poster="own" aria-pressed="false" data-i18n="kab.posterOwn"></button>
   </div>
   <button type="button" class="btn primary" id="go" data-i18n="kab.toWindow"></button>
 </footer>
@@ -691,22 +723,22 @@ const still = () => LOWQ || RM.matches;
 // portrait screens get their own arrangement (portrait: window above, desk below).
 const LAYOUTS = {
   land: { W: 2000, H: 1100, safe: [190, 52, 1620, 968], win: [500, 130, 1000, 520, 70], sill: [420, 700, 1160], desk: [770, 1010],
-    ceil: [70, 10], shelf: [215, 400, 210], notes: [[250, 560, -6, 'mustard'], [292, 596, 5, 'cream']],
-    at: { lamp: [360, 792, 420], teapot: [480, 838, 170], tea: [590, 930, 110], cup: [760, 828, 80], succulent: [965, 822, 80],
-      notebook: [860, 990, 320], clock: [1110, 890, 200], card: [1290, 822, 170], phones: [1330, 992, 230], snake: [1585, 812, 110],
-      tablet: [1735, 1004, 360], blanket: [-10, 1100, 600], aqua: [620, 703, 200], pothos: [1462, 707, 150], cat: [1220, 703, 170],
-      poster: [1690, 170, 190] } },
+    ceil: [70, 10], shelf: [215, 480, 210], pool: [760, 925, 330, 120],
+    at: { lamp: [280, 795, 290], phones: [425, 812, 170], bottle: [505, 808, 54], teapot: [600, 838, 150], tea: [650, 935, 110],
+      cup: [800, 822, 74], succulent: [960, 820, 76], card: [1140, 818, 160], notebook: [880, 990, 320], clock: [1440, 860, 190],
+      snake: [1600, 815, 110], tablet: [1735, 1004, 360], aqua: [760, 703, 200], pothos: [1462, 707, 150], cat: [1220, 703, 170],
+      photo: [1690, 170, 190], own: [330, 150, 170] } },
   port: { W: 1100, H: 1800, safe: [130, 140, 840, 1520], win: [170, 190, 760, 700, 70], sill: [100, 940, 900], desk: [1190, 1590],
-    ceil: [120, 40], shelf: [150, 1100, 210], notes: [],
-    at: { lamp: [150, 1215, 360], teapot: [300, 1262, 150], tea: [410, 1345, 100], cup: [540, 1236, 70], succulent: [630, 1232, 70],
-      card: [760, 1232, 150], snake: [905, 1236, 100], clock: [770, 1345, 190], notebook: [400, 1565, 300], phones: [705, 1570, 200],
-      tablet: [1030, 1585, 320], blanket: [-60, 1800, 420], aqua: [250, 943, 180], pothos: [880, 947, 130], cat: [690, 943, 160],
-      poster: [640, 992, 110] } },
+    ceil: [120, 40], shelf: [620, 1120, 180], pool: [430, 1420, 300, 110],
+    at: { lamp: [130, 1222, 278], phones: [250, 1238, 140], bottle: [340, 1232, 46], teapot: [450, 1262, 140], tea: [350, 1365, 100],
+      cup: [575, 1236, 62], card: [700, 1240, 140], clock: [858, 1290, 170], succulent: [575, 1380, 62], notebook: [430, 1552, 300],
+      tablet: [860, 1565, 300], aqua: [420, 943, 170], pothos: [880, 947, 130], cat: [720, 943, 160], own: [410, 1000, 100], photo: [530, 1000, 100] } },
 };
-// each drawing's anchor in its own viewBox (where it touches the desk or the sill; the poster's top edge)
-const ANCHOR = { lamp: [60, 510], teapot: [100, 234], tea: [80, 238], cup: [50, 166], succulent: [50, 106], notebook: [170, 160],
-  clock: [130, 136], card: [100, 104], phones: [120, 132], snake: [60, 266], tablet: [180, 244], blanket: [0, 400], aqua: [100, 156],
-  pothos: [110, 290], cat: [100, 250], poster: [100, 0] };
+// each drawing's anchor in its own viewBox (where it touches the desk or the sill; a poster's top edge); a drawing
+// without a place in the layout is hidden
+const ANCHOR = { lamp: [60, 330], phones: [110, 150], bottle: [35, 196], teapot: [100, 234], tea: [80, 238], cup: [50, 166],
+  succulent: [50, 106], notebook: [170, 160], clock: [130, 136], card: [100, 104], snake: [60, 266], tablet: [180, 244],
+  aqua: [100, 156], pothos: [110, 290], cat: [100, 252], photo: [100, 0], own: [100, 0] };
 
 // ---------- the free return, as the simulator flies it ----------
 // em_free scenario (simplified model, 185 km parking orbit, 250 km perilune, 60 km return perigee), from core.js
@@ -792,7 +824,6 @@ function wallSvg(L) {
     s += `<path d="M${cx - 27} ${cy}A27 6 0 0 0 ${cx + 27} ${cy}" transform="rotate(-16 ${cx} ${cy})" style="fill:none;stroke:var(--cab-cream);stroke-width:3"/>`;
     s += `<rect x="${x}" y="${y}" width="${w}" height="14" rx="2" style="fill:url(#gWoodTop)"/><rect x="${x}" y="${y + 5}" width="${w}" height="9" style="fill:var(--cab-wood)"/>`;
   }
-  for (const [x, y, a, c] of L.notes) s += `<rect x="${x}" y="${y}" width="46" height="44" transform="rotate(${a} ${x + 23} ${y + 22})" style="fill:var(--cab-${c})" opacity=".85"/>`;
   // window: shadow on the wall, a thick wooden frame with crisp edges, brass bezel, brass corner plates, bolts
   s += `<path d="${rrb(g, F + 14)}" style="fill:var(--cab-shadow)" opacity=".6" filter="url(#fBlur12)"/>`;
   const ring = `${rrb(g, F)}${rrb(g)}`;
@@ -1010,7 +1041,7 @@ function deskCam() {
   return { s, A: [VW / 2 + s * (c[0] - x - w / 2), VH / 2 + s * (c[1] - y - h / 2)] };
 }
 function winCam() { const g = L.win; return { s: Math.max(VW / (g[2] + 80), VH / (g[3] + 80)), A: [VW / 2, VH / 2] }; }
-const LAYERS = [[$('#lWall'), 5], [$('#lDesk'), 11], [$('#lFront'), 24], [$('#lShade'), 11], [$('#lLight'), 11]];
+const LAYERS = [[$('#lWall'), 5], [$('#lDesk'), 11], [$('#lShade'), 11], [$('#lLight'), 11]];
 let PAR = [0, 0], PT = [0, 0], PRAF = 0;
 function parallax() { for (const [el, amp] of LAYERS) el.style.transform = `translate(${(-PAR[0] * amp / CAM.s).toFixed(2)}px,${(-PAR[1] * amp * 0.5 / CAM.s).toFixed(2)}px)`; }
 function apply(c) {
@@ -1075,7 +1106,9 @@ function catTrip() {
 // ---------- layout ----------
 const POS = {};
 function place(key, at) {
-  const el = $('#o-' + key), vb = el.querySelector('svg').viewBox.baseVal, k = at[2] / vb.width, a = ANCHOR[key];
+  const el = $('#o-' + key);
+  el.hidden = !at; if (!at) return;
+  const vb = el.querySelector('svg').viewBox.baseVal, k = at[2] / vb.width, a = ANCHOR[key];
   Object.assign(el.style, { left: at[0] - a[0] * k + 'px', top: at[1] - a[1] * k + 'px', width: at[2] + 'px', height: vb.height * k + 'px' });
   POS[key] = (x, y) => [at[0] + (x - a[0]) * k, at[1] + (y - a[1]) * k]; // that drawing's point in world units
 }
@@ -1083,10 +1116,10 @@ function build() {
   Object.assign(world.style, { width: L.W + 'px', height: L.H + 'px' });
   $('#wallBg').innerHTML = wallSvg(L);
   $('#deskBg').innerHTML = deskSvg(L);
-  for (const [k, at] of Object.entries(L.at)) place(k, at);
+  for (const k of Object.keys(ANCHOR)) place(k, L.at[k]);
   const g = L.win;
   Object.assign($('#o-glass').style, { left: g[0] + 'px', top: g[1] + 'px', width: g[2] + 'px', height: g[3] + 'px', borderRadius: g[4] + 'px' });
-  const bulb = POS.lamp(345, 150), kl = L.at.lamp[2] / 420, pool = [bulb[0] + 60 * kl, (L.desk[0] + L.desk[1]) / 2 + 5, 330 * kl, 120 * kl];
+  const bulb = POS.lamp(236.4, 132), pool = L.pool;
   $('#lShade').innerHTML = shadeSvg(L, pool);
   $('#lLight').innerHTML = lightSvg(L, bulb, pool, POS.aqua(100, 80));
   catReset();
@@ -1136,10 +1169,6 @@ for (const b of document.querySelectorAll('#sceneSeg button')) b.addEventListene
   SP.scene = b.dataset.scene;
   for (const x of document.querySelectorAll('#sceneSeg button')) x.setAttribute('aria-pressed', String(x === b));
   clearTimeout(SP.timer); SP.timer = 0; spaceSoon();
-});
-for (const b of document.querySelectorAll('#posterSeg button')) b.addEventListener('click', () => {
-  $('#o-poster').classList.toggle('own', b.dataset.poster === 'own');
-  for (const x of document.querySelectorAll('#posterSeg button')) x.setAttribute('aria-pressed', String(x === b));
 });
 // parallax: a mouse moves the camera a few pixels; far layers move less (the sky not at all)
 addEventListener('pointermove', e => {
