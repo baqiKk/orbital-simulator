@@ -25,6 +25,7 @@ Tarayıcıda çalışan yörünge transfer simülatörü. Fizik 3B; görünüm 2
 - Yörünge noktası adları cisme göre: Dünya perigee/apogee, Ay perilune/apolune, Güneş perihelion/aphelion, Mars periareion, Venüs pericytherion, Jüpiter perijove; diğerleri periapsis. `app.js` içindeki `APSIS` tablosunu kullan (veri `i18n.js` içindeki `apsis` girdisinden gelir).
 - Tek tema: koyu uzay. Renkler `css/style.css` başındaki `:root` token'larında; yeni renk ekleme, token kullan.
   - **İstisna (kabin, Faz 9+):** kabinin sıcak iç mekânı için onaylı `--cab-*` token'ları (duvar, metal, pirinç, ahşap, kumaş, bitki, çay, ekran zemini, gölge). `css/style.css` `:root`'ta (taslak sayfa aynı değerleri kendi içinde de tanımlar). Kabinde koddan çizilenler yalnızca bu token'ları ve mevcut token'ları (`--accent` lamba, `--cyan` ekranlar, `--void` dışarısı) kullanır, ara tonlar `color-mix` ile; saydamlık `opacity` / `stop-opacity` ile verilir.
+  - **İstisna (Faz 10, onaylı):** uçuş sırasında camdan odaya düşen ışık (`#kShine`, `fvShine`) görüş alanındaki aydınlık cismin `bodies.js` rengini `--cab-screen` ile `color-mix` ederek kullanır; düşük kaynak modunda kapalı.
 - Mobil (≈400 px) genişlikte de çalışmalı; yatay sayfa kaydırması olmamalı.
 - Bu makinede Python yok. Dosya düzenlemeleri için Edit aracını ya da Node betiklerini kullan; yerel sunucu için `npx serve` veya küçük bir Node sunucusu kullan.
 

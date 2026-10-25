@@ -554,6 +554,13 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     });
   }
   for (const k of ['fp.plan', 'fp.name.none', 'fp.restart', 'fp.note', 'fp.mars.done']) assert.ok(has(k), k);
+  // the light through the glass: off in the low-resource mode (not computed, not shown); the body colour only mixed
+  // into the screen token
+  const cab = read('js/cabin.js'), css = read('css/style.css');
+  assert.ok(/if \(!LOWQ\) fvShine\(st, cam\);/.test(cab) && /html\[data-q=low\] \.k-shine\{display:none\}/.test(css), 'cabin light: off in low mode');
+  assert.ok(/color-mix\(in srgb, var\(--cab-screen\) 35%, \$\{BODIES\[col\]\.color\}\)/.test(cab), 'cabin light: body colour mixed into the screen cyan');
+  // the laptop follows the plan while it flies
+  assert.ok(/if \(st\) \{ lapPlan\(st\); return; \}/.test(cab), 'laptop: the plan track');
 }
 
 console.log('OK — all UI tests passed');

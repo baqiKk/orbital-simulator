@@ -101,7 +101,7 @@ function wantTier(T) {
     if (ART_T !== T) return;
     for (const [n, im] of fresh) { if (IMG[n]) IMG[n].replaceWith(im); else $(n === 'room' ? '#kRoomSlot' : '#kCat').appendChild(im); IMG[n] = im; }
     $('#kCat').appendChild($('#kWhisk'));
-    $('#kNight').style.setProperty('--room', `url("${new URL(`img/cabin/${T}/room.webp`, location.href)}")`);
+    for (const id of ['#kNight', '#kShine']) $(id).style.setProperty('--room', `url("${new URL(`img/cabin/${T}/room.webp`, location.href)}")`);
     document.body.classList.add('k-ready');
   });
 }
@@ -170,26 +170,59 @@ function clockTick() {
 }
 
 // the laptop: the free return on a dark map, a dot flying it in six minutes, its mission time
-const LAP = { dot: null, met: null, today: null, E: [118, 440], M: [520, 168] };
+// While a flight plan flies (Phase 10): the leg's track about its system's root body (ecliptic x, y), the target and
+// the craft at the mission's time, the plan's name and its mission time
+const LAP = { dot: null, met: null, today: null, title: null, free: null, plan: null, path: null, root: null, tgt: null, cdot: null, key: '', fit: null, E: [118, 440], M: [520, 168] };
 function buildLaptop() {
   const d = quadBox(1000, 600, LAP_QUAD, 'k-lap', $('#kEmit')), s = svgEl('svg', { viewBox: '0 0 1000 600', width: 1000, height: 600 }, d);
   svgEl('rect', { width: 1000, height: 600, class: 'k-lapbg' }, s);
   const grid = svgEl('g', { class: 'k-lapgrid' }, s);
   for (let x = 60; x < 1000; x += 80) svgEl('path', { d: `M${x} 90V560` }, grid);
   for (let y = 90; y <= 560; y += 80) svgEl('path', { d: `M30 ${y}H1000` }, grid);
-  const t = svgEl('text', { x: 36, y: 58, 'font-size': 26, class: 'k-mono k-lapt' }, s); t.textContent = _('kab.lap.title');
-  svgEl('path', { d: trajPath(LAP.E, LAP.M), class: 'k-laptraj' }, s);
-  svgEl('circle', { cx: LAP.E[0], cy: LAP.E[1], r: 26, class: 'k-lapearth' }, s);
-  svgEl('circle', { cx: LAP.M[0], cy: LAP.M[1], r: 8, class: 'k-lapmoon' }, s);
-  LAP.dot = svgEl('circle', { r: 7, class: 'k-lapdot' }, s);
+  const t = LAP.title = svgEl('text', { x: 36, y: 58, 'font-size': 26, class: 'k-mono k-lapt' }, s); t.textContent = _('kab.lap.title');
+  const fr = LAP.free = svgEl('g', {}, s), pl = LAP.plan = svgEl('g', { display: 'none' }, s);
+  svgEl('path', { d: trajPath(LAP.E, LAP.M), class: 'k-laptraj' }, fr);
+  svgEl('circle', { cx: LAP.E[0], cy: LAP.E[1], r: 26, class: 'k-lapearth' }, fr);
+  svgEl('circle', { cx: LAP.M[0], cy: LAP.M[1], r: 8, class: 'k-lapmoon' }, fr);
+  LAP.dot = svgEl('circle', { r: 7, class: 'k-lapdot' }, fr);
+  LAP.path = svgEl('path', { class: 'k-laptraj' }, pl);
+  LAP.root = svgEl('circle', { class: 'k-lapearth' }, pl);
+  LAP.tgt = svgEl('circle', { r: 8, class: 'k-lapmoon' }, pl);
+  LAP.cdot = svgEl('circle', { r: 7, class: 'k-lapdot' }, pl);
   LAP.met = svgEl('text', { x: 36, y: 580, 'font-size': 24, class: 'k-mono k-lapt' }, s);
   LAP.today = svgEl('text', { x: 36, y: 96, 'font-size': 22, class: 'k-mono k-lapt k-lapday' }, s); // today's focus (the pomodoro)
   PO.stRaw = undefined;
 }
 function lapTick() {
+  const st = FV.on ? fvState(Date.now()) : null;
+  LAP.free.setAttribute('display', st ? 'none' : 'inline'); LAP.plan.setAttribute('display', st ? 'inline' : 'none');
+  if (st) { lapPlan(st); return; }
+  if (LAP.key) { LAP.key = ''; LAP.title.textContent = _('kab.lap.title'); }
   const n = TRAJ.length / 2, f = (Date.now() / 360000) % 1, i = f * (n - 1), i0 = Math.floor(i), a = trajAt(LAP.E, LAP.M, i0), b = trajAt(LAP.E, LAP.M, Math.min(n - 1, i0 + 1)), u = i - i0;
   LAP.dot.setAttribute('cx', (a[0] + (b[0] - a[0]) * u).toFixed(1)); LAP.dot.setAttribute('cy', (a[1] + (b[1] - a[1]) * u).toFixed(1));
   const hrs = Math.floor(f * TRAJ_DAYS * 24);
+  LAP.met.textContent = _('kab.lap.met', { d: Math.floor(hrs / 24), h: String(hrs % 24).padStart(2, '0') });
+}
+function lapPlan(st) {
+  const tr = st.a.tr, sys = fpSys(tr), r0 = 3 * sys.root, P = new Float64Array(3 * sys.N), V = new Float64Array(3 * sys.N), key = PO.s.plan + '/' + st.D.tracks.indexOf(tr);
+  const rel = (y, t) => { states(sys, tr.M.t0 * DAY + t, P, V); return [y[0] - P[r0], y[1] - P[r0 + 1]]; };
+  if (key !== LAP.key) { // the track (Hermite between its points), fitted with the root body into the screen
+    LAP.key = key;
+    const pts = [], y = new Array(6);
+    for (let i = 0; i < tr.t.length - 1; i++) for (let k = 0; k < 8; k++) { const t = tr.t[i] + (tr.t[i + 1] - tr.t[i]) * k / 8; pts.push(rel(fpTrack(tr, t, y), t)); }
+    pts.push(rel(fpTrack(tr, tr.t[tr.t.length - 1], y), tr.t[tr.t.length - 1]));
+    let x0 = 0, x1 = 0, y0 = 0, y1 = 0;
+    for (const [x, q] of pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, q); y1 = Math.max(y1, q); }
+    const k = Math.min(860 / (x1 - x0 || 1), 400 / (y1 - y0 || 1)), mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+    LAP.fit = p => [510 + (p[0] - mx) * k, 335 - (p[1] - my) * k];
+    LAP.path.setAttribute('d', pts.map((p, i) => (i ? 'L' : 'M') + LAP.fit(p).map(c => c.toFixed(1)).join(' ')).join(''));
+    const c = LAP.fit([0, 0]); LAP.root.setAttribute('cx', c[0].toFixed(1)); LAP.root.setAttribute('cy', c[1].toFixed(1)); LAP.root.setAttribute('r', Math.max(10, Math.min(26, sys.R[sys.root] * k)).toFixed(1));
+    LAP.title.textContent = _('fp.name.' + PO.s.plan).toLocaleUpperCase(DICT['meta.locale']);
+  }
+  const a = st.a, cr = LAP.fit(rel(a.y, a.t)), ti = tr.keys.indexOf(a.around || a.look), tg = LAP.fit([P[3 * ti] - P[r0], P[3 * ti + 1] - P[r0 + 1]]);
+  LAP.cdot.setAttribute('cx', cr[0].toFixed(1)); LAP.cdot.setAttribute('cy', cr[1].toFixed(1));
+  LAP.tgt.setAttribute('cx', tg[0].toFixed(1)); LAP.tgt.setAttribute('cy', tg[1].toFixed(1)); LAP.tgt.setAttribute('display', ti === sys.root ? 'none' : 'inline');
+  const hrs = Math.floor(a.t / 3600);
   LAP.met.textContent = _('kab.lap.met', { d: Math.floor(hrs / 24), h: String(hrs % 24).padStart(2, '0') });
 }
 
@@ -384,7 +417,7 @@ function spaceSoon() { clearTimeout(SP.timer); SP.timer = setTimeout(spaceTick, 
 // mode, no WebGL 2 or reduced motion: no Three.js and no images, the plain sky and shaded discs at their true places and
 // sizes on the 2D canvas, every 5 s (1 s in a break); with reduced motion the break view looks at the body. A new phase
 // (a jump) fades the glass out and in.
-const FV = { on: false, gl: null, fail: false, V3: null, load: null, cv: $('#kSpace3'), keys: '', sky: false, fov: 45, raf: 0, last: 0, drawn: 0, sig: '', cam: null, rpx: -1, fade: 0, plain: null, timer: 0 };
+const FV = { on: false, gl: null, fail: false, V3: null, load: null, cv: $('#kSpace3'), keys: '', sky: false, fov: 45, raf: 0, last: 0, drawn: 0, sig: '', cam: null, rpx: -1, fade: 0, plain: null, timer: 0, shine: ['0', ''] };
 const FV_L = 1e9;          // m: the 3D camera's target, this far ahead of the craft (the eye is at the craft)
 const FV_TILT = 25 * deg;  // the break view, tipped down from the flight direction
 const vsub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -443,7 +476,25 @@ function fvFrame(force) {
   if (!force && t - FV.drawn < 50) return; // 20 frames a second at most
   FV.cam = cam; FV.rpx = rpx; FV.drawn = t;
   if (FV.V3) fvDraw3(st, cam); else fvDraw2(st, cam);
+  if (!LOWQ) fvShine(st, cam);
   if (FV.fade) { FV.fade = 0; fvCanvas().style.opacity = ''; }
+}
+// The light through the glass: the sunlit surface in view brightens the room a little (#kShine, screen blend over the
+// room's opaque part), tinted by the body that gives most of it (its js/bodies.js colour mixed into the screen cyan);
+// a deep-space view gives none. Off in the low-resource mode.
+function fvShine(st, cam) {
+  let best = null, sum = 0;
+  for (const q of st.b.list) {
+    if (q.key === 'sun') continue;
+    const d = vsub(q.p, st.a.y), dist = Math.hypot(...d); if (vdot(d, cam.f) <= 0) continue;
+    const R = BODIES[q.key].radius * 1e3, rpx = SP.F * R / Math.sqrt(Math.max(dist * dist - R * R, 1)), s = norm(vsub(st.b.sunP, q.p));
+    const c = (1 - vdot(s, d) / dist) / 2 * Math.min(1, Math.PI * rpx * rpx / (VW * VH));
+    sum += c; if (!best || c > best[1]) best = [q.key, c];
+  }
+  const o = Math.min(0.32, 0.4 * sum).toFixed(2), col = best && best[1] > 0.005 ? best[0] : '';
+  if (o === FV.shine[0] && col === FV.shine[1]) return;
+  FV.shine = [o, col]; const e = $('#kShine'); e.style.opacity = o;
+  if (col) e.style.setProperty('--fv-col', `color-mix(in srgb, var(--cab-screen) 35%, ${BODIES[col].color})`);
 }
 const fvCanvas = () => (FV.V3 ? FV.cv : SP.cv);
 function fvDraw3(st, cam) {
@@ -532,6 +583,7 @@ function fvStop() {
   FV.on = false; cancelAnimationFrame(FV.raf); FV.raf = 0; clearTimeout(FV.timer);
   FV.cv.hidden = true; FV.cv.style.opacity = ''; SP.cv.style.visibility = ''; SP.cv.style.opacity = ''; FV.fade = 0;
   $('#kScene').hidden = false; spaceSoon();
+  FV.shine = ['0', '']; $('#kShine').style.opacity = '0';
 }
 // on or off with the timer (every tick); a change of the 3D conditions restarts it
 // (after the room is in: its images come before the planets')
@@ -809,7 +861,7 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   box(stage, 0, 0, LY.size[0], LY.size[1]);
   for (const id of ['#kArt', '#kWhisk']) { const s = $(id); s.setAttribute('viewBox', `0 0 ${LY.size[0]} ${LY.size[1]}`); box(s, 0, 0, LY.size[0], LY.size[1]); }
   { const c = LY.clock, s = $('#kGlowArt'); s.setAttribute('viewBox', `${c.x0} ${c.y0} ${c.x1 - c.x0} ${c.y1 - c.y0}`); box(s, c.x0, c.y0, c.x1 - c.x0, c.y1 - c.y0); }
-  box($('#kNight'), 0, 0, LY.size[0], LY.size[1]);
+  box($('#kNight'), 0, 0, LY.size[0], LY.size[1]); box($('#kShine'), 0, 0, LY.size[0], LY.size[1]);
   const g = LY.glass; box($('#kGlow'), g.x0, g.y0 + (g.y1 - g.y0) * 0.35, (g.x1 - g.x0) * 0.42, (g.y1 - g.y0) * 0.65);
   buildArt(); buildHits(); initLife();
   box($('#kLed'), PHONES_LED[0] - PHONES_LED[2], PHONES_LED[1] - PHONES_LED[2], 2 * PHONES_LED[2], 2 * PHONES_LED[2]);
