@@ -569,4 +569,15 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/if \(st\) \{ lapPlan\(st\); return; \}/.test(cab), 'laptop: the plan track');
 }
 
+// 19) "Solve for the target" goes through core.js solveMission (worker and main-thread fallback alike) and trusts its
+// physical verdict, never the residual; a miss is said plainly (with how far off), in the warning colour, never "solved"
+{
+  const app = read('js/app.js');
+  assert.ok(/const r = await solveMission\(s, M, \{ \.\.\.opt, onProgress/.test(app) && /if \(!w\) return solveMission\(sysLocal, M,/.test(app), 'worker and fallback use solveMission');
+  assert.ok(!/(optimize|refineSeed)\(s, M, \{ \.\.\.opt/.test(app) && !/r\.f < /.test(app), 'no residual threshold decides "solved"');
+  assert.ok(/if \(!r\.hit\) setStatus\(_\(Number\.isFinite\(r\.miss\) && r\.miss < 1e6 \? 'st\.nearest' : 'st\.nearestNone', \{ km: nf1\.format\(r\.miss\) \}\) \+ info, true\);/.test(app), 'a miss: the nearest attempt, said as such');
+  assert.ok(/\{km\}/.test(DICT['st.nearest']) && /çözüm değil/.test(DICT['st.nearest']) && has('st.nearestNone') && has('st.tries'), 'miss texts');
+  assert.ok(/\.status\.warn\{color:var\(--warn\)\}/.test(read('css/style.css')), 'warning colour');
+}
+
 console.log('OK — all UI tests passed');

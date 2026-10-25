@@ -1742,7 +1742,8 @@ function updateResults() {
   res.innerHTML = resRows(rows) + schedHtml();
 }
 // the overview window repeats the mission status, so picks and solver progress show where the user clicked
-function setStatus(t) { $('#status').textContent = t; $('#ovStatus').textContent = t; }
+// warn: the solver missed its target (shown in the warning colour until the next status)
+function setStatus(t, warn = false) { for (const id of ['#status', '#ovStatus']) { const e = $(id); e.textContent = t; e.classList.toggle('warn', warn); } }
 
 // ===================== Hohmann & Solver =====================
 // Apply the patched-conic guess to the mission; returns the status text (without its tail) or null.
@@ -1771,7 +1772,7 @@ onmessage = async (e) => {
   try {
     const s = buildSystem(list);
     if (pc) { const g = porkchop(s, M, { ...pc, onRow: j => { if (j % 8 === 0) postMessage({ p: j }); } }); postMessage({ done: g }, [g.dv.buffer, g.c3.buffer, g.va.buffer]); return; }
-    const r = await (opt.refine ? refineSeed : optimize)(s, M, { ...opt, onProgress: n => postMessage({ p: n }) }); postMessage({ done: r });
+    const r = await solveMission(s, M, { ...opt, onProgress: n => postMessage({ p: n }) }); postMessage({ done: r });
   }
   catch (err) { postMessage({ error: String(err) }); }
 };`;
@@ -1785,7 +1786,7 @@ function makeWorker() {
 function runSolver(list, M, opt, prog, sysLocal) {
   let w = null;
   try { w = makeWorker(); } catch (e) { w = null; }
-  if (!w) return (opt.refine ? refineSeed : optimize)(sysLocal, M, { ...opt, onProgress: prog, cancelled: () => cancelSolve });
+  if (!w) return solveMission(sysLocal, M, { ...opt, onProgress: prog, cancelled: () => cancelSolve });
   solverWorker = w;
   return new Promise((res, rej) => {
     rejectSolve = rej;
@@ -1821,15 +1822,19 @@ async function solve() {
   setStatus(seed ? _('st.pcSeed', { date: S.model === 'real' ? fmtDate(daysToUtc(seed.t0)) : _('pc.i.day', { d: nf1.format(seed.t0) }), days: nf1.format(seed.tof), dv: nf1.format(seed.dv) }) : _('st.solving'));
   try {
     const prog = n => setStatus(_('st.progress', { n: nf0.format(n) }));
-    const r = await runSolver(sysList(), M0, opt, prog, s2);
-    Object.assign(S.M, { dep: M0.dep, tof: M0.tof, theta: r.theta, dv: r.dv, t0: r.t0, beta: r.beta != null ? r.beta : M0.beta });
+    // solveMission (core.js): judged by the trajectory, other starts tried while it misses; r.M = the mission as solved
+    const r = await runSolver(sysList(), M0, opt, prog, s2), m = r.M;
+    Object.assign(S.M, { dep: m.dep, tof: m.tof, theta: m.theta, dv: m.dv, t0: m.t0, beta: m.beta != null ? m.beta : M0.beta });
+    if (!S.M.autoDur) S.M.duration = m.duration;
     syncMission(); rebuild({ resetU: true, fit: true });
     if (!reduceMotion) { S.playing = true; setPlayIcon(); }
     const secs = (performance.now() - t1) / 1000;
-    const okv = r.f < 1e-4;
-    const info = _('st.solvedInfo', { evals: nf0.format(r.evals), secs: nf1.format(secs) });
-    if (seed && okv) setStatus(_('st.refined', { lam: nf1.format(seed.tr.dv), nb: nf1.format(S.M.dv + (simR && simR.captured ? simR.captured.dv : 0)) }) + info);
-    else setStatus(_(okv ? 'st.solved' : 'st.nearest') + info);
+    const info = _('st.solvedInfo', { evals: nf0.format(r.evals), secs: nf1.format(secs) }) + (r.tries > 1 ? _('st.tries', { n: r.tries }) : '');
+    const lam = m.dep === 'asym' ? (m.lam != null ? m.lam : seed && seed.tr.dv) : null;
+    // a miss is never shown as solved: what is on screen is the nearest attempt, and the status says so
+    if (!r.hit) setStatus(_(Number.isFinite(r.miss) && r.miss < 1e6 ? 'st.nearest' : 'st.nearestNone', { km: nf1.format(r.miss) }) + info, true);
+    else if (lam != null) setStatus(_('st.refined', { lam: nf1.format(lam), nb: nf1.format(S.M.dv + (simR && simR.captured ? simR.captured.dv : 0)) }) + info);
+    else setStatus(_('st.solved') + info);
   } catch (e) {
     if (e === 'cancel') setStatus(_('st.cancelled')); else { setStatus(_('st.solverErr', { e })); console.error(e); }
   } finally {

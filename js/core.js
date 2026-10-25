@@ -918,6 +918,10 @@ function solveLin(A, b) {
 // residuals barely depend on β, and β stays where it is.
 // opt.seeded: start Levenberg–Marquardt from M itself (a Lambert seed) without the angle scan.
 // opt.tof (s): also aim the arrival (target periapsis) at this time after departure, in units of 2% of it.
+// opt.hmaxDiv / opt.maxSteps: the integration of each trial (default 200 / 30000: quick; solveMission's polish flies
+// trials as the app shows the mission, 500 / 120000).
+// opt.hScale: finite-difference steps × this (solveMission's polish: 0.01, then 0.1; a free return's perigee moves by
+// kilometres per 0.01 m/s, too coarse a step near the solution).
 async function optimize(s, M, opt = {}) {
   const onProgress = opt.onProgress || (() => { });
   const varyT0 = !!opt.varyT0, varyBeta = !!opt.varyBeta && s.real;
@@ -928,7 +932,7 @@ async function optimize(s, M, opt = {}) {
   const R = (u, mode, tol) => {
     const m = toM(u); if (mode) m.mode = mode;
     evals++;
-    const sim = simulate(s, m, { tol: tol || 1e-10, record: false, fast: true, hmaxDiv: 200, maxSteps: 30000 });
+    const sim = simulate(s, m, { tol: tol || 1e-10, record: false, fast: true, hmaxDiv: opt.hmaxDiv || 200, maxSteps: opt.maxSteps || 30000 });
     const r = residuals(s, m, sim);
     if (opt.tof) r.push(((sim.bPeri ? sim.bPeri.t : sim.tmin[1]) - opt.tof) / (0.02 * opt.tof));
     if (sim.impact === 0 && !(m.mode === 'free' && sim.bPeri)) r.push(3);
@@ -952,7 +956,7 @@ async function optimize(s, M, opt = {}) {
     for (const c of cands) { if (seeds.every(q => Math.abs(q.u[0] - c.u[0]) > 8 || Math.abs(q.u[2] - c.u[2]) > 1)) seeds.push(c); if (seeds.length >= (opt.seeds || 5)) break; }
   }
   // Stage 2: LM
-  const hstep = [1e-4, 1e-3, 1e-4, 1e-4];
+  const hstep = [1e-4, 1e-3, 1e-4, 1e-4].map(h => h * (opt.hScale || 1));
   const maxStep = [15, Math.max(2, M.dv * 0.03 / scale[1]), 8, 3];
   let best = null;
   for (const sd of seeds) {
@@ -1064,6 +1068,73 @@ async function refineSeed(s, M, opt = {}) {
   const r2 = await optimize(s, withU(u), { ...opt, seeded: true, varyT0: false, varyBeta: real, tof });
   r2.evals += evals;
   return r2;
+}
+
+// ===== Solving a mission, judged by what the trajectory does =====
+// optimize() and refineSeed() can stop in a local minimum, and which one they reach can depend on the last digits of
+// floating point (the JavaScript engine, the processor). So a solution is judged by its trajectory, not by its residual:
+// missionMiss flies it and measures how far the target periapsis is from the aim (and the return perigee from its aim
+// for a free return); no periapsis inside the target's SOI, the wrong side, an impact, or no capture in capture mode
+// is a miss. It hits within max(SOLVE_KM, 2·10⁻⁴ of the target radius).
+const SOLVE_KM = 1;
+function missionMiss(s, M) {
+  const sim = simulate(s, M, { tol: 1e-10, record: false, hmaxDiv: 500, maxSteps: 120000 });
+  const rB = s.R[1] + (aeroOn(M) ? M.hAtm : M.hB) * 1e3, tol = Math.max(SOLVE_KM * 1e3, 2e-4 * rB);
+  let miss = Infinity;
+  const ok = sim.bPeri && (!M.side || sim.bPeri.dir === M.side) && !(sim.impact >= 0 && (M.mode !== 'free' || !sim.aRet))
+    && (M.mode !== 'capture' || sim.captured) && (M.mode !== 'free' || sim.aRet);
+  if (ok) {
+    miss = Math.abs(sim.bPeri.d - rB);
+    if (M.mode === 'free') miss = Math.max(miss, Math.abs(sim.aRet.d - (s.R[0] + M.hRet * 1e3)));
+  } else if (sim.bPeri) miss = Math.abs(sim.bPeri.d - rB) + 1e9; // nearest, but still a miss
+  return { hit: miss <= tol, miss: miss / 1e3, sim };
+}
+// "Solve for the target": the requested start (opt.refine: N-body refinement of a Lambert seed in M0, else optimize from
+// M0), a near miss polished; a porkchop pick (refine) keeps its date and time of flight and stops there. Otherwise, while
+// it misses, other starts: for sibling bodies the cheapest Lambert transfers of the window around the
+// mission's date (a porkchop of ±0.15 synodic periods × 0.6–1.5 Hohmann times, up to three distinct minima, each
+// refined in N-body), and the optimizer again from t₀ moved by ±2 days and β by ±3°; for other pairs the optimizer with
+// more angle seeds. The first start that hits wins, else the nearest. Returns the solver's result with M (the mission
+// as solved: dep, tof, duration included), hit, miss (km), lam (the Lambert total Δv when it came from a seed), tries.
+async function solveMission(s, M0, opt = {}) {
+  let evals = 0, best = null, tries = 0;
+  const onProgress = opt.onProgress || (() => { });
+  const run = async (M, refine, extra = {}) => {
+    tries++;
+    const r = await (refine ? refineSeed : optimize)(s, M, { ...opt, ...extra, onProgress: n => onProgress(evals + n) });
+    evals += r.evals;
+    const m = { ...M, theta: r.theta, dv: r.dv, t0: r.t0 != null ? r.t0 : M.t0, beta: r.beta != null ? r.beta : M.beta };
+    const c = missionMiss(s, m), out = { ...r, M: m, hit: c.hit, miss: c.miss, lam: M.lam };
+    if (!best || out.miss < best.miss) best = out;
+    return out;
+  };
+  const done = () => ({ ...best, evals, tries });
+  const { refine, ...base } = opt;
+  // a near miss (the right basin, stopped a little short: the quick trials and the trajectory the app shows differ a
+  // little, most on a free return's perigee) is polished first: Levenberg–Marquardt again from it, trials flown as shown
+  const polish = async r => { for (let k = 0; k < 2 && !r.hit && r.miss < 200; k++) r = await run(r.M, false, { ...base, seeded: true, varyT0: false, varyBeta: !!base.varyBeta, tof: r.M.dep === 'asym' ? r.M.tof * DAY : undefined, hmaxDiv: 500, maxSteps: 120000, hScale: k ? 0.1 : 0.01 }); return r; };
+  if ((await polish(await run(M0, !!refine, refine ? {} : base))).hit || refine) return done(); // a picked date and time of flight stay
+  if (isSibling(s)) {
+    const g = hohmannGuess(s, { ...M0, dep: 'burn' }), syn = 2 * Math.PI / Math.abs(s.n[0] - s.n[1]) / DAY, th = g.tof / DAY;
+    const c = M0.dep === 'asym' ? M0.t0 : g.t0;
+    if (Number.isFinite(syn) && th > 0 && Number.isFinite(c)) {
+      const G = { t1a: c - 0.15 * syn, t1b: c + 0.15 * syn, fa: 0.6 * th, fb: 1.5 * th, nd: 40, nt: 30 }, pc = porkchop(s, M0, G);
+      const cells = [...pc.dv.keys()].filter(k => Number.isFinite(pc.dv[k])).sort((a, b) => pc.dv[a] - pc.dv[b]), picked = [];
+      for (const k of cells) {
+        const t1 = G.t1a + (G.t1b - G.t1a) * (k % G.nd) / (G.nd - 1), tof = G.fa + (G.fb - G.fa) * Math.floor(k / G.nd) / (G.nt - 1);
+        if (picked.every(p => Math.abs(p[0] - t1) > syn / 40 || Math.abs(p[1] - tof) > 0.1 * th)) picked.push([t1, tof]);
+        if (picked.length >= 3) break;
+      }
+      for (const [t1, tof] of picked) {
+        const sd = lambertSeed(s, t1 * DAY, tof * DAY, M0); if (!sd) continue;
+        const M = { ...M0, dep: 'asym', theta: sd.theta, beta: sd.beta, dv: sd.dv, t0: sd.t0, tof: sd.tof, duration: M0.autoDur === false ? M0.duration : autoDuration({ tof: tof * DAY }, M0.mode), lam: sd.tr.dv };
+        if ((await polish(await run(M, true))).hit) return done();
+      }
+    }
+    const Mb = { ...M0, dep: 'burn', tof: 0, theta: g.theta, dv: g.dv, t0: g.t0, beta: 0, duration: M0.autoDur === false ? M0.duration : autoDuration(g, M0.mode) };
+    for (const [dt, db] of [[2, 0], [-2, 0], [0, 3], [0, -3]]) if ((await polish(await run({ ...Mb, t0: Mb.t0 + dt, beta: db }, false, { ...base, varyT0: true, varyBeta: true }))).hit) return done();
+  } else if ((await polish(await run(M0, false, { ...base, seeds: 12 }))).hit) return done();
+  return done();
 }
 
 // ===== Orbit maneuvers about one central body =====
@@ -1872,7 +1943,7 @@ function maneuverRun(job, onProgress) {
 if (typeof module !== 'undefined') module.exports = {
   G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, keplerE, laplaceFrame, bodyFrame, orbitElements, orbitState, orbitPath,
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
-  lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed,
+  lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed, SOLVE_KM, missionMiss, solveMission,
   G0, visViva, burnDv, propMass, dvAvail, planeSplit, maneuverPlan, mvOrbits, rv2el, j2Rates, keplerStep, equatorFrame, orbitPoint, maneuverSim,
   mvImpulse, maneuverFlight, spiralEstimate, spiralFlight, maneuverRun, conicPoints, domBody, splitPlan, burnFor, KMAX,
 };

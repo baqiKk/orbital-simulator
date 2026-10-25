@@ -43,7 +43,9 @@ assert.ok(g.dv > 3000 && g.dv < 3200, 'TLI Δv ≈ 3.1 km/s');
 }
 
 // 5) Simplified model is unchanged by the 3D core: the app's scenarios reproduce the Phase 1 results
-//    (recorded before the refactor). Scenarios are read from js/app.js, body numbers from js/bodies.js.
+//    (recorded before the refactor): periapses within 1 m, capture Δv within 1 mm/s. The integrator's step count is
+//    printed for information only (its last digits, and so the step sequence, may differ between Node versions and
+//    processors). Scenarios are read from js/app.js, body numbers from js/bodies.js.
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const { BODIES } = require('../js/bodies.js');
 const appSrc = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
@@ -57,18 +59,20 @@ const PHASE1 = {
   moon_mars: { steps: 972, bPeri: 3689492.8354666843, cap: 2148.10557463457 },
   e_venus: { steps: 926, bPeri: 6551895.181666631 },
 };
+const phase1Steps = [];
 for (const sc of SCENARIOS.filter(q => q.model === 'simple')) {
   const want = PHASE1[sc.id]; assert.ok(want, `Phase 1 reference for ${sc.id}`);
   const list = sc.bodies.map(b => { const p = BODIES[b.k].simple; return { name: b.k, mass: p.mass, radius: p.radius * 1e3, parent: b.parent, a: (b.a != null ? b.a : p.a) * 1e3, phase: b.phase || 0 }; });
   const sy = C.buildSystem(list), Ms = { ...sc.M };
   Ms.duration = C.autoDuration(C.hohmannGuess(sy, Ms), Ms.mode);
   const r2 = C.simulate(sy, Ms, { tol: 1e-10, hmaxDiv: 500, maxSteps: 120000 });
-  assert.strictEqual(r2.steps, want.steps, `${sc.id}: same integration steps as Phase 1`);
-  assert.ok(Math.abs(r2.bPeri.d - want.bPeri) < 1, `${sc.id}: target periapsis within 1 m of Phase 1`);
-  if (want.aRet) assert.ok(Math.abs(r2.aRet.d - want.aRet) < 1, `${sc.id}: return periapsis within 1 m of Phase 1`);
-  if (want.cap) assert.ok(Math.abs(r2.captured.dv - want.cap) < 1e-3, `${sc.id}: capture Δv as in Phase 1`);
+  phase1Steps.push(`${sc.id} ${r2.steps} (${want.steps})`);
+  assert.ok(Math.abs(r2.bPeri.d - want.bPeri) < 1, `${sc.id}: target periapsis within 1 m of Phase 1 (${(r2.bPeri.d - want.bPeri).toFixed(4)} m)`);
+  if (want.aRet) assert.ok(Math.abs(r2.aRet.d - want.aRet) < 1, `${sc.id}: return periapsis within 1 m of Phase 1 (${(r2.aRet.d - want.aRet).toFixed(4)} m)`);
+  if (want.cap) assert.ok(Math.abs(r2.captured.dv - want.cap) < 1e-3, `${sc.id}: capture Δv within 1 mm/s of Phase 1`);
   assert.ok(r2.z.every(z => z === 0), `${sc.id}: simplified model stays in the z = 0 plane`);
 }
+console.log('Phase 1 integration steps (recorded):', phase1Steps.join(', '));
 
 // ===== Real model (JPL elements from js/bodies.js) =====
 const DAY = C.DAY, DEG = 180 / Math.PI;
@@ -417,29 +421,48 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   // 3) Solver converges for capture mode. The solver tests check what the solution does (periapsis within 1 km of the
   //    target, captured, the departure in its window), not the residual: its last digits change with the Node
   //    version and the processor, the trajectory does not.
+  // The solves go through solveMission, as the app's "solve for the target" does.
+  const SOPTS = { tol: 1e-10, hmaxDiv: 500, maxSteps: 120000 };
   const Mc = { ...M, mode: 'capture', hB: 100, theta: g.theta, dv: g.dv };
-  const o = await C.optimize(s, Mc), oc = C.simulate(s, { ...Mc, ...o }, { tol: 1e-10, hmaxDiv: 500, maxSteps: 120000 });
-  assert.ok(oc.impact < 0 && oc.bPeri && oc.captured && Math.abs((oc.bPeri.d - s.R[1]) / 1e3 - 100) < 1, `capture solve: 100 km perilune (${oc.bPeri && ((oc.bPeri.d - s.R[1]) / 1e3).toFixed(3)} km), captured`);
+  const o = await C.solveMission(s, Mc), oc = C.simulate(s, o.M, SOPTS);
+  assert.ok(o.hit && oc.impact < 0 && oc.bPeri && oc.captured && Math.abs((oc.bPeri.d - s.R[1]) / 1e3 - 100) < 1, `capture solve: 100 km perilune (${oc.bPeri && ((oc.bPeri.d - s.R[1]) / 1e3).toFixed(3)} km), captured`);
 
-  // 13) Real model solves: Earth→Moon free return on a fixed date; Earth→Mars finds the late-2026 window
-  const solveReal = async (keys, Mr) => {
+  // 13) Real model solves: Earth→Moon free return on a fixed date; Earth→Mars finds the late-2026 window. Each also
+  //     from inputs with 10⁻¹² relative noise (a stand-in for another engine's last digits: the plain optimizer lands in
+  //     a local minimum for some of them, e.g. a 50 000 km periareion); every run must hit.
+  let nz = 20261025; const noise = () => 1 + 1e-12 * (((nz = (nz * 1664525 + 1013904223) >>> 0) / 4294967296) * 2 - 1);
+  const solveReal = async (keys, Mr, jitter) => {
     const sy = realSys(keys), gr = C.hohmannGuess(sy, Mr), sib = gr.case === 'sibling';
-    const M0 = { ...Mr, theta: gr.theta, dv: gr.dv, t0: gr.t0, beta: 0, duration: C.autoDuration(gr, Mr.mode) };
-    const r = await C.optimize(sy, M0, { varyT0: sib, varyBeta: sib });
-    return { r, sy, sim: C.simulate(sy, { ...M0, ...r }, { tol: 1e-10, hmaxDiv: 500, maxSteps: 120000 }) };
+    const M0 = { ...Mr, dep: 'burn', theta: gr.theta * (jitter ? noise() : 1), dv: gr.dv * (jitter ? noise() : 1), t0: gr.t0 * (jitter ? noise() : 1), beta: 0, duration: C.autoDuration(gr, Mr.mode) };
+    const r = await C.solveMission(sy, M0, { varyT0: sib, varyBeta: sib });
+    return { r, sy, sim: C.simulate(sy, r.M, SOPTS) };
   };
-  const t26 = C.utcToDays(Date.UTC(2026, 10, 15));
-  const fr = await solveReal(['earth', 'moon'], { mode: 'free', side: -1, h0: 185, hB: 250, hRet: 60, t0: t26, theta: 0, dv: 3100, duration: 12 });
-  const km = (d, i, sy) => (d - sy.R[i]) / 1e3;
-  assert.ok(fr.sim.impact < 0 && fr.sim.bPeri && fr.sim.aRet, 'real free return: perilune and return perigee');
-  assert.ok(Math.abs(km(fr.sim.bPeri.d, 1, fr.sy) - 250) < 1 && Math.abs(km(fr.sim.aRet.d, 0, fr.sy) - 60) < 1,
-    `real free return: 250 km perilune (${km(fr.sim.bPeri.d, 1, fr.sy).toFixed(3)}), 60 km perigee (${km(fr.sim.aRet.d, 0, fr.sy).toFixed(3)})`);
-  assert.strictEqual(fr.sim.bPeri.dir, -1, 'real free return passes the Moon retrograde');
-  const ma = await solveReal(['earth', 'mars', 'sun'], { mode: 'capture', side: 0, h0: 185, hB: 300, hRet: 60, t0: C.utcToDays(Date.UTC(2026, 8, 1)), theta: 0, dv: 3600, duration: 300 });
-  const dep = new Date(C.daysToUtc(ma.r.t0));
-  assert.ok(ma.sim.impact < 0 && ma.sim.bPeri && ma.sim.captured, 'real Earth→Mars reaches Mars and captures');
-  assert.ok(dep.getUTCFullYear() === 2026 && dep.getUTCMonth() >= 9 && dep.getUTCMonth() <= 11, `Earth→Mars departs in the Oct–Dec 2026 window (${dep.toISOString().slice(0, 10)})`);
-  assert.ok(Math.abs(km(ma.sim.bPeri.d, 1, ma.sy) - 300) < 1, `Earth→Mars: 300 km periareion (${km(ma.sim.bPeri.d, 1, ma.sy).toFixed(3)})`);
+  const t26 = C.utcToDays(Date.UTC(2026, 10, 15)), km = (d, i, sy) => (d - sy.R[i]) / 1e3;
+  const FR = { mode: 'free', side: -1, h0: 185, hB: 250, hRet: 60, t0: t26, theta: 0, dv: 3100, duration: 12 };
+  const MA = { mode: 'capture', side: 0, h0: 185, hB: 300, hRet: 60, t0: C.utcToDays(Date.UTC(2026, 8, 1)), theta: 0, dv: 3600, duration: 300 };
+  for (let k = 0; k < 5; k++) {
+    const fr = await solveReal(['earth', 'moon'], FR, k > 0), tag = k ? ` (noise run ${k})` : '';
+    assert.ok(fr.r.hit && fr.sim.impact < 0 && fr.sim.bPeri && fr.sim.aRet, 'real free return: perilune and return perigee' + tag);
+    assert.ok(Math.abs(km(fr.sim.bPeri.d, 1, fr.sy) - 250) < 1 && Math.abs(km(fr.sim.aRet.d, 0, fr.sy) - 60) < 1,
+      `real free return: 250 km perilune (${km(fr.sim.bPeri.d, 1, fr.sy).toFixed(3)}), 60 km perigee (${km(fr.sim.aRet.d, 0, fr.sy).toFixed(3)})${tag}`);
+    assert.strictEqual(fr.sim.bPeri.dir, -1, 'real free return passes the Moon retrograde' + tag);
+  }
+  for (let k = 0; k < 8; k++) {
+    const ma = await solveReal(['earth', 'mars', 'sun'], MA, k > 0), tag = k ? ` (noise run ${k})` : '', dep = new Date(C.daysToUtc(ma.r.M.t0));
+    assert.ok(ma.r.hit && ma.sim.impact < 0 && ma.sim.bPeri && ma.sim.captured, 'real Earth→Mars reaches Mars and captures' + tag);
+    assert.ok(dep.getUTCFullYear() === 2026 && dep.getUTCMonth() >= 9 && dep.getUTCMonth() <= 11, `Earth→Mars departs in the Oct–Dec 2026 window (${dep.toISOString().slice(0, 10)})${tag}`);
+    assert.ok(Math.abs(km(ma.sim.bPeri.d, 1, ma.sy) - 300) < 1, `Earth→Mars: 300 km periareion (${km(ma.sim.bPeri.d, 1, ma.sy).toFixed(3)})${tag}`);
+  }
+  // the verdict itself: the stored scenario hits; 30 m/s short of it, or a free return aimed at the wrong side, misses
+  {
+    const sc = SCENARIOS.find(q => q.id === 'r_e_mars'), sy = realSys(sc.bodies.map(b => b.k)), Ms = { ...sc.M };
+    Ms.duration = C.autoDuration(C.hohmannGuess(sy, Ms), Ms.mode);
+    const okv = C.missionMiss(sy, Ms), bad = C.missionMiss(sy, { ...Ms, dv: Ms.dv - 30 });
+    assert.ok(okv.hit && okv.miss < 5 && !bad.hit && bad.miss > 100, `missionMiss: the scenario hits (${okv.miss.toFixed(3)} km), 30 m/s short misses (${bad.miss.toFixed(0)} km)`);
+    const sf = SCENARIOS.find(q => q.id === 'r_em_free'), sy2 = realSys(sf.bodies.map(b => b.k)), Mf = { ...sf.M };
+    Mf.duration = C.autoDuration(C.hohmannGuess(sy2, Mf), Mf.mode);
+    assert.ok(C.missionMiss(sy2, Mf).hit && !C.missionMiss(sy2, { ...Mf, side: 1 }).hit, 'missionMiss: the wrong side of the Moon is a miss');
+  }
 
   // 14) The app's real scenarios still hit their targets with the stored values
   for (const sc of SCENARIOS.filter(q => q.model === 'real')) {
