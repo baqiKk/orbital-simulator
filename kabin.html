@@ -12,7 +12,8 @@
 <link rel="stylesheet" href="css/style.css">
 <!-- Phase 9: the cabin. Room and cat: illustration by Ahmet Baki Kırışgil (layers made by tools/cabin-art, see
      js/bodies.js CABIN_SRC). Behind the glass: the site's own sky and planet images (globe.js). Poster photo: NASA
-     AS08-14-2383 (public domain). Handwriting: Playpen Sans (SIL OFL 1.1, Google Fonts). -->
+     AS08-14-2383 (public domain). Handwriting: Playpen Sans (SIL OFL 1.1, Google Fonts). Radio: HoliznaCC0 (CC0 1.0); space sounds: NASA/JPL-Caltech plasma-wave
+     recordings (see js/sounds.js). -->
 </head>
 <body class="k-page">
 <div class="k-root" id="kRoot">
@@ -25,14 +26,27 @@
     <canvas id="kSteam" class="k-cv" aria-hidden="true"></canvas>
     <div id="kNight" class="k-night"></div>
     <div id="kCat" class="k-cat"><svg id="kWhisk" class="k-svg k-whisk" aria-hidden="true"></svg></div>
-    <div id="kEmit" class="k-emit"><svg id="kGlowArt" class="k-svg" aria-hidden="true"></svg></div>
+    <div id="kEmit" class="k-emit"><svg id="kGlowArt" class="k-svg" aria-hidden="true"></svg><div id="kLed" class="k-led"></div></div>
     <div id="kHits" class="k-hits"></div>
   </div>
 </div>
 
 <header class="k-hud top">
   <a class="ghost" href="index.html" data-i18n-aria-label="kab.backAria">← <span data-i18n="kab.back"></span></a>
+  <button type="button" class="ghost k-radio" id="kRadio" aria-haspopup="dialog" aria-expanded="false" aria-controls="kAudio" data-i18n-title="kab.audio.open"><span class="k-note" aria-hidden="true">♪</span><span id="kRadioT" class="k-radio-t"></span></button>
 </header>
+<div id="kAudio" class="k-audio" role="dialog" data-i18n-aria-label="kab.audio.title" hidden>
+  <div class="k-audio-h"><span data-i18n="kab.audio.title"></span><button type="button" class="k-x" id="kAudioX" data-i18n-aria-label="kab.audio.close">×</button></div>
+  <div class="k-arow" data-k="music"><label class="chk"><input type="checkbox"><span data-i18n="kab.audio.music"></span></label><input type="range" min="0" max="100" data-i18n-aria-label="kab.audio.volMusic"></div>
+  <div class="k-arow" data-k="space"><label class="chk"><input type="checkbox"><span data-i18n="kab.audio.space"></span></label><input type="range" min="0" max="100" data-i18n-aria-label="kab.audio.volSpace"></div>
+  <div class="k-arow" data-k="hum"><label class="chk"><input type="checkbox"><span data-i18n="kab.audio.hum"></span></label><input type="range" min="0" max="100" data-i18n-aria-label="kab.audio.volHum"></div>
+  <div class="k-arow" data-k="noise"><label class="chk"><input type="checkbox"><span data-i18n="kab.audio.noise"></span></label><input type="range" min="0" max="100" data-i18n-aria-label="kab.audio.volNoise"></div>
+  <div class="seg k-noise" id="kNoise" role="group" data-i18n-aria-label="kab.audio.noiseType">
+    <button type="button" data-n="white" data-i18n="kab.audio.white"></button><button type="button" data-n="pink" data-i18n="kab.audio.pink"></button><button type="button" data-n="brown" data-i18n="kab.audio.brown"></button>
+  </div>
+  <label class="chk k-mute"><input type="checkbox" id="kMute"><span data-i18n="kab.audio.mute"></span></label>
+  <p class="k-acred"><span data-i18n="kab.audio.credit"></span> <a href="index.html#kaynakca" data-i18n="kab.audio.sources"></a></p>
+</div>
 <footer class="k-hud bot">
   <div class="seg" id="kScene" role="group" data-i18n-aria-label="wc.sceneAria">
     <button type="button" data-scene="earth" aria-pressed="true" data-i18n="wc.earth"></button>
@@ -47,6 +61,8 @@
 <script src="js/prefs.js"></script>
 <script src="js/bodies.js"></script>
 <script src="js/globe.js"></script>
+<script src="js/sounds.js"></script>
+<script src="js/cabin-audio.js"></script>
 <script src="js/cabin.js"></script>
 </body>
 </html>

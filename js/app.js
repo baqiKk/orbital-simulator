@@ -3054,6 +3054,8 @@ function renderCredits() {
     <h3>${esc(_('cred.h.cabin'))}</h3>
     <ul><li>${esc(_('cred.cabin.art'))}</li>
       <li>${link(CABIN_SRC.earthrise, _('cred.cabin.earthrise'))} — ${esc(_('cred.cabin.earthriseNote'))}</li>
+      <li>${link(SND_SRC.holizna, _('cred.cabin.music'))} — ${esc(_('cred.cabin.musicNote', { n: MUSIC.length, titles: MUSIC.map(m => m.title).join(', ') }))} ${link(SND_SRC.chill, MUSIC_ALBUM.chill)} · ${link(SND_SRC.happy, MUSIC_ALBUM.happy)} · ${link(SND_SRC.cc0, _('cred.cabin.cc0'))}</li>
+      <li>${esc(_('cred.cabin.space'))} — ${esc(_('cred.cabin.spaceNote'))} ${SPACE_SND.map(s => link(SND_SRC[s.src], s.src.toUpperCase())).join(' · ')} · ${link(SND_SRC.jpl, _('cred.cabin.jpl'))}</li>
       <li>${link(CABIN_SRC.font, _('cred.cabin.font'))} — ${esc(_('cred.cabin.fontNote'))} ${link(CABIN_SRC.ofl, _('cred.cabin.ofl'))}</li></ul>
     <h3>${esc(_('cred.h.lic'))}</h3>
     <ul>${[...used].map(s => `<li><b>${esc(_('cred.src.' + s))}</b>: ${esc(_('cred.lic.' + s))}</li>`).join('')}</ul>
@@ -3295,4 +3297,5 @@ syncMapUI();
 setSeg('#pcMetric', PC.metric);
 for (const id of WIN_IDS) applyWin(id);
 if (start.ask) { sceneAside(); askMode(); } else sceneStart();
+if (location.hash === '#kaynakca') setWin('credits', { open: true, collapsed: false }); // the cabin's sound panel links here
 requestAnimationFrame(t => { last = t; draw(t); });

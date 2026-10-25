@@ -347,7 +347,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   for (const m of page.matchAll(/data-i18n(?:-[a-z-]+)?="([^"]+)"/g)) assert.ok(has(m[1]), `kabin.html key missing from dictionary: ${m[1]}`);
   for (const m of js.matchAll(/'((?:kab|kabin|wc)\.[A-Za-z0-9_.]+)'/g)) assert.ok(has(m[1]), `cabin.js key missing from dictionary: ${m[1]}`);
   assert.ok(page.includes(`content="${DICT['kabin.description']}"`) && page.includes(`<title>${DICT['kabin.title']}</title>`), 'kabin.html static title and description match the dictionary');
-  assert.ok(/<script src="js\/globe\.js"><\/script>\s*<script src="js\/cabin\.js">/.test(page), 'cabin.js loads after globe.js');
+  assert.ok(/<script src="js\/globe\.js"><\/script>\s*<script src="js\/sounds\.js"><\/script>\s*<script src="js\/cabin-audio\.js"><\/script>\s*<script src="js\/cabin\.js">/.test(page), 'cabin scripts in order: globe, sounds, cabin-audio, cabin');
   assert.ok(!/img\/planets|img\/sky/.test(page + js), 'cabin images of bodies and sky only through globeLook / skyReady');
   for (const m of js.matchAll(/globeLook\(([^;]*?)\)/g)) assert.ok(/, !LOWQ, !LOWQ,/.test(m[1]), 'cabin globeLook: nothing drawn or fetched in low mode: ' + m[1]);
   assert.ok(/if \(LOWQ\) SP\.sky = plainSky\(\); else \{ const sk = skyReady\(/.test(js), 'cabin sky: skyReady only outside low mode');
@@ -377,6 +377,38 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     const wc = P.cabGlassCam(vw, vh, g);
     assert.ok(wc.x >= g.x0 - 1e-6 && wc.x + vw / wc.s <= g.x1 + 1e-6 && wc.y >= g.y0 - 1e-6 && wc.y + vh / wc.s <= g.y1 + 1e-6, `window view ${vw}×${vh} stays on the glass`);
   }
+}
+
+// 15) Phase 11 cabin sound: every track is CC0 with both files (Opus/WebM and MP3) and a sane duration; the space
+// recordings carry their credit and source; the radio starts only on a gesture; storage through prefs.js; settings
+// parsing falls back per field; the credits name the music and the recordings.
+{
+  const S = require('../js/sounds.js'), page = read('kabin.html'), aud = read('js/cabin-audio.js'), cab = read('js/cabin.js');
+  const size = f => fs.statSync(path.join(__dirname, '..', f)).size;
+  assert.strictEqual(S.MUSIC_LIC, 'cc0', 'music only CC0');
+  assert.ok(S.MUSIC.length >= 5 && new Set(S.MUSIC.map(m => m.id)).size === S.MUSIC.length, 'distinct tracks');
+  let bytes = 0;
+  for (const m of S.MUSIC) {
+    assert.ok(m.title && S.MUSIC_ALBUM[m.album] && S.SND_SRC[m.album] && m.dur > 60 && m.dur < 600, 'track data ' + m.id);
+    for (const e of ['webm', 'mp3']) { const n = size(`audio/cabin/music/${m.id}.${e}`); assert.ok(n > m.dur * 4000 && n < m.dur * 20000, `audio/cabin/music/${m.id}.${e} size`); bytes += n; }
+  }
+  for (const s of S.SPACE_SND) {
+    assert.ok(s.credit.startsWith('NASA/JPL-Caltech') && S.SND_SRC[s.src] && s.dur > 10, 'space sound data ' + s.id);
+    for (const e of ['webm', 'mp3']) bytes += size(`audio/cabin/space/${s.id}.${e}`);
+  }
+  assert.ok(bytes < 45 * 1048576, 'cabin audio under 45 MB in all: ' + (bytes / 1048576).toFixed(1));
+  assert.ok(fs.readdirSync(path.join(__dirname, '..', 'audio/cabin/music')).every(f => /^[a-z0-9-]+\.(webm|mp3)$/.test(f)), 'only encoded files in audio/cabin/music');
+  // gesture, storage, keys
+  assert.ok(/addEventListener\('pointerdown', audGesture, true\)/.test(cab) && !/sndStart\(/.test(cab.split('// ---------- sound')[0]), 'the radio starts on a gesture');
+  assert.ok(!/localStorage\.|sessionStorage\./.test(aud), 'cabin-audio.js keeps no storage of its own');
+  for (const m of (page + cab + aud).matchAll(/'(kab\.audio\.[A-Za-z0-9_.]+)'|data-i18n(?:-[a-z-]+)?="(kab\.audio\.[^"]+)"/g)) assert.ok(has(m[1] || m[2]), 'sound key missing: ' + (m[1] || m[2]));
+  assert.ok(/<script src="js\/sounds\.js"><\/script>[\s\S]*<script src="js\/app\.js">/.test(html) && /cred\.cabin\.music/.test(app) && /cred\.cabin\.space/.test(app) && has('cred.cabin.musicNote') && has('cred.cabin.spaceNote'), 'credits name the radio and the recordings');
+  // settings
+  assert.deepStrictEqual(P.parseCabAudio(null), P.CAB_AUDIO, 'defaults: radio on, layers off');
+  assert.deepStrictEqual(P.parseCabAudio('{"music":{"on":false,"vol":2},"noise":{"type":"red","vol":-1},"muted":"yes"}'),
+    { muted: false, music: { on: false, vol: 1 }, space: { on: false, vol: 0.5 }, hum: { on: false, vol: 0.4 }, noise: { on: false, vol: 0, type: 'pink' } }, 'per-field fallback');
+  assert.strictEqual(P.parseCabAudio('{"noise":{"type":"brown"}}').noise.type, 'brown');
+  assert.ok(P.PREF_KEYS.cabAudio, 'saved under a pref key');
 }
 
 console.log('OK — all UI tests passed');

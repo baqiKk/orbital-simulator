@@ -199,11 +199,11 @@ Genel ilkeler:
 - Camdan görünen manzara aracın o anki konumundan: çalışırken hedef yavaşça büyür, molada yörüngede dönülür. HUD'da sade bir "kalan süre / görev evresi" göstergesi.
 - Kabinin havası evreye göre hafifçe değişebilir (ör. Ay yörüngesinde ışık tonu).
 
-## Faz 11 — Ses
-- Tarayıcıda üretilen (Web Audio) gizemli, sakin uzay ambient müziği; dosya indirmez, tekrar etmez.
-- NASA'nın kamu malı uzay kayıtları (ör. Voyager/Juno plazma dalgası sesleri) isteğe bağlı katman olarak.
-- Beyaz, pembe ve kahverengi gürültü seçenekleri; ayrı ses düzeyleri; pomodoro zili.
-- Ses yalnızca kullanıcı bir düğmeye bastıktan sonra başlar (tarayıcı kuralı).
+## Faz 11 — Ses ✅ tamamlandı (2026-10-25; Faz 10'dan önce yapıldı)
+- Lo-fi radyo (üretilen ambient müziğin yerine): HoliznaCC0'ın 9 parçası (CC0 1.0; "Chill Beats" ve "Happy Lo-Fi" koleksiyonlarından, kullanıcı dinleyip seçti), Opus/WebM + MP3 yedeği, −16 LUFS; karışık sıra, 3 sn geçiş, sarma yok. Varsayılan açık, ilk dokunuşla başlar (o zamana kadar sol üstte "Radyoyu başlatmak için dokun"); çalarken parça ve sanatçı sol üstte. Ağ hatasında sessizce yeniden dener, olmazsa küçük uyarı.
+- Ek katmanlar (varsayılan kapalı, ayrı ses düzeyleri): NASA plazma dalgası kayıtları (Voyager 1 PIA17045, Juno PIA25030), Web Audio ile üretilen gemi uğultusu ve beyaz / pembe / kahverengi gürültü. Kulaklığa tıklayınca ses paneli; ses açıkken kulaklıkta gösterge. Tercihler kayıtlı; sekme gizliyken ses sürer, görsel döngü durur.
+- İnternet radyoları araştırıldı: SomaFM şartları başka sitede gömmeyi, üçüncü taraf istemcileri ve şimdi çalan bilgisinin yeniden yayınını yasaklıyor; izin veren bir lo-fi radyo bulunamadı.
+- İleride: CC-BY parçalar eklenebilir (ör. tcarisland, "Diminishing Returns", CC BY 4.0, OpenGameArt; sanatçı kullanımın kendisine bildirilmesini istiyor). Atıf hem Kaynakça'da hem şimdi çalan alanında lisans adıyla gösterilmeli. Pomodoro zili Faz 10'da.
 
 ## Faz 12 — Defter ve tablet
 - Kişisel not defteri: anlık not alma, localStorage'da saklama, metin olarak dışa aktarma.

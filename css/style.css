@@ -437,6 +437,26 @@ html[data-q=low] *,html[data-q=low] *::before,html[data-q=low] *::after{transiti
 .k-hud .seg button{padding:7px 9px;font-size:10.5px}
 #kGo{padding:8px 12px;font-size:10.5px}
 .k-tip{position:fixed;z-index:6;pointer-events:none;transform:translate(-50%,-100%);background:var(--panel-lo);border:1px solid var(--line2);padding:6px 9px;font:500 11px/1.2 var(--f-disp);letter-spacing:.06em;text-transform:uppercase;color:var(--ink);white-space:nowrap}
+.k-radio{max-width:min(calc(100vw - 150px),380px);min-width:0;text-transform:none;letter-spacing:.02em}
+.k-radio-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.k-note{color:var(--cab-lamp)}
+.k-radio.tap{color:var(--ink);border-color:var(--accent-soft);animation:kTap 2.4s ease-in-out infinite}
+.k-radio.warn{color:var(--warn)}
+@keyframes kTap{0%,100%{box-shadow:0 0 0 0 transparent}50%{box-shadow:0 0 0 3px var(--accent-soft)}}
+.k-audio{position:fixed;z-index:6;left:max(12px,env(safe-area-inset-left,0px));top:calc(max(12px,env(safe-area-inset-top,0px)) + 44px);width:min(320px,calc(100vw - 24px));
+  background:var(--panel-lo);border:1px solid var(--line2);padding:10px 12px 12px;display:flex;flex-direction:column;gap:9px;font-size:12.5px}
+.k-audio-h{display:flex;justify-content:space-between;align-items:center;font:600 11px/1 var(--f-disp);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.k-x{background:none;border:0;color:var(--dim);font-size:18px;line-height:1;padding:2px 6px;cursor:pointer}
+.k-arow{display:grid;grid-template-columns:minmax(0,1fr) 110px;gap:10px;align-items:center}
+.k-arow .chk{white-space:normal}
+.k-arow input[type=range]{width:100%;accent-color:var(--accent)}
+.k-noise button{padding:6px 8px;font-size:10.5px}
+.k-mute{padding-top:4px;border-top:1px solid var(--line)}
+.k-acred{margin:0;color:var(--faint);font-size:11px;line-height:1.35}
+.k-acred a{color:var(--dim)}
+.k-led{border-radius:50%;background:var(--cab-screen);opacity:0;transition:opacity .4s;box-shadow:0 0 14px 6px color-mix(in srgb,var(--cab-screen) 55%,transparent);pointer-events:none}
+.k-led.on{opacity:.95;animation:kLed 3.2s ease-in-out infinite}
+@keyframes kLed{0%,100%{opacity:.95}50%{opacity:.55}}
 html.paused .k-root *{animation-play-state:paused!important}
 html[data-q=low] .k-root *{animation:none!important;transition:none!important}
 html[data-q=low] #kGlowArt{filter:none}

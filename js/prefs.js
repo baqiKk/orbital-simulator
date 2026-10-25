@@ -1,7 +1,7 @@
 // Persisted UI preferences: view mode and window layout.
 // DOM-free: the storage object is passed in (localStorage, sessionStorage, a stub or null), so Node tests can run it.
 // Every storage access is wrapped: private windows, blocked site data and quota errors must never break the page.
-const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene' };
+const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1' };
 const VIEW_MODES = ['low', 'normal', '3d'];
 // placement order: overview's default spot sits under Results, so it comes after it
 const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'gloss', 'model', 'credits'];
@@ -129,5 +129,21 @@ function cabGlassCam(vw, vh, g) {
   const fx = CAB_FOCUS[0] + t * (CAB_FOCUS[1] - CAB_FOCUS[0]);
   return { s, x: Math.min(g.x1 - w, Math.max(g.x0, fx - w / 2)), y: g.y0 + (gh - h) / 2 };
 }
+// Cabin sound settings: the radio (on by default) and three layers (off), each with a volume 0–1; noise colour white /
+// pink / brown; one mute for all. Anything missing or broken falls back per field.
+const CAB_NOISE = ['white', 'pink', 'brown'];
+const CAB_AUDIO = { muted: false, music: { on: true, vol: 0.6 }, space: { on: false, vol: 0.5 }, hum: { on: false, vol: 0.4 }, noise: { on: false, vol: 0.3, type: 'pink' } };
+function parseCabAudio(raw) {
+  let o = null; try { o = JSON.parse(raw); } catch (e) { /* default */ }
+  if (!o || typeof o !== 'object') o = {};
+  const vol = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
+  const out = { muted: o.muted === true };
+  for (const k of ['music', 'space', 'hum', 'noise']) {
+    const s = o[k] && typeof o[k] === 'object' ? o[k] : {}, d = CAB_AUDIO[k];
+    out[k] = { on: typeof s.on === 'boolean' ? s.on : d.on, vol: vol(s.vol, d.vol) };
+  }
+  out.noise.type = CAB_NOISE.includes(o.noise && o.noise.type) ? o.noise.type : CAB_AUDIO.noise.type;
+  return out;
+}
 
-if (typeof module !== 'undefined') module.exports = { CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

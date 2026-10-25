@@ -24,6 +24,7 @@ const deg = Math.PI / 180;
 const AQ_WATER = [2372, 1886, 3028, 2196];            // inside the tank: fish and bubbles
 const TEA_RIM = [2355, 2770, 118];                     // tea glass rim: centre x, y, half width
 const STEAM_BOX = [2190, 2330, 2520, 2772];
+const PHONES_LED = [902, 2948, 11];                    // a small light on the right ear cup: x, y, radius
 const WHISKERS = [[4222, 1752, 4135, 1744], [4222, 1773, 4147, 1788], [4235, 1797, 4160, 1834],
   [4514, 1757, 4585, 1744], [4510, 1773, 4587, 1782], [4502, 1794, 4560, 1825]];
 // the laptop's screen runs past the picture's right edge: its quad extended to an assumed right side
@@ -393,6 +394,53 @@ function go(to) {
   ANIM = requestAnimationFrame(step);
 }
 
+// ---------- sound (js/cabin-audio.js) ----------
+// The radio is on by default and starts on the first gesture anywhere (browser rule); until then the chip at the top
+// left asks for a tap. The chip names the track, or says the radio cannot be reached; it and the headphones on the
+// desk open the sound panel. A small light on the headphones shows that something is playing.
+const AUD = { set: parseCabAudio(readPref(LS, PREF_KEYS.cabAudio)) };
+const AUD_K = ['music', 'space', 'hum', 'noise'];
+const audWants = () => !AUD.set.muted && AUD_K.some(k => AUD.set[k].on);
+function audChip() {
+  const s = SND.state, set = AUD.set, tap = !SND.started && audWants(), lost = SND.started && set.music.on && !set.muted && s.trouble >= RETRY_S.length;
+  $('#kRadioT').textContent = tap ? _('kab.audio.tap') : lost ? _('kab.audio.lost') : set.muted ? _('kab.audio.muted')
+    : set.music.on && s.track ? _('kab.audio.now', { title: s.track.title, artist: MUSIC_ARTIST }) : _('kab.audio.radio');
+  $('#kRadio').classList.toggle('tap', tap); $('#kRadio').classList.toggle('warn', lost);
+  $('#kLed').classList.toggle('on', SND.started && !!s.active);
+}
+function audSync() { // panel controls from the settings
+  for (const k of AUD_K) { const r = document.querySelector(`.k-arow[data-k=${k}]`); r.querySelector('[type=checkbox]').checked = AUD.set[k].on; r.querySelector('[type=range]').value = Math.round(AUD.set[k].vol * 100); }
+  for (const b of document.querySelectorAll('#kNoise button')) b.setAttribute('aria-pressed', String(b.dataset.n === AUD.set.noise.type));
+  $('#kMute').checked = AUD.set.muted;
+}
+function audSet(patch) {
+  patch(AUD.set); writePref(LS, PREF_KEYS.cabAudio, JSON.stringify(AUD.set));
+  if (!SND.started) { if (audWants()) sndStart(AUD.set); } else sndApply(AUD.set);
+  audSync(); audChip();
+}
+function audPanel(open) {
+  const p = $('#kAudio'); open = open ?? p.hidden; p.hidden = !open; hideTip();
+  $('#kRadio').setAttribute('aria-expanded', String(open));
+}
+function audGesture() {
+  if (SND.started) return;
+  removeEventListener('pointerdown', audGesture, true); removeEventListener('keydown', audGesture, true);
+  if (audWants()) sndStart(AUD.set);
+  audChip();
+}
+SND.onState = audChip;
+addEventListener('pointerdown', audGesture, true); addEventListener('keydown', audGesture, true);
+$('#kRadio').addEventListener('click', () => audPanel());
+$('#kAudioX').addEventListener('click', () => audPanel(false));
+for (const k of AUD_K) {
+  const r = document.querySelector(`.k-arow[data-k=${k}]`);
+  r.querySelector('[type=checkbox]').addEventListener('change', e => audSet(s => { s[k].on = e.target.checked; if (s[k].on) s.muted = false; }));
+  r.querySelector('[type=range]').addEventListener('input', e => audSet(s => { s[k].vol = e.target.value / 100; }));
+}
+for (const b of document.querySelectorAll('#kNoise button')) b.addEventListener('click', () => audSet(s => { s.noise.type = b.dataset.n; s.noise.on = true; }));
+$('#kMute').addEventListener('change', e => audSet(s => { s.muted = e.target.checked; }));
+document.addEventListener('pointerdown', e => { const p = $('#kAudio'); if (!p.hidden && !p.contains(e.target) && !$('#kRadio').contains(e.target) && e.target.id !== 'hPhones') audPanel(false); });
+
 // ---------- the lamp ----------
 function setLamp(on, save = true) {
   $('#kRoot').classList.toggle('lamp-off', !on);
@@ -446,7 +494,8 @@ function buildHits() {
   $('#hGlass').addEventListener('click', () => go(view === 'desk' ? 'window' : 'desk'));
   $('#hLamp').addEventListener('click', () => setLamp($('#kRoot').classList.contains('lamp-off')));
   $('#hCat').addEventListener('click', () => { const c = $('#kCat'); c.classList.remove('k-flick'); void c.offsetWidth; c.classList.add('k-flick'); setTimeout(() => c.classList.remove('k-flick'), 950); });
-  for (const id of ['hClock', 'hBook', 'hPhones', 'hTea']) $('#' + id).addEventListener('click', e => showTip(e.currentTarget));
+  for (const id of ['hClock', 'hBook', 'hTea']) $('#' + id).addEventListener('click', e => showTip(e.currentTarget));
+  $('#hPhones').addEventListener('click', () => audPanel());
 }
 
 // ---------- start ----------
@@ -458,6 +507,8 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   box($('#kNight'), 0, 0, LY.size[0], LY.size[1]);
   const g = LY.glass; box($('#kGlow'), g.x0, g.y0 + (g.y1 - g.y0) * 0.35, (g.x1 - g.x0) * 0.42, (g.y1 - g.y0) * 0.65);
   buildArt(); buildHits(); initLife();
+  box($('#kLed'), PHONES_LED[0] - PHONES_LED[2], PHONES_LED[1] - PHONES_LED[2], 2 * PHONES_LED[2], 2 * PHONES_LED[2]);
+  audSync(); audChip();
   const sc = readPref(LS, PREF_KEYS.cabScene); if (SCENES[sc]) SP.scene = sc;
   for (const b of document.querySelectorAll('#kScene button')) b.setAttribute('aria-pressed', String(b.dataset.scene === SP.scene));
   setLamp(readPref(LS, PREF_KEYS.cabLamp) !== '0', false);
@@ -468,7 +519,7 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
 });
 $('#kGo').addEventListener('click', () => go(view === 'desk' ? 'window' : 'desk'));
 $('#kLamp').addEventListener('click', () => setLamp($('#kRoot').classList.contains('lamp-off')));
-addEventListener('keydown', e => { if (e.key === 'Escape') go('desk'); });
+addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!$('#kAudio').hidden) audPanel(false); else go('desk'); });
 for (const b of document.querySelectorAll('#kScene button')) b.addEventListener('click', () => {
   SP.scene = b.dataset.scene; writePref(LS, PREF_KEYS.cabScene, SP.scene);
   for (const x of document.querySelectorAll('#kScene button')) x.setAttribute('aria-pressed', String(x === b));
