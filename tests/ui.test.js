@@ -431,4 +431,93 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/<meta name="robots" content="noindex">/.test(read('kabin.html')) && !/kabin/.test(read('sitemap.xml')), 'kabin.html: noindex, not in the sitemap (until Phase 10)');
 }
 
+// 17) Phase 10 pomodoro (js/pomodoro.js, a fake clock): wall-clock durations to the millisecond, pause and resume, a
+// night asleep (phases end at their true times, statistics count once, no automatic start nobody saw), a clock set
+// backwards, a reload, long breaks, skip and reset, the day boundary, broken saved data
+{
+  const T = require('../js/pomodoro.js'), MIN = 60000, t0 = new Date(2026, 9, 25, 9, 0, 0).getTime();
+  const s = T.pomoNew('p25');
+  assert.deepStrictEqual(s.cfg, { work: 25, short: 5, long: 15, every: 4 });
+  assert.deepStrictEqual(T.pomoStart(s, t0), []);
+  assert.strictEqual(T.pomoView(s, t0 + 60000).left, 24 * MIN, 'one minute in');
+  assert.deepStrictEqual(T.pomoAdvance(s, t0 + 25 * MIN - 1), [], 'not yet over 1 ms before the end');
+  assert.strictEqual(T.pomoView(s, t0 + 25 * MIN - 1).left, 1);
+  let ev = T.pomoAdvance(s, t0 + 25 * MIN);
+  assert.deepStrictEqual(ev, [{ type: 'end', phase: 'work', next: 'short', at: t0 + 25 * MIN, late: 0 }, { type: 'focus', ms: 25 * MIN, at: t0 + 25 * MIN, done: true }], 'work ends into the short break');
+  assert.ok(s.phase === 'short' && s.t0 === t0 + 25 * MIN && s.n === 1 && s.flight === 1);
+  ev = T.pomoAdvance(s, t0 + 30 * MIN + 5000);
+  assert.ok(s.phase === 'wait' && ev[0].next === 'wait' && ev[0].late === 5000, 'a break ends into waiting for the user');
+  // pause and resume: paused time does not count
+  T.pomoStart(s, t0 + 40 * MIN);
+  T.pomoPause(s, t0 + 50 * MIN);
+  assert.strictEqual(T.pomoView(s, t0 + 90 * MIN).left, 15 * MIN, 'paused: the time left stands still');
+  assert.ok(T.pomoView(s, t0 + 90 * MIN).paused && !T.pomoView(s, t0 + 90 * MIN).running);
+  assert.deepStrictEqual(T.pomoAdvance(s, t0 + 300 * MIN), [], 'a pause never runs out');
+  T.pomoStart(s, t0 + 100 * MIN);
+  assert.strictEqual(T.pomoView(s, t0 + 110 * MIN).left, 5 * MIN, 'resumed');
+  ev = T.pomoAdvance(s, t0 + 115 * MIN);
+  assert.strictEqual(ev[0].at, t0 + 115 * MIN, 'ends 25 working minutes after the start, the pause added');
+  // a night asleep: the work ended, its break ran out unseen; with auto on still no new session starts by itself
+  const z = T.pomoNew('p25'); z.auto = true; T.pomoStart(z, t0);
+  ev = T.pomoAdvance(z, t0 + 8 * 60 * MIN);
+  assert.deepStrictEqual(ev.map(e => [e.type, e.phase || '', e.next || '', e.at]), [['end', 'work', 'short', t0 + 25 * MIN], ['focus', '', '', t0 + 25 * MIN], ['end', 'short', 'wait', t0 + 30 * MIN]], 'asleep: phases end at their true times, then the timer waits');
+  assert.ok(ev[0].late > T.POMO_LATE, 'too late to chime');
+  assert.deepStrictEqual(T.pomoAdvance(z, t0 + 8 * 60 * MIN + 1000), [], 'nothing is counted twice');
+  const st = {}; T.pomoStatsAdd(st, ev); T.pomoStatsAdd(st, []);
+  assert.deepStrictEqual(st, { [T.pomoDay(t0)]: [1, 25 * MIN] }, 'one session, 25 minutes');
+  // waking up within the break: it goes on to its true end; seen in time, auto starts the next work at that moment
+  const w = T.pomoNew('p25'); w.auto = true; T.pomoStart(w, t0);
+  T.pomoAdvance(w, t0 + 27 * MIN);
+  assert.ok(w.phase === 'short' && T.pomoView(w, t0 + 27 * MIN).left === 3 * MIN, 'woke in the break');
+  ev = T.pomoAdvance(w, t0 + 30 * MIN + 2000);
+  assert.ok(w.phase === 'work' && w.t0 === t0 + 30 * MIN && ev[0].late === 2000, 'auto: the next work starts at the break end');
+  // the clock set back an hour mid-session: the elapsed time stays continuous
+  const b = T.pomoNew('p25'); T.pomoStart(b, t0); T.pomoAdvance(b, t0 + 10 * MIN);
+  T.pomoAdvance(b, t0 - 50 * MIN);
+  assert.strictEqual(T.pomoView(b, t0 - 50 * MIN).left, 15 * MIN, 'clock set backwards: 15 minutes still left');
+  assert.strictEqual(T.pomoView(b, t0 - 45 * MIN).left, 10 * MIN);
+  // a reload: the saved state gives the same time left
+  const r = T.parsePomo(JSON.stringify(b));
+  assert.deepStrictEqual(r, b, 'saved and read back unchanged');
+  assert.strictEqual(T.pomoView(r, t0 - 45 * MIN).left, 10 * MIN);
+  T.pomoPause(r, t0 - 44 * MIN); const r2 = T.parsePomo(JSON.stringify(r));
+  assert.ok(r2.pausedAt === r.pausedAt && T.pomoView(r2, t0 + 600 * MIN).left === 9 * MIN, 'a paused session reloads paused');
+  // long break every 4th session (skips count for the cycle and the flight, not for the statistics)
+  const c = T.pomoNew('p25'), all = []; let now = t0;
+  for (let i = 0; i < 4; i++) { T.pomoStart(c, now); if (i === 2) { now += 10 * MIN; all.push(...T.pomoSkip(c, now)); } else { now += 25 * MIN; all.push(...T.pomoAdvance(c, now)); } now += c.phase === 'long' ? 15 * MIN : 5 * MIN; all.push(...T.pomoAdvance(c, now)); }
+  assert.deepStrictEqual(all.filter(e => e.type === 'end' && e.phase === 'work').map(e => e.next), ['short', 'short', 'short', 'long'], 'the 4th break is the long one');
+  assert.ok(all.some(e => e.skipped) && c.flight === 4 && c.n === 4, 'a skipped session moves the flight on');
+  const cs = {}; T.pomoStatsAdd(cs, all);
+  assert.deepStrictEqual(cs[T.pomoDay(t0)], [3, 85 * MIN], 'three done, 25 + 25 + 10 + 25 minutes of focus');
+  assert.strictEqual(T.pomoView(c, now).phase, 'wait');
+  // skipping a break; reset counts the minutes worked and starts the cycle over, the flight stays
+  T.pomoStart(c, now); T.pomoAdvance(c, now + 25 * MIN); ev = T.pomoSkip(c, now + 26 * MIN);
+  assert.ok(c.phase === 'wait' && ev[0].phase === 'short' && ev[0].skipped, 'skip a break');
+  T.pomoStart(c, now + 30 * MIN); ev = T.pomoReset(c, now + 42 * MIN);
+  assert.ok(c.phase === 'idle' && c.n === 0 && c.flight === 5 && ev.length === 1 && ev[0].ms === 12 * MIN && !ev[0].done, 'reset');
+  // 50/10: long break after the 3rd; custom limits
+  const f = T.pomoNew('p50'); f.n = 2; T.pomoStart(f, t0); T.pomoAdvance(f, t0 + 50 * MIN);
+  assert.strictEqual(f.phase, 'long');
+  assert.deepStrictEqual(T.pomoCfg({ work: 500, short: 0, long: -3, every: 1.6 }), { work: 120, short: 1, long: 0, every: 2 });
+  const nl = T.pomoNew(); nl.cfg = T.pomoCfg({ work: 5, short: 1, long: 0, every: 2 }); nl.n = 1; T.pomoStart(nl, t0); T.pomoAdvance(nl, t0 + 5 * MIN);
+  assert.strictEqual(nl.phase, 'short', 'long 0: no long break');
+  // the day boundary: a session ending after midnight counts for the new day
+  const d = T.pomoNew('p25'), late = new Date(2026, 9, 25, 23, 50).getTime(); T.pomoStart(d, late);
+  const ds = {}; T.pomoStatsAdd(ds, T.pomoAdvance(d, late + 25 * MIN));
+  assert.deepStrictEqual(Object.keys(ds), ['2026-10-26']);
+  // statistics: the last 30 days, broken entries dropped
+  const many = {}; for (let i = 1; i <= 40; i++) many[`2026-09-${String(i).padStart(2, '0')}`] = [1, 1];
+  many.bad = [1, 1]; many['2026-10-01'] = [-1, 5];
+  const ps = T.parsePomoStats(JSON.stringify(many));
+  assert.strictEqual(Object.keys(ps).length, 30); assert.ok(!ps.bad && !ps['2026-10-01'] && ps['2026-09-40'] && !ps['2026-09-01']);
+  assert.deepStrictEqual(T.parsePomoStats('[1,2]'), {}); assert.deepStrictEqual(T.parsePomoStats(null), {});
+  // broken saved state: a fresh idle timer, or idle with the saved settings
+  assert.deepStrictEqual(T.parsePomo('{'), T.pomoNew()); assert.deepStrictEqual(T.parsePomo(null), T.pomoNew());
+  const bad = T.parsePomo(JSON.stringify({ v: 1, preset: 'custom', cfg: { work: 40, short: 8, long: 20, every: 3 }, auto: true, phase: 'work', t0: 'x', n: -2, plan: 'ma rs' }));
+  assert.ok(bad.phase === 'idle' && bad.preset === 'custom' && bad.cfg.work === 40 && bad.auto && bad.n === 0 && bad.plan === 'em', 'per-field fallback');
+  assert.strictEqual(T.parsePomo(JSON.stringify({ v: 1, phase: 'short', t0: 5, paused: 0, pausedAt: 3 })).phase, 'idle', 'a pause before the start is broken');
+  assert.strictEqual(T.pomoClock(25 * MIN), '25:00'); assert.strictEqual(T.pomoClock(61500), '01:02'); assert.strictEqual(T.pomoClock(-5), '00:00');
+  assert.ok(P.PREF_KEYS.pomo && P.PREF_KEYS.pomoStats, 'saved under pref keys');
+}
+
 console.log('OK — all UI tests passed');
