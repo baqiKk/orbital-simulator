@@ -186,6 +186,7 @@ Genel ilkeler:
 - Masa görünümü ve cam görünümü; "Cama git" düğmesiyle yumuşak bir kamera animasyonuyla cam mekâna geçiş ve geri dönüş.
 - Masadaki nesneler etkileşimli: saat → pomodoro, tablet → simülatör, defter → notlar ve bilgiler.
 - Önce görsel tasarım taslağı hazırlanıp onaylanacak, çizimler ona göre yapılacak.
+  - Taslak hazır (`kabin-taslak.html`), kullanıcı onayı bekliyor. Kararlar: sıcak retro-fütüristik, ahşap ve kumaş; masa önde, cam arkada, aynı mekân; özgün SVG/CSS (taslaktan sonra gerekirse illüstratör ya da CC0 low-poly 3B ayrıca konuşulacak); ince belli çay bardağı ve kulaklık (ileride ses ayarları); `--cab-*` renk token'ları onaylı.
 
 ## Faz 10 — Pomodoro ve uçuş planı
 - Pomodoro: hazır düzenler (25/5, 50/10, 15/5 ve özel), uzun mola, oturum sayacı; süre bitince yumuşak bir zil ve isteğe bağlı tarayıcı bildirimi. Günlük istatistik localStorage'da.

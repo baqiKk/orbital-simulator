@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kabin · taslak</title>
+<meta name="description" data-i18n-content="kab.description" content="Yörünge simülatörünün kabin modu için görsel tasarım taslağı: masa ve cam görünümü.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<!-- Phase 9 design draft (stand-alone): the cabin's desk view and window view, the move between them, the objects'
+     places, light and colour. Only looks: the clock, sound and notebook do nothing yet. All drawings are original
+     SVG written for this page; the view through the glass uses the site's own sky and planet images (globe.js). -->
+<style>
+  :root{
+    /* cabin palette (approved as --cab-* tokens; the space outside keeps the site's --void/--bg, the lamp is --accent,
+       screens are --cyan) */
+    --cab-wall:#2c2623; --cab-wall-hi:#45392f; --cab-wall-lo:#181412; --cab-seam:#0e0b0a;
+    --cab-metal:#4b433d; --cab-metal-hi:#8a7b6c; --cab-metal-lo:#221d1a;
+    --cab-brass:#c8954f; --cab-brass-lo:#6e4a22;
+    --cab-wood:#7c4a2a; --cab-wood-hi:#b0703f; --cab-wood-lo:#3e2310; --cab-wood-dk:#1f1108;
+    --cab-rust:#a5452c; --cab-rust-hi:#d0674a; --cab-rust-lo:#5e2416;
+    --cab-mustard:#d49a3a; --cab-cream:#eadbbb; --cab-cream-lo:#b9a586; --cab-paper:#efe4cc; --cab-light:#fff1d6;
+    --cab-kraft:#a97c4e; --cab-kraft-lo:#6d4a28;
+    --cab-leaf:#3f6e3c; --cab-leaf-hi:#7fae62; --cab-pot:#b5653c; --cab-pot-lo:#7a3f22;
+    --cab-tea:#c4511d; --cab-tea-lo:#6e1f08;
+    --cab-shadow:#0a0604; --cab-screen-bg:#06141a;
+    --cab-lamp:var(--accent); --cab-screen:var(--cyan);
+  }
+  html,body{background:var(--cab-wall-lo)}
+  .cabin{position:fixed;inset:0;overflow:hidden;overflow:clip;background:var(--void)} /* clip: focusing an object must not scroll the room */
+  #spaceWrap{position:absolute;inset:0}
+  #drift{position:absolute;inset:0;animation:drift 600s ease-in-out infinite alternate}
+  #space{position:absolute;display:block}
+  #world{position:absolute;left:0;top:0;transform-origin:0 0}
+  .layer{position:absolute;inset:0;pointer-events:none}
+  .bg svg{display:block}
+  .obj{position:absolute;display:block;padding:0;margin:0;border:0;background:none;cursor:pointer;pointer-events:auto;-webkit-tap-highlight-color:transparent;color:inherit}
+  .obj svg{display:block;width:100%;height:auto;overflow:visible;transition:filter .2s}
+  .obj.deco{pointer-events:none;cursor:default}
+  .obj:hover svg,.obj:focus-visible svg{filter:drop-shadow(0 0 9px color-mix(in srgb,var(--cab-lamp) 60%,transparent))}
+  .obj:focus-visible{outline:none}
+  #o-glass{cursor:zoom-in}
+  #o-glass:focus-visible{box-shadow:inset 0 0 0 3px var(--cab-lamp)}
+  #lLight{mix-blend-mode:screen;transition:opacity .5s}
+  #lLight svg{animation:flick 13s infinite}
+  #vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 78% 74% at 50% 46%,transparent 52%,color-mix(in srgb,var(--cab-shadow) 72%,transparent) 100%)}
+  #dim{position:absolute;inset:0;pointer-events:none;background:var(--cab-shadow);opacity:0;transition:opacity .5s}
+  .lamp-off #dim{opacity:.5}
+  .lamp-off #lLight{opacity:0}
+  .bulb{transition:opacity .5s}
+  .lamp-off .bulb{opacity:.15}
+
+  .khud{position:fixed;z-index:5;display:flex;gap:8px;align-items:center}
+  .khud.top{top:max(12px,env(safe-area-inset-top,0px));left:max(12px,env(safe-area-inset-left,0px))}
+  .khud.bot{left:0;right:0;bottom:max(16px,env(safe-area-inset-bottom,0px));justify-content:center;flex-wrap:wrap;padding:0 16px;pointer-events:none}
+  .khud.bot>*{pointer-events:auto}
+  .khud .ghost{text-decoration:none;display:inline-flex;align-items:center;gap:6px;padding:8px 11px}
+  .badge{font:600 10px/1 var(--f-disp);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);background:var(--panel);border:1px solid var(--accent-soft);padding:7px 8px;cursor:help}
+  #go{min-width:150px;padding:10px 16px}
+  #sceneSeg button{padding:9px 12px}
+  #tip{position:fixed;z-index:6;pointer-events:none;transform:translate(-50%,-100%);background:var(--panel-lo);border:1px solid var(--line2);padding:6px 9px;font:500 11px/1.2 var(--f-disp);letter-spacing:.06em;text-transform:uppercase;color:var(--ink);white-space:nowrap}
+
+  /* small animations: transforms and opacity only */
+  .steam{filter:url(#fSteam)}
+  .steam path{fill:none;stroke:var(--cab-light);stroke-width:5;stroke-linecap:round;opacity:0;animation:steam 6.5s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 100%}
+  .steam path:nth-child(2){animation-delay:-2.2s;animation-duration:7.2s}
+  .steam path:nth-child(3){animation-delay:-4.4s;animation-duration:5.8s}
+  .colon{animation:blink 2s steps(1) infinite}
+  .seg7 polygon{fill:var(--cab-lamp);opacity:.08}
+  .seg7 polygon.on{opacity:1}
+  .scr-glow{animation:breathe 7s ease-in-out infinite alternate}
+  .sway{transform-box:fill-box;transform-origin:50% 100%;animation:sway 9s ease-in-out infinite alternate}
+  .mote{transform-box:fill-box;animation:mote 10s linear infinite}
+  .led{animation:led 4s infinite}
+  .obj.nudge svg{animation:nudge .45s ease-out}
+  @keyframes drift{from{transform:translate(-36px,-8px)}to{transform:translate(36px,8px)}}
+  @keyframes steam{0%{opacity:0;transform:translateY(10px) scaleY(.85)}30%{opacity:.34}70%{opacity:.16}100%{opacity:0;transform:translate(5px,-24px) scaleY(1.12)}}
+  @keyframes blink{0%{opacity:1}50%{opacity:.18}}
+  @keyframes flick{0%,57%,60%,84%,86%,100%{opacity:1}58%{opacity:.88}59%{opacity:.97}85%{opacity:.93}}
+  @keyframes breathe{from{opacity:.6}to{opacity:1}}
+  @keyframes sway{from{transform:rotate(-1.4deg)}to{transform:rotate(1.4deg)}}
+  @keyframes mote{0%{transform:translate(0,0);opacity:0}20%{opacity:.75}80%{opacity:.45}100%{transform:translate(22px,-30px);opacity:0}}
+  @keyframes led{0%,88%{opacity:1}90%,100%{opacity:.25}}
+  @keyframes nudge{0%,100%{transform:none}30%{transform:translateY(-6px) rotate(-1deg)}60%{transform:rotate(.6deg)}}
+  html.paused *{animation-play-state:paused!important}
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important}
+    .steam path{opacity:.14}
+  }
+</style>
+</head>
+<body>
+
+<!-- shared paint: gradients, patterns, filters, the leaf -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="gCushion" cx=".42" cy=".36" r=".78">
+      <stop offset="0" style="stop-color:var(--cab-wall-hi)"/><stop offset=".62" style="stop-color:var(--cab-wall)"/><stop offset="1" style="stop-color:var(--cab-wall-lo)"/>
+    </radialGradient>
+    <pattern id="pQuilt" width="140" height="120" patternUnits="userSpaceOnUse">
+      <rect width="140" height="120" style="fill:var(--cab-seam)"/>
+      <rect x="3" y="3" width="134" height="114" rx="24" style="fill:url(#gCushion)"/>
+      <path d="M22 6.5H118" style="stroke:var(--cab-light);stroke-width:1.2;stroke-linecap:round" opacity=".07"/>
+      <circle cx="0" cy="0" r="5" style="fill:var(--cab-brass-lo)"/><circle cx="140" cy="0" r="5" style="fill:var(--cab-brass-lo)"/>
+      <circle cx="0" cy="120" r="5" style="fill:var(--cab-brass-lo)"/><circle cx="140" cy="120" r="5" style="fill:var(--cab-brass-lo)"/>
+    </pattern>
+    <pattern id="pKnit" width="26" height="90" patternUnits="userSpaceOnUse" patternTransform="rotate(-16)">
+      <rect width="26" height="30" style="fill:var(--cab-rust)"/>
+      <rect y="30" width="26" height="30" style="fill:var(--cab-mustard)"/>
+      <rect y="60" width="26" height="30" style="fill:var(--cab-cream)"/>
+      <path d="M3 3L13 13L23 3M3 18L13 28L23 18M3 33L13 43L23 33M3 48L13 58L23 48M3 63L13 73L23 63M3 78L13 88L23 78" style="fill:none;stroke:var(--cab-wood-dk);stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round" opacity=".3"/>
+      <path d="M3 1.5L13 11.5L23 1.5M3 16.5L13 26.5L23 16.5M3 31.5L13 41.5L23 31.5M3 46.5L13 56.5L23 46.5M3 61.5L13 71.5L23 61.5M3 76.5L13 86.5L23 76.5" style="fill:none;stroke:var(--cab-light);stroke-width:1.2;stroke-linecap:round" opacity=".2"/>
+    </pattern>
+    <linearGradient id="gWallShade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-shadow);stop-opacity:.6"/><stop offset=".32" style="stop-color:var(--cab-shadow);stop-opacity:0"/>
+      <stop offset=".7" style="stop-color:var(--cab-shadow);stop-opacity:.05"/><stop offset="1" style="stop-color:var(--cab-shadow);stop-opacity:.45"/>
+    </linearGradient>
+    <linearGradient id="gRib" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" style="stop-color:var(--cab-metal-lo)"/><stop offset=".34" style="stop-color:var(--cab-metal-hi)"/>
+      <stop offset=".6" style="stop-color:var(--cab-metal)"/><stop offset="1" style="stop-color:var(--cab-metal-lo)"/>
+    </linearGradient>
+    <linearGradient id="gFrame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-metal-hi)"/><stop offset=".22" style="stop-color:var(--cab-metal)"/>
+      <stop offset=".8" style="stop-color:var(--cab-metal-lo)"/><stop offset="1" style="stop-color:var(--cab-metal)"/>
+    </linearGradient>
+    <linearGradient id="gCeil" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-seam)"/><stop offset="1" style="stop-color:var(--cab-metal-lo)"/>
+    </linearGradient>
+    <linearGradient id="gDownShade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-shadow);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--cab-shadow);stop-opacity:0"/>
+    </linearGradient>
+    <linearGradient id="gUpShade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-shadow);stop-opacity:0"/><stop offset="1" style="stop-color:var(--cab-shadow);stop-opacity:.55"/>
+    </linearGradient>
+    <linearGradient id="gWoodTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-wood-hi)"/><stop offset="1" style="stop-color:var(--cab-wood)"/>
+    </linearGradient>
+    <linearGradient id="gWoodFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-wood)"/><stop offset="1" style="stop-color:var(--cab-wood-lo)"/>
+    </linearGradient>
+    <linearGradient id="gDeskTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-wood-lo)"/><stop offset=".4" style="stop-color:var(--cab-wood)"/><stop offset="1" style="stop-color:var(--cab-wood-hi)"/>
+    </linearGradient>
+    <linearGradient id="gDeskFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-wood-lo)"/><stop offset="1" style="stop-color:var(--cab-wood-dk)"/>
+    </linearGradient>
+    <linearGradient id="gEnamel" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" style="stop-color:var(--cab-rust-lo)"/><stop offset=".4" style="stop-color:var(--cab-rust-hi)"/><stop offset="1" style="stop-color:var(--cab-rust-lo)"/>
+    </linearGradient>
+    <linearGradient id="gShade" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-rust-hi)"/><stop offset=".5" style="stop-color:var(--cab-rust)"/><stop offset="1" style="stop-color:var(--cab-rust-lo)"/>
+    </linearGradient>
+    <radialGradient id="gBulb" cx=".5" cy=".45" r=".6">
+      <stop offset="0" style="stop-color:var(--cab-light)"/><stop offset=".5" style="stop-color:var(--cab-lamp)"/><stop offset="1" style="stop-color:var(--cab-rust)"/>
+    </radialGradient>
+    <linearGradient id="gCream" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-cream)"/><stop offset="1" style="stop-color:var(--cab-cream-lo)"/>
+    </linearGradient>
+    <linearGradient id="gClockScr" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-wood-dk)"/><stop offset="1" style="stop-color:var(--cab-shadow)"/>
+    </linearGradient>
+    <linearGradient id="gKraft" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-kraft)"/><stop offset="1" style="stop-color:var(--cab-kraft-lo)"/>
+    </linearGradient>
+    <linearGradient id="gPot" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" style="stop-color:var(--cab-pot-lo)"/><stop offset=".38" style="stop-color:var(--cab-pot)"/><stop offset="1" style="stop-color:var(--cab-pot-lo)"/>
+    </linearGradient>
+    <linearGradient id="gTea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-tea)"/><stop offset="1" style="stop-color:var(--cab-tea-lo)"/>
+    </linearGradient>
+    <linearGradient id="gChair" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-wood)"/><stop offset=".3" style="stop-color:var(--cab-wood-lo)"/><stop offset="1" style="stop-color:var(--cab-wood-dk)"/>
+    </linearGradient>
+    <linearGradient id="gFold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" style="stop-color:var(--cab-shadow);stop-opacity:0"/><stop offset=".55" style="stop-color:var(--cab-shadow);stop-opacity:.15"/><stop offset="1" style="stop-color:var(--cab-shadow);stop-opacity:.55"/>
+    </linearGradient>
+    <radialGradient id="gTabEarth" cx=".38" cy=".35" r=".7">
+      <stop offset="0" style="stop-color:var(--cab-screen)"/><stop offset="1" style="stop-color:var(--orbit)"/>
+    </radialGradient>
+    <radialGradient id="gWash">
+      <stop offset="0" style="stop-color:var(--cab-lamp);stop-opacity:.17"/><stop offset="1" style="stop-color:var(--cab-lamp);stop-opacity:0"/>
+    </radialGradient>
+    <radialGradient id="gPool">
+      <stop offset="0" style="stop-color:var(--cab-lamp);stop-opacity:.42"/><stop offset=".55" style="stop-color:var(--cab-lamp);stop-opacity:.14"/><stop offset="1" style="stop-color:var(--cab-lamp);stop-opacity:0"/>
+    </radialGradient>
+    <radialGradient id="gHalo">
+      <stop offset="0" style="stop-color:var(--cab-light);stop-opacity:.6"/><stop offset=".3" style="stop-color:var(--cab-lamp);stop-opacity:.28"/><stop offset="1" style="stop-color:var(--cab-lamp);stop-opacity:0"/>
+    </radialGradient>
+    <radialGradient id="gScreenGlow">
+      <stop offset="0" style="stop-color:var(--cab-screen);stop-opacity:.16"/><stop offset="1" style="stop-color:var(--cab-screen);stop-opacity:0"/>
+    </radialGradient>
+    <filter id="fBlur4" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4"/></filter>
+    <filter id="fBlur12" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="12"/></filter>
+    <filter id="fSoft" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="1.6"/></filter>
+    <filter id="fSteam" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.6"/></filter>
+    <filter id="fGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- wood grain: stretched noise as the alpha of a dark flood, kept inside the shape -->
+    <filter id="fGrain" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.0025 0.085" numOctaves="3" seed="7" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.4 1.3" result="a"/>
+      <feFlood style="flood-color:var(--cab-wood-dk)" result="f"/>
+      <feComposite in="f" in2="a" operator="in" result="g"/>
+      <feComposite in="g" in2="SourceGraphic" operator="in"/>
+    </filter>
+    <g id="leaf">
+      <path d="M0 0C-5-8-20-9-20-22C-20-33-8-38 0-46C8-38 20-33 20-22C20-9 5-8 0 0Z"/>
+      <path d="M0-3V-40" style="fill:none;stroke:var(--cab-wood-dk);stroke-width:1.4" opacity=".3"/>
+    </g>
+    <clipPath id="cTab"><rect x="40" y="30" width="260" height="168" rx="7"/></clipPath>
+  </defs>
+</svg>
+
+<main class="cabin" id="cabin">
+  <div id="spaceWrap"><div id="drift"><canvas id="space"></canvas></div></div>
+
+  <div id="world">
+    <!-- far: hull wall, window, sill, things on the wall -->
+    <div class="layer" id="lWall">
+      <div class="bg" id="wallBg"></div>
+      <button class="obj" id="o-glass" data-tip="kab.toWindow" data-i18n-aria-label="kab.toWindow"></button>
+      <div class="obj deco" id="o-plant">
+        <svg viewBox="0 0 220 380" aria-hidden="true">
+          <ellipse cx="110" cy="291" rx="56" ry="6" style="fill:var(--cab-shadow)" opacity=".55" filter="url(#fBlur4)"/>
+          <path d="M70 216C40 240 28 300 34 372" style="fill:none;stroke:var(--cab-leaf);stroke-width:2.6;stroke-linecap:round"/>
+          <path d="M150 218C178 250 188 300 176 362" style="fill:none;stroke:var(--cab-leaf);stroke-width:2.6;stroke-linecap:round"/>
+          <use href="#leaf" transform="translate(54 238) rotate(-150) scale(.7)" style="fill:var(--cab-leaf)"/>
+          <use href="#leaf" transform="translate(36 272) rotate(160) scale(.66)" style="fill:var(--cab-leaf-hi)"/>
+          <use href="#leaf" transform="translate(33 306) rotate(196) scale(.62)" style="fill:var(--cab-leaf)"/>
+          <use href="#leaf" transform="translate(34 340) rotate(168) scale(.58)" style="fill:var(--cab-leaf-hi)"/>
+          <use href="#leaf" transform="translate(35 370) rotate(186) scale(.52)" style="fill:var(--cab-leaf)"/>
+          <use href="#leaf" transform="translate(166 240) rotate(150) scale(.7)" style="fill:var(--cab-leaf-hi)"/>
+          <use href="#leaf" transform="translate(183 280) rotate(198) scale(.64)" style="fill:var(--cab-leaf)"/>
+          <use href="#leaf" transform="translate(184 318) rotate(166) scale(.6)" style="fill:var(--cab-leaf-hi)"/>
+          <use href="#leaf" transform="translate(178 356) rotate(190) scale(.54)" style="fill:var(--cab-leaf)"/>
+          <path d="M62 220H158L148 287Q147 291 143 291H77Q73 291 72 287Z" style="fill:url(#gPot)"/>
+          <rect x="56" y="210" width="108" height="17" rx="4" style="fill:var(--cab-pot)"/>
+          <rect x="56" y="210" width="108" height="4" rx="2" style="fill:var(--cab-light)" opacity=".18"/>
+          <ellipse cx="110" cy="212" rx="47" ry="4.5" style="fill:var(--cab-wood-dk)"/>
+          <g class="sway">
+            <use href="#leaf" transform="translate(72 212) rotate(-72)" style="fill:var(--cab-leaf-hi)"/>
+            <use href="#leaf" transform="translate(150 212) rotate(70)" style="fill:var(--cab-leaf-hi)"/>
+            <use href="#leaf" transform="translate(90 210) rotate(-40) scale(1.1)" style="fill:var(--cab-leaf)"/>
+            <use href="#leaf" transform="translate(132 208) rotate(36) scale(1.1)" style="fill:var(--cab-leaf)"/>
+            <use href="#leaf" transform="translate(84 186) rotate(-28) scale(.88)" style="fill:var(--cab-leaf-hi)"/>
+            <use href="#leaf" transform="translate(140 182) rotate(28) scale(.86)" style="fill:var(--cab-leaf)"/>
+            <use href="#leaf" transform="translate(110 206) rotate(-4) scale(1.22)" style="fill:var(--cab-leaf-hi)"/>
+            <use href="#leaf" transform="translate(100 186) rotate(-16) scale(.95)" style="fill:var(--cab-leaf)"/>
+            <use href="#leaf" transform="translate(122 184) rotate(14) scale(1)" style="fill:var(--cab-leaf-hi)"/>
+            <use href="#leaf" transform="translate(110 166) rotate(2) scale(.9)" style="fill:var(--cab-leaf)"/>
+          </g>
+        </svg>
+      </div>
+      <button class="obj" id="o-phones" data-tip="kab.phones" data-i18n-aria-label="kab.phones">
+        <svg viewBox="0 0 220 260" aria-hidden="true">
+          <path d="M34 170C30 72 70 28 110 28C150 28 190 72 186 170" style="fill:none;stroke:var(--cab-metal-lo);stroke-width:13;stroke-linecap:round"/>
+          <path d="M34 170C30 72 70 28 110 28C150 28 190 72 186 170" style="fill:none;stroke:var(--cab-metal-hi);stroke-width:2;stroke-linecap:round" opacity=".45" transform="translate(-2 -3)"/>
+          <path d="M58 70C76 44 144 44 162 70" style="fill:none;stroke:var(--cab-rust);stroke-width:15;stroke-linecap:round"/>
+          <path d="M60 66C78 42 142 42 160 66" style="fill:none;stroke:var(--cab-light);stroke-width:1;stroke-dasharray:3 5" opacity=".45"/>
+          <!-- the hook -->
+          <circle cx="110" cy="10" r="8" style="fill:var(--cab-brass)"/>
+          <path d="M110 12V30C110 37 101 37 101 30" style="fill:none;stroke:var(--cab-brass);stroke-width:4;stroke-linecap:round"/>
+          <rect x="26" y="118" width="10" height="36" rx="3" style="fill:var(--cab-metal-hi)"/>
+          <rect x="184" y="118" width="10" height="36" rx="3" style="fill:var(--cab-metal-hi)"/>
+          <rect x="12" y="150" width="48" height="80" rx="21" style="fill:url(#gCream)"/>
+          <rect x="52" y="157" width="17" height="66" rx="8" style="fill:var(--cab-rust-lo)"/>
+          <rect x="160" y="150" width="48" height="80" rx="21" style="fill:url(#gCream)"/>
+          <rect x="151" y="157" width="17" height="66" rx="8" style="fill:var(--cab-rust-lo)"/>
+          <rect x="20" y="160" width="6" height="58" rx="3" style="fill:var(--cab-light)" opacity=".35"/>
+          <rect x="168" y="160" width="6" height="58" rx="3" style="fill:var(--cab-light)" opacity=".35"/>
+          <circle cx="36" cy="172" r="2.6" class="led" style="fill:var(--cab-lamp)"/>
+          <path d="M36 230C36 238 28 238 30 244C32 250 42 246 40 252C38 258 28 254 30 260" style="fill:none;stroke:var(--cab-metal-lo);stroke-width:3;stroke-linecap:round"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- middle: desk and what stands on it -->
+    <div class="layer" id="lDesk">
+      <div class="bg" id="deskBg"></div>
+      <button class="obj" id="o-lamp" data-tip="kab.lamp" data-i18n-aria-label="kab.lamp">
+        <svg viewBox="0 0 320 440" aria-hidden="true">
+          <ellipse cx="86" cy="428" rx="80" ry="9" style="fill:var(--cab-shadow)" opacity=".6" filter="url(#fBlur4)"/>
+          <path d="M22 422C8 426 2 432-6 438" style="fill:none;stroke:var(--cab-metal-lo);stroke-width:3;stroke-linecap:round"/>
+          <path d="M18 425C18 405 46 394 80 394C114 394 142 405 142 425Z" style="fill:url(#gEnamel)"/>
+          <ellipse cx="80" cy="425" rx="62" ry="5" style="fill:var(--cab-rust-lo)"/>
+          <circle cx="112" cy="414" r="4.5" style="fill:var(--cab-brass)"/>
+          <path d="M77 398L45 232" style="stroke:var(--cab-brass);stroke-width:7;stroke-linecap:round"/>
+          <path d="M89 398L57 236" style="stroke:var(--cab-brass-lo);stroke-width:3.5;stroke-linecap:round"/>
+          <g transform="translate(72 350) rotate(-10.8)"><path d="M-4 18L4 14L-4 10L4 6L-4 2L4-2L-4-6L4-10L-4-14L4-18" style="fill:none;stroke:var(--cab-brass-lo);stroke-width:2"/></g>
+          <circle cx="83" cy="398" r="9" style="fill:var(--cab-brass)"/>
+          <path d="M50 230L200 128" style="stroke:var(--cab-brass);stroke-width:7;stroke-linecap:round"/>
+          <path d="M56 240L204 140" style="stroke:var(--cab-brass-lo);stroke-width:3;stroke-linecap:round"/>
+          <circle cx="50" cy="230" r="10" style="fill:var(--cab-brass)"/><circle cx="50" cy="230" r="4" style="fill:var(--cab-brass-lo)"/>
+          <polygon points="229.2,107.8 308,166.5 208,225.5 194.8,128.2" style="fill:url(#gShade)"/>
+          <path d="M226 112L296 164" style="stroke:var(--cab-light);stroke-width:3;stroke-linecap:round" opacity=".3"/>
+          <ellipse cx="258" cy="196" rx="58" ry="15" transform="rotate(-30.5 258 196)" style="fill:url(#gBulb)" class="bulb"/>
+          <ellipse cx="212" cy="118" rx="20" ry="6" transform="rotate(-30.5 212 118)" style="fill:var(--cab-rust-lo)"/>
+          <circle cx="202" cy="126" r="8.5" style="fill:var(--cab-brass)"/>
+        </svg>
+      </button>
+      <button class="obj" id="o-notebook" data-tip="kab.notebook" data-i18n-aria-label="kab.notebook">
+        <svg viewBox="0 0 320 170" aria-hidden="true">
+          <path d="M40 34L276 26L306 146L22 158Z" style="fill:var(--cab-shadow)" opacity=".55" filter="url(#fBlur4)"/>
+          <path d="M22 150L300 140L302 147L24 157Z" style="fill:var(--cab-paper)"/>
+          <path d="M26 153.5L300 143.5" style="stroke:var(--cab-cream-lo);stroke-width:1"/>
+          <path d="M272 20L300 138L302 146L274 28Z" style="fill:var(--cab-cream)"/>
+          <path d="M38 26L272 18L300 136L20 148Z" style="fill:url(#gKraft);stroke:var(--cab-kraft);stroke-width:5;stroke-linejoin:round"/>
+          <path d="M42 30L268 22" style="stroke:var(--cab-light);stroke-width:1.5" opacity=".25"/>
+          <path d="M235 21L245 21L273 139L263 140Z" style="fill:var(--cab-rust-lo)"/>
+          <path d="M120 145L124 167L118 162L112 167L110 146Z" style="fill:var(--cab-rust)"/>
+          <path d="M70 48L152 45L156 66L72 70Z" style="fill:var(--cab-cream)" opacity=".85"/>
+          <circle cx="94" cy="57" r="5" style="fill:none;stroke:var(--cab-kraft-lo);stroke-width:1.5"/>
+          <ellipse cx="94" cy="57" rx="12" ry="3.5" transform="rotate(-14 94 57)" style="fill:none;stroke:var(--cab-kraft-lo);stroke-width:1.2"/>
+          <path d="M112 55H144M112 61H136" style="stroke:var(--cab-kraft-lo);stroke-width:1.6;stroke-linecap:round" opacity=".7"/>
+          <g transform="rotate(-8 150 118)">
+            <rect x="70" y="112" width="170" height="10" style="fill:var(--cab-mustard)"/>
+            <path d="M70 115.5H240" style="stroke:var(--cab-light);stroke-width:1.5" opacity=".35"/>
+            <path d="M70 119H240" style="stroke:var(--cab-kraft-lo);stroke-width:1" opacity=".5"/>
+            <rect x="240" y="111.5" width="10" height="11" style="fill:var(--cab-brass)"/>
+            <rect x="250" y="111.5" width="12" height="11" rx="3" style="fill:var(--cab-rust-hi)"/>
+            <path d="M70 112L48 117L70 122Z" style="fill:var(--cab-wood-hi)"/>
+            <path d="M48 117L55 115.4V118.6Z" style="fill:var(--cab-metal-lo)"/>
+          </g>
+        </svg>
+      </button>
+      <button class="obj" id="o-tea" data-tip="kab.tea" data-i18n-aria-label="kab.tea">
+        <svg viewBox="0 0 160 260" aria-hidden="true">
+          <ellipse cx="86" cy="238" rx="76" ry="10" style="fill:var(--cab-shadow)" opacity=".6" filter="url(#fBlur4)"/>
+          <g class="steam">
+            <path d="M72 112C62 96 84 84 74 66C66 52 82 40 76 24"/>
+            <path d="M86 110C96 94 76 80 88 62C98 48 82 36 90 20"/>
+            <path d="M80 114C74 100 90 90 80 76C72 64 86 54 80 40"/>
+          </g>
+          <ellipse cx="80" cy="233" rx="70" ry="14" style="fill:var(--cab-cream-lo)"/>
+          <ellipse cx="80" cy="228" rx="72" ry="15" style="fill:var(--cab-cream)"/>
+          <ellipse cx="80" cy="228" rx="64" ry="12.5" style="fill:none;stroke:var(--cab-mustard);stroke-width:1.4"/>
+          <ellipse cx="80" cy="228" rx="58" ry="11" style="fill:none;stroke:var(--cab-rust);stroke-width:2.2"/>
+          <ellipse cx="80" cy="228" rx="38" ry="7.5" style="fill:var(--cab-cream-lo)" opacity=".6"/>
+          <rect x="118" y="218" width="13" height="11" rx="1.5" style="fill:var(--cab-paper)"/>
+          <path d="M118 218L122 214H135L131 218Z" style="fill:var(--cab-light)"/>
+          <path d="M131 218L135 214V225L131 229Z" style="fill:var(--cab-cream-lo)"/>
+          <path d="M43 132C44 152 57.5 166 57.5 180C57.5 195 50.5 205 50.5 215C50.5 222 58 227 80 227C102 227 109.5 222 109.5 215C109.5 205 102.5 195 102.5 180C102.5 166 116 152 117 132Z" style="fill:url(#gTea)" opacity=".95"/>
+          <ellipse cx="80" cy="132" rx="37" ry="5.5" style="fill:var(--cab-tea)"/>
+          <ellipse cx="80" cy="132" rx="37" ry="5.5" style="fill:var(--cab-mustard)" opacity=".35"/>
+          <ellipse cx="64" cy="131.5" rx="7" ry="1.8" style="fill:var(--cab-light)" opacity=".6"/>
+          <path d="M40 120C40 150 55 165 55 180C55 195 48 205 48 215C48 224 56 230 80 230C104 230 112 224 112 215C112 205 105 195 105 180C105 165 120 150 120 120Z" style="fill:var(--cab-light);fill-opacity:.07;stroke:var(--cab-light);stroke-opacity:.5;stroke-width:1.4"/>
+          <ellipse cx="80" cy="120" rx="40" ry="6.5" style="fill:none;stroke:var(--cab-light);stroke-width:1.6" opacity=".65"/>
+          <ellipse cx="80" cy="225" rx="27" ry="4" style="fill:var(--cab-light)" opacity=".14"/>
+          <path d="M46 128C47 150 58 166 58 180" style="fill:none;stroke:var(--cab-light);stroke-width:3;stroke-linecap:round" opacity=".45"/>
+          <path d="M113 132C112 145 107 156 104 166" style="fill:none;stroke:var(--cab-light);stroke-width:2;stroke-linecap:round" opacity=".25"/>
+        </svg>
+      </button>
+      <button class="obj" id="o-clock" data-tip="kab.clock" data-i18n-aria-label="kab.clock">
+        <svg viewBox="0 0 260 150" aria-hidden="true">
+          <ellipse cx="130" cy="140" rx="120" ry="8" style="fill:var(--cab-shadow)" opacity=".6" filter="url(#fBlur4)"/>
+          <rect x="40" y="126" width="26" height="12" rx="3" style="fill:var(--cab-metal-lo)"/>
+          <rect x="194" y="126" width="26" height="12" rx="3" style="fill:var(--cab-metal-lo)"/>
+          <rect x="170" y="12" width="26" height="16" rx="5" style="fill:var(--cab-rust)"/>
+          <rect x="204" y="14" width="20" height="14" rx="5" style="fill:var(--cab-mustard)"/>
+          <rect x="12" y="22" width="236" height="110" rx="28" style="fill:url(#gCream)"/>
+          <path d="M40 24H220" style="stroke:var(--cab-light);stroke-width:2;stroke-linecap:round" opacity=".6"/>
+          <rect x="28" y="36" width="204" height="76" rx="14" style="fill:var(--cab-metal-lo)"/>
+          <rect x="34" y="42" width="192" height="64" rx="10" style="fill:url(#gClockScr)"/>
+          <g class="seg7" id="clockDigits" transform="translate(48 47) skewX(-6)" filter="url(#fGlow)"></g>
+          <path d="M40 44H140L118 104H40Z" style="fill:var(--cab-light)" opacity=".035"/>
+          <circle cx="236" cy="120" r="2.4" style="fill:var(--cab-metal)"/><circle cx="24" cy="120" r="2.4" style="fill:var(--cab-metal)"/>
+        </svg>
+      </button>
+      <a class="obj" id="o-tablet" href="index.html" data-tip="kab.tablet" data-i18n-aria-label="kab.tablet">
+        <svg viewBox="0 0 340 260" aria-hidden="true">
+          <ellipse cx="170" cy="238" rx="152" ry="10" style="fill:var(--cab-shadow)" opacity=".6" filter="url(#fBlur4)"/>
+          <path d="M60 206H280L296 236H44Z" style="fill:url(#gWoodFace)"/>
+          <path d="M60 206H280" style="stroke:var(--cab-wood-hi);stroke-width:2.5"/>
+          <rect x="26" y="16" width="288" height="196" rx="18" style="fill:var(--cab-metal-lo);stroke:var(--cab-metal-hi);stroke-opacity:.45;stroke-width:1.5"/>
+          <rect x="40" y="30" width="260" height="168" rx="7" style="fill:var(--cab-screen-bg)"/>
+          <g clip-path="url(#cTab)">
+            <path d="M66 30V198M92 30V198M118 30V198M144 30V198M170 30V198M196 30V198M222 30V198M248 30V198M274 30V198M40 56H300M40 82H300M40 108H300M40 134H300M40 160H300M40 186H300" style="stroke:var(--cab-screen);stroke-width:.8" opacity=".07"/>
+            <circle cx="110" cy="140" r="150" style="fill:none;stroke:var(--cab-screen);stroke-width:1;stroke-dasharray:3 5" opacity=".2"/>
+            <circle cx="110" cy="140" r="22" style="fill:none;stroke:var(--cab-screen);stroke-width:1.1" opacity=".55"/>
+            <circle cx="110" cy="140" r="13" style="fill:url(#gTabEarth)"/>
+            <circle cx="246" cy="78" r="6" style="fill:var(--cab-cream-lo)"/>
+            <path d="M128 128C170 90 230 52 256 70C270 82 252 98 232 92C200 100 150 150 124 152" style="fill:none;stroke:var(--cab-lamp);stroke-width:1.8;stroke-linecap:round"/>
+            <circle cx="203" cy="73" r="7" style="fill:var(--cab-lamp)" opacity=".25"/>
+            <circle cx="203" cy="73" r="2.6" style="fill:var(--cab-lamp)"/>
+            <rect x="48" y="38" width="40" height="6" style="fill:var(--cab-screen)" opacity=".35"/>
+            <rect x="92" y="38" width="24" height="6" style="fill:var(--cab-screen)" opacity=".2"/>
+            <rect x="262" y="38" width="30" height="6" style="fill:var(--cab-lamp)" opacity=".6"/>
+            <rect x="52" y="184" width="236" height="3" style="fill:var(--cab-screen)" opacity=".15"/>
+            <rect x="52" y="184" width="96" height="3" style="fill:var(--cab-lamp)" opacity=".7"/>
+            <circle cx="148" cy="185.5" r="3.5" style="fill:var(--cab-lamp)"/>
+            <g class="scr-glow"><rect x="40" y="30" width="260" height="168" style="fill:var(--cab-screen)" opacity=".06"/></g>
+            <path d="M40 30H170L110 198H40Z" style="fill:var(--cab-light)" opacity=".03"/>
+          </g>
+          <circle cx="170" cy="23" r="2.5" style="fill:var(--cab-metal)"/>
+        </svg>
+      </a>
+    </div>
+
+    <div class="layer" id="lLight"></div>
+
+    <!-- near: the chair's arm with a knitted blanket, a little out of focus -->
+    <div class="layer" id="lFront">
+      <div class="obj deco" id="o-blanket">
+        <svg viewBox="0 0 600 400" aria-hidden="true">
+          <g filter="url(#fSoft)">
+            <path d="M0 128C160 98 360 138 470 258C520 318 540 368 548 400H0Z" style="fill:url(#gChair)"/>
+            <path d="M0 132C160 102 360 142 468 262" style="fill:none;stroke:var(--cab-wood-hi);stroke-width:6;stroke-linecap:round" opacity=".35"/>
+            <path d="M0 146C160 116 350 156 452 268" style="fill:none;stroke:var(--cab-wood-dk);stroke-width:3" opacity=".6"/>
+            <path d="M0 176C90 150 200 160 290 205C330 228 352 290 362 400H0Z" style="fill:url(#pKnit)"/>
+            <path d="M0 176C90 150 200 160 290 205C330 228 352 290 362 400H0Z" style="fill:url(#gFold)"/>
+            <path d="M60 210C110 240 130 300 120 400" style="fill:none;stroke:var(--cab-shadow);stroke-width:18;stroke-linecap:round" opacity=".22"/>
+            <path d="M190 200C240 250 250 320 236 400" style="fill:none;stroke:var(--cab-shadow);stroke-width:14;stroke-linecap:round" opacity=".2"/>
+            <path d="M0 178C90 152 200 162 288 207" style="fill:none;stroke:var(--cab-light);stroke-width:3" opacity=".22"/>
+            <path d="M292 210l10 12M306 222l9 13M318 236l7 14M327 252l6 14M334 268l5 15M340 285l4 15M345 302l3 15M349 319l3 15M352 336l2 15M355 353l2 15M357 370l1 15" style="fill:none;stroke:var(--cab-cream);stroke-width:3.2;stroke-linecap:round" opacity=".85"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div id="vignette"></div>
+  <div id="dim"></div>
+</main>
+
+<header class="khud top">
+  <a class="ghost" href="index.html" data-i18n-aria-label="kab.backAria">← <span data-i18n="kab.back"></span></a>
+  <span class="badge" tabindex="0" data-i18n="kab.draft" data-i18n-title="kab.draftNote"></span>
+</header>
+<footer class="khud bot">
+  <div class="seg" id="sceneSeg" role="group" data-i18n-aria-label="wc.sceneAria">
+    <button type="button" data-scene="saturn" aria-pressed="true" data-i18n="wc.saturn"></button>
+    <button type="button" data-scene="earth" aria-pressed="false" data-i18n="wc.earth"></button>
+  </div>
+  <button type="button" class="btn primary" id="go" data-i18n="kab.toWindow"></button>
+</footer>
+<div id="tip" role="tooltip" hidden></div>
+
+<script src="js/i18n.js"></script>
+<script src="js/bodies.js"></script>
+<script src="js/globe.js"></script>
+<script>
+'use strict';
+applyI18n();
+document.title = _('kab.title');
+const $ = s => document.querySelector(s);
+const RM = matchMedia('(prefers-reduced-motion: reduce)');
+
+// ---------- layouts ----------
+// World units are css px at scale 1. win: the glass [x, y, w, h, corner radius]; sill [x, top, w]; desk [back edge,
+// front edge]; ceil [height at the sides, Bézier control at the middle]; at: each object's anchor point [x, y] and width.
+// The desk view shows the safe box whole; landscape and portrait screens get their own arrangement.
+const LAYOUTS = {
+  land: { W: 2000, H: 1100, safe: [320, 100, 1360, 900], win: [640, 150, 720, 390, 120], sill: [600, 560, 800], desk: [700, 960],
+    ceil: [118, 18], ribs: [520, 1480], shelf: [330, 362, 170], panel: [1546, 492],
+    at: { lamp: [440, 900, 360], notebook: [720, 905, 300], tea: [1000, 845, 140], clock: [1200, 880, 220], tablet: [1470, 872, 300],
+      phones: [1622, 252, 170], plant: [1290, 567, 170], blanket: [-10, 1100, 620] } },
+  port: { W: 1100, H: 1800, safe: [160, 160, 780, 1480], win: [230, 210, 640, 640, 170], sill: [190, 870, 720], desk: [1180, 1580],
+    ceil: [150, 40], ribs: [178, 922], shelf: null, panel: null,
+    at: { lamp: [255, 1300, 330], notebook: [390, 1540, 300], tea: [540, 1290, 140], clock: [800, 1290, 230], tablet: [745, 1555, 320],
+      phones: [830, 925, 160], plant: [340, 877, 170], blanket: [-60, 1800, 470] } },
+};
+// each drawing's anchor in its own viewBox (where it touches the desk, the sill or the hook)
+const ANCHOR = { lamp: [80, 426], notebook: [160, 150], tea: [80, 238], clock: [130, 136], tablet: [170, 236], phones: [110, 10], plant: [110, 290], blanket: [0, 400] };
+
+// ---------- room drawings (built from the layout) ----------
+function rr(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  return `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}` +
+    `H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`;
+}
+const rrb = (b, d = 0) => rr(b[0] - d, b[1] - d, b[2] + 2 * d, b[3] + 2 * d, b[4] + d);
+// points about step apart along the rounded rectangle b grown by d
+function rrAlong(b, d, step) {
+  const x = b[0] - d, y = b[1] - d, w = b[2] + 2 * d, h = b[3] + 2 * d, r = Math.min(b[4] + d, w / 2, h / 2);
+  const sw = w - 2 * r, sh = h - 2 * r, q = Math.PI * r / 2, arc = (cx, cy, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  const S = [[sw, t => [x + r + t, y]], [q, t => arc(x + w - r, y + r, -Math.PI / 2 + t / r)], [sh, t => [x + w, y + r + t]],
+    [q, t => arc(x + w - r, y + h - r, t / r)], [sw, t => [x + w - r - t, y + h]], [q, t => arc(x + r, y + h - r, Math.PI / 2 + t / r)],
+    [sh, t => [x, y + h - r - t]], [q, t => arc(x + r, y + r, Math.PI + t / r)]];
+  const P = S.reduce((a, s) => a + s[0], 0), n = Math.max(4, Math.round(P / step)), out = [];
+  for (let i = 0; i < n; i++) {
+    let s = (i + 0.5) * P / n, k = 0;
+    while (s > S[k][0]) s -= S[k++][0];
+    out.push(S[k][1](s));
+  }
+  return out;
+}
+const bolt = (x, y, r = 4.5) => `<circle cx="${x}" cy="${y}" r="${r}" style="fill:var(--cab-metal-hi)"/><circle cx="${x - r * .25}" cy="${y - r * .25}" r="${r * .4}" style="fill:var(--cab-light)" opacity=".25"/>`;
+const svgOpen = L => `<svg viewBox="0 0 ${L.W} ${L.H}" width="${L.W}" height="${L.H}" aria-hidden="true">`;
+
+function wallSvg(L) {
+  const { W, H } = L, g = L.win, [c1, c2] = L.ceil, dB = L.desk[0];
+  const hole = `M0 0H${W}V${H}H0Z${rrb(g)}`;
+  let s = svgOpen(L) + `<defs><clipPath id="cGlass"><path d="${rrb(g)}"/></clipPath></defs>`;
+  s += `<path fill-rule="evenodd" d="${hole}" style="fill:url(#pQuilt)"/><path fill-rule="evenodd" d="${hole}" style="fill:url(#gWallShade)"/>`;
+  for (const x of L.ribs) {
+    s += `<rect x="${x - 24}" y="0" width="48" height="${dB + 10}" style="fill:url(#gRib)"/>`;
+    s += `<path d="M${x} 0V${dB}" style="stroke:var(--cab-metal-lo);stroke-width:2" opacity=".6"/>`;
+    for (let y = c1 + 40; y < dB - 20; y += 84) s += bolt(x - 13, y) + bolt(x + 13, y);
+  }
+  if (L.shelf) {
+    const [x, y, w] = L.shelf;
+    s += `<rect x="${x}" y="${y + 14}" width="${w}" height="22" style="fill:url(#gDownShade)"/>`;
+    for (const bx of [x + 22, x + w - 22]) s += `<path d="M${bx} ${y + 14}h20L${bx} ${y + 44}Z" style="fill:var(--cab-brass-lo)"/>`;
+    let bx = x + 10;
+    const books = [[18, 74, 'rust'], [14, 84, 'cream'], [20, 66, 'leaf'], [16, 78, 'mustard'], [13, 70, 'metal-hi']];
+    for (const [bw, bh, c] of books) {
+      s += `<rect x="${bx}" y="${y - bh}" width="${bw}" height="${bh}" rx="1.5" style="fill:var(--cab-${c})"/>`;
+      s += `<rect x="${bx}" y="${y - bh + 9}" width="${bw}" height="3" style="fill:var(--cab-light)" opacity=".35"/><rect x="${bx}" y="${y - 14}" width="${bw}" height="3" style="fill:var(--cab-shadow)" opacity=".35"/>`;
+      bx += bw + 1;
+    }
+    s += `<rect x="${bx + 2}" y="${y - 62}" width="22" height="62" rx="1.5" transform="rotate(-14 ${bx + 2} ${y})" style="fill:var(--cab-wood-hi)"/>`;
+    const cx = x + w - 30, cy = y - 40;
+    s += `<rect x="${cx - 11}" y="${y - 6}" width="22" height="6" rx="2" style="fill:var(--cab-metal)"/><path d="M${cx} ${y - 6}V${cy}" style="stroke:var(--cab-metal-hi);stroke-width:2"/>`;
+    s += `<ellipse cx="${cx}" cy="${cy}" rx="27" ry="6" transform="rotate(-16 ${cx} ${cy})" style="fill:none;stroke:var(--cab-cream-lo);stroke-width:3"/>`;
+    s += `<circle cx="${cx}" cy="${cy}" r="13" style="fill:var(--cab-mustard)"/><path d="M${cx - 12} ${cy + 3}h24" style="stroke:var(--cab-kraft);stroke-width:2" opacity=".6"/>`;
+    s += `<path d="M${cx - 27} ${cy}A27 6 0 0 0 ${cx + 27} ${cy}" transform="rotate(-16 ${cx} ${cy})" style="fill:none;stroke:var(--cab-cream);stroke-width:3"/>`;
+    s += `<rect x="${x}" y="${y}" width="${w}" height="14" rx="2" style="fill:url(#gWoodTop)"/><rect x="${x}" y="${y + 5}" width="${w}" height="9" style="fill:var(--cab-wood)"/>`;
+  }
+  if (L.panel) {
+    const [x, y] = L.panel;
+    s += `<rect x="${x}" y="${y}" width="150" height="100" rx="12" style="fill:var(--cab-metal-lo);stroke:var(--cab-metal);stroke-width:2"/>`;
+    s += `<rect x="${x + 12}" y="${y + 14}" width="84" height="46" rx="5" style="fill:var(--cab-screen-bg)"/>`;
+    s += `<path d="M${x + 16} ${y + 40}l8 0l5-12l6 22l6-16l5 8l7-3l8 6l9-9l7 4l10 0" style="fill:none;stroke:var(--cab-screen);stroke-width:1.5" opacity=".7"/>`;
+    [['lamp', 0], ['led-ok', 1.3], ['lamp', 2.6]].forEach(([c, d], i) => {
+      s += `<circle class="led" cx="${x + 120}" cy="${y + 24 + 20 * i}" r="4.5" style="fill:var(${c === 'lamp' ? '--cab-lamp' : '--good'});animation-delay:-${d}s"/>`;
+    });
+    for (let i = 0; i < 4; i++) s += `<path d="M${x + 14} ${y + 72 + 6 * i}H${x + 96}" style="stroke:var(--cab-metal-hi);stroke-width:2" opacity=".35"/>`;
+  }
+  // window: shadow on the wall, the frame, a brass ring and bolts, then the glass's own shading
+  s += `<path d="${rrb(g, 50)}" style="fill:var(--cab-shadow)" opacity=".55" filter="url(#fBlur12)"/>`;
+  s += `<path fill-rule="evenodd" d="${rrb(g, 40)}${rrb(g)}" style="fill:url(#gFrame)"/>`;
+  s += `<path d="${rrb(g, 39)}" style="fill:none;stroke:var(--cab-metal-hi);stroke-width:2" opacity=".5"/>`;
+  s += `<path d="${rrb(g, 27)}" style="fill:none;stroke:var(--cab-brass);stroke-width:3" opacity=".75"/>`;
+  s += `<path d="${rrb(g, 5)}" style="fill:none;stroke:var(--cab-metal-lo);stroke-width:10"/>`;
+  for (const [x, y] of rrAlong(g, 16, 74)) s += bolt(x, y, 4);
+  const [gx, gy, gw, gh] = g;
+  s += `<g clip-path="url(#cGlass)">`;
+  s += `<path d="${rrb(g)}" style="fill:none;stroke:var(--cab-shadow);stroke-width:40" opacity=".75" filter="url(#fBlur12)"/>`;
+  s += `<path d="M${gx + gw * .2} ${gy}h${gw * .16}l${-gh * .9} ${gh}h${-gw * .16}Z" style="fill:var(--cab-light)" opacity=".035"/>`;
+  s += `<path d="M${gx + gw * .42} ${gy}h${gw * .05}l${-gh * .9} ${gh}h${-gw * .05}Z" style="fill:var(--cab-light)" opacity=".03"/>`;
+  s += `<path d="${rrb(g, -3)}" style="fill:none;stroke:var(--cab-screen);stroke-width:1.5" opacity=".14"/></g>`;
+  // sill
+  const [sx, sy, sw] = L.sill;
+  s += `<rect x="${sx}" y="${sy + 36}" width="${sw}" height="30" style="fill:url(#gDownShade)"/>`;
+  s += `<rect x="${sx}" y="${sy + 10}" width="${sw}" height="28" rx="3" style="fill:url(#gWoodFace)"/>`;
+  s += `<rect x="${sx - 4}" y="${sy}" width="${sw + 8}" height="13" rx="4" style="fill:url(#gWoodTop)"/>`;
+  s += `<path d="M${sx} ${sy + 1.5}H${sx + sw}" style="stroke:var(--cab-light);stroke-width:1.5" opacity=".25"/>`;
+  // ceiling with a warm light strip along its edge
+  s += `<path d="M0 0H${W}V${c1}Q${W / 2} ${c2} 0 ${c1}Z" style="fill:url(#gCeil)"/>`;
+  const led = `M0 ${c1 + 7}Q${W / 2} ${c2 + 7} ${W} ${c1 + 7}`;
+  s += `<path d="${led}" style="fill:none;stroke:var(--cab-lamp);stroke-width:18" opacity=".18" filter="url(#fBlur12)"/>`;
+  s += `<path d="${led}" style="fill:none;stroke:var(--cab-light);stroke-width:2.5" opacity=".75"/>`;
+  return s + '</svg>';
+}
+
+function deskSvg(L) {
+  const { W, H } = L, [b, f] = L.desk;
+  let s = svgOpen(L);
+  s += `<rect x="0" y="${b - 30}" width="${W}" height="32" style="fill:url(#gUpShade)"/>`;
+  s += `<rect x="0" y="${b}" width="${W}" height="${f - b}" style="fill:url(#gDeskTop)"/>`;
+  s += `<rect x="0" y="${b}" width="${W}" height="${f - b}" filter="url(#fGrain)" opacity=".55"/>`;
+  s += `<rect x="0" y="${b}" width="${W}" height="${(f - b) * .28}" style="fill:url(#gDownShade)" opacity=".85"/>`;
+  s += `<rect x="0" y="${b}" width="${W}" height="3" style="fill:var(--cab-wood-dk)"/>`;
+  s += `<rect x="0" y="${f + 4}" width="${W}" height="${H - f}" style="fill:url(#gDeskFace)"/>`;
+  s += `<rect x="0" y="${f + 4}" width="${W}" height="${H - f}" filter="url(#fGrain)" opacity=".4"/>`;
+  s += `<rect x="0" y="${f - 5}" width="${W}" height="11" rx="5" style="fill:var(--cab-wood-hi)"/>`;
+  s += `<path d="M0 ${f - 3}H${W}" style="stroke:var(--cab-light);stroke-width:1.5" opacity=".3"/>`;
+  s += `<path d="M0 ${f + 28}H${W}" style="stroke:var(--cab-brass);stroke-width:2" opacity=".45"/>`;
+  return s + '</svg>';
+}
+
+// light: warm wash around the lamp, its pool on the desk, the bulb's halo, the tablet's glow, dust in the beam
+function lightSvg(L, bulb, pool, scr) {
+  let s = svgOpen(L) + `<defs><clipPath id="cWall"><path clip-rule="evenodd" d="M0 0H${L.W}V${L.H}H0Z${rrb(L.win)}"/></clipPath></defs>`;
+  s += `<circle cx="${bulb[0]}" cy="${bulb[1]}" r="${Math.max(L.W, L.H) * .42}" clip-path="url(#cWall)" style="fill:url(#gWash)"/>`;
+  s += `<ellipse cx="${pool[0]}" cy="${pool[1]}" rx="${pool[2]}" ry="${pool[3]}" style="fill:url(#gPool)"/>`;
+  s += `<circle cx="${bulb[0]}" cy="${bulb[1]}" r="110" style="fill:url(#gHalo)"/>`;
+  s += `<ellipse class="scr-glow" cx="${scr[0]}" cy="${scr[1] + 40}" rx="220" ry="150" style="fill:url(#gScreenGlow)"/>`;
+  for (let i = 0; i < 8; i++) {
+    const t = (i + 0.5) / 8, x = bulb[0] + (pool[0] - bulb[0]) * t + Math.sin(i * 2.3) * 40 * t, y = bulb[1] + (pool[1] - bulb[1]) * t + Math.cos(i * 1.7) * 18;
+    s += `<circle class="mote" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(1.3 + (i % 3) * .5).toFixed(1)}" style="fill:var(--cab-light);animation-delay:-${(i * 1.3).toFixed(1)}s;animation-duration:${9 + (i % 4) * 1.5}s"/>`;
+  }
+  return s + '</svg>';
+}
+
+// ---------- the clock's digits (seven segments; shows the time of day, the pomodoro comes in Phase 10) ----------
+const SEGS = (() => {
+  const h = (x, y, l, t = 5) => `${x},${y} ${x + t / 2},${y - t / 2} ${x + l - t / 2},${y - t / 2} ${x + l},${y} ${x + l - t / 2},${y + t / 2} ${x + t / 2},${y + t / 2}`;
+  const v = (x, y, l, t = 5) => `${x},${y} ${x + t / 2},${y + t / 2} ${x + t / 2},${y + l - t / 2} ${x},${y + l} ${x - t / 2},${y + l - t / 2} ${x - t / 2},${y + t / 2}`;
+  return { a: h(6, 3, 18), b: v(27, 6, 18), c: v(27, 30, 18), d: h(6, 51, 18), e: v(3, 30, 18), f: v(3, 6, 18), g: h(6, 27, 18) };
+})();
+const DIGIT = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
+const CLOCK = { cells: [], shown: '' };
+(function buildClock() {
+  const g = $('#clockDigits'); let s = '';
+  [0, 38, 96, 134].forEach((x, i) => { s += `<g transform="translate(${x} 0)" data-cell="${i}">` + Object.entries(SEGS).map(([k, p]) => `<polygon data-s="${k}" points="${p}"/>`).join('') + '</g>'; });
+  s += `<g class="colon"><polygon points="81,14 86,14 85,20 80,20" class="on"/><polygon points="79,34 84,34 83,40 78,40" class="on"/></g>`;
+  g.innerHTML = s;
+  CLOCK.cells = [...g.querySelectorAll('[data-cell]')];
+})();
+function clockTick() {
+  const d = new Date(), t = String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0');
+  if (t === CLOCK.shown) return;
+  CLOCK.shown = t;
+  CLOCK.cells.forEach((c, i) => { const on = DIGIT[+t[i]]; for (const p of c.children) p.classList.toggle('on', on.includes(p.dataset.s)); });
+}
+
+// ---------- the view through the glass ----------
+// Far away, so it does not grow when the camera walks up to the glass: the canvas is drawn at screen resolution
+// once, and only shifts with the window's centre (the camera turning towards it). Sky: the site's Milky Way and
+// bright-star catalogue (skyReady), projected as in the 2D simulator; planets: globe.js drawGlobe.
+const SP = { cv: $('#space'), sky: null, scene: 'saturn', timer: 0, md: null };
+const FX = { clouds: true, relief: true, glint: true };
+const deg = Math.PI / 180;
+const SKYV = (() => { // look beside Scorpius–Ophiuchus (ecliptic λ 242°, β +9°), rolled so the Milky Way runs diagonally
+  const lam = 242 * deg, bet = 9 * deg, rol = 50 * deg;
+  const f = [Math.cos(bet) * Math.cos(lam), Math.cos(bet) * Math.sin(lam), Math.sin(bet)];
+  let u = [-f[2] * f[0], -f[2] * f[1], 1 - f[2] * f[2]]; const ul = Math.hypot(...u); u = u.map(c => c / ul);
+  const r = [f[1] * u[2] - f[2] * u[1], f[2] * u[0] - f[0] * u[2], f[0] * u[1] - f[1] * u[0]], c = Math.cos(rol), s = Math.sin(rol);
+  return { f, r: r.map((v, i) => c * v + s * u[i]), u: u.map((v, i) => c * v - s * r[i]) };
+})();
+const norm = v => { const l = Math.hypot(...v); return v.map(c => c / l); };
+// body -> screen (row-major; screen x right, y up, z to the viewer): pole tipped `open` degrees towards the viewer,
+// rolled `roll` degrees, the body turned `spin` degrees about its pole (spin −90 puts longitude 0 in front)
+function rotOf(roll, open, spin) {
+  const c = Math.cos, s = Math.sin, a = roll * deg, b = open * deg, p = spin * deg;
+  const mul = (A, B) => A.map(r => B[0].map((_, j) => r[0] * B[0][j] + r[1] * B[1][j] + r[2] * B[2][j]));
+  const M = mul([[c(a), -s(a), 0], [s(a), c(a), 0], [0, 0, 1]], mul([[1, 0, 0], [0, c(b), -s(b)], [0, s(b), c(b)]], mul([[1, 0, 0], [0, 0, 1], [0, -1, 0]], [[c(p), -s(p), 0], [s(p), c(p), 0], [0, 0, 1]])));
+  return M.flat();
+}
+// at: offset from the window's centre in glass widths/heights (landscape, portrait); r: radius in units of SP.R
+const SCENES = {
+  saturn: { sun: norm([-0.55, 0.32, 0.77]), bodies: [{ key: 'saturn', at: [[0.13, 0.03], [0.02, 0.06]], r: 1, rot: rotOf(-14, 22, 0) }] },
+  earth: { sun: norm([-0.85, 0.2, 0.5]), bodies: [
+    { key: 'moon', at: [[-0.3, -0.2], [-0.28, -0.3]], r: 0.27, rot: rotOf(-6, 5, -90) },
+    { key: 'earth', at: [[0.14, 0.07], [0.06, 0.1]], r: 1, rot: rotOf(-23, 18, -120) }] },
+};
+function buildSky(sk) {
+  const { cw, ch, F, dpr } = SP, hs = 0.5, w1 = Math.ceil(cw * hs), h1 = Math.ceil(ch * hs);
+  const mi = sk.milky.img, mw = mi.naturalWidth, mh = mi.naturalHeight;
+  if (!SP.md || SP.md.img !== mi) {
+    const mc = document.createElement('canvas'); mc.width = mw; mc.height = mh;
+    const mg = mc.getContext('2d', { willReadFrequently: true }); mg.drawImage(mi, 0, 0);
+    SP.md = { img: mi, d: mg.getImageData(0, 0, mw, mh).data };
+  }
+  const md = SP.md.d;
+  const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }, srgb = c => 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+  const LUT = new Float32Array(256).map((_, i) => lin(i));
+  const c1 = document.createElement('canvas'); c1.width = w1; c1.height = h1;
+  const hg = c1.getContext('2d'), im = hg.createImageData(w1, h1), ce = Math.cos(OBLIQ), se = Math.sin(OBLIQ);
+  const vd = linC(getComputedStyle(document.documentElement).getPropertyValue('--void').trim()), gain = SKY_GAIN * 0.6, { f, r, u } = SKYV;
+  for (let y = 0; y < h1; y++) for (let x = 0; x < w1; x++) {
+    const ex = ((x + 0.5) / hs - cw / 2) / F, ey = (ch / 2 - (y + 0.5) / hs) / F;
+    let e0 = f[0] + ex * r[0] + ey * u[0], e1 = f[1] + ex * r[1] + ey * u[1], e2 = f[2] + ex * r[2] + ey * u[2];
+    const l = Math.hypot(e0, e1, e2); e0 /= l; e1 /= l; e2 /= l;
+    const q1 = ce * e1 - se * e2, q2 = se * e1 + ce * e2;
+    let uu = 0.5 - Math.atan2(q1, e0) / (2 * Math.PI); uu -= Math.floor(uu);
+    const v = 0.5 - Math.asin(q2) / Math.PI, px = uu * mw - 0.5, py = Math.min(mh - 1, Math.max(0, v * mh - 0.5)), x0 = Math.floor(px), y0 = Math.floor(py), fx = px - x0, fy = py - y0;
+    const a = 4 * (y0 * mw + (x0 + mw) % mw), b = 4 * (y0 * mw + (x0 + 1) % mw), dy = 4 * mw * (Math.min(mh - 1, y0 + 1) - y0), o = 4 * (y * w1 + x);
+    for (let c = 0; c < 3; c++) {
+      const m = (1 - fy) * ((1 - fx) * LUT[md[a + c]] + fx * LUT[md[b + c]]) + fy * ((1 - fx) * LUT[md[a + dy + c]] + fx * LUT[md[b + dy + c]]);
+      im.data[o + c] = srgb(Math.min(1, vd[c] + m * gain)) + Math.random() - 0.5;
+    }
+    im.data[o + 3] = 255;
+  }
+  hg.putImageData(im, 0, 0);
+  const out = document.createElement('canvas'); out.width = Math.round(cw * dpr); out.height = Math.round(ch * dpr);
+  const g = out.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  g.drawImage(c1, 0, 0, w1, h1, 0, 0, out.width, out.height);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.globalCompositeOperation = 'lighter';
+  const S = sk.stars;
+  for (let i = 0; i < S.n; i++) {
+    const d0 = S.dir[3 * i], d1 = S.dir[3 * i + 1], d2 = S.dir[3 * i + 2], dz = d0 * f[0] + d1 * f[1] + d2 * f[2]; if (dz < 0.05) continue;
+    const x = cw / 2 + F * (d0 * r[0] + d1 * r[1] + d2 * r[2]) / dz, y = ch / 2 - F * (d0 * u[0] + d1 * u[1] + d2 * u[2]) / dz;
+    if (x < -4 || x > cw + 4 || y < -4 || y > ch + 4) continue;
+    const p = starPeak(S.mag[i]); if (p < 0.02) continue;
+    const al = Math.min(1, p), rr2 = 0.7 * Math.min(4, Math.max(1, Math.pow(p, 0.35)));
+    g.fillStyle = `rgba(${Math.round(srgb(S.col[3 * i]))},${Math.round(srgb(S.col[3 * i + 1]))},${Math.round(srgb(S.col[3 * i + 2]))},${al.toFixed(3)})`;
+    g.beginPath(); g.arc(x, y, rr2, 0, 6.2832); g.fill();
+  }
+  return out;
+}
+function compose() {
+  const { cv, cw, ch, dpr } = SP, g = cv.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--void'); g.fillRect(0, 0, cv.width, cv.height);
+  if (SP.sky) g.drawImage(SP.sky, 0, 0);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const sc = SCENES[SP.scene], k = LK === 'land' ? 0 : 1;
+  for (const b of sc.bodies) {
+    const x = cw / 2 + b.at[k][0] * SP.ww, y = ch / 2 + b.at[k][1] * SP.wh, r = SP.R * b.r;
+    const look = globeLook(b.key, r, true, true, 2048, FX, 0);
+    if (look && drawGlobe(g, x, y, r, cw, ch, dpr, { rot: b.rot, sun: sc.sun, color: BODIES[b.key].color, look })) continue;
+    g.fillStyle = BODIES[b.key].color; g.globalAlpha = 0.5; g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill(); g.globalAlpha = 1;
+  }
+}
+const pending = () => { const now = performance.now(); for (const e of TEXC.values()) if (!e.err && (!e.ok || now - e.t < TEX_FADE + 100)) return true; return false; };
+function spaceTick() {
+  SP.timer = 0;
+  if (!SP.sky) { const sk = skyReady(true, false); if (sk) SP.sky = buildSky(sk); }
+  compose();
+  if (!SP.sky || pending()) SP.timer = setTimeout(spaceTick, 150);
+}
+function spaceSoon() { if (!SP.timer) SP.timer = setTimeout(spaceTick, 0); }
+
+// ---------- camera ----------
+// The world is one transformed layer; a camera is its scale s and the screen point A of the window's centre. Moving to
+// the glass slides A linearly and changes s geometrically (as the simulator's camera flights do), and shifts the sky by
+// the same A: the camera turns towards the window while the stars stay where they are.
+let VW = 0, VH = 0, LK = '', L = null, view = 'desk', CAM = null, ANIM = 0;
+const world = $('#world'), spaceWrap = $('#spaceWrap'), goBtn = $('#go');
+const wc = () => [L.win[0] + L.win[2] / 2, L.win[1] + L.win[3] / 2];
+function deskCam() {
+  const [x, y, w, h] = L.safe, s = Math.min(VW / w, VH / h), c = wc();
+  return { s, A: [VW / 2 + s * (c[0] - x - w / 2), VH / 2 + s * (c[1] - y - h / 2)] };
+}
+function winCam() { const g = L.win; return { s: Math.max(VW / (g[2] + 80), VH / (g[3] + 80)), A: [VW / 2, VH / 2] }; }
+const LAYERS = [[$('#lWall'), 5], [$('#lDesk'), 11], [$('#lLight'), 11], [$('#lFront'), 24]];
+let PAR = [0, 0], PT = [0, 0], PRAF = 0;
+function parallax() { for (const [el, amp] of LAYERS) el.style.transform = `translate(${(-PAR[0] * amp / CAM.s).toFixed(2)}px,${(-PAR[1] * amp * 0.5 / CAM.s).toFixed(2)}px)`; }
+function apply(c) {
+  CAM = c; const k = wc();
+  world.style.transform = `translate(${c.A[0] - c.s * k[0]}px,${c.A[1] - c.s * k[1]}px) scale(${c.s})`;
+  spaceWrap.style.transform = `translate(${c.A[0] - VW / 2}px,${c.A[1] - VH / 2}px)`;
+  parallax();
+}
+function go(to) {
+  if (to === view) return;
+  view = to;
+  goBtn.textContent = _(to === 'desk' ? 'kab.toWindow' : 'kab.toDesk');
+  for (const o of document.querySelectorAll('.obj:not(.deco)')) o.inert = to !== 'desk';
+  hideTip();
+  const from = CAM, dest = to === 'desk' ? deskCam() : winCam();
+  cancelAnimationFrame(ANIM); ANIM = 0;
+  if (RM.matches) { apply(dest); return; }
+  world.style.willChange = 'transform';
+  const t0 = performance.now(), T = 1200;
+  const step = now => {
+    const t = Math.min(1, (now - t0) / T), e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    apply({ s: from.s * Math.pow(dest.s / from.s, e), A: [from.A[0] + (dest.A[0] - from.A[0]) * e, from.A[1] + (dest.A[1] - from.A[1]) * e] });
+    if (t < 1) ANIM = requestAnimationFrame(step); else { ANIM = 0; world.style.willChange = ''; }
+  };
+  ANIM = requestAnimationFrame(step);
+}
+
+// ---------- layout ----------
+function place(key, at) {
+  const el = $('#o-' + key), vb = el.querySelector('svg').viewBox.baseVal, k = at[2] / vb.width, a = ANCHOR[key];
+  Object.assign(el.style, { left: at[0] - a[0] * k + 'px', top: at[1] - a[1] * k + 'px', width: at[2] + 'px', height: vb.height * k + 'px' });
+  return (x, y) => [at[0] + (x - a[0]) * k, at[1] + (y - a[1]) * k]; // that drawing's point in world units
+}
+function build() {
+  Object.assign(world.style, { width: L.W + 'px', height: L.H + 'px' });
+  $('#wallBg').innerHTML = wallSvg(L);
+  $('#deskBg').innerHTML = deskSvg(L);
+  const P = {};
+  for (const [k, at] of Object.entries(L.at)) P[k] = place(k, at);
+  const g = L.win;
+  Object.assign($('#o-glass').style, { left: g[0] + 'px', top: g[1] + 'px', width: g[2] + 'px', height: g[3] + 'px', borderRadius: g[4] + 'px' });
+  const bulb = P.lamp(258, 196), kl = L.at.lamp[2] / 320;
+  $('#lLight').innerHTML = lightSvg(L, bulb, [bulb[0] + 140 * kl, (L.desk[0] + L.desk[1]) / 2 + 10, 300 * kl, 110 * kl], P.tablet(170, 114));
+}
+function layout() {
+  VW = innerWidth; VH = innerHeight;
+  const key = VW < VH ? 'port' : 'land';
+  if (key !== LK) { LK = key; L = LAYOUTS[key]; build(); }
+  const d = deskCam();
+  // the sky canvas covers the screen for every camera between the two views, plus the drift
+  const M = Math.ceil(Math.max(Math.abs(d.A[0] - VW / 2), Math.abs(d.A[1] - VH / 2)) + 90), dpr = Math.min(devicePixelRatio || 1, 2);
+  Object.assign(SP, { cw: VW + 2 * M, ch: VH + 2 * M, dpr, F: Math.max(VW, VH) / 2 / Math.tan(50 * deg), ww: d.s * L.win[2], wh: d.s * L.win[3], sky: null });
+  SP.R = Math.min(0.26 * Math.min(SP.ww, SP.wh), 0.42 * SP.ww / 2.3);
+  SP.cv.width = Math.round(SP.cw * dpr); SP.cv.height = Math.round(SP.ch * dpr);
+  Object.assign(SP.cv.style, { left: -M + 'px', top: -M + 'px', width: SP.cw + 'px', height: SP.ch + 'px' });
+  cancelAnimationFrame(ANIM); ANIM = 0; world.style.willChange = '';
+  apply(view === 'desk' ? d : winCam());
+  clearTimeout(SP.timer); SP.timer = 0; spaceSoon();
+}
+
+// ---------- interaction ----------
+const tip = $('#tip');
+function showTip(el) {
+  if (el.inert || ANIM) return;
+  tip.textContent = _(el.dataset.tip); tip.hidden = false;
+  const r = el.getBoundingClientRect(), w = tip.offsetWidth;
+  tip.style.left = Math.min(VW - w / 2 - 8, Math.max(w / 2 + 8, r.left + r.width / 2)) + 'px';
+  tip.style.top = Math.max(tip.offsetHeight + 8, r.top - 6) + 'px';
+}
+function hideTip() { tip.hidden = true; }
+for (const o of document.querySelectorAll('.obj:not(.deco)')) {
+  o.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') showTip(o); });
+  o.addEventListener('pointerleave', hideTip);
+  o.addEventListener('focus', () => showTip(o));
+  o.addEventListener('blur', hideTip);
+}
+$('#o-glass').addEventListener('click', () => go('window'));
+$('#o-lamp').addEventListener('click', () => $('#cabin').classList.toggle('lamp-off'));
+for (const id of ['clock', 'notebook', 'phones', 'tea']) {
+  const o = $('#o-' + id);
+  o.addEventListener('click', () => { showTip(o); o.classList.remove('nudge'); void o.offsetWidth; o.classList.add('nudge'); });
+}
+goBtn.addEventListener('click', () => go(view === 'desk' ? 'window' : 'desk'));
+addEventListener('keydown', e => { if (e.key === 'Escape') go('desk'); });
+for (const b of document.querySelectorAll('#sceneSeg button')) b.addEventListener('click', () => {
+  SP.scene = b.dataset.scene;
+  for (const x of document.querySelectorAll('#sceneSeg button')) x.setAttribute('aria-pressed', String(x === b));
+  clearTimeout(SP.timer); SP.timer = 0; spaceSoon();
+});
+// parallax: a mouse moves the camera a few pixels; far layers move less (the sky not at all)
+addEventListener('pointermove', e => {
+  if (e.pointerType !== 'mouse' || RM.matches) return;
+  PT = [e.clientX / VW * 2 - 1, e.clientY / VH * 2 - 1];
+  if (!PRAF) PRAF = requestAnimationFrame(parStep);
+});
+function parStep() {
+  PRAF = 0;
+  PAR = PAR.map((p, i) => p + (PT[i] - p) * 0.1);
+  if (!ANIM) parallax();
+  if (Math.abs(PAR[0] - PT[0]) + Math.abs(PAR[1] - PT[1]) > 0.002) PRAF = requestAnimationFrame(parStep);
+}
+let rsz = 0;
+addEventListener('resize', () => { clearTimeout(rsz); rsz = setTimeout(layout, 150); });
+document.addEventListener('visibilitychange', () => document.documentElement.classList.toggle('paused', document.hidden));
+
+layout();
+clockTick(); setInterval(clockTick, 5000);
+</script>
+</body>
+</html>

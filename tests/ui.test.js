@@ -14,6 +14,10 @@ const has = k => typeof DICT[k] === 'string';
 // 1) Every key the markup asks for exists
 const html = read('index.html');
 for (const m of html.matchAll(/data-i18n(?:-[a-z-]+)?="([^"]+)"/g)) assert.ok(has(m[1]), `index.html key missing from dictionary: ${m[1]}`);
+// the cabin draft page too (its markup and its script's _('…') / data-tip keys)
+const kab = read('kabin-taslak.html');
+for (const m of kab.matchAll(/data-(?:i18n(?:-[a-z-]+)?|tip)="([^"]+)"|_\('([^']+)'\)/g)) assert.ok(has(m[1] || m[2]), `kabin-taslak.html key missing from dictionary: ${m[1] || m[2]}`);
+assert.ok(!/img\/planets/.test(kab), 'kabin-taslak.html asks for planet images only through globeLook()');
 
 // 2) Every literal key in app.js / core.js exists (string literals inside a dictionary namespace, incl. ternaries)
 const spaces = new Set(Object.keys(DICT).map(k => k.split('.')[0]));
