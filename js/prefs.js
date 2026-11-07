@@ -125,10 +125,10 @@ function cabCrop(vw, vh, W = 7136, H = 3528) {
 }
 // Window view: close to the glass, not into it. The window's frame and the sill with the cat stay in the picture
 // (CAB_WIN, art px: the frame's outer edges, from just above it down to the cat's lower back at the screen's bottom):
-// that box fits the screen, and a narrow screen comes closer, the glass at least 60 % of the height (70 % in portrait;
+// that box fits the screen, and a narrow screen comes closer, the glass at least 66 % of the height (78 % in portrait;
 // CAB_WIN_GLASS),
 // sliding sideways so the cat's right edge (CAB_CAT_X) stays in; never wider than the art. The glass fills most of the view.
-const CAB_WIN = [1560, 40, 5690, 2470], CAB_WIN_GLASS = [0.6, 0.7], CAB_CAT_X = 4720;
+const CAB_WIN = [1740, 170, 5490, 2380], CAB_WIN_GLASS = [0.66, 0.78], CAB_CAT_X = 4700;
 function cabGlassCam(vw, vh, g, W = 7136, H = 3528) {
   const [x0, y0, x1, y1] = CAB_WIN, s = Math.max(Math.min(vw / (x1 - x0), vh / (y1 - y0)), CAB_WIN_GLASS[vw < vh ? 1 : 0] * vh / (g.y1 - g.y0), vw / W, vh / H), w = vw / s, h = vh / s;
   const cx = w < x1 - x0 ? Math.max((x0 + x1) / 2, CAB_CAT_X - w / 2) : (x0 + x1) / 2;
