@@ -635,6 +635,8 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     assert.ok(!/mix-blend-mode/.test(css) && /\.k-moving :is\([^)]*#kSun,#kStrip[^)]*\)\{visibility:hidden\}/.test(css), 'no blend modes; light hidden with the room during moves');
     assert.ok(/setStrip\(readPref\(LS, PREF_KEYS\.cabStrip\) === '1', false\)/.test(cab) && P.PREF_KEYS.cabStrip && has('kab.stripOn') && has('kab.stripOff'), 'ceiling strip: off by default, saved, worded');
   }
+  // at the glass the cat still answers (petting), the other objects rest
+  assert.ok(cab.includes("querySelectorAll('.k-hit:not(#hGlass):not(#hCat)')) b.inert = to !== 'desk';"), 'the cat can be petted at the glass');
   // the laptop follows the plan while it flies
   assert.ok(/if \(st\) \{ lapPlan\(st\); return; \}/.test(cab), 'laptop: the plan track');
 }

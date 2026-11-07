@@ -1001,7 +1001,8 @@ function go(to) {
   if (to === view) return;
   view = to; hideTip();
   $('#kGo').textContent = _(to === 'desk' ? 'kab.toWindow' : 'kab.toDesk');
-  for (const b of document.querySelectorAll('.k-hit:not(#hGlass)')) b.inert = to !== 'desk';
+  // at the glass only the glass (back to the desk) and the cat (it can be petted there too) answer
+  for (const b of document.querySelectorAll('.k-hit:not(#hGlass):not(#hCat)')) b.inert = to !== 'desk';
   const from = CAM, dest = to === 'desk' ? deskCam() : winCam();
   wantTier(needTier(dest.s));
   cancelAnimationFrame(ANIM); ANIM = 0;
