@@ -590,6 +590,10 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(!/\.k-shine\{[^}]*transition/.test(css) && /FV\.shV \+= \(FV\.shTarget - FV\.shV\) \* \(1 - Math\.exp\(-dt \/ FV_SHINE_TAU\)\)/.test(cab), 'cabin light: low-pass filter, no CSS transition');
   assert.ok(/if \(ANIM \|\| document\.hidden\) return; \/\/ held while the camera moves/.test(cab) && /if \(ANIM\) TIER_SWAP = swap; else swap\(\);/.test(cab), 'held during the camera move: light, tier swap');
   assert.ok(!/if \(ANIM && !force\) return/.test(cab) && !/if \(ANIM\) \{ FV\.timer/.test(cab), 'the view through the glass keeps flowing during the move');
+  // in a break (or a fast picture) the glass is drawn on every animation frame (30 a second in low-resource mode), its
+  // time from performance.now() anchored to the wall clock; reduced motion keeps a slow timer
+  assert.ok(/if \(tp - FV\.last < \(FV\.fast \? \(LOWQ \? 32 : 0\) :/.test(cab) && /FV\.fast = st\.w\.mode !== 'work' \|\|/.test(cab) && /st = fvState\(wallNow\(t\)\)/.test(cab) && /FV\.last = tp; fvFrame\(false, tp\);/.test(cab) && !/t - FV\.drawn < 50/.test(cab), 'glass: every frame in a break, continuous time');
+  assert.ok(/if \(!FV\.on \|\| document\.hidden \|\| RM\.matches\) return;/.test(cab) && /FV\.timer = setTimeout\(fvKick, FV\.fade \? 470 : 5000\);/.test(cab), 'glass: reduced motion, a still picture every 5 s');
   // camera moves: the room, its light and shade and the cat on screen-sized canvases (those DOM layers hidden
   // meanwhile), the DOM stage back at rest at the shown tier; no will-change on the stage (only with
   // ?debug=1&move=dom&wc=1); no blend mode on the large light and shade layers; the canvases draw from a decoded set no

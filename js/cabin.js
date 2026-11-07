@@ -36,7 +36,7 @@ const GPU = (() => {
 // only; it goes when the bug it chases is fixed.
 const DBG = (() => {
   const q = new URLSearchParams(location.search); if (q.get('debug') !== '1') return null;
-  return { dom: q.get('move') === 'dom', shine: q.get('shine') !== '0', cap: +q.get('cap') || 0, warm: q.has('warm') ? +q.get('warm') : 3, wc: q.get('wc') === '1', frames: [], draws: 0, cost: [], path: '-', hand: {}, el: null };
+  return { dom: q.get('move') === 'dom', shine: q.get('shine') !== '0', cap: +q.get('cap') || 0, warm: q.has('warm') ? +q.get('warm') : 3, wc: q.get('wc') === '1', frames: [], draws: 0, cost: [], path: '-', hand: {}, glass: [], raf: [], el: null };
 })();
 const TMAX = Math.min(cabTierMax(DEV), GPU.max ? CAB_TIERS.filter(t => t <= GPU.max).pop() || CAB_TIERS[0] : Infinity);
 const TEX_CAP = Math.min(DEV.phone ? 2048 : 4096, GPU.max || Infinity, DBG && DBG.cap || Infinity);
@@ -455,12 +455,14 @@ function spaceSoon() { clearTimeout(SP.timer); SP.timer = setTimeout(spaceTick, 
 // the leg's target, which grows as the craft closes in (true sizes); in a break along the orbit, tipped down towards
 // the body so the surface turns below; in a cruise break slowly rolling. Drawn by the simulator's 3D renderer
 // (js/view3d.js and Three.js, fetched with import() only here and only then): camera at the craft, ecliptic axes, the
-// site's sky and planet images through skyReady / globeLook. A frame is drawn when the picture has moved by about half
-// a pixel (a slow approach: about once every two seconds; an orbit: up to 20 a second), never while hidden. Low-resource
-// mode, no WebGL 2 or reduced motion: no Three.js and no images, the plain sky and shaded discs at their true places and
-// sizes on the 2D canvas, every 5 s (1 s in a break); with reduced motion the break view looks at the body. A new phase
-// (a jump) fades the glass out and in.
-const FV = { on: false, gl: null, fail: false, V3: null, load: null, cv: $('#kSpace3'), keys: '', sky: false, fov: 45, raf: 0, last: 0, drawn: 0, sig: '', cam: null, rpx: -1, fade: 0, plain: null, timer: 0, shV: 0, shO: 0, shT: 0, shTarget: 0, shCol: '', shColSet: '', shTimer: 0 };
+// site's sky and planet images through skyReady / globeLook. In a break (an orbit, a roll) and whenever the picture
+// moves fast, a frame is drawn on every animation frame, at the screen's own rate (30 a second in low-resource mode),
+// each at its own time: the craft, the bodies and the camera are worked out afresh from performance.now() anchored to
+// the wall clock (wallNow), never stepped. At work the approach is slow: a frame when the picture has moved by about
+// half a pixel (about once every two seconds). Never while hidden. Low-resource mode, no WebGL 2 or reduced motion: no
+// Three.js and no images, the plain sky and shaded discs at their true places and sizes on the 2D canvas; with reduced
+// motion a still picture every 5 s, the break view looking at the body. A new phase (a jump) fades the glass out and in.
+const FV = { on: false, fast: false, gl: null, fail: false, V3: null, load: null, cv: $('#kSpace3'), keys: '', sky: false, fov: 45, raf: 0, last: 0, drawn: 0, sig: '', cam: null, rpx: -1, fade: 0, plain: null, timer: 0, shV: 0, shO: 0, shT: 0, shTarget: 0, shCol: '', shColSet: '', shTimer: 0 };
 const FV_L = 1e9;          // m: the 3D camera's target, this far ahead of the craft (the eye is at the craft)
 const FV_TILT = 25 * deg;  // the break view, tipped down from the flight direction
 const vsub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -503,11 +505,19 @@ function fvCam(st) {
   if (a.roll) { const c = Math.cos(a.roll), s = Math.sin(a.roll), r0 = r; r = r0.map((x, i) => c * x + s * up[i]); up = up.map((x, i) => c * x - s * r0[i]); }
   return { f, r, u: up };
 }
-// one look at the flight: draw it when the picture moved (or force), fading over a jump
-function fvFrame(force) {
-  const now = Date.now(), st = fvState(now);
+// wall-clock time, smooth between frames: performance.now() anchored to Date.now() (the pomodoro's clock), anchored
+// again when the two drift apart (a sleep, a clock change)
+const CLK = { off: NaN };
+function wallNow(tp = performance.now()) {
+  const d = Date.now(), w = tp + CLK.off;
+  if (!(Math.abs(w - d) < 40)) { CLK.off = d - tp; return d; }
+  return w;
+}
+// one look at the flight at frame time tp: draw it when the picture moved (or force), fading over a jump
+function fvFrame(force, tp) {
+  const t = tp ?? performance.now(), st = fvState(wallNow(t));
   if (!st) { fvStop(); return; }
-  const cam = fvCam(st), t = performance.now(), sig = st.w.leg + st.w.mode + (st.w.mode === 'work' ? '' : st.a.around || st.a.look);
+  const cam = fvCam(st), sig = st.w.leg + st.w.mode + (st.w.mode === 'work' ? '' : st.a.around || st.a.look);
   if (FV.sig && sig !== FV.sig && !still()) { // a jump: fade out, draw the new view, fade in
     FV.sig = sig; FV.fade = t + 450; FV.cam = null; fvCanvas().style.opacity = '0'; return;
   }
@@ -515,11 +525,13 @@ function fvFrame(force) {
   if (t < FV.fade) return;
   const lk = st.a.around || st.a.look, q = st.b.list.find(x => x.key === lk), rpx = SP.F * BODIES[lk].radius * 1e3 / Math.hypot(...vsub(q.p, st.a.y));
   const moved = FV.cam ? SP.F * Math.max(vang(cam.f, FV.cam.f), vang(cam.u, FV.cam.u)) + Math.abs(rpx - FV.rpx) : Infinity;
-  if (!force && moved < 0.4 && t - FV.drawn < (pending() ? 150 : 2000)) return;
-  if (!force && t - FV.drawn < 50) return; // 20 frames a second at most
+  // fast: a break, or more than 20 px a second; then every frame that moves the picture at all
+  FV.fast = st.w.mode !== 'work' || (moved !== Infinity && moved / Math.max(1, t - FV.drawn) > 0.02);
+  if (!force && (FV.fast ? moved < 0.05 && t - FV.drawn < 1000 : moved < 0.4 && t - FV.drawn < (pending() ? 150 : 2000))) return;
+  const c0 = performance.now();
   FV.cam = cam; FV.rpx = rpx; FV.drawn = t;
   if (FV.V3) fvDraw3(st, cam); else fvDraw2(st, cam);
-  if (DBG && ANIM) DBG.draws++;
+  if (DBG) { if (ANIM) DBG.draws++; dbgWin(DBG.glass, t, performance.now() - c0); }
   if (FV.fade) { FV.fade = 0; fvCanvas().style.opacity = ''; }
 }
 // The light through the glass: the sunlit surface in view brightens the room a little (#kShine, a plain translucent
@@ -601,20 +613,22 @@ function fvDraw2(st, cam) {
     g.globalAlpha = 0.12 + 0.88 * lit; g.fillStyle = gr; g.fill(); g.globalAlpha = 1;
   }
 }
-// the loops: animation frames for 3D (about 30 a second, each one cheap until something moved), a timer for 2D
+// the loop: animation frames, 3D and 2D. Fast: every frame (low-resource mode: 30 a second); slow: a look about 30
+// times a second (2D: 4), each one cheap until the picture moved. Reduced motion: a timer, a still picture every 5 s.
 function fvLoop(tp) {
   FV.raf = 0;
-  if (!FV.on || !FV.V3 || document.hidden) return;
+  if (!FV.on || document.hidden || RM.matches) return;
   FV.raf = requestAnimationFrame(fvLoop);
-  if (tp - FV.last < 33) return; FV.last = tp;
-  fvFrame(false);
+  if (DBG) dbgWin(DBG.raf, tp, 0);
+  if (tp - FV.last < (FV.fast ? (LOWQ ? 32 : 0) : FV.V3 ? 32 : 240)) return;
+  FV.last = tp; fvFrame(false, tp);
 }
 function fvKick() {
   if (!FV.on || document.hidden) return;
-  if (FV.V3) { fvFrame(true); if (!FV.raf) FV.raf = requestAnimationFrame(fvLoop); return; }
-  clearTimeout(FV.timer);
-  const st = fvState(Date.now()); fvFrame(true);
-  if (FV.on) FV.timer = setTimeout(fvKick, FV.fade ? 470 : st && st.w.mode !== 'work' && !RM.matches ? 1000 : 5000);
+  clearTimeout(FV.timer); fvFrame(true);
+  if (!FV.on) return;
+  if (!RM.matches) { if (!FV.raf) FV.raf = requestAnimationFrame(fvLoop); return; }
+  FV.timer = setTimeout(fvKick, FV.fade ? 470 : 5000);
 }
 function fvSize() {
   Object.assign(FV.cv.style, { left: SP.cv.style.left, top: SP.cv.style.top, width: SP.cv.style.width, height: SP.cv.style.height });
@@ -639,7 +653,7 @@ function fvStart() {
   });
 }
 function fvStop() {
-  FV.on = false; cancelAnimationFrame(FV.raf); FV.raf = 0; clearTimeout(FV.timer);
+  FV.on = false; FV.fast = false; cancelAnimationFrame(FV.raf); FV.raf = 0; clearTimeout(FV.timer);
   FV.cv.hidden = true; FV.cv.style.opacity = ''; SP.cv.style.visibility = ''; SP.cv.style.opacity = ''; FV.fade = 0;
   $('#kScene').hidden = false; spaceSoon();
   fvShineRun(); // the room light fades out with the filter
@@ -811,6 +825,14 @@ function go(to) {
 
 // ---------- debugging overlay (?debug=1, temporary) ----------
 const texBytes = () => { let b = 0; for (const e of TEXC.values()) if (e.ok && e.img) b += (e.img.naturalWidth || 0) * (e.img.naturalHeight || 0) * 4; return b; };
+// the last two seconds of [time, ms] samples
+function dbgWin(a, t, ms) { a.push([t, ms]); while (a.length && t - a[0][0] > 2000) a.shift(); }
+function dbgGlassLine() {
+  const g = DBG.glass, fr = DBG.raf, gap = a => a.slice(1).map((s, i) => s[0] - a[i][0]), span = a => a.length > 1 ? (a[a.length - 1][0] - a[0][0]) / 1000 : 0;
+  const gg = gap(g), med = gg.length ? [...gg].sort((a, b) => a - b)[gg.length >> 1] : 0, ms = g.map(s => s[1]);
+  return [`glass ${FV.on ? (FV.fast ? 'fast' : 'slow') : 'off'} · drawn ${span(g) ? ((g.length - 1) / span(g)).toFixed(0) : 0} fps of ${span(fr) ? ((fr.length - 1) / span(fr)).toFixed(0) : '-'} screen fps · gap max ${gg.length ? Math.max(...gg).toFixed(1) : '-'} ms · >1.5× median ${gg.filter(x => x > 1.5 * med).length}`,
+    `glass draw (JS) avg ${ms.length ? (ms.reduce((a, b) => a + b, 0) / ms.length).toFixed(2) : '-'} ms · max ${ms.length ? Math.max(...ms).toFixed(2) : '-'} ms`];
+}
 // a handoff between the DOM layers and the move canvases: was the side taking over complete (in: the canvas drawn;
 // out: fish and steam redrawn at the new scale), and how long were the two frames after it
 function dbgHand(k, ok) {
@@ -832,6 +854,7 @@ function dbgShow() {
     `handoff ${['in', 'out'].map(k => { const h = DBG.hand[k]; return h ? `${k} ${h.ok ? 'complete' : 'INCOMPLETE'}, next frames ${h.f.map(x => x.toFixed(1)).join('/') || '…'} ms` : k + ' -'; }).join(' · ')}`,
     `canvas draw: ${c.length ? `avg ${(c.reduce((a, b) => a + b, 0) / c.length).toFixed(1)} ms · max ${Math.max(...c).toFixed(1)} ms` : '-'}`,
     `glass ${FV.on ? (FV.V3 ? '3d' : '2d') : 'scene'} · glass frames in move ${DBG.draws} · room light ${FV.shO}`,
+    ...dbgGlassLine(),
     `planet textures ${(texBytes() / 1048576).toFixed(0)} MB decoded`,
     `switches move=${DBG.dom ? 'dom' : 'canvas'} shine=${+DBG.shine} cap=${DBG.cap || '-'} wc=${+DBG.wc} warm=${DBG.warm}`,
   ].join('\n');
