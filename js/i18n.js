@@ -403,6 +403,7 @@ const I18N = {
     'kab.audio.tap': 'Radyoyu başlatmak için dokun',
     'kab.audio.now': '{title} · {artist}',
     'kab.audio.radio': 'Radyo',
+    'kab.audio.next': 'Sonraki parça',
     'kab.audio.muted': 'Sessiz',
     'kab.audio.lost': 'Radyoya ulaşılamıyor · yeniden deneniyor',
     'kab.audio.open': 'Ses panelini aç',

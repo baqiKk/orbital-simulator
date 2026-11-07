@@ -450,7 +450,9 @@ html[data-q=low] .k-shine{display:none}
 .k-hud .seg button{padding:7px 9px;font-size:10.5px}
 #kGo{padding:8px 12px;font-size:10.5px}
 .k-tip{position:fixed;z-index:6;pointer-events:none;transform:translate(-50%,-100%);background:var(--panel-lo);border:1px solid var(--line2);padding:6px 9px;font:500 11px/1.2 var(--f-disp);letter-spacing:.06em;text-transform:uppercase;color:var(--ink);white-space:nowrap}
-.k-radio{max-width:min(calc(100vw - 150px),380px);min-width:0;text-transform:none;letter-spacing:.02em}
+.k-radio{max-width:min(calc(100vw - 196px),380px);min-width:0;text-transform:none;letter-spacing:.02em}
+.k-skip{padding:8px 10px;font-size:12px;line-height:1;flex:none}
+.k-skip[hidden]{display:none}
 .k-radio-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .k-note{color:var(--cab-lamp)}
 .k-radio.tap{color:var(--ink);border-color:var(--accent-soft);animation:kTap 2.4s ease-in-out infinite}

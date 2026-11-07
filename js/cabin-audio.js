@@ -154,12 +154,17 @@ function sndStart(set) {
   sndApply(set || SND.set);
 }
 // the system's media controls show the track (no seeking: it is a radio)
+// The next track now (the chip's ⏭ and the system's media keys): a 1 s crossfade to the shuffle's next one, which is
+// never the track just played. No previous track and no seeking: it stays a radio.
+function sndNext() {
+  const l = SND.layers.music;
+  if (SND.started && l && l.on && l.deck && l.deck.want && !l.deck.fading) l.deck.cross(1);
+}
 function sndSession() {
   const ms = navigator.mediaSession, tr = SND.state.track; if (!ms || !tr || typeof MediaMetadata === 'undefined') return;
-  try {
-    ms.metadata = new MediaMetadata({ title: tr.title, artist: MUSIC_ARTIST, album: MUSIC_ALBUM[tr.album] || '' });
-    for (const a of ['seekto', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack']) ms.setActionHandler(a, null);
-  } catch (e) { /* unsupported action */ }
+  try { ms.metadata = new MediaMetadata({ title: tr.title, artist: MUSIC_ARTIST, album: MUSIC_ALBUM[tr.album] || '' }); } catch (e) { /* unsupported */ }
+  for (const a of ['seekto', 'seekbackward', 'seekforward', 'previoustrack']) try { ms.setActionHandler(a, null); } catch (e) { /* unsupported action */ }
+  try { ms.setActionHandler('nexttrack', sndNext); } catch (e) { /* unsupported action */ }
 }
 addEventListener('online', () => { const l = SND.layers.music; if (l && l.deck) l.deck.retryNow(); });
 

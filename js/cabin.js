@@ -657,6 +657,7 @@ function audChip() {
   $('#kRadioT').textContent = tap ? _('kab.audio.tap') : lost ? _('kab.audio.lost') : set.muted ? _('kab.audio.muted')
     : set.music.on && s.track ? _('kab.audio.now', { title: s.track.title, artist: MUSIC_ARTIST }) : _('kab.audio.radio');
   $('#kRadio').classList.toggle('tap', tap); $('#kRadio').classList.toggle('warn', lost);
+  $('#kSkip').hidden = !(SND.started && set.music.on && !set.muted && s.track && !lost); // next track: only while the radio plays
   $('#kLed').classList.toggle('on', SND.started && !!s.active);
 }
 function audSync() { // panel controls from the settings
@@ -683,6 +684,7 @@ function audGesture() {
 SND.onState = audChip;
 addEventListener('pointerdown', audGesture, true); addEventListener('keydown', audGesture, true);
 $('#kRadio').addEventListener('click', () => audPanel());
+$('#kSkip').addEventListener('click', () => sndNext());
 $('#kAudioX').addEventListener('click', () => audPanel(false));
 for (const k of AUD_K) {
   const r = document.querySelector(`.k-arow[data-k=${k}]`);

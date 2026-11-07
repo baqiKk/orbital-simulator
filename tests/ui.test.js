@@ -421,6 +421,19 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     { muted: false, music: { on: false, vol: 1 }, space: { on: false, vol: 0.5 }, hum: { on: false, vol: 0.4 }, noise: { on: false, vol: 0, type: 'pink' }, chime: { on: true, vol: 0.6 } }, 'per-field fallback');
   assert.strictEqual(P.parseCabAudio('{"noise":{"type":"brown"}}').noise.type, 'brown');
   assert.ok(P.PREF_KEYS.cabAudio, 'saved under a pref key');
+  // next track: a button beside the chip (shown only while the radio plays), a 1 s crossfade to the shuffle's next
+  // track; the system's media keys get "next track" only (no previous track, no seeking)
+  assert.ok(/<button type="button" class="ghost k-skip" id="kSkip" data-i18n-aria-label="kab\.audio\.next" data-i18n-title="kab\.audio\.next" hidden>/.test(page) && has('kab.audio.next'), 'skip button with its text');
+  assert.ok(/\$\('#kSkip'\)\.addEventListener\('click', \(\) => sndNext\(\)\)/.test(cab) && /\$\('#kSkip'\)\.hidden = !\(SND\.started && set\.music\.on && !set\.muted && s\.track && !lost\)/.test(cab), 'skip: wired, only while playing');
+  assert.ok(/function sndNext\(\) \{[^}]*l\.deck\.cross\(1\);\n\}/.test(aud), 'skip: 1 s crossfade through the shuffle');
+  assert.ok(/setActionHandler\('nexttrack', sndNext\)/.test(aud) && /\['seekto', 'seekbackward', 'seekforward', 'previoustrack'\]\) try \{ ms\.setActionHandler\(a, null\)/.test(aud) && !/setActionHandler\('previoustrack', [a-z]/.test(aud), 'media session: next track only');
+  // the shuffle never plays the same track twice in a row, also across rounds
+  {
+    const sb = { Math }; vm.runInNewContext(aud.slice(aud.indexOf('function shuffleBag'), aud.indexOf('// ---------- generated sound')) + '\nthis.shuffleBag = shuffleBag;', sb);
+    const next = sb.shuffleBag(['a', 'b', 'c', 'd']), seq = Array.from({ length: 400 }, next);
+    assert.ok(seq.every((x, i) => !i || x !== seq[i - 1]), 'no immediate repeat');
+    for (let r = 0; r < 100; r++) assert.strictEqual(new Set(seq.slice(4 * r, 4 * r + 4)).size, 4, 'every track once per round');
+  }
 }
 
 // 16) Simulator ↔ cabin: the rail and the welcome card link to the cabin (a beta badge on the rail); the view goes along
