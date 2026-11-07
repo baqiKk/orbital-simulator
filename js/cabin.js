@@ -36,7 +36,7 @@ const GPU = (() => {
 // only; it goes when the bug it chases is fixed.
 const DBG = (() => {
   const q = new URLSearchParams(location.search); if (q.get('debug') !== '1') return null;
-  return { dom: q.get('move') === 'dom', shine: q.get('shine') !== '0', cap: +q.get('cap') || 0, warm: q.has('warm') ? +q.get('warm') : 3, wc: q.get('wc') === '1', frames: [], draws: 0, cost: [], path: '-', el: null };
+  return { dom: q.get('move') === 'dom', shine: q.get('shine') !== '0', cap: +q.get('cap') || 0, warm: q.has('warm') ? +q.get('warm') : 3, wc: q.get('wc') === '1', frames: [], draws: 0, cost: [], path: '-', hand: {}, el: null };
 })();
 const TMAX = Math.min(cabTierMax(DEV), GPU.max ? CAB_TIERS.filter(t => t <= GPU.max).pop() || CAB_TIERS[0] : Infinity);
 const TEX_CAP = Math.min(DEV.phone ? 2048 : 4096, GPU.max || Infinity, DBG && DBG.cap || Infinity);
@@ -341,6 +341,10 @@ function loop(now) {
 }
 function loopStart() { if (!LOOP.raf && !still() && !document.hidden) { LOOP.last = performance.now(); LOOP.raf = requestAnimationFrame(loop); } }
 function drawStill() { stepAqua(0, 0); ST.cv.getContext('2d').clearRect(0, 0, ST.cv.width, ST.cv.height); }
+// fish and steam drawn again as they are now (no time passes): after sizeLife, whose resize clears both canvases, so
+// they never show empty until the loop's next frame
+let LIFE_T = -1;
+function lifeNow() { if (still()) drawStill(); else { stepAqua(0, LOOP.t); stepSteam(0, LOOP.t); } LIFE_T = performance.now(); }
 
 // ---------- the sky behind the glass ----------
 // Drawn at screen resolution once per resize (and every minute for the Earth's turn): the site's Milky Way and star
@@ -690,7 +694,7 @@ function buildNight() {
   g.putImageData(im, 0, 0);
   const cv = $('#kNight'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(tmp, 0, 0);
 }
-const MV = { on: false, set: null, A: $('#kMoveA'), B: $('#kMoveB'), whisk: null, lamp: null, cream: null, shine: null };
+const MV = { on: false, drawn: 0, set: null, A: $('#kMoveA'), B: $('#kMoveB'), whisk: null, lamp: null, cream: null, shine: null };
 const GLOW = $('#kGlow'), NIGHT = $('#kNight'), CAT = $('#kCat');
 const CAT_ID = /^(none|grayscale\(0\) brightness\(1\) sepia\(0\) hue-rotate\(0deg\) saturate\(1\))$/;
 // the decoded art set for the canvases: the sharpest up to MV_CAP, else the smallest there is
@@ -707,10 +711,14 @@ function mvBegin() {
   MV.set = set; MV.on = true;
   for (const cv of [MV.A, MV.B]) { cv.width = Math.round(VW * DPR); cv.height = Math.round(VH * DPR); Object.assign(cv.style, { width: VW + 'px', height: VH + 'px' }); cv.hidden = false; }
   drawMove(CAM); $('#kRoot').classList.add('k-moving'); // drawn first, then the DOM layers go, in the same frame
+  dbgHand('in', MV.drawn > 0);
   return true;
 }
+// back to the DOM layers: called only once they are complete at the new scale (sizeLife, lifeNow); they come back
+// and the canvases go in the same task, so no frame shows both or neither
 function mvEnd() {
-  if (!MV.on) return; MV.on = false; MV.set = null;
+  if (!MV.on) return; MV.on = false; MV.set = null; MV.drawn = 0;
+  dbgHand('out', performance.now() - LIFE_T < 8);
   $('#kRoot').classList.remove('k-moving');
   for (const cv of [MV.A, MV.B]) { cv.hidden = true; cv.width = cv.height = 1; } // their memory goes too
 }
@@ -748,6 +756,7 @@ function drawMove(c) {
   B.strokeStyle = rgba(MV.cream, 1); B.lineWidth = 2.4; B.lineCap = 'round'; B.globalAlpha = 0.72;
   for (const p of MV.whisk) B.stroke(p);
   B.globalAlpha = 1; B.filter = 'none';
+  MV.drawn++;
   if (DBG) { DBG.cost.push(performance.now() - t0); DBG.mvT = MV.set.T; }
 }
 
@@ -775,7 +784,7 @@ function go(to) {
   // after the move: a tier that arrived meanwhile, and the DOM stage back in place of the canvases (rastered sharp at
   // the new scale, in the same frame)
   const done = () => {
-    ANIM = 0; tierSwapNow(); mvEnd(); sizeLife(); if (still()) drawStill(); FV.cam = null; fvKick(); dbgMove(false);
+    ANIM = 0; tierSwapNow(); sizeLife(); lifeNow(); mvEnd(); FV.cam = null; fvKick(); dbgMove(false);
     requestAnimationFrame(() => { if (!ANIM) stageWC(''); });
   };
   if (still()) { apply(dest); done(); return; }
@@ -802,6 +811,13 @@ function go(to) {
 
 // ---------- debugging overlay (?debug=1, temporary) ----------
 const texBytes = () => { let b = 0; for (const e of TEXC.values()) if (e.ok && e.img) b += (e.img.naturalWidth || 0) * (e.img.naturalHeight || 0) * 4; return b; };
+// a handoff between the DOM layers and the move canvases: was the side taking over complete (in: the canvas drawn;
+// out: fish and steam redrawn at the new scale), and how long were the two frames after it
+function dbgHand(k, ok) {
+  if (!DBG) return;
+  const h = DBG.hand[k] = { ok, f: [] }, t0 = performance.now();
+  requestAnimationFrame(a => { h.f.push(a - t0); requestAnimationFrame(b => { h.f.push(b - a); }); });
+}
 function dbgMove(start, cv) { if (!DBG) return; if (start) { DBG.frames = []; DBG.draws = 0; DBG.cost = []; DBG.path = cv ? 'canvas' : 'dom'; } dbgShow(); }
 function dbgShow() {
   if (!DBG || !LY || !CAM) return;
@@ -813,6 +829,7 @@ function dbgShow() {
     `gpu max texture ${GPU.max || '?'} · 3d texture cap ${TEX_CAP} · dpr ${DPR}`,
     `stage ${Math.round(LY.size[0] * CAM.s * DPR)}×${Math.round(LY.size[1] * CAM.s * DPR)} px · will-change ${stage.style.willChange || '-'} · ${ANIM ? (MV.on ? 'moving, canvas' : 'moving, dom') : view}`,
     `move (${DBG.path}${DBG.path === 'canvas' ? ' tier ' + DBG.mvT : ''}): ${n} frames · avg ${avg.toFixed(1)} ms · max ${(n ? Math.max(...dt) : 0).toFixed(1)} ms · >34 ms ${dt.filter(d => d > 34).length}`,
+    `handoff ${['in', 'out'].map(k => { const h = DBG.hand[k]; return h ? `${k} ${h.ok ? 'complete' : 'INCOMPLETE'}, next frames ${h.f.map(x => x.toFixed(1)).join('/') || '…'} ms` : k + ' -'; }).join(' · ')}`,
     `canvas draw: ${c.length ? `avg ${(c.reduce((a, b) => a + b, 0) / c.length).toFixed(1)} ms · max ${Math.max(...c).toFixed(1)} ms` : '-'}`,
     `glass ${FV.on ? (FV.V3 ? '3d' : '2d') : 'scene'} · glass frames in move ${DBG.draws} · room light ${FV.shO}`,
     `planet textures ${(texBytes() / 1048576).toFixed(0)} MB decoded`,
@@ -1020,8 +1037,7 @@ function layout() {
   SP.P0 = pd; SP.G = [pd[0] + SP.M, pd[1] + SP.M]; // the glass's centre on screen and in canvas px at the desk view
   SP.F = Math.max(VW, VH) / 2 / Math.tan(50 * deg); SP.sky = null; fvSize();
   cancelAnimationFrame(ANIM); ANIM = 0; mvEnd(); stageWC(''); tierSwapNow();
-  apply(cam); wantTier(needTier(cam.s)); sizeLife();
-  if (still()) drawStill();
+  apply(cam); wantTier(needTier(cam.s)); sizeLife(); lifeNow();
   spaceSoon(); fvKick();
 }
 

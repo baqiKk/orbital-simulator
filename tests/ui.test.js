@@ -594,7 +594,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   // meanwhile), the DOM stage back at rest at the shown tier; no will-change on the stage (only with
   // ?debug=1&move=dom&wc=1); no blend mode on the large light and shade layers; the canvases draw from a decoded set no
   // sharper than MV_CAP
-  assert.ok(/const cv = mvBegin\(\), wc = !cv && DBG && DBG\.wc;/.test(cab) && /if \(MV\.on\) drawMove\(CAM\);/.test(cab) && /tierSwapNow\(\); mvEnd\(\);/.test(cab), 'camera move on the canvases, DOM back at rest');
+  assert.ok(/const cv = mvBegin\(\), wc = !cv && DBG && DBG\.wc;/.test(cab) && /if \(MV\.on\) drawMove\(CAM\);/.test(cab) && /tierSwapNow\(\); sizeLife\(\); lifeNow\(\); mvEnd\(\);/.test(cab) && /drawMove\(CAM\); \$\('#kRoot'\)\.classList\.add\('k-moving'\);/.test(cab), 'camera move on the canvases, DOM back at rest; each handoff in one task, the side taking over complete first');
   assert.ok(!/willChange = 'transform'/.test(cab) && (cab.match(/stageWC\('transform'\)/g) || []).length === 1, 'no will-change on the stage outside the debug switch');
   assert.ok(/\.k-moving :is\(#kGlow,#kRoomSlot,#kShine,#kAqua,#kSteam,#kNight,#kCat\)\{visibility:hidden\}/.test(css), 'DOM room layers hidden during the move');
   assert.ok(!/mix-blend-mode/.test(css.match(/\.k-night\{[^}]*\}/)[0] + css.match(/\.k-shine\{[^}]*\}/)[0]), 'no blend mode on the light and the shade');
