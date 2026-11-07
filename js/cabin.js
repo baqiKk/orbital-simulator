@@ -31,12 +31,12 @@ const GPU = (() => {
 })();
 // Temporary debugging (?debug=1): an overlay in the corner with frame times, the art tier and the path drawn during
 // camera moves, and A/B switches: move=dom (the old path: the DOM stage scaled, no move canvases), shine=0 (no room
-// light), cap=<px> (3D texture cap), wc=1 (will-change: transform on the stage during DOM moves; off by default now),
+// light), sun=0 (no light from outside: patch, beam, rim), cap=<px> (3D texture cap), wc=1 (will-change: transform on the stage during DOM moves; off by default now),
 // warm=<frames> (with wc=1: frames between promoting the stage and moving it). A developer aid with technical labels
 // only; it goes when the bug it chases is fixed.
 const DBG = (() => {
   const q = new URLSearchParams(location.search); if (q.get('debug') !== '1') return null;
-  return { dom: q.get('move') === 'dom', shine: q.get('shine') !== '0', cap: +q.get('cap') || 0, warm: q.has('warm') ? +q.get('warm') : 3, wc: q.get('wc') === '1', frames: [], draws: 0, cost: [], path: '-', hand: {}, glass: [], raf: [], el: null };
+  return { dom: q.get('move') === 'dom', sun: q.get('sun') !== '0', shine: q.get('shine') !== '0', cap: +q.get('cap') || 0, warm: q.has('warm') ? +q.get('warm') : 3, wc: q.get('wc') === '1', frames: [], draws: 0, cost: [], path: '-', hand: {}, glass: [], raf: [], light: '', el: null };
 })();
 const TMAX = Math.min(cabTierMax(DEV), GPU.max ? CAB_TIERS.filter(t => t <= GPU.max).pop() || CAB_TIERS[0] : Infinity);
 const TEX_CAP = Math.min(DEV.phone ? 2048 : 4096, GPU.max || Infinity, DBG && DBG.cap || Infinity);
@@ -108,13 +108,37 @@ const LAYERS = ['room', 'shadow', 'tail', 'earL', 'earR', 'body'];
 const IMG = {};
 
 // ---------- the art layers and their tiers ----------
+// a layer's image: the room in its slot, a cat layer inside its part (buildCat: the part carries the box, the pivot and
+// the motion, so the rim inside it moves along)
 function layerImg(name, T) {
-  const L = name === 'room' ? { x: 0, y: 0, w: LY.size[0], h: LY.size[1] } : LY.layers[name];
   const im = new Image(); im.alt = ''; im.decoding = 'async'; im.draggable = false;
-  im.className = 'k-layer k-' + name; im.src = `img/cabin/${T}/${name}.webp`;
-  box(im, L.x, L.y, L.w, L.h);
-  if (L.pivot) im.style.transformOrigin = `${L.pivot[0] - L.x}px ${L.pivot[1] - L.y}px`;
+  im.className = 'k-layer'; im.src = `img/cabin/${T}/${name}.webp`;
+  if (name === 'room') box(im, 0, 0, LY.size[0], LY.size[1]);
   return im;
+}
+// the cat's parts, back to front (shadow, tail, ears, body), then the whiskers; pivots from layout.json, the body's at
+// the middle of its base (where it sits)
+const PART = {}, PIV = {};
+function buildCat() {
+  const cat = $('#kCat');
+  for (const n of LAYERS.slice(1)) {
+    const L = LY.layers[n], d = el('div', { class: 'k-part k-' + n }, cat);
+    box(d, L.x, L.y, L.w, L.h);
+    PIV[n] = L.pivot || [L.x + L.w / 2, L.y + L.h];
+    d.style.transformOrigin = `${PIV[n][0] - L.x}px ${PIV[n][1] - L.y}px`;
+    PART[n] = d;
+    if (LT_ON && n !== 'shadow') LT.rim[n] = el('canvas', { class: 'k-rim', 'aria-hidden': 'true' }, d);
+  }
+  cat.appendChild($('#kWhisk'));
+}
+// a part's motion now (its CSS animation and the translate / rotate / scale it may carry), about its pivot
+function partMatrix(n) {
+  const cs = getComputedStyle(PART[n]); let m = new DOMMatrix();
+  if (cs.translate && cs.translate !== 'none') { const v = cs.translate.split(' ').map(parseFloat); m = m.translate(v[0] || 0, v[1] || 0); }
+  if (cs.rotate && cs.rotate !== 'none') m = m.rotate(parseFloat(cs.rotate.split(' ').pop()));
+  if (cs.scale && cs.scale !== 'none') { const v = cs.scale.split(' ').map(parseFloat); m = m.scale(v[0], v[1] ?? v[0]); }
+  if (cs.transform && cs.transform !== 'none') m = m.multiply(new DOMMatrix(cs.transform));
+  return m.isIdentity ? null : m;
 }
 // load tier T when it is sharper than the one shown; the new images replace the old ones once decoded (no flash), and
 // never while the camera moves (TIER_SWAP waits for the end of the move: a mid-move swap re-rasterises the whole stage)
@@ -130,8 +154,8 @@ function wantTier(T) {
     if (ART_T !== T) return;
     for (const k of Object.keys(DEC)) if (+k !== T && +k !== MV_CAP) delete DEC[k];
     if (T > MV_CAP && !DEC[MV_CAP]) mvPreload();
-    for (const [n, im] of fresh) { if (IMG[n]) IMG[n].replaceWith(im); else $(n === 'room' ? '#kRoomSlot' : '#kCat').appendChild(im); IMG[n] = im; }
-    $('#kCat').appendChild($('#kWhisk'));
+    for (const [n, im] of fresh) { if (IMG[n]) IMG[n].replaceWith(im); else (n === 'room' ? $('#kRoomSlot') : PART[n]).prepend(im); IMG[n] = im; }
+    ltRoom();
     for (const id of ['#kNight', '#kShine']) $(id).style.setProperty('--room', `url("${new URL(`img/cabin/${T}/room.webp`, location.href)}")`);
     document.body.classList.add('k-ready');
   };
@@ -637,7 +661,7 @@ function fvSize() {
   if (FV.V3) FV.V3.size(cw, ch, DPR);
 }
 function fvStart() {
-  fvShineRun();
+  fvShineRun(); ltRun();
   FV.on = true; FV.sig = ''; FV.cam = null; clearTimeout(SP.timer); $('#kScene').hidden = true;
   if (!fvGL()) { fvKick(); return; }
   if (!FV.load) {
@@ -656,7 +680,7 @@ function fvStop() {
   FV.on = false; FV.fast = false; cancelAnimationFrame(FV.raf); FV.raf = 0; clearTimeout(FV.timer);
   FV.cv.hidden = true; FV.cv.style.opacity = ''; SP.cv.style.visibility = ''; SP.cv.style.opacity = ''; FV.fade = 0;
   $('#kScene').hidden = false; spaceSoon();
-  fvShineRun(); // the room light fades out with the filter
+  fvShineRun(); ltRun(); // the room light and the light from outside fade out with their filters
 }
 // on or off with the timer (every tick); a change of the 3D conditions restarts it
 // (after the room is in: its images come before the planets')
@@ -709,7 +733,7 @@ function buildNight() {
   const cv = $('#kNight'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(tmp, 0, 0);
 }
 const MV = { on: false, drawn: 0, set: null, A: $('#kMoveA'), B: $('#kMoveB'), whisk: null, lamp: null, cream: null, shine: null };
-const GLOW = $('#kGlow'), NIGHT = $('#kNight'), CAT = $('#kCat');
+const GLOW = $('#kGlow'), NIGHT = $('#kNight'), STRIP = $('#kStrip');
 const CAT_ID = /^(none|grayscale\(0\) brightness\(1\) sepia\(0\) hue-rotate\(0deg\) saturate\(1\))$/;
 // the decoded art set for the canvases: the sharpest up to MV_CAP, else the smallest there is
 function mvSet() {
@@ -760,18 +784,204 @@ function drawMove(c) {
     B.globalAlpha = nt; B.drawImage(NIGHT, 0, 0, W, H); B.globalAlpha = 1;
     B.globalCompositeOperation = 'destination-in'; B.drawImage(im.room, 0, 0, W, H); B.globalCompositeOperation = 'source-over';
   }
-  const f = getComputedStyle(CAT).filter; if (!CAT_ID.test(f)) B.filter = f;
+  // the light from outside and the ceiling strip (the room's alpha already in them), over the shade
+  if (LT_ON && LT.sig) B.drawImage(LT.cv, 0, 0, W, H);
+  const so = +getComputedStyle(STRIP).opacity; if (so > 0 && STRIP.width > 1) { B.globalAlpha = so; B.drawImage(STRIP, 0, 0, W, H); B.globalAlpha = 1; }
+  const f = getComputedStyle(IMG.body).filter, ff = CAT_ID.test(f) ? 'none' : f;
   for (const n of ['shadow', 'tail', 'earL', 'earR', 'body']) {
-    const L = LY.layers[n], tf = L.pivot && IMG[n] ? getComputedStyle(IMG[n]).transform : 'none';
-    if (tf === 'none') { B.drawImage(im[n], L.x, L.y, L.w, L.h); continue; }
-    const m = new DOMMatrix(tf), [ox, oy] = L.pivot;
-    B.save(); B.translate(ox, oy); B.transform(m.a, m.b, m.c, m.d, m.e, m.f); B.translate(-ox, -oy); B.drawImage(im[n], L.x, L.y, L.w, L.h); B.restore();
+    const L = LY.layers[n], m = partMatrix(n), rim = LT.rim[n], ra = rim ? +rim.style.opacity || 0 : 0;
+    B.save();
+    if (m) { const [ox, oy] = PIV[n]; B.translate(ox, oy); B.transform(m.a, m.b, m.c, m.d, m.e, m.f); B.translate(-ox, -oy); }
+    B.filter = ff; B.drawImage(im[n], L.x, L.y, L.w, L.h); B.filter = 'none';
+    if (ra > 0) { B.globalAlpha = ra; B.drawImage(rim, L.x, L.y, L.w, L.h); }
+    B.restore();
   }
+  B.filter = ff;
   B.strokeStyle = rgba(MV.cream, 1); B.lineWidth = 2.4; B.lineCap = 'round'; B.globalAlpha = 0.72;
   for (const p of MV.whisk) B.stroke(p);
   B.globalAlpha = 1; B.filter = 'none';
   MV.drawn++;
   if (DBG) { DBG.cost.push(performance.now() - t0); DBG.mvT = MV.set.T; }
+}
+
+// ---------- light from outside ----------
+// The glass shows true geometry, so every light source's direction is known. A sunlit body in the glass's view (the
+// Sun above all) throws the window's shape onto the sill and the desk (prefs.js cabLightPatch: the room measured on the
+// illustration), a soft patch that slides as the body moves; the Sun also a faint beam through the air; the window
+// frame's inner edge facing the light catches a little of it; the cat gets a thin rim on the edge facing the source.
+// The direction is staged from where the body is on the glass, not its true angle: the true angles of what the window
+// shows are shallow, and their light would pass over the desk to the viewer (a body at the glass's top edge would reach
+// no further than the sill; the camera keeps the target in the middle and an orbited body low in the glass, whose light
+// would go up to the unseen ceiling). Staged, a body in the middle of the glass throws its light down at a moderate
+// slope (LT_S0) onto the desk; higher up it falls steeper, the patch nearer the wall; lower down shallower, the patch
+// towards the desk's front, until near the glass's bottom edge only the sill catches it; sideways it shifts the other
+// way (LT_GAIN). A big body (a close pass) counts from the middle of the part of the glass it covers. Strength: the Sun strong and warm white (--cab-light), dimmed by any body over its
+// disc (an eclipse fades it as the disc is covered); the brightest other body faint, its bodies.js colour mixed into
+// the screen cyan like #kShine, from its solid angle in the view and lit fraction on a log scale, capped well below the
+// Sun; all of it a little weaker while the desk lamp is on. Low-pass filtered (strength LT_TAU, direction LT_TAU_DIR) on
+// a 15 Hz tick, held while the camera moves; the picture (#kSun, a quarter of the art's size, the room's alpha in it,
+// a plain translucent layer over the shade, no blend mode) is redrawn only when it changes. Only while a flight plan
+// flies; off in low-resource mode and on phones (and with ?debug=1&sun=0).
+const LT_ON = !LOWQ && !DEV.phone && (!DBG || DBG.sun);
+const LT_S0 = 1, LT_GAIN = [1.5, 2];       // the staged light: slope down for the glass's middle, gains per tangent across / up
+const LT_SUN = { a: 0.32, beam: 0.06, frame: 0.3, rim: 0.7 }, LT_BODY = { a: 0.1, beam: 0, frame: 0.06, rim: 0.22 };
+const LT_LAMP = 0.6, LT_TAU = 1.5, LT_TAU_DIR = 0.6, LT_F = ['a', 'beam', 'frame', 'rim'];
+const LT = { cv: $('#kSun'), src: {}, timer: 0, t: 0, sig: '', rimSig: '', rim: {}, outline: null, col: {}, lit: [], scratch: null };
+const ltCol = k => LT.col[k] || (LT.col[k] = rgbOf(k === 'sun' ? 'var(--cab-light)' : `color-mix(in srgb, var(--cab-screen) 35%, ${BODIES[k].color})`));
+// what each source should give now: direction L (room axes), patch, beam, frame and rim strengths
+function ltTargets(st, cam) {
+  const out = {}, y = st.a.y, Fa = SP.F / deskCam().s, g = LY.glass, hw = (g.x1 - g.x0) / 2, hh = (g.y1 - g.y0) / 2;
+  const lamp = $('#kRoot').classList.contains('lamp-off') ? 1 : LT_LAMP;
+  // where in the glass at the desk view (true projection): a small body by its centre (soft 250 art px past the edge),
+  // a big one by the part of the glass it covers (12 × 7 directions: their share and middle); then the staged direction
+  const look = (d, al) => {
+    let ta, te, vis;
+    if (al < 0.035) {
+      const z = vdot(d, cam.f); if (z <= 0) return null;
+      ta = vdot(d, cam.r) / z; te = vdot(d, cam.u) / z;
+      vis = Math.min(1, Math.max(0, 1 - (Math.max(Math.abs(Fa * ta) - hw, Math.abs(Fa * te) - hh) - Fa * Math.tan(al)) / 250));
+    } else {
+      const dn = norm(d), ca = Math.cos(al); let n = 0, sa = 0, se = 0;
+      for (let i = 0; i < 12; i++) for (let j = 0; j < 7; j++) {
+        const a = ((2 * i + 1) / 12 - 1) * hw / Fa, e = ((2 * j + 1) / 7 - 1) * hh / Fa;
+        if (vdot(norm(cam.f.map((v, k) => v + a * cam.r[k] + e * cam.u[k])), dn) > ca) { n++; sa += a; se += e; }
+      }
+      if (!n) return null;
+      ta = sa / n; te = se / n; vis = Math.min(1, n / 21);
+    }
+    return vis ? { vis, L: norm([-LT_GAIN[0] * ta, LT_S0 + LT_GAIN[1] * te, 1]), ang: 2 * al } : null;
+  };
+  const bod = st.b.list.filter(q => q.key !== 'sun').map(q => { const d = vsub(q.p, y), dist = Math.hypot(...d); return { q, d, dist, al: Math.asin(Math.min(1, BODIES[q.key].radius * 1e3 / dist)) }; });
+  const sd = vsub(st.b.sunP, y), sdist = Math.hypot(...sd), sal = Math.asin(Math.min(1, BODIES.sun.radius * 1e3 / sdist)), so = look(sd, sal);
+  if (so) {
+    let cov = 0; for (const b of bod) if (b.dist < sdist) cov = Math.max(cov, cabDiscCover(sal, b.al, vang(norm(sd), norm(b.d))));
+    const k = so.vis * (1 - cov) * lamp; out.sun = { ...so, cov, col: ltCol('sun') }; for (const f of LT_F) out.sun[f] = LT_SUN[f] * k;
+  }
+  let best = null;
+  for (const b of bod) {
+    const o = look(b.d, b.al); if (!o) continue;
+    // lit fraction × solid angle in the view on a log scale (a close pass full, the Earth from the Moon nothing), a body
+    // showing its night side (lit < 0.1) fading out
+    const s = norm(vsub(st.b.sunP, b.q.p)), lit = (1 - vdot(s, b.d) / b.dist) / 2, c = lit * Math.min(1, 2 * Math.PI * (1 - Math.cos(b.al)) / FV_FOV_SR);
+    const k = Math.min(1, Math.max(0, (Math.log10(Math.max(c, 1e-9)) + 3.3) / 2.8)) * Math.min(1, lit / 0.1) * o.vis * lamp;
+    if (k > 0 && (!best || k > best.k)) best = { key: b.q.key, k, o };
+  }
+  if (best) { const t = out[best.key] = { ...best.o, cov: 0, col: ltCol(best.key) }; for (const f of LT_F) t[f] = LT_BODY[f] * best.k; }
+  return out;
+}
+function ltTick() {
+  const now = performance.now(), dt = Math.min(2, (now - LT.t) / 1000); LT.t = now;
+  if (ANIM || document.hidden) return; // held while the camera moves (and unseen)
+  let tg = {};
+  if (FV.on) { const st = fvState(wallNow()); if (st) tg = ltTargets(st, FV.cam || fvCam(st)); }
+  const ka = 1 - Math.exp(-dt / LT_TAU), kd = 1 - Math.exp(-dt / LT_TAU_DIR);
+  for (const k of new Set([...Object.keys(LT.src), ...Object.keys(tg)])) {
+    const t = tg[k], s = LT.src[k];
+    if (!s) { if (t) { LT.src[k] = { ...t }; for (const f of LT_F) LT.src[k][f] = 0; } continue; }
+    if (t) { s.L = norm(s.L.map((v, i) => v + (t.L[i] - v) * kd)); s.ang = t.ang; s.col = t.col; s.cov = t.cov; }
+    for (const f of LT_F) s[f] += ((t ? t[f] : 0) - s[f]) * ka;
+    if (!t && s.a < 0.002 && s.rim < 0.002 && s.frame < 0.002) delete LT.src[k];
+  }
+  ltDraw();
+  if (!FV.on && !Object.keys(LT.src).length) { clearInterval(LT.timer); LT.timer = 0; }
+}
+function ltRun() { if (LT_ON && LY && !LT.timer) { LT.t = performance.now(); LT.timer = setInterval(ltTick, 66); } }
+// the shape drawn far off the canvas, only its blurred shadow lands (soft edges everywhere canvas runs, no filter needed)
+const LT_OFF = 30000;
+function ltSoft(g, k, col, a, blur, draw) { g.save(); g.shadowColor = rgba(col, a); g.shadowBlur = blur * k; g.shadowOffsetX = LT_OFF; g.translate(-LT_OFF / k, 0); draw(); g.restore(); }
+const polyPath = (g, p) => { g.beginPath(); p.forEach((v, i) => (i ? g.lineTo(v[0], v[1]) : g.moveTo(v[0], v[1]))); g.closePath(); };
+function hull(pts) { // monotone chain
+  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]), cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+  for (const v of p) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], v) <= 0) lo.pop(); lo.push(v); }
+  for (const v of p.reverse()) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], v) <= 0) up.pop(); up.push(v); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+function ltDraw() {
+  const srcs = Object.entries(LT.src).filter(([, s]) => s.a > 0.003 || s.frame > 0.003 || s.rim > 0.003), cv = LT.cv, k = cv.width / LY.size[0];
+  const geo = srcs.map(([key, s]) => [key, s, cabLightPatch(s.L, LT.outline)]);
+  const q = v => Math.round(v[0] * k) + ',' + Math.round(v[1] * k);
+  const sig = geo.map(([key, s, p]) => key + (p ? p.sill.map(q).join(';') + '/' + p.desk.map(q).join(';') : '') + ':' + [s.a, s.beam, s.frame, s.L[0], s.L[1]].map(v => Math.round(v * 300)).join(',')).join('|');
+  if (sig !== LT.sig && IMG.room) {
+    LT.sig = sig;
+    const g = cv.getContext('2d'), S = ltScratch(), h = S.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, cv.width, cv.height); g.setTransform(k, 0, 0, k, 0, 0);
+    for (const [, s, p] of geo) {
+      const pts = p ? [...p.sill, ...p.desk] : [];
+      // the beam: a faint glow in the air between the glass and the patch (a plain colour)
+      if (s.beam > 0.002 && pts.length) ltSoft(g, k, s.col, s.beam, 160, () => { polyPath(g, hull([...LT.outline, ...pts])); g.fill(); });
+      // what the light falls on, as a mask: the patch (its penumbra wider for a bigger source: an extended one gives a
+      // diffuse glow, no sharp window) and the frame's inner edge facing the light (each edge's outward normal along the
+      // light's slant on the wall) ...
+      h.setTransform(1, 0, 0, 1, 0, 0); h.globalCompositeOperation = 'source-over'; h.clearRect(0, 0, S.width, S.height); h.setTransform(k, 0, 0, k, 0, 0);
+      const blur = Math.min(420, 30 + 1800 * Math.tan(Math.min(s.ang, 2.2) / 2)), black = [0, 0, 0];
+      if (p) for (const poly of [p.sill, p.desk]) if (poly.length > 2 && s.a > 0.002) ltSoft(h, k, black, s.a, blur, () => { polyPath(h, poly); h.fill(); });
+      if (s.frame > 0.002) ltSoft(h, k, black, s.frame, 28, () => {
+        const o = LT.outline; h.lineWidth = 46; h.lineCap = 'round';
+        for (let i = 0; i < o.length; i++) {
+          const a = o[i], b = o[(i + 1) % o.length], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1, lit = (dy * s.L[0] - dx * s.L[1]) / l;
+          if (lit <= 0.02) continue;
+          h.strokeStyle = `rgba(0,0,0,${Math.min(1, lit * 1.6).toFixed(3)})`; h.beginPath(); h.moveTo(a[0], a[1]); h.lineTo(b[0], b[1]); h.stroke();
+        }
+      });
+      // ... filled with the room as that light shows it (ltLit), so the wood and the paper stay visible inside the patch
+      h.setTransform(1, 0, 0, 1, 0, 0); h.globalCompositeOperation = 'source-in'; h.drawImage(ltLit(s.col), 0, 0); h.globalCompositeOperation = 'source-over';
+      g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(S, 0, 0); g.setTransform(k, 0, 0, k, 0, 0);
+    }
+    g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'destination-in'; g.drawImage(IMG.room, 0, 0, cv.width, cv.height); g.globalCompositeOperation = 'source-over';
+    if (!geo.length) LT.sig = '';
+  }
+  // the cat's rim: the strongest source's colour, the edge facing it on screen, all sources' strength
+  let ra = 0, dom = null; for (const [, s] of srcs) { ra += s.rim; if (!dom || s.rim > dom.rim) dom = s; }
+  ra = Math.min(0.85, ra);
+  if (dom && ra > 0.003) {
+    const d2 = Math.hypot(dom.L[0], dom.L[1]), u = d2 > 1e-3 ? [-dom.L[0] / d2, -dom.L[1] / d2] : [0, -1], rs = Math.round(Math.atan2(u[1], u[0]) / deg / 3) + '|' + dom.col.join();
+    if (rs !== LT.rimSig) { LT.rimSig = rs; ltRim(u, dom.col); }
+  }
+  const ro = (dom && ra > 0.003 ? ra : 0).toFixed(3); for (const r of Object.values(LT.rim)) if (r.style.opacity !== ro) r.style.opacity = ro;
+  if (DBG) DBG.light = srcs.map(([key, s]) => `${key} patch ${s.a.toFixed(3)} beam ${s.beam.toFixed(3)}${key === 'sun' ? ` covered ${(s.cov || 0).toFixed(2)}` : ''}`).join(' · ') + (ra > 0.003 ? ` · rim ${ra.toFixed(2)}` : '');
+}
+// the rim inside each part: the layer's alpha, minus itself shifted towards the source, filled with its colour
+function ltRim(u, col) {
+  for (const n of Object.keys(LT.rim)) {
+    const L = LY.layers[n], im = IMG[n], cv = LT.rim[n]; if (!im || !im.naturalWidth) continue;
+    const w = cv.width = Math.round(L.w / 2), h = cv.height = Math.round(L.h / 2), g = cv.getContext('2d'), o = 6;
+    g.drawImage(im, 0, 0, w, h); g.globalCompositeOperation = 'destination-out'; g.drawImage(im, -u[0] * o, -u[1] * o, w, h);
+    g.globalCompositeOperation = 'source-in'; g.fillStyle = rgba(col, 1); g.fillRect(0, 0, w, h); g.globalCompositeOperation = 'source-over';
+  }
+}
+// The room as a light of colour col shows it: the room times the colour, twice over (a lit surface is brighter than the
+// lamp-lit or shaded room it lies on); drawn once per colour (a quarter of the art's size), kept for the two most
+// recent colours. In the patch it replaces the room at the patch's strength: the surface brightens, it is not veiled.
+function ltLit(col) {
+  const key = col.join(), hit = LT.lit.find(e => e.key === key); if (hit) return hit.cv;
+  const w = LT.cv.width, h = LT.cv.height, a = document.createElement('canvas'), o = document.createElement('canvas'); a.width = o.width = w; a.height = o.height = h;
+  const ga = a.getContext('2d'); ga.drawImage(IMG.room, 0, 0, w, h); ga.globalCompositeOperation = 'multiply'; ga.fillStyle = rgba(col, 1); ga.fillRect(0, 0, w, h);
+  const go = o.getContext('2d'); go.globalCompositeOperation = 'lighter'; go.drawImage(a, 0, 0); go.drawImage(a, 0, 0);
+  LT.lit.unshift({ key, cv: o }); LT.lit.length = Math.min(LT.lit.length, 2);
+  return o;
+}
+const ltScratch = () => LT.scratch || (LT.scratch = Object.assign(document.createElement('canvas'), { width: LT.cv.width, height: LT.cv.height }));
+// a new art tier: the light's mask, its lit rooms and the rims from the new images, the strip again
+function ltRoom() { LT.sig = '\u0000'; LT.rimSig = ''; LT.lit = []; buildStrip(); }
+function ltInit() { if (!LT_ON) return; LT.outline = cabGlassOutline(LY.glass); LT.cv.width = Math.round(LY.size[0] / 4); LT.cv.height = Math.round(LY.size[1] / 4); }
+// The ceiling strip (optional, off by default): a soft warm LED strip just above the picture, lighting the top of the
+// wall; drawn once (a quarter of the art's size, the room's alpha in it), shown with the button beside the lamp's.
+// Cheap and static: on phones and in low-resource mode too.
+function buildStrip() {
+  if (!IMG.room) return;
+  const [W, H] = LY.size, cv = STRIP, w = cv.width = Math.round(W / 4), h = cv.height = Math.round(H / 4), g = cv.getContext('2d'), col = rgbOf('color-mix(in srgb, var(--cab-lamp) 30%, var(--cab-light))');
+  const gr = g.createLinearGradient(0, 0, 0, h * 0.36);
+  gr.addColorStop(0, rgba(col, 0.5)); gr.addColorStop(0.05, rgba(col, 0.24)); gr.addColorStop(0.4, rgba(col, 0.08)); gr.addColorStop(1, rgba(col, 0));
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  const sx = g.createLinearGradient(0, 0, w, 0); sx.addColorStop(0, 'rgba(0,0,0,.55)'); sx.addColorStop(0.5, 'rgba(0,0,0,0)'); sx.addColorStop(1, 'rgba(0,0,0,.55)');
+  g.globalCompositeOperation = 'destination-out'; g.fillStyle = sx; g.fillRect(0, 0, w, h);
+  g.globalCompositeOperation = 'destination-in'; g.drawImage(IMG.room, 0, 0, w, h); g.globalCompositeOperation = 'source-over';
+}
+function setStrip(on, save = true) {
+  $('#kRoot').classList.toggle('strip-on', on);
+  $('#kStripBtn').setAttribute('aria-pressed', String(on));
+  $('#kStripBtn').textContent = _(on ? 'kab.stripOff' : 'kab.stripOn');
+  if (save) writePref(LS, PREF_KEYS.cabStrip, on ? '1' : '0');
 }
 
 // ---------- camera ----------
@@ -855,8 +1065,9 @@ function dbgShow() {
     `canvas draw: ${c.length ? `avg ${(c.reduce((a, b) => a + b, 0) / c.length).toFixed(1)} ms · max ${Math.max(...c).toFixed(1)} ms` : '-'}`,
     `glass ${FV.on ? (FV.V3 ? '3d' : '2d') : 'scene'} · glass frames in move ${DBG.draws} · room light ${FV.shO}`,
     ...dbgGlassLine(),
+    `light from outside: ${LT_ON ? DBG.light || 'none' : 'off'}`,
     `planet textures ${(texBytes() / 1048576).toFixed(0)} MB decoded`,
-    `switches move=${DBG.dom ? 'dom' : 'canvas'} shine=${+DBG.shine} cap=${DBG.cap || '-'} wc=${+DBG.wc} warm=${DBG.warm}`,
+    `switches move=${DBG.dom ? 'dom' : 'canvas'} sun=${+DBG.sun} shine=${+DBG.shine} cap=${DBG.cap || '-'} wc=${+DBG.wc} warm=${DBG.warm}`,
   ].join('\n');
 }
 if (DBG) setInterval(dbgShow, 250);
@@ -1103,7 +1314,8 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   { const c = LY.clock, s = $('#kGlowArt'); s.setAttribute('viewBox', `${c.x0} ${c.y0} ${c.x1 - c.x0} ${c.y1 - c.y0}`); box(s, c.x0, c.y0, c.x1 - c.x0, c.y1 - c.y0); }
   box($('#kNight'), 0, 0, LY.size[0], LY.size[1]); box($('#kShine'), 0, 0, LY.size[0], LY.size[1]); buildNight();
   const g = LY.glass; box($('#kGlow'), g.x0, g.y0 + (g.y1 - g.y0) * 0.35, (g.x1 - g.x0) * 0.42, (g.y1 - g.y0) * 0.65);
-  buildArt(); buildHits(); initLife();
+  box($('#kSun'), 0, 0, LY.size[0], LY.size[1]); box(STRIP, 0, 0, LY.size[0], LY.size[1]);
+  buildCat(); buildArt(); buildHits(); initLife(); ltInit();
   box($('#kLed'), PHONES_LED[0] - PHONES_LED[2], PHONES_LED[1] - PHONES_LED[2], 2 * PHONES_LED[2], 2 * PHONES_LED[2]);
   audSync(); audChip();
   // the simulator's view comes along (?manzara=saturn|earth) and becomes the saved choice
@@ -1111,7 +1323,7 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   if (SCENES[from]) writePref(LS, PREF_KEYS.cabScene, from);
   const sc = readPref(LS, PREF_KEYS.cabScene); if (SCENES[sc]) SP.scene = sc;
   for (const b of document.querySelectorAll('#kScene button')) b.setAttribute('aria-pressed', String(b.dataset.scene === SP.scene));
-  setLamp(readPref(LS, PREF_KEYS.cabLamp) !== '0', false);
+  setLamp(readPref(LS, PREF_KEYS.cabLamp) !== '0', false); setStrip(readPref(LS, PREF_KEYS.cabStrip) === '1', false);
   layout();
   poDo(pomoAdvance); setInterval(() => poDo(pomoAdvance), 1000);
   lapTick(); setInterval(() => { if (!document.hidden) lapTick(); }, 2000);
@@ -1125,6 +1337,7 @@ $('#kBack').addEventListener('click', e => {
   if (ref && ref.origin === location.origin && /\/(index\.html)?$/.test(ref.pathname) && history.length > 1) { e.preventDefault(); history.back(); }
 });
 $('#kLamp').addEventListener('click', () => setLamp($('#kRoot').classList.contains('lamp-off')));
+$('#kStripBtn').addEventListener('click', () => setStrip(!$('#kRoot').classList.contains('strip-on')));
 addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!$('#kAudio').hidden) audPanel(false); else if (!$('#kPomo').hidden) poPanel(false); else go('desk'); });
 for (const b of document.querySelectorAll('#kScene button')) b.addEventListener('click', () => {
   SP.scene = b.dataset.scene; writePref(LS, PREF_KEYS.cabScene, SP.scene);

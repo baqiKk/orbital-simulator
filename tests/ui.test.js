@@ -600,12 +600,36 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   // sharper than MV_CAP
   assert.ok(/const cv = mvBegin\(\), wc = !cv && DBG && DBG\.wc;/.test(cab) && /if \(MV\.on\) drawMove\(CAM\);/.test(cab) && /tierSwapNow\(\); sizeLife\(\); lifeNow\(\); mvEnd\(\);/.test(cab) && /drawMove\(CAM\); \$\('#kRoot'\)\.classList\.add\('k-moving'\);/.test(cab), 'camera move on the canvases, DOM back at rest; each handoff in one task, the side taking over complete first');
   assert.ok(!/willChange = 'transform'/.test(cab) && (cab.match(/stageWC\('transform'\)/g) || []).length === 1, 'no will-change on the stage outside the debug switch');
-  assert.ok(/\.k-moving :is\(#kGlow,#kRoomSlot,#kShine,#kAqua,#kSteam,#kNight,#kCat\)\{visibility:hidden\}/.test(css), 'DOM room layers hidden during the move');
+  assert.ok(/\.k-moving :is\(#kGlow,#kRoomSlot,#kShine,#kAqua,#kSteam,#kNight,#kSun,#kStrip,#kCat\)\{visibility:hidden\}/.test(css), 'DOM room layers hidden during the move');
   assert.ok(!/mix-blend-mode/.test(css.match(/\.k-night\{[^}]*\}/)[0] + css.match(/\.k-shine\{[^}]*\}/)[0]), 'no blend mode on the light and the shade');
   assert.ok(/const DEC = \{\}, MV_CAP = 3840;/.test(cab) && /const T = ks\.filter\(t => t <= MV_CAP\)\.pop\(\) \|\| ks\[0\]/.test(cab), 'move canvases: tier up to MV_CAP');
   // art tiers and planet textures stay within the GPU's texture limit; the debugging overlay exists only with ?debug=1
   assert.ok(/const TMAX = Math\.min\(cabTierMax\(DEV\), GPU\.max \?/.test(cab) && /const TEX_CAP = Math\.min\(DEV\.phone \? 2048 : 4096, GPU\.max \|\| Infinity/.test(cab) && !/DEV\.phone \? 2048 : 4096, FX/.test(cab), 'GPU texture limit respected');
   assert.ok(/if \(q\.get\('debug'\) !== '1'\) return null;/.test(cab) && /if \(DBG\) setInterval\(dbgShow, 250\);/.test(cab) && /if \(LOWQ\) return \{ gl2: false, max: 0 \};/.test(cab), 'debug overlay only with ?debug=1; no GPU probe in low mode');
+  // light from outside: the room measured on the art agrees with the card (a rectangle on the desk once back-projected);
+  // the patch lands on the sill and the desk, shifts against the light, none when the light goes up; eclipses cover the
+  // Sun's disc smoothly; off in low-resource mode and on phones; no blend mode; hidden with the room during moves; the
+  // ceiling strip off by default
+  {
+    const LY2 = JSON.parse(read('img/cabin/layout.json')), R = P.CAB_ROOM, q = LY2.card.map(a => P.cabUnproject(a, R.desk.y));
+    const sd = [0, 1, 2, 3].map(i => [q[(i + 1) % 4][0] - q[i][0], q[(i + 1) % 4][2] - q[i][2]]), len = v => Math.hypot(...v);
+    assert.ok(Math.abs(len(sd[0]) - len(sd[2])) < 0.02 * len(sd[0]) && Math.abs(len(sd[1]) - len(sd[3])) < 0.02 * len(sd[1]), 'room: the card back-projects with equal opposite sides');
+    const cosA = (sd[0][0] * sd[1][0] + sd[0][1] * sd[1][1]) / len(sd[0]) / len(sd[1]);
+    assert.ok(Math.abs(cosA) < Math.sin(1.5 * Math.PI / 180), 'room: the card back-projects with right angles');
+    const o = P.cabGlassOutline(LY2.glass), n = v => { const l = Math.hypot(...v); return v.map(x => x / l); };
+    assert.strictEqual(P.cabLightPatch(n([0, -0.5, 1]), o), null, 'light going up: no patch');
+    const p0 = P.cabLightPatch(n([0, 1, 1]), o), p1 = P.cabLightPatch(n([0.5, 1, 1]), o), mx = a => a.reduce((s, v) => s + v[0], 0) / a.length;
+    assert.ok(p0.sill.length > 2 && p0.desk.length > 2, 'light down: sill and desk');
+    assert.ok(p0.sill.every(v => v[1] >= R.sill.y - 1 && v[1] <= P.cabProject([0, R.sill.y, R.sill.z])[1] + 1), 'sill patch on the sill');
+    assert.ok(p0.desk.every(v => v[1] >= R.desk.y - 1 && v[1] <= P.cabProject([0, R.desk.y, R.desk.z])[1] + 1), 'desk patch on the desk');
+    assert.ok(mx(p1.desk) > mx(p0.desk) + 100, 'light from the left: the patch to the right');
+    assert.ok(P.cabDiscCover(0.005, 0.3, 1) === 0 && P.cabDiscCover(0.005, 0.3, 0.1) === 1 && Math.abs(P.cabDiscCover(0.005, 0.3, 0.3) - 0.5) < 0.02, 'eclipse cover');
+    let prev = 1; for (let d = 0.29; d <= 0.31; d += 0.0005) { const v = P.cabDiscCover(0.005, 0.3, d); assert.ok(v <= prev + 1e-9); prev = v; }
+    assert.ok(/const LT_ON = !LOWQ && !DEV\.phone && \(!DBG \|\| DBG\.sun\);/.test(cab) && /function ltRun\(\) \{ if \(LT_ON && /.test(cab), 'light from outside: off in low mode, on phones, with sun=0');
+    assert.ok(/if \(ANIM \|\| document\.hidden\) return; \/\/ held while the camera moves \(and unseen\)\n  let tg = \{\};/.test(cab), 'light from outside: held during camera moves');
+    assert.ok(!/mix-blend-mode/.test(css) && /\.k-moving :is\([^)]*#kSun,#kStrip[^)]*\)\{visibility:hidden\}/.test(css), 'no blend modes; light hidden with the room during moves');
+    assert.ok(/setStrip\(readPref\(LS, PREF_KEYS\.cabStrip\) === '1', false\)/.test(cab) && P.PREF_KEYS.cabStrip && has('kab.stripOn') && has('kab.stripOff'), 'ceiling strip: off by default, saved, worded');
+  }
   // the laptop follows the plan while it flies
   assert.ok(/if \(st\) \{ lapPlan\(st\); return; \}/.test(cab), 'laptop: the plan track');
 }

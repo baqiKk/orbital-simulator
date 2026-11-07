@@ -407,10 +407,18 @@ html[data-q=low] *,html[data-q=low] *::before,html[data-q=low] *::after{transiti
   -webkit-mask:var(--room) 0 0/100% 100% no-repeat;mask:var(--room) 0 0/100% 100% no-repeat}
 html[data-q=low] .k-shine{display:none}
 .k-move{position:absolute;left:0;top:0;pointer-events:none}
-.k-moving :is(#kGlow,#kRoomSlot,#kShine,#kAqua,#kSteam,#kNight,#kCat){visibility:hidden}
+.k-moving :is(#kGlow,#kRoomSlot,#kShine,#kAqua,#kSteam,#kNight,#kSun,#kStrip,#kCat){visibility:hidden}
+/* light from outside (js/cabin.js ltDraw) and the ceiling strip (buildStrip): pictures drawn with the room's alpha already
+   in them, plain translucent layers over the shade (no blend mode); the cat's rim inside each of its parts (.k-rim) */
+.k-lit{pointer-events:none}
+#kStrip{opacity:0;transition:opacity .6s}
+.strip-on #kStrip{opacity:1}
+html[data-q=low] #kSun{display:none}
+.k-part>*{position:absolute;left:0;top:0;width:100%;height:100%}
+.k-rim{pointer-events:none;opacity:0}
 .lamp-off .k-glow{opacity:0}
-.k-cat{transition:filter .6s;filter:grayscale(0) brightness(1) sepia(0) hue-rotate(0deg) saturate(1)}
-.lamp-off .k-cat{filter:grayscale(1) brightness(.5) sepia(.5) hue-rotate(170deg) saturate(1.5)}
+.k-cat .k-layer,.k-cat .k-whisk{transition:filter .6s;filter:grayscale(0) brightness(1) sepia(0) hue-rotate(0deg) saturate(1)}
+.lamp-off .k-cat .k-layer,.lamp-off .k-cat .k-whisk{filter:grayscale(1) brightness(.5) sepia(.5) hue-rotate(170deg) saturate(1.5)}
 .k-whisk path{fill:none;stroke:var(--cab-cream);stroke-width:2.4;stroke-linecap:round;opacity:.72}
 .k-tail{animation:kTail 5.5s ease-in-out infinite alternate}
 .k-earL{animation:kEarL 11s -4s infinite}

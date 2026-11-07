@@ -1,7 +1,7 @@
 // Persisted UI preferences: view mode and window layout.
 // DOM-free: the storage object is passed in (localStorage, sessionStorage, a stub or null), so Node tests can run it.
 // Every storage access is wrapped: private windows, blocked site data and quota errors must never break the page.
-const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify' };
+const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabStrip: 'orbsim.cab.strip', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify' };
 const VIEW_MODES = ['low', 'normal', '3d'];
 // placement order: overview's default spot sits under Results, so it comes after it
 const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'gloss', 'model', 'credits'];
@@ -129,6 +129,54 @@ function cabGlassCam(vw, vh, g) {
   const fx = CAB_FOCUS[0] + t * (CAB_FOCUS[1] - CAB_FOCUS[0]);
   return { s, x: Math.min(g.x1 - w, Math.max(g.x0, fx - w / 2)), y: g.y0 + (gh - h) / 2 };
 }
+// The room's geometry for the light through the glass (art px; x right, y down, z from the wall towards the viewer).
+// The wall is the picture plane (z = 0 lands on the art 1:1); the eye looks straight at it from z = D, level with the
+// art point (px, yh). Measured on the illustration: the horizon yh and the distance D from the vanishing points of the
+// card on the desk (back-projected with them, its corners form a 618 × 358 rectangle with 90.6° corners); px is the
+// window's centre. Brightness steps down the columns x 3300 / 4000 / 5000 of the 3840 tier: the sill's top meets the
+// wall at y 2172 and its front edge shows at y 2295 (so it is 410 deep), the desk meets the wall at y 2625 and its front
+// edge shows at y 3390 (1294 deep).
+const CAB_ROOM = { px: 3608, yh: 1170, D: 3752, sill: { y: 2172, z: 410 }, desk: { y: 2625, z: 1294 } };
+// art point of a room point
+function cabProject(p, R = CAB_ROOM) { const k = R.D / (R.D - p[2]); return [R.px + (p[0] - R.px) * k, R.yh + (p[1] - R.yh) * k]; }
+// the room point at height y (a level plane) seen at art point a
+function cabUnproject(a, y, R = CAB_ROOM) { const k = (y - R.yh) / (a[1] - R.yh); return [R.px + (a[0] - R.px) * k, y, R.D * (1 - k)]; }
+// the glass's outline on the wall (clockwise on screen): layout.json's box with its rounded corners (g.c: the corners'
+// centres; each radius from the box)
+function cabGlassOutline(g, n = 8) {
+  const out = [], C = [['TL', g.x0, g.y0, 180], ['TR', g.x1, g.y0, 270], ['BR', g.x1, g.y1, 0], ['BL', g.x0, g.y1, 90]];
+  for (const [k, ex, ey, a0] of C) {
+    const [cx, cy] = g.c[k], r = (Math.abs(cx - ex) + Math.abs(cy - ey)) / 2;
+    for (let i = 0; i <= n; i++) { const a = (a0 + 90 * i / n) * Math.PI / 180; out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
+  }
+  return out;
+}
+// the part of a polygon on one side of the line y = yc (below: y >= yc)
+function cabClipY(poly, yc, below) {
+  const out = [], ins = p => (below ? p[1] >= yc : p[1] <= yc);
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length], ia = ins(a), ib = ins(b);
+    if (ia) out.push(a);
+    if (ia !== ib) { const t = (yc - a[1]) / (b[1] - a[1]); out.push([a[0] + t * (b[0] - a[0]), yc]); }
+  }
+  return out;
+}
+// Where light travelling along L (unit, room axes) through the glass (outline, art px on the wall) lands: on the sill's
+// top, else on the desk up to its front edge. Window rows split along horizontal lines (each plane is level), every
+// point is carried along L to its plane and drawn in perspective. Art-px polygons (possibly empty); null when the light
+// does not go down into the room.
+function cabLightPatch(L, outline, R = CAB_ROOM) {
+  if (!(L[1] > 1e-3 && L[2] > 1e-3)) return null;
+  const q = L[2] / L[1], ySill = R.sill.y - R.sill.z / q, yFront = R.desk.y - R.desk.z / q;
+  const land = (w, y) => { const t = (y - w[1]) / L[1]; return cabProject([w[0] + t * L[0], y, t * L[2]], R); };
+  return { sill: cabClipY(outline, ySill, true).map(w => land(w, R.sill.y)), desk: cabClipY(cabClipY(outline, ySill, false), yFront, true).map(w => land(w, R.desk.y)) };
+}
+// eclipses for the light from outside: the share of a disc of angular radius r1 covered by one of r2 whose centre is d away (flat geometry)
+function cabDiscCover(r1, r2, d) {
+  if (d >= r1 + r2) return 0; if (d <= r2 - r1) return 1; if (d <= r1 - r2) return r2 * r2 / (r1 * r1);
+  const a = Math.acos((d * d + r1 * r1 - r2 * r2) / (2 * d * r1)), b = Math.acos((d * d + r2 * r2 - r1 * r1) / (2 * d * r2));
+  return (r1 * r1 * (a - Math.sin(2 * a) / 2) + r2 * r2 * (b - Math.sin(2 * b) / 2)) / (Math.PI * r1 * r1);
+}
 // Cabin sound settings: the radio (on by default) and three layers (off), each with a volume 0–1; noise colour white /
 // pink / brown; the pomodoro's bell (on); one mute for all. Anything missing or broken falls back per field.
 const CAB_NOISE = ['white', 'pink', 'brown'];
@@ -155,4 +203,4 @@ function parseSimSnap(raw, now) {
   return o;
 }
 
-if (typeof module !== 'undefined') module.exports = { SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
