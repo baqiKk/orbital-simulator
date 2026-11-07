@@ -4,7 +4,9 @@
 // to the glass), the lamp's glow on the glass, the room (img/cabin/<tier>/room.webp, see tools/cabin-art), the fish and
 // the tea's steam, the cat (shadow, tail, ears, body, whiskers), what code draws onto paper (posters, card), the lamp-off
 // shade, and what glows by itself (clock, laptop). Everything lives in art pixels (7136 × 3528, img/cabin/layout.json)
-// inside one transformed stage, so every crop keeps the layers aligned. No parallax: the room stands still.
+// inside one transformed stage (two elements, #kStage and #kTop, moved together), so every crop keeps the layers
+// aligned. While the camera moves, the room's big layers are drawn on screen-sized canvases instead (mvBegin). No
+// parallax: the room stands still.
 applyI18n();
 document.title = _('kabin.title');
 const $ = s => document.querySelector(s);
@@ -27,13 +29,14 @@ const GPU = (() => {
     return { gl2: true, max };
   } catch (e) { return { gl2: false, max: 0 }; }
 })();
-// Temporary debugging (?debug=1): an overlay in the corner with frame times and the art tier drawn during camera moves,
-// and A/B switches: shine=0 (no room light), cap=<px> (3D texture cap), warm=<frames> (frames between promoting the
-// stage to its own GPU layer and moving it), wc=0 (no will-change during moves). A developer aid with technical labels
+// Temporary debugging (?debug=1): an overlay in the corner with frame times, the art tier and the path drawn during
+// camera moves, and A/B switches: move=dom (the old path: the DOM stage scaled, no move canvases), shine=0 (no room
+// light), cap=<px> (3D texture cap), wc=1 (will-change: transform on the stage during DOM moves; off by default now),
+// warm=<frames> (with wc=1: frames between promoting the stage and moving it). A developer aid with technical labels
 // only; it goes when the bug it chases is fixed.
 const DBG = (() => {
   const q = new URLSearchParams(location.search); if (q.get('debug') !== '1') return null;
-  return { shine: q.get('shine') !== '0', cap: +q.get('cap') || 0, warm: q.has('warm') ? +q.get('warm') : 3, wc: q.get('wc') !== '0', frames: [], draws: 0, el: null };
+  return { dom: q.get('move') === 'dom', shine: q.get('shine') !== '0', cap: +q.get('cap') || 0, warm: q.has('warm') ? +q.get('warm') : 3, wc: q.get('wc') === '1', frames: [], draws: 0, cost: [], path: '-', el: null };
 })();
 const TMAX = Math.min(cabTierMax(DEV), GPU.max ? CAB_TIERS.filter(t => t <= GPU.max).pop() || CAB_TIERS[0] : Infinity);
 const TEX_CAP = Math.min(DEV.phone ? 2048 : 4096, GPU.max || Infinity, DBG && DBG.cap || Infinity);
@@ -98,7 +101,8 @@ function richText(t, key) {
 // deterministic noise (positions of painted stars and fish starts stay put between visits)
 const rnd = (() => { let s = 20261025; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); })();
 
-const stage = $('#kStage');
+const stage = $('#kStage'), STAGES = [stage, $('#kTop')];
+const stageWC = v => { for (const s of STAGES) s.style.willChange = v; };
 let LY = null, VW = 0, VH = 0, CAM = null, view = 'desk', ANIM = 0, ART_T = 0, DPR = 1;
 const LAYERS = ['room', 'shadow', 'tail', 'earL', 'earR', 'body'];
 const IMG = {};
@@ -114,18 +118,30 @@ function layerImg(name, T) {
 }
 // load tier T when it is sharper than the one shown; the new images replace the old ones once decoded (no flash), and
 // never while the camera moves (TIER_SWAP waits for the end of the move: a mid-move swap re-rasterises the whole stage)
+// Decoded sets by tier (DEC; layer name -> image) feed the move canvases: the sharpest one up to MV_CAP, so a 7136 room
+// is never uploaded a second time as a canvas texture (a 3840 set is fetched for that). Only the shown tier and that
+// one are kept.
 let TIER_SWAP = null;
+const DEC = {}, MV_CAP = 3840;
 function wantTier(T) {
   if (T <= ART_T) return; ART_T = T;
   const fresh = LAYERS.map(n => [n, layerImg(n, T)]);
   const swap = () => {
     if (ART_T !== T) return;
+    for (const k of Object.keys(DEC)) if (+k !== T && +k !== MV_CAP) delete DEC[k];
+    if (T > MV_CAP && !DEC[MV_CAP]) mvPreload();
     for (const [n, im] of fresh) { if (IMG[n]) IMG[n].replaceWith(im); else $(n === 'room' ? '#kRoomSlot' : '#kCat').appendChild(im); IMG[n] = im; }
     $('#kCat').appendChild($('#kWhisk'));
     for (const id of ['#kNight', '#kShine']) $(id).style.setProperty('--room', `url("${new URL(`img/cabin/${T}/room.webp`, location.href)}")`);
     document.body.classList.add('k-ready');
   };
-  Promise.all(fresh.map(([, im]) => im.decode().catch(() => {}))).then(() => { if (ANIM) TIER_SWAP = swap; else swap(); });
+  Promise.all(fresh.map(([, im]) => im.decode().catch(() => {}))).then(() => { DEC[T] = Object.fromEntries(fresh); if (ANIM) TIER_SWAP = swap; else swap(); });
+}
+let MV_LOADING = false;
+function mvPreload() {
+  if (MV_LOADING) return; MV_LOADING = true;
+  const set = LAYERS.map(n => [n, layerImg(n, MV_CAP)]);
+  Promise.all(set.map(([, im]) => im.decode())).then(() => { if (ART_T > MV_CAP) DEC[MV_CAP] = Object.fromEntries(set); }).catch(() => {}).finally(() => { MV_LOADING = false; });
 }
 const tierSwapNow = () => { const f = TIER_SWAP; TIER_SWAP = null; if (f) f(); };
 const needTier = s => cabTier(LY.size[0] * s * DPR, TMAX);
@@ -502,8 +518,8 @@ function fvFrame(force) {
   if (DBG && ANIM) DBG.draws++;
   if (FV.fade) { FV.fade = 0; fvCanvas().style.opacity = ''; }
 }
-// The light through the glass: the sunlit surface in view brightens the room a little (#kShine, screen blend over the
-// room's opaque part), tinted by the body that gives most of it (its js/bodies.js colour mixed into the screen cyan); a
+// The light through the glass: the sunlit surface in view brightens the room a little (#kShine, a plain translucent
+// layer over the room's opaque part, no blend mode), tinted by the body that gives most of it (its js/bodies.js colour mixed into the screen cyan); a
 // deep-space view gives none. The amount is geometric: each body's solid angle inside the glass's field of view
 // (half-angle 50°, as the sky's projection), as a share of that field, times its lit fraction. Screen area plays no
 // part, so neither the window size nor the camera's move between desk and glass changes it. A low-pass filter
@@ -628,6 +644,113 @@ function fvStop() {
 // (after the room is in: its images come before the planets')
 function fvSync() { if (!LY || !document.body.classList.contains('k-ready')) return; const want = !!fvState(Date.now()); if (want && !FV.on) fvStart(); else if (!want && FV.on) fvStop(); }
 
+// ---------- the move canvases ----------
+// While the camera moves between desk and glass, the room, the light through the glass, the lamp's glow, the fish and
+// the steam are drawn on #kMoveA (under the paper), the lamp-off shade and the cat on #kMoveB (over it), each the size
+// of the screen, with drawImage from a decoded art set (the sharpest up to MV_CAP) in the camera's crop; those DOM
+// layers are hidden meanwhile (.k-moving). The paper (posters, card) and what glows by itself (clock, laptop) stay in the
+// DOM stage, small, and need no GPU layer of their own. At rest the DOM stage is back, at the shown (sharp) tier. The
+// same pictures in both: the light and the shade are plain translucent layers masked by the room's alpha (CSS mask at
+// rest, source-atop / destination-in here), the glow is the same gradient, the cat takes the same computed filter and
+// the current angles of its tail and ears.
+const PROBE = el('i', { hidden: '' }, document.body);
+// a CSS colour (tokens, color-mix) as sRGB 0–255
+function rgbOf(v) {
+  PROBE.style.color = ''; PROBE.style.color = v;
+  const s = getComputedStyle(PROBE).color, n = (s.match(/-?\d*\.?\d+(?:e-?\d+)?/g) || ['0', '0', '0']).map(Number);
+  return s.startsWith('color(') ? n.slice(0, 3).map(x => x * 255) : n.slice(0, 3);
+}
+const rgba = (c, a) => `rgba(${c.map(x => Math.round(x)).join(',')},${a})`;
+// fill the rectangle (x, y, w, h) with an elliptical radial gradient: centre (cx, cy), radii (rx, ry), stops [offset, rgb, alpha]
+function ellFill(g, cx, cy, rx, ry, stops, x, y, w, h) {
+  g.save(); g.translate(cx, cy); g.scale(rx, ry);
+  const gr = g.createRadialGradient(0, 0, 0, 0, 0, 1); for (const [o, col, a] of stops) gr.addColorStop(o, rgba(col, a));
+  g.fillStyle = gr; g.fillRect((x - cx) / rx, (y - cy) / ry, w / rx, h / ry); g.restore();
+}
+// The lamp-off shade (#kNight), drawn once at a quarter of the art's size (smooth gradients only): the approved
+// multiply tones of Phase 9 (three layers) turned into one translucent overlay that darkens alike without a blend mode.
+// Per pixel, for the multiply tone M: alpha a = 1 − mean(M) (the multiply's average darkening) and a dark tint
+// P = 0.45 · (M − (1 − a)) (premultiplied; the least-squares line through x · M over mid tones keeps its cool cast).
+function buildNight() {
+  const [W, H] = LY.size, w = Math.round(W / 4), h = Math.round(H / 4), tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
+  const g = tmp.getContext('2d', { willReadFrequently: true }), mix = (p, a, b) => a.map((x, i) => p * x + (1 - p) * b[i]);
+  const scr = rgbOf('var(--cab-screen)'), c0 = mix(0.3, scr, rgbOf('var(--cab-wall-lo)')), c1 = mix(0.08, scr, rgbOf('var(--cab-shadow)')), c2 = mix(0.46, scr, rgbOf('var(--cab-wall)'));
+  g.scale(w / W, h / H);
+  g.fillStyle = rgba(c0, 1); g.fillRect(0, 0, W, H);
+  ellFill(g, 3600, 2250, 2600, 900, [[0.2, c2, 1], [0.8, c2, 0]], 0, 0, W, H);
+  ellFill(g, 1560, 2300, 1500, 1300, [[0, c1, 1], [1, c1, 0]], 0, 0, W, H);
+  const im = g.getImageData(0, 0, w, h), d = im.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const m0 = d[i] / 255, m1 = d[i + 1] / 255, m2 = d[i + 2] / 255, a = 1 - (m0 + m1 + m2) / 3, k = a > 0 ? 255 / a : 0;
+    d[i] = Math.round(k * Math.min(a, Math.max(0, 0.45 * (m0 - 1 + a))));
+    d[i + 1] = Math.round(k * Math.min(a, Math.max(0, 0.45 * (m1 - 1 + a))));
+    d[i + 2] = Math.round(k * Math.min(a, Math.max(0, 0.45 * (m2 - 1 + a))));
+    d[i + 3] = Math.round(255 * a);
+  }
+  g.putImageData(im, 0, 0);
+  const cv = $('#kNight'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(tmp, 0, 0);
+}
+const MV = { on: false, set: null, A: $('#kMoveA'), B: $('#kMoveB'), whisk: null, lamp: null, cream: null, shine: null };
+const GLOW = $('#kGlow'), NIGHT = $('#kNight'), CAT = $('#kCat');
+const CAT_ID = /^(none|grayscale\(0\) brightness\(1\) sepia\(0\) hue-rotate\(0deg\) saturate\(1\))$/;
+// the decoded art set for the canvases: the sharpest up to MV_CAP, else the smallest there is
+function mvSet() {
+  const ks = Object.keys(DEC).map(Number).sort((a, b) => a - b); if (!ks.length) return null;
+  const T = ks.filter(t => t <= MV_CAP).pop() || ks[0]; return { T, img: DEC[T] };
+}
+function mvBegin() {
+  if (DBG && DBG.dom) return false;
+  if (MV.on) return true;
+  const set = mvSet(); if (!set || !IMG.room) return false;
+  if (!MV.whisk) { MV.whisk = [...$('#kWhisk').querySelectorAll('path')].map(p => new Path2D(p.getAttribute('d'))); MV.lamp = rgbOf('var(--cab-lamp)'); MV.cream = rgbOf('var(--cab-cream)'); }
+  MV.shine = rgbOf(getComputedStyle($('#kShine')).getPropertyValue('--fv-col').trim() || 'var(--cab-screen)');
+  MV.set = set; MV.on = true;
+  for (const cv of [MV.A, MV.B]) { cv.width = Math.round(VW * DPR); cv.height = Math.round(VH * DPR); Object.assign(cv.style, { width: VW + 'px', height: VH + 'px' }); cv.hidden = false; }
+  drawMove(CAM); $('#kRoot').classList.add('k-moving'); // drawn first, then the DOM layers go, in the same frame
+  return true;
+}
+function mvEnd() {
+  if (!MV.on) return; MV.on = false; MV.set = null;
+  $('#kRoot').classList.remove('k-moving');
+  for (const cv of [MV.A, MV.B]) { cv.hidden = true; cv.width = cv.height = 1; } // their memory goes too
+}
+function drawMove(c) {
+  const t0 = performance.now(), A = MV.A.getContext('2d'), B = MV.B.getContext('2d'), k = c.s * DPR, [W, H] = LY.size, im = MV.set.img;
+  for (const g of [A, B]) {
+    g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.filter = 'none';
+    g.clearRect(0, 0, MV.A.width, MV.A.height); g.setTransform(k, 0, 0, k, -c.x * k, -c.y * k); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'medium';
+  }
+  // under the paper: the room, the light through the glass on its opaque part, the lamp's glow behind it (on the
+  // glass), the fish and the steam
+  A.drawImage(im.room, 0, 0, W, H);
+  if (FV.shO > 0 && !LOWQ) { A.globalCompositeOperation = 'source-atop'; A.globalAlpha = FV.shO; ellFill(A, 3600, 1950, 3400, 2000, [[0, MV.shine, 1], [0.72, MV.shine, 0]], 0, 0, W, H); }
+  const gl = +getComputedStyle(GLOW).opacity;
+  if (gl > 0) {
+    const g = LY.glass, x = g.x0, y = g.y0 + (g.y1 - g.y0) * 0.35, w = (g.x1 - g.x0) * 0.42, h = (g.y1 - g.y0) * 0.65;
+    A.globalCompositeOperation = 'destination-over'; A.globalAlpha = gl;
+    ellFill(A, x, y + 0.92 * h, 0.85 * w, 0.75 * h, [[0, MV.lamp, 0.3], [0.45, MV.lamp, 0.09], [0.78, MV.lamp, 0]], x, y, w, h);
+  }
+  A.globalCompositeOperation = 'source-over'; A.globalAlpha = 1;
+  for (const cv of [AQ.cv, ST.cv]) A.drawImage(cv, parseFloat(cv.style.left), parseFloat(cv.style.top), parseFloat(cv.style.width), parseFloat(cv.style.height));
+  // over the paper: the lamp-off shade on the room's opaque part, then the cat (its filter, its tail's and ears' angles)
+  const nt = +getComputedStyle(NIGHT).opacity;
+  if (nt > 0) {
+    B.globalAlpha = nt; B.drawImage(NIGHT, 0, 0, W, H); B.globalAlpha = 1;
+    B.globalCompositeOperation = 'destination-in'; B.drawImage(im.room, 0, 0, W, H); B.globalCompositeOperation = 'source-over';
+  }
+  const f = getComputedStyle(CAT).filter; if (!CAT_ID.test(f)) B.filter = f;
+  for (const n of ['shadow', 'tail', 'earL', 'earR', 'body']) {
+    const L = LY.layers[n], tf = L.pivot && IMG[n] ? getComputedStyle(IMG[n]).transform : 'none';
+    if (tf === 'none') { B.drawImage(im[n], L.x, L.y, L.w, L.h); continue; }
+    const m = new DOMMatrix(tf), [ox, oy] = L.pivot;
+    B.save(); B.translate(ox, oy); B.transform(m.a, m.b, m.c, m.d, m.e, m.f); B.translate(-ox, -oy); B.drawImage(im[n], L.x, L.y, L.w, L.h); B.restore();
+  }
+  B.strokeStyle = rgba(MV.cream, 1); B.lineWidth = 2.4; B.lineCap = 'round'; B.globalAlpha = 0.72;
+  for (const p of MV.whisk) B.stroke(p);
+  B.globalAlpha = 1; B.filter = 'none';
+  if (DBG) { DBG.cost.push(performance.now() - t0); DBG.mvT = MV.set.T; }
+}
+
 // ---------- camera ----------
 // A camera is the stage's scale s and the art point (x, y) at the screen's top left. The desk view crops the art to
 // the screen (cabCrop); "go to the glass" flies to the window view (cabGlassCam): the screen point of the glass's
@@ -636,7 +759,7 @@ const glassC = () => [(LY.glass.x0 + LY.glass.x1) / 2, (LY.glass.y0 + LY.glass.y
 const gScreen = c => { const g = glassC(); return [(g[0] - c.x) * c.s, (g[1] - c.y) * c.s]; };
 function apply(c) {
   CAM = c;
-  stage.style.transform = `translate(${-c.x * c.s}px,${-c.y * c.s}px) scale(${c.s})`;
+  const tf = `translate(${-c.x * c.s}px,${-c.y * c.s}px) scale(${c.s})`; for (const s of STAGES) s.style.transform = tf;
   const p = gScreen(c);
   SP.cv.style.transform = FV.cv.style.transform = `translate(${p[0] - SP.P0[0]}px,${p[1] - SP.P0[1]}px)`;
 }
@@ -649,26 +772,29 @@ function go(to) {
   const from = CAM, dest = to === 'desk' ? deskCam() : winCam();
   wantTier(needTier(dest.s));
   cancelAnimationFrame(ANIM); ANIM = 0;
-  // after the move: a tier that arrived meanwhile; the stage leaves its GPU layer a frame later, at rest (re-rastered
-  // sharp at the new scale)
+  // after the move: a tier that arrived meanwhile, and the DOM stage back in place of the canvases (rastered sharp at
+  // the new scale, in the same frame)
   const done = () => {
-    ANIM = 0; tierSwapNow(); sizeLife(); if (still()) drawStill(); FV.cam = null; fvKick(); dbgMove(false);
-    requestAnimationFrame(() => { if (!ANIM) stage.style.willChange = ''; });
+    ANIM = 0; tierSwapNow(); mvEnd(); sizeLife(); if (still()) drawStill(); FV.cam = null; fvKick(); dbgMove(false);
+    requestAnimationFrame(() => { if (!ANIM) stageWC(''); });
   };
   if (still()) { apply(dest); done(); return; }
-  // The stage (room and all) moves as one GPU layer, scaled, not re-rastered. It is promoted a few frames before the
-  // move starts: promoted and moved in the same frame, its first frames could come up empty (the room vanished).
-  if (!DBG || DBG.wc) stage.style.willChange = 'transform';
-  let warm = DBG ? DBG.warm : 3, t0 = 0;
+  // The room, its light and shade and the cat move on the canvases (mvBegin); the rest of the DOM stage is scaled
+  // without will-change. Scaling the whole DOM stage (7136 art px, one GPU layer under will-change, blended light and
+  // shade on it) ran out of GPU tiles and memory: parts of the room vanished for a moment. ?debug=1&move=dom brings the
+  // DOM path back for comparison (with wc=1 its will-change, promoted warm frames before the move).
+  const cv = mvBegin(), wc = !cv && DBG && DBG.wc;
+  if (wc) stageWC('transform');
+  let warm = wc ? DBG.warm : 0, t0 = 0;
   const T = 1200, A0 = gScreen(from), A1 = gScreen(dest), g = glassC();
-  dbgMove(true);
+  dbgMove(true, cv);
   const step = now => {
     if (DBG) DBG.frames.push(now);
     if (warm-- > 0) { ANIM = requestAnimationFrame(step); return; }
     if (!t0) t0 = now;
     const t = Math.min(1, (now - t0) / T), e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     const s = from.s * Math.pow(dest.s / from.s, e), A = [A0[0] + (A1[0] - A0[0]) * e, A0[1] + (A1[1] - A0[1]) * e];
-    apply({ s, x: g[0] - A[0] / s, y: g[1] - A[1] / s });
+    apply({ s, x: g[0] - A[0] / s, y: g[1] - A[1] / s }); if (MV.on) drawMove(CAM);
     if (t < 1) ANIM = requestAnimationFrame(step); else { apply(dest); done(); }
   };
   ANIM = requestAnimationFrame(step);
@@ -676,20 +802,21 @@ function go(to) {
 
 // ---------- debugging overlay (?debug=1, temporary) ----------
 const texBytes = () => { let b = 0; for (const e of TEXC.values()) if (e.ok && e.img) b += (e.img.naturalWidth || 0) * (e.img.naturalHeight || 0) * 4; return b; };
-function dbgMove(start) { if (!DBG) return; if (start) { DBG.frames = []; DBG.draws = 0; } dbgShow(); }
+function dbgMove(start, cv) { if (!DBG) return; if (start) { DBG.frames = []; DBG.draws = 0; DBG.cost = []; DBG.path = cv ? 'canvas' : 'dom'; } dbgShow(); }
 function dbgShow() {
   if (!DBG || !LY || !CAM) return;
   if (!DBG.el) DBG.el = el('pre', { class: 'k-debug', 'aria-hidden': 'true' }, document.body);
-  const f = DBG.frames, dt = f.slice(1).map((t, i) => t - f[i]), n = dt.length, avg = n ? dt.reduce((a, b) => a + b, 0) / n : 0;
+  const c = DBG.cost, f = DBG.frames, dt = f.slice(1).map((t, i) => t - f[i]), n = dt.length, avg = n ? dt.reduce((a, b) => a + b, 0) / n : 0;
   const shown = IMG.room ? +(IMG.room.src.match(/cabin\/(\d+)\//) || [0, 0])[1] : 0;
   DBG.el.textContent = [
-    `tier drawn ${shown} · wanted ${ART_T}${TIER_SWAP ? ' (swap waits)' : ''} · max ${TMAX}`,
+    `tier drawn ${shown} · wanted ${ART_T}${TIER_SWAP ? ' (swap waits)' : ''} · max ${TMAX} · decoded ${Object.keys(DEC).join('/') || '-'}`,
     `gpu max texture ${GPU.max || '?'} · 3d texture cap ${TEX_CAP} · dpr ${DPR}`,
-    `stage ${Math.round(LY.size[0] * CAM.s * DPR)}×${Math.round(LY.size[1] * CAM.s * DPR)} px · will-change ${stage.style.willChange || '-'} · ${ANIM ? 'moving' : view}`,
-    `move: ${n} frames · avg ${avg.toFixed(1)} ms · max ${(n ? Math.max(...dt) : 0).toFixed(1)} ms · >34 ms ${dt.filter(d => d > 34).length}`,
+    `stage ${Math.round(LY.size[0] * CAM.s * DPR)}×${Math.round(LY.size[1] * CAM.s * DPR)} px · will-change ${stage.style.willChange || '-'} · ${ANIM ? (MV.on ? 'moving, canvas' : 'moving, dom') : view}`,
+    `move (${DBG.path}${DBG.path === 'canvas' ? ' tier ' + DBG.mvT : ''}): ${n} frames · avg ${avg.toFixed(1)} ms · max ${(n ? Math.max(...dt) : 0).toFixed(1)} ms · >34 ms ${dt.filter(d => d > 34).length}`,
+    `canvas draw: ${c.length ? `avg ${(c.reduce((a, b) => a + b, 0) / c.length).toFixed(1)} ms · max ${Math.max(...c).toFixed(1)} ms` : '-'}`,
     `glass ${FV.on ? (FV.V3 ? '3d' : '2d') : 'scene'} · glass frames in move ${DBG.draws} · room light ${FV.shO}`,
     `planet textures ${(texBytes() / 1048576).toFixed(0)} MB decoded`,
-    `switches shine=${+DBG.shine} cap=${DBG.cap || '-'} warm=${DBG.warm} wc=${+DBG.wc}`,
+    `switches move=${DBG.dom ? 'dom' : 'canvas'} shine=${+DBG.shine} cap=${DBG.cap || '-'} wc=${+DBG.wc} warm=${DBG.warm}`,
   ].join('\n');
 }
 if (DBG) setInterval(dbgShow, 250);
@@ -892,7 +1019,7 @@ function layout() {
   Object.assign(SP.cv.style, { left: -SP.M + 'px', top: -SP.M + 'px', width: cw + 'px', height: ch + 'px' });
   SP.P0 = pd; SP.G = [pd[0] + SP.M, pd[1] + SP.M]; // the glass's centre on screen and in canvas px at the desk view
   SP.F = Math.max(VW, VH) / 2 / Math.tan(50 * deg); SP.sky = null; fvSize();
-  cancelAnimationFrame(ANIM); ANIM = 0; stage.style.willChange = ''; tierSwapNow();
+  cancelAnimationFrame(ANIM); ANIM = 0; mvEnd(); stageWC(''); tierSwapNow();
   apply(cam); wantTier(needTier(cam.s)); sizeLife();
   if (still()) drawStill();
   spaceSoon(); fvKick();
@@ -932,10 +1059,10 @@ function buildHits() {
 // ---------- start ----------
 fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   LY = ly;
-  box(stage, 0, 0, LY.size[0], LY.size[1]);
+  for (const s of STAGES) box(s, 0, 0, LY.size[0], LY.size[1]);
   for (const id of ['#kArt', '#kWhisk']) { const s = $(id); s.setAttribute('viewBox', `0 0 ${LY.size[0]} ${LY.size[1]}`); box(s, 0, 0, LY.size[0], LY.size[1]); }
   { const c = LY.clock, s = $('#kGlowArt'); s.setAttribute('viewBox', `${c.x0} ${c.y0} ${c.x1 - c.x0} ${c.y1 - c.y0}`); box(s, c.x0, c.y0, c.x1 - c.x0, c.y1 - c.y0); }
-  box($('#kNight'), 0, 0, LY.size[0], LY.size[1]); box($('#kShine'), 0, 0, LY.size[0], LY.size[1]);
+  box($('#kNight'), 0, 0, LY.size[0], LY.size[1]); box($('#kShine'), 0, 0, LY.size[0], LY.size[1]); buildNight();
   const g = LY.glass; box($('#kGlow'), g.x0, g.y0 + (g.y1 - g.y0) * 0.35, (g.x1 - g.x0) * 0.42, (g.y1 - g.y0) * 0.65);
   buildArt(); buildHits(); initLife();
   box($('#kLed'), PHONES_LED[0] - PHONES_LED[2], PHONES_LED[1] - PHONES_LED[2], 2 * PHONES_LED[2], 2 * PHONES_LED[2]);

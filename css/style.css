@@ -379,9 +379,11 @@ html[data-q=low] *,html[data-q=low] *::before,html[data-q=low] *::after{transiti
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 
 /* ---------- cabin (kabin.html) ----------
-   One stage in art pixels (7136 × 3528), scaled and moved by js/cabin.js; the sky canvas sits behind it, fixed to the
-   screen. Lamp off: the room is multiplied by a cool dim tone (masked to the room's opaque part), the cat cools down
-   through its own filter, the clock and the laptop keep glowing. */
+   One stage in art pixels (7136 × 3528), scaled and moved by js/cabin.js, in two parts (#kStage: room, paper, shade,
+   cat; #kTop: what glows by itself and the hit areas); the sky canvas sits behind it, fixed to the screen. Lamp off: a
+   translucent cool shade over the room's opaque part (#kNight, no blend mode), the cat cools down through its own
+   filter, the clock and the laptop keep glowing. While the camera moves, two screen-sized canvases (#kMoveA under the
+   paper, #kMoveB over it) draw the room, the light, the shade and the cat; those DOM layers are hidden (.k-moving). */
 .k-page{background:var(--void)}
 .k-root{position:fixed;inset:0;overflow:hidden;overflow:clip;background:var(--void)}
 #kSpace{position:absolute;display:block}
@@ -394,18 +396,18 @@ html[data-q=low] *,html[data-q=low] *::before,html[data-q=low] *::after{transiti
 .k-quad{left:0;top:0;transform-origin:0 0;pointer-events:none}
 .k-quad svg,.k-quad img{display:block}
 .k-glow{pointer-events:none;transition:opacity .6s;background:radial-gradient(ellipse 85% 75% at 0% 92%,color-mix(in srgb,var(--cab-lamp) 30%,transparent),color-mix(in srgb,var(--cab-lamp) 9%,transparent) 45%,transparent 78%)}
-.k-night{pointer-events:none;opacity:0;transition:opacity .6s;mix-blend-mode:multiply;
-  background:radial-gradient(1500px 1300px at 1560px 2300px,color-mix(in srgb,var(--cab-screen) 8%,var(--cab-shadow)),transparent),
-    radial-gradient(2600px 900px at 3600px 2250px,color-mix(in srgb,var(--cab-screen) 46%,var(--cab-wall)) 20%,transparent 80%),
-    color-mix(in srgb,var(--cab-screen) 30%,var(--cab-wall-lo));
+/* the shade's picture is drawn by js/cabin.js buildNight (from the tokens) */
+.k-night{pointer-events:none;opacity:0;transition:opacity .6s;
   -webkit-mask:var(--room) 0 0/100% 100% no-repeat;mask:var(--room) 0 0/100% 100% no-repeat}
 .lamp-off .k-night{opacity:1}
-/* light through the glass during a flight (js/cabin.js fvShineTick): the colour of the sunlit body in view; no CSS
-   transition (the opacity is low-pass filtered in JS; a running transition would put the blended layer on the compositor) */
-.k-shine{pointer-events:none;opacity:0;mix-blend-mode:screen;
+/* light through the glass during a flight (js/cabin.js fvShineTick): the colour of the sunlit body in view, a plain
+   translucent layer (no blend mode); no CSS transition (the opacity is low-pass filtered in JS; a running transition would put the blended layer on the compositor) */
+.k-shine{pointer-events:none;opacity:0;
   background:radial-gradient(3400px 2000px at 3600px 1950px,var(--fv-col,var(--cab-screen)),transparent 72%);
   -webkit-mask:var(--room) 0 0/100% 100% no-repeat;mask:var(--room) 0 0/100% 100% no-repeat}
 html[data-q=low] .k-shine{display:none}
+.k-move{position:absolute;left:0;top:0;pointer-events:none}
+.k-moving :is(#kGlow,#kRoomSlot,#kShine,#kAqua,#kSteam,#kNight,#kCat){visibility:hidden}
 .lamp-off .k-glow{opacity:0}
 .k-cat{transition:filter .6s;filter:grayscale(0) brightness(1) sepia(0) hue-rotate(0deg) saturate(1)}
 .lamp-off .k-cat{filter:grayscale(1) brightness(.5) sepia(.5) hue-rotate(170deg) saturate(1.5)}

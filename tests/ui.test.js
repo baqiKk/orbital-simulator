@@ -590,9 +590,16 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(!/\.k-shine\{[^}]*transition/.test(css) && /FV\.shV \+= \(FV\.shTarget - FV\.shV\) \* \(1 - Math\.exp\(-dt \/ FV_SHINE_TAU\)\)/.test(cab), 'cabin light: low-pass filter, no CSS transition');
   assert.ok(/if \(ANIM \|\| document\.hidden\) return; \/\/ held while the camera moves/.test(cab) && /if \(ANIM\) TIER_SWAP = swap; else swap\(\);/.test(cab), 'held during the camera move: light, tier swap');
   assert.ok(!/if \(ANIM && !force\) return/.test(cab) && !/if \(ANIM\) \{ FV\.timer/.test(cab), 'the view through the glass keeps flowing during the move');
-  // the stage is promoted a few frames before it moves and demoted a frame after, at rest; art tiers and planet textures
-  // stay within the GPU's texture limit; the debugging overlay exists only with ?debug=1
-  assert.ok(/if \(warm-- > 0\) \{ ANIM = requestAnimationFrame\(step\); return; \}/.test(cab) && /requestAnimationFrame\(\(\) => \{ if \(!ANIM\) stage\.style\.willChange = ''; \}\);/.test(cab), 'pre-promoted, demoted at rest');
+  // camera moves: the room, its light and shade and the cat on screen-sized canvases (those DOM layers hidden
+  // meanwhile), the DOM stage back at rest at the shown tier; no will-change on the stage (only with
+  // ?debug=1&move=dom&wc=1); no blend mode on the large light and shade layers; the canvases draw from a decoded set no
+  // sharper than MV_CAP
+  assert.ok(/const cv = mvBegin\(\), wc = !cv && DBG && DBG\.wc;/.test(cab) && /if \(MV\.on\) drawMove\(CAM\);/.test(cab) && /tierSwapNow\(\); mvEnd\(\);/.test(cab), 'camera move on the canvases, DOM back at rest');
+  assert.ok(!/willChange = 'transform'/.test(cab) && (cab.match(/stageWC\('transform'\)/g) || []).length === 1, 'no will-change on the stage outside the debug switch');
+  assert.ok(/\.k-moving :is\(#kGlow,#kRoomSlot,#kShine,#kAqua,#kSteam,#kNight,#kCat\)\{visibility:hidden\}/.test(css), 'DOM room layers hidden during the move');
+  assert.ok(!/mix-blend-mode/.test(css.match(/\.k-night\{[^}]*\}/)[0] + css.match(/\.k-shine\{[^}]*\}/)[0]), 'no blend mode on the light and the shade');
+  assert.ok(/const DEC = \{\}, MV_CAP = 3840;/.test(cab) && /const T = ks\.filter\(t => t <= MV_CAP\)\.pop\(\) \|\| ks\[0\]/.test(cab), 'move canvases: tier up to MV_CAP');
+  // art tiers and planet textures stay within the GPU's texture limit; the debugging overlay exists only with ?debug=1
   assert.ok(/const TMAX = Math\.min\(cabTierMax\(DEV\), GPU\.max \?/.test(cab) && /const TEX_CAP = Math\.min\(DEV\.phone \? 2048 : 4096, GPU\.max \|\| Infinity/.test(cab) && !/DEV\.phone \? 2048 : 4096, FX/.test(cab), 'GPU texture limit respected');
   assert.ok(/if \(q\.get\('debug'\) !== '1'\) return null;/.test(cab) && /if \(DBG\) setInterval\(dbgShow, 250\);/.test(cab) && /if \(LOWQ\) return \{ gl2: false, max: 0 \};/.test(cab), 'debug overlay only with ?debug=1; no GPU probe in low mode');
   // the laptop follows the plan while it flies
