@@ -408,7 +408,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     assert.ok(s.credit.startsWith('NASA/JPL-Caltech') && S.SND_SRC[s.src] && s.dur > 10, 'space sound data ' + s.id);
     for (const e of ['webm', 'mp3']) bytes += size(`audio/cabin/space/${s.id}.${e}`);
   }
-  assert.ok(bytes < 45 * 1048576, 'cabin audio under 45 MB in all: ' + (bytes / 1048576).toFixed(1));
+  assert.ok(bytes < 150 * 1048576, 'cabin audio under 150 MB in all (30–40 radio tracks): ' + (bytes / 1048576).toFixed(1));
   assert.ok(fs.readdirSync(path.join(__dirname, '..', 'audio/cabin/music')).every(f => /^[a-z0-9-]+\.(webm|mp3)$/.test(f)), 'only encoded files in audio/cabin/music');
   // gesture, storage, keys
   assert.ok(/addEventListener\('pointerdown', audGesture, true\)/.test(cab) && !/sndStart\(/.test(cab.split('// ---------- sound')[0]), 'the radio starts on a gesture');
