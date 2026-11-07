@@ -325,7 +325,7 @@ const I18N = {
     'cred.cabin.earthrise': 'Dünya doğuşu (Earthrise), AS08-14-2383',
     'cred.cabin.earthriseNote': 'Apollo 8, 24 Aralık 1968, fotoğraf William Anders (NASA, kamu malı). Kabindeki afiş; dosya NASA Görsel Kütüphanesi\'ndeki 1280×1280 kopyanın değiştirilmemiş hâli, afiş yalnızca ekranda kırpar.',
     'cred.cabin.music': 'Radyo: HoliznaCC0',
-    'cred.cabin.musicNote': 'Kabindeki lo-fi radyonun {n} parçası ({titles}); OpenGameArt koleksiyonlarından. Kamu malına bağışlandı (CC0 1.0); yalnızca biçimi dönüştürüldü ve ses yüksekliği eşitlendi.',
+    'cred.cabin.musicNote': 'Kabindeki lo-fi radyonun {n} parçası ({titles}); OpenGameArt koleksiyonlarından ve Free Music Archive\'dan. Kamu malına bağışlandı (CC0 1.0); yalnızca biçimi dönüştürüldü ve ses yüksekliği eşitlendi.',
     'cred.cabin.musicBy': 'Radyo: {artist}',
     'cred.cabin.musicByNote': 'OpenGameArt\'tan; yalnızca biçimi dönüştürüldü ve ses yüksekliği eşitlendi. Lisans:',
     'cred.cabin.ccby': 'CC BY 4.0',

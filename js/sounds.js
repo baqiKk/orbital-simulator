@@ -3,13 +3,15 @@
 // Files: audio/cabin/{music,space}/<id>.webm (Opus) and .mp3, made by tools/cabin-audio/encode.js from the sources below
 // (loudness-matched: music −16 LUFS, space −20 LUFS; nothing else changed). dur: seconds, from the encoded file.
 //
-// music: chosen by listening (9 tracks 2026-10-25, 40 more 2026-11-07); lic: 'cc0' (public domain dedication; credited
+// music: chosen by listening (9 tracks 2026-10-25, 40 more 2026-11-07, 7 more 2026-11-08); lic: 'cc0' (public domain dedication; credited
 //   anyway) or 'ccby' (CC BY 4.0: the artist and the licence are shown while the track plays and in the Sources window).
 //   Each source file's SHA-1 is in tools/cabin-audio/encode.js; src: the page it came from (SND_SRC).
 //   HoliznaCC0, CC0 1.0, OpenGameArt collections posted 2024-04-11: "Chill Beats" (chill_beats.zip, SHA-1
 //     baac0fd8ac9bd4476a61d689e7eb87f88f7471e2), "Happy Lo-Fi (Lofi Collection)" (happy_lo-fi_lofi_collection.zip,
 //     6baaf2a60f3c6ca1acfdb4b92779b4b2c5f50fc9), "Lo-Fi and Chill (Collection)" (three zips: 1e3e0ab5…, 83d32ed6…,
 //     65f380a6…) and "Sad Lo-Fi (Lofi Collectioni)" (two zips: 1b5eb95f…, fbf189b5…); 320 kb/s MP3s inside.
+//   HoliznaCC0, CC0 1.0 (checked on each track's page, 2026-11-08), Free Music Archive: "Only In The Milky Way" Part 1
+//     (Love), Part 2 (Dancing, Advertisements), Part 3 (Night Driving, Quiet Houses, Crime, Confusion); MP3 downloads.
 //   TAD, OpenGameArt (2021–2022): 8-bit lo-fi hip hop, CC BY 4.0 except Since 2 A.M. (CC0); Ooame is published under
 //     both and credited as CC BY. WAV where the page offers one.
 //   Single CC BY 4.0 tracks, OpenGameArt: Tsorthan Grove "Sleepy Little Mouse" (FLAC, 2022), migfus20 "Glory Hotel - Lofi"
@@ -72,10 +74,17 @@ const MUSIC = [
   { id: 'glory-hotel', title: 'Glory Hotel', artist: 'migfus', album: null, lic: 'ccby', src: 'oga-glory-hotel-lofi', dur: 154.11 },
   { id: 'coffee-jazz-lofi', title: 'Coffee Jazz Lofi', artist: 'marcelo', album: null, lic: 'ccby', src: 'oga-coffee-jazz-lofi', dur: 184.54 },
   { id: 'diminishing-returns', title: 'Diminishing Returns', artist: 'tcar', album: null, lic: 'ccby', src: 'oga-diminishing-returns', dur: 318.81 },
+  { id: 'love', title: 'Love', artist: 'holizna', album: 'milky1', lic: 'cc0', src: 'milky1', dur: 187.93 },
+  { id: 'dancing', title: 'Dancing', artist: 'holizna', album: 'milky2', lic: 'cc0', src: 'milky2', dur: 135.71 },
+  { id: 'advertisements', title: 'Advertisements', artist: 'holizna', album: 'milky2', lic: 'cc0', src: 'milky2', dur: 183.20 },
+  { id: 'night-driving', title: 'Night Driving', artist: 'holizna', album: 'milky3', lic: 'cc0', src: 'milky3', dur: 131.34 },
+  { id: 'quiet-houses', title: 'Quiet Houses', artist: 'holizna', album: 'milky3', lic: 'cc0', src: 'milky3', dur: 200.96 },
+  { id: 'crime', title: 'Crime', artist: 'holizna', album: 'milky3', lic: 'cc0', src: 'milky3', dur: 191.96 },
+  { id: 'confusion', title: 'Confusion', artist: 'holizna', album: 'milky3', lic: 'cc0', src: 'milky3', dur: 116.96 },
 ];
 // artists as published (proper names); albums: the collections' published names (single tracks have none)
 const MUSIC_ARTISTS = { holizna: 'HoliznaCC0', tad: 'TAD', grove: 'Tsorthan Grove', migfus: 'migfus20', marcelo: 'marcelofg55', tcar: 'tcarisland' };
-const MUSIC_ALBUM = { chill: 'Chill Beats', happy: 'Happy Lo-Fi', lofichill: 'Lo-Fi and Chill', sad: 'Sad Lo-Fi' };
+const MUSIC_ALBUM = { chill: 'Chill Beats', happy: 'Happy Lo-Fi', lofichill: 'Lo-Fi and Chill', sad: 'Sad Lo-Fi', milky1: 'Only In The Milky Way Part 1', milky2: 'Only In The Milky Way Part 2', milky3: 'Only In The Milky Way Part 3' };
 const SPACE_SND = [
   { id: 'voyager', dur: 61.41, credit: 'NASA/JPL-Caltech/University of Iowa', src: 'pia17045' },
   { id: 'juno', dur: 48.98, credit: 'NASA/JPL-Caltech/SwRI/Univ of Iowa', src: 'pia25030' },
@@ -85,6 +94,9 @@ const SND_SRC = {
   happy: 'https://opengameart.org/content/happy-lo-fi-lofi-collection',
   lofichill: 'https://opengameart.org/content/lo-fi-and-chill-collection',
   sad: 'https://opengameart.org/content/sad-lo-fi-lofi-collectioni',
+  milky1: 'https://freemusicarchive.org/music/holiznacc0/only-in-the-milky-way-part-1',
+  milky2: 'https://freemusicarchive.org/music/holiznacc0/only-in-the-milky-way-part-2',
+  milky3: 'https://freemusicarchive.org/music/holiznacc0/only-in-the-milky-way-part-3',
   holizna: 'https://holiznacc0.bandcamp.com',
   'oga-cold-lake': 'https://opengameart.org/content/cold-lake',
   'oga-thawing-village': 'https://opengameart.org/content/thawing-village',

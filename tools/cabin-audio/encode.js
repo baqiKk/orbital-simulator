@@ -3,7 +3,7 @@
 // the site; needs ffmpeg (ffmpeg-static), installed outside the repo (see README.md).
 //
 //   node tools/cabin-audio/encode.js --chill <dir> --happy <dir> --lofichill <dir> --sad <dir> --tad <dir> --ccby <dir>
-//     --nasa <dir> --out audio/cabin [--force]
+//     --milkyway <dir> --nasa <dir> --out audio/cabin [--force]
 //
 // Music: two-pass EBU R128 loudnorm to −16 LUFS (true peak −1.5 dBTP), Opus 64 kb/s stereo, MP3 96 kb/s stereo 44.1 kHz.
 // NASA: audio track only, −20 LUFS (they sit under the music), mono, Opus 48 kb/s, MP3 64 kb/s. Prints each output's
@@ -71,6 +71,15 @@ const MUSIC = [
   ['glory-hotel', 'ccby', '55._guitar_2.mp3', '9030d7f3fd6a3289e323669be91db8aa8ec7a943'],
   ['coffee-jazz-lofi', 'ccby', 'Coffee Jazz Lofi.mp3', 'b4a94eb0925a2f3fbea716e5c0d26cfec37a3651'],
   ['diminishing-returns', 'ccby', 'diminishingreturnsinstr.wav', '9bf44d13724b91eb7baf2588f8af70b58880b8f3'],
+  // added 2026-11-08, chosen by listening: HoliznaCC0 "Only In The Milky Way" Parts 1-3 (Free Music Archive, CC0 1.0,
+  // checked on each track's page); all in one folder (Dream Pop of Part 3 is the same file as Chill Beats' and stays there)
+  ['love', 'milkyway', 'HoliznaCC0 - Love.mp3', '10a782a6b1f782e4adf3d6e3047a96a1b4cd636c'],
+  ['dancing', 'milkyway', 'HoliznaCC0 - Dancing.mp3', '27036f2967d7e82aeaabc10cf8071c936d2f99ce'],
+  ['advertisements', 'milkyway', 'HoliznaCC0 - Advertisements.mp3', 'b1e088c56867dc85db92426824c439ba26f3b81f'],
+  ['night-driving', 'milkyway', 'HoliznaCC0 - Night Driving.mp3', 'e501ea9890193988505e90373936a1fd0f5f82eb'],
+  ['quiet-houses', 'milkyway', 'HoliznaCC0 - Quiet Houses.mp3', 'b465326919f965894edeb07ff6f3d31f31aae4ad'],
+  ['crime', 'milkyway', 'HoliznaCC0 - Crime.mp3', '2bc6d333880e34fee1c50da6b178eb91c334dcb0'],
+  ['confusion', 'milkyway', 'HoliznaCC0 - Confusion.mp3', 'cf36a17f4bf02bb048f6751e7d389da3203053c0'],
 ];
 const NASA = [
   ['voyager', 'PIA17045_20130906-640.mp4', 'db0ffb95fc5997769c25570ecef63e6067d74f40'],
@@ -96,7 +105,7 @@ function encode(src, dst, I, TP, LRA, mono, opusK, mp3K) {
 
 fs.mkdirSync(path.join(OUT, 'music'), { recursive: true }); fs.mkdirSync(path.join(OUT, 'space'), { recursive: true });
 const FORCE = process.argv.includes('--force'), rows = [], durs = {};
-const dirs = Object.fromEntries(['chill', 'happy', 'lofichill', 'sad', 'tad', 'ccby'].map(k => [k, arg(k)]));
+const dirs = Object.fromEntries(['chill', 'happy', 'lofichill', 'sad', 'tad', 'ccby', 'milkyway'].map(k => [k, arg(k)]));
 const done = dst => !FORCE && fs.existsSync(dst + '.webm') && fs.existsSync(dst + '.mp3');
 const report = (id, r) => { rows.push([id, r]); durs[id] = +r.dur.toFixed(2); console.log(id.padEnd(28), r.dur.toFixed(2) + ' s', (r.webm / 1024).toFixed(0) + ' KB webm', (r.mp3 / 1024).toFixed(0) + ' KB mp3', 'in ' + r.inI + ' LUFS'); };
 for (const [id, col, file, hash] of MUSIC) {
