@@ -392,6 +392,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     assert.ok(wc.s >= c.s - 1e-9 && wc.x >= -1e-6 && wc.y >= -1e-6 && wc.x + ww <= W + 1e-6 && wc.y + wh <= H + 1e-6, `window view ${vw}×${vh}: closer, inside the art`);
     assert.ok(wc.x <= cat.x && wc.x + ww >= cat.x + cat.w && wc.y + wh >= 2300, `window view ${vw}×${vh}: the cat on the sill`);
     assert.ok((Math.min(g.y1, wc.y + wh) - Math.max(g.y0, wc.y)) * wc.s >= 0.59 * vh, `window view ${vw}×${vh}: the glass fills the height`);
+    if (vw < vh) { const wb = P.cabGlassCam(vw, vh, g, W, H, 56); assert.ok((P.CAB_TAIL_Y - wb.y) * wb.s <= vh - 56 + 1e-6 && wb.y <= P.CAB_WIN[1] + 1e-6, `window view ${vw}×${vh}: the tail above the bottom bar, the glass whole`); }
     if (a >= 1.6 && a <= 2.4) assert.ok(wc.x <= P.CAB_WIN[0] && wc.x + ww >= P.CAB_WIN[2] && wc.y <= P.CAB_WIN[1] + 1e-6, `window view ${vw}×${vh}: the whole frame`);
   }
 }
@@ -635,6 +636,8 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     assert.ok(!/mix-blend-mode/.test(css) && /\.k-moving :is\([^)]*#kSun,#kStrip[^)]*\)\{visibility:hidden\}/.test(css), 'no blend modes; light hidden with the room during moves');
     assert.ok(/setStrip\(readPref\(LS, PREF_KEYS\.cabStrip\) === '1', false\)/.test(cab) && P.PREF_KEYS.cabStrip && has('kab.stripOn') && has('kab.stripOff'), 'ceiling strip: off by default, saved, worded');
   }
+  // narrow screens at the glass: one compact row, the other buttons folded into ⋯
+  assert.ok(css.includes('.k-win:not(.k-more-open) .k-hud.bot>:is(#kScene,#kLamp,#kStripBtn){display:none}') && read('kabin.html').includes('id="kMore"') && has('kab.more') && cab.includes('cabGlassCam(VW, VH, LY.glass, ...LY.size, winBot())'),'compact bar at the glass on phones; the view keeps the cat above it');
   // at the glass the cat still answers (petting), the other objects rest
   assert.ok(cab.includes("querySelectorAll('.k-hit:not(#hGlass):not(#hCat)')) b.inert = to !== 'desk';"), 'the cat can be petted at the glass');
   // petting: the existing layers only (no new image), tail / ears / whiskers on the body so they move with it; reactions

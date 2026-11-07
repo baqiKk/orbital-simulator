@@ -508,6 +508,7 @@ const I18N = {
     'kab.draftNote': 'Yalnızca görünüm: saat, ses ve defter sonraki fazlarda çalışacak.',
     'kab.toWindow': 'Cama git',
     'kab.toDesk': 'Masaya dön',
+    'kab.more': 'Diğer ayarlar',
     'kab.clock': 'Saat · pomodoro',
     'kab.tablet': 'Dizüstü · simülatöre geç',
     'kab.notebook': 'Defter · notlar (yakında)',

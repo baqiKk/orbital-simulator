@@ -1005,10 +1005,14 @@ function apply(c) {
   const p = gScreen(c);
   SP.cv.style.transform = FV.cv.style.transform = `translate(${p[0] - SP.P0[0]}px,${p[1] - SP.P0[1]}px)`;
 }
-const deskCam = () => cabCrop(VW, VH, ...LY.size), winCam = () => cabGlassCam(VW, VH, LY.glass);
+// the bottom bar's share of a portrait screen at the glass (one compact row there, .k-win): the view keeps the cat above it
+const winBot = () => (VW < VH ? Math.max(0, Math.round(VH - $('.k-hud.bot').getBoundingClientRect().top) + 8) : 0);
+const deskCam = () => cabCrop(VW, VH, ...LY.size), winCam = () => cabGlassCam(VW, VH, LY.glass, ...LY.size, winBot());
+// narrow screens at the glass: the scene, lamp and strip buttons fold into ⋯
+function moreMenu(open) { document.body.classList.toggle('k-more-open', open); $('#kMore').setAttribute('aria-expanded', String(open)); }
 function go(to) {
   if (to === view) return;
-  view = to; hideTip();
+  view = to; hideTip(); moreMenu(false); document.body.classList.toggle('k-win', to === 'window');
   $('#kGo').textContent = _(to === 'desk' ? 'kab.toWindow' : 'kab.toDesk');
   // at the glass only the glass (back to the desk) and the cat (it can be petted there too) answer
   for (const b of document.querySelectorAll('.k-hit:not(#hGlass):not(#hCat)')) b.inert = to !== 'desk';
@@ -1444,6 +1448,8 @@ $('#kBack').addEventListener('click', e => {
   if (ref && ref.origin === location.origin && /\/(index\.html)?$/.test(ref.pathname) && history.length > 1) { e.preventDefault(); history.back(); }
 });
 $('#kLamp').addEventListener('click', () => setLamp($('#kRoot').classList.contains('lamp-off')));
+$('#kMore').addEventListener('click', () => moreMenu(!document.body.classList.contains('k-more-open')));
+document.addEventListener('pointerdown', e => { if (document.body.classList.contains('k-more-open') && !e.target.closest('.k-hud.bot')) moreMenu(false); });
 $('#kStripBtn').addEventListener('click', () => setStrip(!$('#kRoot').classList.contains('strip-on')));
 addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!$('#kAudio').hidden) audPanel(false); else if (!$('#kPomo').hidden) poPanel(false); else go('desk'); });
 for (const b of document.querySelectorAll('#kScene button')) b.addEventListener('click', () => {

@@ -459,6 +459,17 @@ html[data-q=low] #kSun{display:none}
 .k-hud .ghost{text-decoration:none;display:inline-flex;align-items:center;gap:6px;padding:8px 11px}
 .k-hud .seg button{padding:7px 9px;font-size:10.5px}
 #kGo{padding:8px 12px;font-size:10.5px}
+/* narrow screens at the glass: one compact row (the view and the go button); the scene, lamp and strip buttons fold
+   into ⋯ (js/cabin.js .k-win, .k-more-open), opening as a small stack above the row */
+.k-more{display:none}
+@media (max-width:640px){
+  .k-win .k-hud.bot{flex-wrap:nowrap}
+  .k-win .k-more{display:inline-flex;padding:8px 12px}
+  .k-win:not(.k-more-open) .k-hud.bot>:is(#kScene,#kLamp,#kStripBtn){display:none}
+  .k-win.k-more-open .k-hud.bot{flex-wrap:wrap-reverse;padding:8px;background:var(--panel-lo);border:1px solid var(--line2)}
+  .k-win.k-more-open .k-hud.bot>:is(#kScene,#kLamp,#kStripBtn){flex-basis:100%;justify-content:center}
+  .k-win .k-hud.bot>:is(#kMore,#kGo){order:-1}
+}
 .k-tip{position:fixed;z-index:6;pointer-events:none;transform:translate(-50%,-100%);background:var(--panel-lo);border:1px solid var(--line2);padding:6px 9px;font:500 11px/1.2 var(--f-disp);letter-spacing:.06em;text-transform:uppercase;color:var(--ink);white-space:nowrap}
 .k-radio{max-width:min(calc(100vw - 196px),380px);min-width:0;text-transform:none;letter-spacing:.02em}
 .k-skip{padding:8px 10px;font-size:12px;line-height:1;flex:none}
