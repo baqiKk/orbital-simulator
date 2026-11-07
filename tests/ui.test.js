@@ -563,8 +563,14 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   // the light through the glass: off in the low-resource mode (not computed, not shown); the body colour only mixed
   // into the screen token
   const cab = read('js/cabin.js'), css = read('css/style.css');
-  assert.ok(/if \(!LOWQ\) fvShine\(st, cam\);/.test(cab) && /html\[data-q=low\] \.k-shine\{display:none\}/.test(css), 'cabin light: off in low mode');
-  assert.ok(/color-mix\(in srgb, var\(--cab-screen\) 35%, \$\{BODIES\[col\]\.color\}\)/.test(cab), 'cabin light: body colour mixed into the screen cyan');
+  assert.ok(/function fvShineRun\(\) \{ if \(!LOWQ && /.test(cab) && /html\[data-q=low\] \.k-shine\{display:none\}/.test(css), 'cabin light: off in low mode');
+  assert.ok(/color-mix\(in srgb, var\(--cab-screen\) 35%, \$\{BODIES\[FV\.shCol\]\.color\}\)/.test(cab), 'cabin light: body colour mixed into the screen cyan');
+  // the light is geometric (no screen size in it), low-pass filtered in JS without a CSS transition, and held, like the
+  // 3D frames and the art tier swap, while the camera moves between desk and glass (a moving room flickered)
+  const tgt = cab.match(/function fvShineTarget\([^]*?\n\}/)[0];
+  assert.ok(!/\bVW\b|\bVH\b|SP\.F|rpx/.test(tgt) && /FV_FOV_SR/.test(tgt), 'cabin light: solid angle in the field of view, not screen area');
+  assert.ok(!/\.k-shine\{[^}]*transition/.test(css) && /FV\.shV \+= \(FV\.shTarget - FV\.shV\) \* \(1 - Math\.exp\(-dt \/ FV_SHINE_TAU\)\)/.test(cab), 'cabin light: low-pass filter, no CSS transition');
+  assert.ok(/if \(ANIM \|\| document\.hidden\) return; \/\/ held while the camera moves/.test(cab) && /if \(ANIM && !force\) return; \/\/ held while the camera moves/.test(cab) && /if \(ANIM\) TIER_SWAP = swap; else swap\(\);/.test(cab), 'held during the camera move: light, 3D frames, tier swap');
   // the laptop follows the plan while it flies
   assert.ok(/if \(st\) \{ lapPlan\(st\); return; \}/.test(cab), 'laptop: the plan track');
 }

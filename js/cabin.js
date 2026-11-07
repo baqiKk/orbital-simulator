@@ -93,18 +93,22 @@ function layerImg(name, T) {
   if (L.pivot) im.style.transformOrigin = `${L.pivot[0] - L.x}px ${L.pivot[1] - L.y}px`;
   return im;
 }
-// load tier T when it is sharper than the one shown; the new images replace the old ones once decoded (no flash)
+// load tier T when it is sharper than the one shown; the new images replace the old ones once decoded (no flash), and
+// never while the camera moves (TIER_SWAP waits for the end of the move: a mid-move swap re-rasterises the whole stage)
+let TIER_SWAP = null;
 function wantTier(T) {
   if (T <= ART_T) return; ART_T = T;
   const fresh = LAYERS.map(n => [n, layerImg(n, T)]);
-  Promise.all(fresh.map(([, im]) => im.decode().catch(() => {}))).then(() => {
+  const swap = () => {
     if (ART_T !== T) return;
     for (const [n, im] of fresh) { if (IMG[n]) IMG[n].replaceWith(im); else $(n === 'room' ? '#kRoomSlot' : '#kCat').appendChild(im); IMG[n] = im; }
     $('#kCat').appendChild($('#kWhisk'));
     for (const id of ['#kNight', '#kShine']) $(id).style.setProperty('--room', `url("${new URL(`img/cabin/${T}/room.webp`, location.href)}")`);
     document.body.classList.add('k-ready');
-  });
+  };
+  Promise.all(fresh.map(([, im]) => im.decode().catch(() => {}))).then(() => { if (ANIM) TIER_SWAP = swap; else swap(); });
 }
+const tierSwapNow = () => { const f = TIER_SWAP; TIER_SWAP = null; if (f) f(); };
 const needTier = s => cabTier(LY.size[0] * s * DPR, TMAX);
 
 // ---------- what code draws ----------
@@ -417,7 +421,7 @@ function spaceSoon() { clearTimeout(SP.timer); SP.timer = setTimeout(spaceTick, 
 // mode, no WebGL 2 or reduced motion: no Three.js and no images, the plain sky and shaded discs at their true places and
 // sizes on the 2D canvas, every 5 s (1 s in a break); with reduced motion the break view looks at the body. A new phase
 // (a jump) fades the glass out and in.
-const FV = { on: false, gl: null, fail: false, V3: null, load: null, cv: $('#kSpace3'), keys: '', sky: false, fov: 45, raf: 0, last: 0, drawn: 0, sig: '', cam: null, rpx: -1, fade: 0, plain: null, timer: 0, shine: ['0', ''] };
+const FV = { on: false, gl: null, fail: false, V3: null, load: null, cv: $('#kSpace3'), keys: '', sky: false, fov: 45, raf: 0, last: 0, drawn: 0, sig: '', cam: null, rpx: -1, fade: 0, plain: null, timer: 0, shV: 0, shO: 0, shT: 0, shTarget: 0, shCol: '', shColSet: '', shTimer: 0 };
 const FV_L = 1e9;          // m: the 3D camera's target, this far ahead of the craft (the eye is at the craft)
 const FV_TILT = 25 * deg;  // the break view, tipped down from the flight direction
 const vsub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -462,6 +466,7 @@ function fvCam(st) {
 }
 // one look at the flight: draw it when the picture moved (or force), fading over a jump
 function fvFrame(force) {
+  if (ANIM && !force) return; // held while the camera moves between desk and glass (the last frame stays)
   const now = Date.now(), st = fvState(now);
   if (!st) { fvStop(); return; }
   const cam = fvCam(st), t = performance.now(), sig = st.w.leg + st.w.mode + (st.w.mode === 'work' ? '' : st.a.around || st.a.look);
@@ -476,26 +481,40 @@ function fvFrame(force) {
   if (!force && t - FV.drawn < 50) return; // 20 frames a second at most
   FV.cam = cam; FV.rpx = rpx; FV.drawn = t;
   if (FV.V3) fvDraw3(st, cam); else fvDraw2(st, cam);
-  if (!LOWQ) fvShine(st, cam);
   if (FV.fade) { FV.fade = 0; fvCanvas().style.opacity = ''; }
 }
 // The light through the glass: the sunlit surface in view brightens the room a little (#kShine, screen blend over the
-// room's opaque part), tinted by the body that gives most of it (its js/bodies.js colour mixed into the screen cyan);
-// a deep-space view gives none. Off in the low-resource mode.
-function fvShine(st, cam) {
+// room's opaque part), tinted by the body that gives most of it (its js/bodies.js colour mixed into the screen cyan); a
+// deep-space view gives none. The amount is geometric: each body's solid angle inside the glass's field of view
+// (half-angle 50°, as the sky's projection), as a share of that field, times its lit fraction. Screen area plays no
+// part, so neither the window size nor the camera's move between desk and glass changes it. A low-pass filter
+// (FV_SHINE_TAU) follows it on its own 4 Hz tick; the opacity is written only when it visibly changes, never while the
+// camera moves (the filter waits), and without a CSS transition: a compositor-side transition restarted every few
+// frames switched the blended, masked layer between rendering paths, and the room flickered. Off in low-resource mode.
+const FV_SHINE_TAU = 1.5, FV_FOV = 50 * deg, FV_FOV_SR = 2 * Math.PI * (1 - Math.cos(FV_FOV));
+function fvShineTarget(st, cam) {
   let best = null, sum = 0;
   for (const q of st.b.list) {
     if (q.key === 'sun') continue;
-    const d = vsub(q.p, st.a.y), dist = Math.hypot(...d); if (vdot(d, cam.f) <= 0) continue;
-    const R = BODIES[q.key].radius * 1e3, rpx = SP.F * R / Math.sqrt(Math.max(dist * dist - R * R, 1)), s = norm(vsub(st.b.sunP, q.p));
-    const c = (1 - vdot(s, d) / dist) / 2 * Math.min(1, Math.PI * rpx * rpx / (VW * VH));
+    const d = vsub(q.p, st.a.y), dist = Math.hypot(...d), al = Math.asin(Math.min(1, BODIES[q.key].radius * 1e3 / dist));
+    const th = Math.acos(Math.max(-1, Math.min(1, vdot(d, cam.f) / dist))), vis = Math.min(1, Math.max(0, (FV_FOV + al - th) / (2 * al || 1)));
+    if (!vis) continue; // roughly the share of the disc inside the field
+    const s = norm(vsub(st.b.sunP, q.p)), c = (1 - vdot(s, d) / dist) / 2 * Math.min(1, 2 * Math.PI * (1 - Math.cos(al)) * vis / FV_FOV_SR);
     sum += c; if (!best || c > best[1]) best = [q.key, c];
   }
-  const o = Math.min(0.32, 0.4 * sum).toFixed(2), col = best && best[1] > 0.005 ? best[0] : '';
-  if (o === FV.shine[0] && col === FV.shine[1]) return;
-  FV.shine = [o, col]; const e = $('#kShine'); e.style.opacity = o;
-  if (col) e.style.setProperty('--fv-col', `color-mix(in srgb, var(--cab-screen) 35%, ${BODIES[col].color})`);
+  return [Math.min(0.32, 0.4 * sum), best && best[1] > 0.005 ? best[0] : ''];
 }
+function fvShineTick() {
+  const now = performance.now(), dt = Math.min(10, (now - FV.shT) / 1000); FV.shT = now;
+  if (ANIM || document.hidden) return; // held while the camera moves (and unseen)
+  if (FV.on) { const st = fvState(Date.now()); if (st) [FV.shTarget, FV.shCol] = fvShineTarget(st, FV.cam || fvCam(st)); } else FV.shTarget = 0;
+  FV.shV += (FV.shTarget - FV.shV) * (1 - Math.exp(-dt / FV_SHINE_TAU));
+  if (!FV.on && FV.shV < 0.003) { FV.shV = 0; clearInterval(FV.shTimer); FV.shTimer = 0; }
+  const e = $('#kShine'), o = Math.round(FV.shV * 200) / 200;
+  if (o !== FV.shO) { FV.shO = o; e.style.opacity = o; }
+  if (FV.shCol && FV.shCol !== FV.shColSet) { FV.shColSet = FV.shCol; e.style.setProperty('--fv-col', `color-mix(in srgb, var(--cab-screen) 35%, ${BODIES[FV.shCol].color})`); }
+}
+function fvShineRun() { if (!LOWQ && !FV.shTimer) { FV.shT = performance.now(); FV.shTimer = setInterval(fvShineTick, 250); } }
 const fvCanvas = () => (FV.V3 ? FV.cv : SP.cv);
 function fvDraw3(st, cam) {
   const V3 = FV.V3, { a, b } = st, y = a.y, list = b.list, keys = list.map(q => q.key).join(), T = a.tr.M.t0 * DAY + a.t;
@@ -555,6 +574,7 @@ function fvKick() {
   if (!FV.on || document.hidden) return;
   if (FV.V3) { fvFrame(true); if (!FV.raf) FV.raf = requestAnimationFrame(fvLoop); return; }
   clearTimeout(FV.timer);
+  if (ANIM) { FV.timer = setTimeout(fvKick, 200); return; } // the camera is moving: draw after it
   const st = fvState(Date.now()); fvFrame(true);
   if (FV.on) FV.timer = setTimeout(fvKick, FV.fade ? 470 : st && st.w.mode !== 'work' && !RM.matches ? 1000 : 5000);
 }
@@ -565,6 +585,7 @@ function fvSize() {
   if (FV.V3) FV.V3.size(cw, ch, DPR);
 }
 function fvStart() {
+  fvShineRun();
   FV.on = true; FV.sig = ''; FV.cam = null; clearTimeout(SP.timer); $('#kScene').hidden = true;
   if (!fvGL()) { fvKick(); return; }
   if (!FV.load) {
@@ -583,7 +604,7 @@ function fvStop() {
   FV.on = false; cancelAnimationFrame(FV.raf); FV.raf = 0; clearTimeout(FV.timer);
   FV.cv.hidden = true; FV.cv.style.opacity = ''; SP.cv.style.visibility = ''; SP.cv.style.opacity = ''; FV.fade = 0;
   $('#kScene').hidden = false; spaceSoon();
-  FV.shine = ['0', '']; $('#kShine').style.opacity = '0';
+  fvShineRun(); // the room light fades out with the filter
 }
 // on or off with the timer (every tick); a change of the 3D conditions restarts it
 // (after the room is in: its images come before the planets')
@@ -610,7 +631,8 @@ function go(to) {
   const from = CAM, dest = to === 'desk' ? deskCam() : winCam();
   wantTier(needTier(dest.s));
   cancelAnimationFrame(ANIM); ANIM = 0;
-  const done = () => { ANIM = 0; stage.style.willChange = ''; sizeLife(); if (still()) drawStill(); };
+  // after the move: a tier that arrived meanwhile, then the flight view again (held during the move)
+  const done = () => { ANIM = 0; stage.style.willChange = ''; tierSwapNow(); sizeLife(); if (still()) drawStill(); FV.cam = null; fvKick(); };
   if (still()) { apply(dest); done(); return; }
   stage.style.willChange = 'transform';
   const t0 = performance.now(), T = 1200, A0 = gScreen(from), A1 = gScreen(dest), g = glassC();
@@ -818,7 +840,7 @@ function layout() {
   Object.assign(SP.cv.style, { left: -SP.M + 'px', top: -SP.M + 'px', width: cw + 'px', height: ch + 'px' });
   SP.P0 = pd; SP.G = [pd[0] + SP.M, pd[1] + SP.M]; // the glass's centre on screen and in canvas px at the desk view
   SP.F = Math.max(VW, VH) / 2 / Math.tan(50 * deg); SP.sky = null; fvSize();
-  cancelAnimationFrame(ANIM); ANIM = 0; stage.style.willChange = '';
+  cancelAnimationFrame(ANIM); ANIM = 0; stage.style.willChange = ''; tierSwapNow();
   apply(cam); wantTier(needTier(cam.s)); sizeLife();
   if (still()) drawStill();
   spaceSoon(); fvKick();

@@ -400,8 +400,9 @@ html[data-q=low] *,html[data-q=low] *::before,html[data-q=low] *::after{transiti
     color-mix(in srgb,var(--cab-screen) 30%,var(--cab-wall-lo));
   -webkit-mask:var(--room) 0 0/100% 100% no-repeat;mask:var(--room) 0 0/100% 100% no-repeat}
 .lamp-off .k-night{opacity:1}
-/* light through the glass during a flight (js/cabin.js fvShine): the colour of the sunlit body in view */
-.k-shine{pointer-events:none;opacity:0;transition:opacity 2.5s;mix-blend-mode:screen;
+/* light through the glass during a flight (js/cabin.js fvShineTick): the colour of the sunlit body in view; no CSS
+   transition (the opacity is low-pass filtered in JS; a running transition would put the blended layer on the compositor) */
+.k-shine{pointer-events:none;opacity:0;mix-blend-mode:screen;
   background:radial-gradient(3400px 2000px at 3600px 1950px,var(--fv-col,var(--cab-screen)),transparent 72%);
   -webkit-mask:var(--room) 0 0/100% 100% no-repeat;mask:var(--room) 0 0/100% 100% no-repeat}
 html[data-q=low] .k-shine{display:none}
