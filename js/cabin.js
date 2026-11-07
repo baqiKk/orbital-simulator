@@ -17,7 +17,26 @@ if (LOWQ) document.documentElement.dataset.q = 'low';
 const still = () => LOWQ || RM.matches;
 const DEV = { phone: matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600,
   desktop: matchMedia('(hover: hover) and (pointer: fine)').matches, mem: navigator.deviceMemory };
-const TMAX = cabTierMax(DEV);
+// the GPU, asked once (not in the low-resource mode): WebGL 2 at all (the 3D glass), and the largest texture it takes; no
+// art tier and no planet texture above that limit
+const GPU = (() => {
+  if (LOWQ) return { gl2: false, max: 0 };
+  try {
+    const c = document.createElement('canvas'), g = c.getContext('webgl2'); if (!g) return { gl2: false, max: 0 };
+    const max = g.getParameter(g.MAX_TEXTURE_SIZE), x = g.getExtension('WEBGL_lose_context'); if (x) x.loseContext();
+    return { gl2: true, max };
+  } catch (e) { return { gl2: false, max: 0 }; }
+})();
+// Temporary debugging (?debug=1): an overlay in the corner with frame times and the art tier drawn during camera moves,
+// and A/B switches: shine=0 (no room light), cap=<px> (3D texture cap), warm=<frames> (frames between promoting the
+// stage to its own GPU layer and moving it), wc=0 (no will-change during moves). A developer aid with technical labels
+// only; it goes when the bug it chases is fixed.
+const DBG = (() => {
+  const q = new URLSearchParams(location.search); if (q.get('debug') !== '1') return null;
+  return { shine: q.get('shine') !== '0', cap: +q.get('cap') || 0, warm: q.has('warm') ? +q.get('warm') : 3, wc: q.get('wc') !== '0', frames: [], draws: 0, el: null };
+})();
+const TMAX = Math.min(cabTierMax(DEV), GPU.max ? CAB_TIERS.filter(t => t <= GPU.max).pop() || CAB_TIERS[0] : Infinity);
+const TEX_CAP = Math.min(DEV.phone ? 2048 : 4096, GPU.max || Infinity, DBG && DBG.cap || Infinity);
 const deg = Math.PI / 180;
 
 // ---------- art-space geometry not in layout.json (measured on the illustration, art px) ----------
@@ -393,7 +412,7 @@ function compose() {
   for (const b of sc.bodies) {
     const x = SP.G[0] + (b.at[k][0] - gc[0]) * d.s, y = SP.G[1] + (b.at[k][1] - gc[1]) * d.s, r = b.r[k] * d.s;
     const rot = rotOf(b.tilt[0], b.tilt[1], b.tilt[2] + (b.spin ? spin : 0));
-    const look = globeLook(b.key, r, !LOWQ, !LOWQ, DEV.phone ? 2048 : 4096, FX, 0);
+    const look = globeLook(b.key, r, !LOWQ, !LOWQ, TEX_CAP, FX, 0);
     if (look && drawGlobe(g, x, y, r, cw, ch, DPR, { rot, sun, color: BODIES[b.key].color, look })) continue;
     // plain disc, lit from the sun's side
     const gr = g.createRadialGradient(x + sun[0] * r * 0.5, y - sun[1] * r * 0.5, r * 0.1, x, y, r * 1.05);
@@ -437,7 +456,7 @@ function slerp(a, b, t) {
 }
 // the 3D path: not low-resource, no reduced motion, WebGL 2 (checked once), the module loaded fine
 function fvGL() {
-  if (FV.gl == null) FV.gl = !LOWQ && (() => { try { const g = document.createElement('canvas').getContext('webgl2'); if (!g) return false; const x = g.getExtension('WEBGL_lose_context'); if (x) x.loseContext(); return true; } catch (e) { return false; } })();
+  if (FV.gl == null) FV.gl = !LOWQ && GPU.gl2;
   return FV.gl && !FV.fail && !RM.matches;
 }
 // the flight now: plan data, where (fpWhere), the craft (fpAt), the bodies (fpBodies); null without a plan or idle
@@ -466,7 +485,6 @@ function fvCam(st) {
 }
 // one look at the flight: draw it when the picture moved (or force), fading over a jump
 function fvFrame(force) {
-  if (ANIM && !force) return; // held while the camera moves between desk and glass (the last frame stays)
   const now = Date.now(), st = fvState(now);
   if (!st) { fvStop(); return; }
   const cam = fvCam(st), t = performance.now(), sig = st.w.leg + st.w.mode + (st.w.mode === 'work' ? '' : st.a.around || st.a.look);
@@ -481,6 +499,7 @@ function fvFrame(force) {
   if (!force && t - FV.drawn < 50) return; // 20 frames a second at most
   FV.cam = cam; FV.rpx = rpx; FV.drawn = t;
   if (FV.V3) fvDraw3(st, cam); else fvDraw2(st, cam);
+  if (DBG && ANIM) DBG.draws++;
   if (FV.fade) { FV.fade = 0; fvCanvas().style.opacity = ''; }
 }
 // The light through the glass: the sunlit surface in view brightens the room a little (#kShine, screen blend over the
@@ -514,7 +533,7 @@ function fvShineTick() {
   if (o !== FV.shO) { FV.shO = o; e.style.opacity = o; }
   if (FV.shCol && FV.shCol !== FV.shColSet) { FV.shColSet = FV.shCol; e.style.setProperty('--fv-col', `color-mix(in srgb, var(--cab-screen) 35%, ${BODIES[FV.shCol].color})`); }
 }
-function fvShineRun() { if (!LOWQ && !FV.shTimer) { FV.shT = performance.now(); FV.shTimer = setInterval(fvShineTick, 250); } }
+function fvShineRun() { if (!LOWQ && !FV.shTimer && (!DBG || DBG.shine)) { FV.shT = performance.now(); FV.shTimer = setInterval(fvShineTick, 250); } }
 const fvCanvas = () => (FV.V3 ? FV.cv : SP.cv);
 function fvDraw3(st, cam) {
   const V3 = FV.V3, { a, b } = st, y = a.y, list = b.list, keys = list.map(q => q.key).join(), T = a.tr.M.t0 * DAY + a.t;
@@ -527,7 +546,7 @@ function fvDraw3(st, cam) {
   list.forEach((q, i) => {
     const R = BODIES[q.key].radius * 1e3, d = vsub(q.p, y), dist = Math.hypot(...d);
     const rpx = vdot(d, cam.f) > -R ? SP.F * R / Math.sqrt(Math.max(dist * dist - R * R, 1)) : 0;
-    const look = q.key === 'sun' ? null : globeLook(q.key, rpx, !LOWQ, !LOWQ, DEV.phone ? 2048 : 4096, FX, T);
+    const look = q.key === 'sun' ? null : globeLook(q.key, rpx, !LOWQ, !LOWQ, TEX_CAP, FX, T);
     const o = look ? { look, rot: bodyAxes(q.key, T, P, V, i, list.findIndex(x => x.key === BODIES[q.key].parent), new Array(9)), mix: texMix(look.tex && look.tex.base) } : null;
     V3.body('sim', i, q.p, R, q.key === 'sun' ? null : norm(vsub(b.sunP, q.p)), true, o);
     if (q.key !== 'sun') occ.push([d, R, dist]);
@@ -574,7 +593,6 @@ function fvKick() {
   if (!FV.on || document.hidden) return;
   if (FV.V3) { fvFrame(true); if (!FV.raf) FV.raf = requestAnimationFrame(fvLoop); return; }
   clearTimeout(FV.timer);
-  if (ANIM) { FV.timer = setTimeout(fvKick, 200); return; } // the camera is moving: draw after it
   const st = fvState(Date.now()); fvFrame(true);
   if (FV.on) FV.timer = setTimeout(fvKick, FV.fade ? 470 : st && st.w.mode !== 'work' && !RM.matches ? 1000 : 5000);
 }
@@ -631,12 +649,23 @@ function go(to) {
   const from = CAM, dest = to === 'desk' ? deskCam() : winCam();
   wantTier(needTier(dest.s));
   cancelAnimationFrame(ANIM); ANIM = 0;
-  // after the move: a tier that arrived meanwhile, then the flight view again (held during the move)
-  const done = () => { ANIM = 0; stage.style.willChange = ''; tierSwapNow(); sizeLife(); if (still()) drawStill(); FV.cam = null; fvKick(); };
+  // after the move: a tier that arrived meanwhile; the stage leaves its GPU layer a frame later, at rest (re-rastered
+  // sharp at the new scale)
+  const done = () => {
+    ANIM = 0; tierSwapNow(); sizeLife(); if (still()) drawStill(); FV.cam = null; fvKick(); dbgMove(false);
+    requestAnimationFrame(() => { if (!ANIM) stage.style.willChange = ''; });
+  };
   if (still()) { apply(dest); done(); return; }
-  stage.style.willChange = 'transform';
-  const t0 = performance.now(), T = 1200, A0 = gScreen(from), A1 = gScreen(dest), g = glassC();
+  // The stage (room and all) moves as one GPU layer, scaled, not re-rastered. It is promoted a few frames before the
+  // move starts: promoted and moved in the same frame, its first frames could come up empty (the room vanished).
+  if (!DBG || DBG.wc) stage.style.willChange = 'transform';
+  let warm = DBG ? DBG.warm : 3, t0 = 0;
+  const T = 1200, A0 = gScreen(from), A1 = gScreen(dest), g = glassC();
+  dbgMove(true);
   const step = now => {
+    if (DBG) DBG.frames.push(now);
+    if (warm-- > 0) { ANIM = requestAnimationFrame(step); return; }
+    if (!t0) t0 = now;
     const t = Math.min(1, (now - t0) / T), e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     const s = from.s * Math.pow(dest.s / from.s, e), A = [A0[0] + (A1[0] - A0[0]) * e, A0[1] + (A1[1] - A0[1]) * e];
     apply({ s, x: g[0] - A[0] / s, y: g[1] - A[1] / s });
@@ -644,6 +673,26 @@ function go(to) {
   };
   ANIM = requestAnimationFrame(step);
 }
+
+// ---------- debugging overlay (?debug=1, temporary) ----------
+const texBytes = () => { let b = 0; for (const e of TEXC.values()) if (e.ok && e.img) b += (e.img.naturalWidth || 0) * (e.img.naturalHeight || 0) * 4; return b; };
+function dbgMove(start) { if (!DBG) return; if (start) { DBG.frames = []; DBG.draws = 0; } dbgShow(); }
+function dbgShow() {
+  if (!DBG || !LY || !CAM) return;
+  if (!DBG.el) DBG.el = el('pre', { class: 'k-debug', 'aria-hidden': 'true' }, document.body);
+  const f = DBG.frames, dt = f.slice(1).map((t, i) => t - f[i]), n = dt.length, avg = n ? dt.reduce((a, b) => a + b, 0) / n : 0;
+  const shown = IMG.room ? +(IMG.room.src.match(/cabin\/(\d+)\//) || [0, 0])[1] : 0;
+  DBG.el.textContent = [
+    `tier drawn ${shown} · wanted ${ART_T}${TIER_SWAP ? ' (swap waits)' : ''} · max ${TMAX}`,
+    `gpu max texture ${GPU.max || '?'} · 3d texture cap ${TEX_CAP} · dpr ${DPR}`,
+    `stage ${Math.round(LY.size[0] * CAM.s * DPR)}×${Math.round(LY.size[1] * CAM.s * DPR)} px · will-change ${stage.style.willChange || '-'} · ${ANIM ? 'moving' : view}`,
+    `move: ${n} frames · avg ${avg.toFixed(1)} ms · max ${(n ? Math.max(...dt) : 0).toFixed(1)} ms · >34 ms ${dt.filter(d => d > 34).length}`,
+    `glass ${FV.on ? (FV.V3 ? '3d' : '2d') : 'scene'} · glass frames in move ${DBG.draws} · room light ${FV.shO}`,
+    `planet textures ${(texBytes() / 1048576).toFixed(0)} MB decoded`,
+    `switches shine=${+DBG.shine} cap=${DBG.cap || '-'} warm=${DBG.warm} wc=${+DBG.wc}`,
+  ].join('\n');
+}
+if (DBG) setInterval(dbgShow, 250);
 
 // ---------- sound (js/cabin-audio.js) ----------
 // The radio is on by default and starts on the first gesture anywhere (browser rule); until then the chip at the top
