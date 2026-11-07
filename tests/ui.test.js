@@ -5,7 +5,8 @@ const path = require('path');
 const vm = require('vm');
 const P = require('../js/prefs.js');
 
-const read = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+// line endings normalised: a Windows checkout (core.autocrlf) has CRLF, the patterns below are written with \n
+const read = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/\r\n/g, '\n');
 const ctx = {};
 vm.runInNewContext(read('js/i18n.js') + '\nthis.DICT = DICT;', ctx);
 const DICT = ctx.DICT;
