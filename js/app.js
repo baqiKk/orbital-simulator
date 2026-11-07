@@ -3036,6 +3036,21 @@ function drawScale(scale = cam.scale) {
 const credLayers = (k, b) => [[b.tex, 'cred.note.' + k], [b.texAlt, 'cred.note.' + k], [b.rings, 'cred.note.' + k + 'Rings'], [b.rings && b.rings.tau, 'cred.note.' + k + 'Tau'],
   [b.relief, 'cred.note.' + k + 'Relief'], [b.clouds, 'cred.note.' + k + 'Clouds'], [b.night, 'cred.note.' + k + 'Night'], [b.ocean, 'cred.note.' + k + 'Ocean']];
 const link = (url, txt) => `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(txt)}</a>`;
+// the cabin radio (js/sounds.js): HoliznaCC0 with its collections (CC0), then every other artist with each title linked
+// to its own page and its licence (CC BY 4.0, or CC0 where a track is published so)
+function musicCredits() {
+  const by = {}; for (const m of MUSIC) (by[m.artist] = by[m.artist] || []).push(m);
+  const out = [];
+  if (by.holizna) {
+    const albums = [...new Set(by.holizna.map(m => m.album))];
+    out.push(`<li>${link(SND_SRC.holizna, _('cred.cabin.music'))} — ${esc(_('cred.cabin.musicNote', { n: by.holizna.length, titles: by.holizna.map(m => m.title).join(', ') }))} ${albums.map(a => link(SND_SRC[a], MUSIC_ALBUM[a])).join(' · ')} · ${link(SND_SRC.cc0, _('cred.cabin.cc0'))}</li>`);
+  }
+  for (const [a, list] of Object.entries(by)) if (a !== 'holizna') {
+    const titles = list.map(m => link(SND_SRC[m.src], m.title) + (m.lic === 'cc0' ? ` (${esc(_('cred.cabin.cc0'))})` : '')).join(', ');
+    out.push(`<li>${esc(_('cred.cabin.musicBy', { artist: MUSIC_ARTISTS[a] }))} — ${titles}. ${esc(_('cred.cabin.musicByNote'))} ${link(SND_SRC.ccby, _('cred.cabin.ccby'))}</li>`);
+  }
+  return out.join('');
+}
 function renderCredits() {
   const rows = [], used = new Set();
   for (const [k, b] of Object.entries(BODIES)) {
@@ -3059,7 +3074,7 @@ function renderCredits() {
     <h3>${esc(_('cred.h.cabin'))}</h3>
     <ul><li>${esc(_('cred.cabin.art'))}</li>
       <li>${link(CABIN_SRC.earthrise, _('cred.cabin.earthrise'))} — ${esc(_('cred.cabin.earthriseNote'))}</li>
-      <li>${link(SND_SRC.holizna, _('cred.cabin.music'))} — ${esc(_('cred.cabin.musicNote', { n: MUSIC.length, titles: MUSIC.map(m => m.title).join(', ') }))} ${link(SND_SRC.chill, MUSIC_ALBUM.chill)} · ${link(SND_SRC.happy, MUSIC_ALBUM.happy)} · ${link(SND_SRC.cc0, _('cred.cabin.cc0'))}</li>
+      ${musicCredits()}
       <li>${esc(_('cred.cabin.space'))} — ${esc(_('cred.cabin.spaceNote'))} ${SPACE_SND.map(s => link(SND_SRC[s.src], s.src.toUpperCase())).join(' · ')} · ${link(SND_SRC.jpl, _('cred.cabin.jpl'))}</li>
       <li>${link(CABIN_SRC.font, _('cred.cabin.font'))} — ${esc(_('cred.cabin.fontNote'))} ${link(CABIN_SRC.ofl, _('cred.cabin.ofl'))}</li></ul>
     <h3>${esc(_('cred.h.lic'))}</h3>

@@ -391,24 +391,28 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   }
 }
 
-// 15) Phase 11 cabin sound: every track is CC0 with both files (Opus/WebM and MP3) and a sane duration; the space
-// recordings carry their credit and source; the radio starts only on a gesture; storage through prefs.js; settings
-// parsing falls back per field; the credits name the music and the recordings.
+// 15) Phase 11 cabin sound: every track is CC0 or CC BY 4.0 (no other licence), names its artist and source page, has
+// both files (Opus/WebM and MP3) and a sane duration; a CC BY track is credited while it plays and in the Sources
+// window; the space recordings carry their credit and source; the radio starts only on a gesture; storage through
+// prefs.js; settings parsing falls back per field; the credits name the music and the recordings.
 {
   const S = require('../js/sounds.js'), page = read('kabin.html'), aud = read('js/cabin-audio.js'), cab = read('js/cabin.js');
   const size = f => fs.statSync(path.join(__dirname, '..', f)).size;
-  assert.strictEqual(S.MUSIC_LIC, 'cc0', 'music only CC0');
-  assert.ok(S.MUSIC.length >= 5 && new Set(S.MUSIC.map(m => m.id)).size === S.MUSIC.length, 'distinct tracks');
+  assert.ok(S.MUSIC.length >= 30 && new Set(S.MUSIC.map(m => m.id)).size === S.MUSIC.length, 'distinct tracks, 30 or more');
   let bytes = 0;
   for (const m of S.MUSIC) {
-    assert.ok(m.title && S.MUSIC_ALBUM[m.album] && S.SND_SRC[m.album] && m.dur > 60 && m.dur < 600, 'track data ' + m.id);
+    assert.ok(m.title && S.MUSIC_ARTISTS[m.artist] && (m.album === null || S.MUSIC_ALBUM[m.album]) && S.SND_SRC[m.src] && m.dur > 60 && m.dur < 600, 'track data ' + m.id);
+    assert.ok(m.lic === 'cc0' || m.lic === 'ccby', 'licence CC0 or CC BY 4.0: ' + m.id);
     for (const e of ['webm', 'mp3']) { const n = size(`audio/cabin/music/${m.id}.${e}`); assert.ok(n > m.dur * 4000 && n < m.dur * 20000, `audio/cabin/music/${m.id}.${e} size`); bytes += n; }
   }
+  assert.ok(/s\.track\.lic === 'ccby' \? _\('kab\.audio\.nowBy', \{ title: s\.track\.title, artist: MUSIC_ARTISTS\[s\.track\.artist\], lic: _\('cred\.cabin\.ccby'\) \}\)/.test(cab) && has('kab.audio.nowBy'), 'a CC BY track shows its credit while it plays');
+  assert.ok(/function musicCredits\(\)/.test(app) && /MUSIC_ARTISTS\[a\]/.test(app) && /SND_SRC\[m\.src\]/.test(app) && has('cred.cabin.musicBy') && has('cred.cabin.ccby'), 'the Sources window credits every artist, each title linked');
+  assert.ok(S.SND_SRC.ccby === 'https://creativecommons.org/licenses/by/4.0/' && S.SND_SRC.cc0, 'licence links');
   for (const s of S.SPACE_SND) {
     assert.ok(s.credit.startsWith('NASA/JPL-Caltech') && S.SND_SRC[s.src] && s.dur > 10, 'space sound data ' + s.id);
     for (const e of ['webm', 'mp3']) bytes += size(`audio/cabin/space/${s.id}.${e}`);
   }
-  assert.ok(bytes < 150 * 1048576, 'cabin audio under 150 MB in all (30–40 radio tracks): ' + (bytes / 1048576).toFixed(1));
+  assert.ok(bytes < 200 * 1048576, 'cabin audio under 200 MB in all (about 50 radio tracks): ' + (bytes / 1048576).toFixed(1));
   assert.ok(fs.readdirSync(path.join(__dirname, '..', 'audio/cabin/music')).every(f => /^[a-z0-9-]+\.(webm|mp3)$/.test(f)), 'only encoded files in audio/cabin/music');
   // gesture, storage, keys
   assert.ok(/addEventListener\('pointerdown', audGesture, true\)/.test(cab) && !/sndStart\(/.test(cab.split('// ---------- sound')[0]), 'the radio starts on a gesture');

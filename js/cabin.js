@@ -704,7 +704,8 @@ const audWants = () => sndAny(AUD.set);
 function audChip() {
   const s = SND.state, set = AUD.set, tap = !SND.started && audWants(), lost = SND.started && set.music.on && !set.muted && s.trouble >= RETRY_S.length;
   $('#kRadioT').textContent = tap ? _('kab.audio.tap') : lost ? _('kab.audio.lost') : set.muted ? _('kab.audio.muted')
-    : set.music.on && s.track ? _('kab.audio.now', { title: s.track.title, artist: MUSIC_ARTIST }) : _('kab.audio.radio');
+    : set.music.on && s.track ? (s.track.lic === 'ccby' ? _('kab.audio.nowBy', { title: s.track.title, artist: MUSIC_ARTISTS[s.track.artist], lic: _('cred.cabin.ccby') }) // CC BY: the credit is shown while it plays
+      : _('kab.audio.now', { title: s.track.title, artist: MUSIC_ARTISTS[s.track.artist] })) : _('kab.audio.radio');
   $('#kRadio').classList.toggle('tap', tap); $('#kRadio').classList.toggle('warn', lost);
   $('#kSkip').hidden = !(SND.started && set.music.on && !set.muted && s.track && !lost); // next track: only while the radio plays
   $('#kLed').classList.toggle('on', SND.started && !!s.active);

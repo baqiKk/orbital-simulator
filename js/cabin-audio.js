@@ -162,7 +162,7 @@ function sndNext() {
 }
 function sndSession() {
   const ms = navigator.mediaSession, tr = SND.state.track; if (!ms || !tr || typeof MediaMetadata === 'undefined') return;
-  try { ms.metadata = new MediaMetadata({ title: tr.title, artist: MUSIC_ARTIST, album: MUSIC_ALBUM[tr.album] || '' }); } catch (e) { /* unsupported */ }
+  try { ms.metadata = new MediaMetadata({ title: tr.title, artist: MUSIC_ARTISTS[tr.artist], album: MUSIC_ALBUM[tr.album] || '' }); } catch (e) { /* unsupported */ }
   for (const a of ['seekto', 'seekbackward', 'seekforward', 'previoustrack']) try { ms.setActionHandler(a, null); } catch (e) { /* unsupported action */ }
   try { ms.setActionHandler('nexttrack', sndNext); } catch (e) { /* unsupported action */ }
 }
