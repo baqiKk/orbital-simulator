@@ -183,15 +183,15 @@ function cabDiscCover(r1, r2, d) {
   return (r1 * r1 * (a - Math.sin(2 * a) / 2) + r2 * r2 * (b - Math.sin(2 * b) / 2)) / (Math.PI * r1 * r1);
 }
 // Cabin sound settings: the radio (on by default) and three layers (off), each with a volume 0–1; noise colour white /
-// pink / brown; the pomodoro's bell (on); one mute for all. Anything missing or broken falls back per field.
+// pink / brown; the pomodoro's bell (on); the cat's purr while it is petted (on); one mute for all. Anything missing or broken falls back per field.
 const CAB_NOISE = ['white', 'pink', 'brown'];
-const CAB_AUDIO = { muted: false, music: { on: true, vol: 0.6 }, space: { on: false, vol: 0.5 }, hum: { on: false, vol: 0.4 }, noise: { on: false, vol: 0.3, type: 'pink' }, chime: { on: true, vol: 0.6 } };
+const CAB_AUDIO = { muted: false, music: { on: true, vol: 0.6 }, space: { on: false, vol: 0.5 }, hum: { on: false, vol: 0.4 }, noise: { on: false, vol: 0.3, type: 'pink' }, chime: { on: true, vol: 0.6 }, purr: { on: true, vol: 0.5 } };
 function parseCabAudio(raw) {
   let o = null; try { o = JSON.parse(raw); } catch (e) { /* default */ }
   if (!o || typeof o !== 'object') o = {};
   const vol = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
   const out = { muted: o.muted === true };
-  for (const k of ['music', 'space', 'hum', 'noise', 'chime']) {
+  for (const k of ['music', 'space', 'hum', 'noise', 'chime', 'purr']) {
     const s = o[k] && typeof o[k] === 'object' ? o[k] : {}, d = CAB_AUDIO[k];
     out[k] = { on: typeof s.on === 'boolean' ? s.on : d.on, vol: vol(s.vol, d.vol) };
   }

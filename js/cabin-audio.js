@@ -144,7 +144,7 @@ function sndApply(set) {
       if (k === 'music') { SND.state.track = null; SND.state.trouble = 0; sndEmit(); }
     }
   }
-  if (!any) setTimeout(() => { if (SND.set === set && c.state === 'running') c.suspend(); }, 400);
+  if (!any) setTimeout(() => { if (SND.set === set && c.state === 'running' && !PURR.level) c.suspend(); }, 400);
   SND.state.active = any; sndEmit();
 }
 // the first gesture: build the graph and play what the settings ask for
@@ -194,5 +194,55 @@ function sndChime(set, kind) {
     g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0.2 * lv, t + 0.4);
     g.setValueAtTime(0.2 * lv, t + 3.4); g.linearRampToValueAtTime(lv, t + 4.9);
   }
-  setTimeout(() => { out.disconnect(); if (!sndAny(SND.set) && c.state === 'running') c.suspend(); }, 5500);
+  setTimeout(() => { out.disconnect(); if (!sndAny(SND.set) && c.state === 'running' && !PURR.level) c.suspend(); }, 5500);
+}
+
+// ---------- the cat (petting) ----------
+// A purr, synthesised (no file): brown noise kept to the chest's range (40–420 Hz), pulsed about 26 times a second
+// (each pulse a soft half-sine), on a breath of about 2.6 s (out a little louder, the pulses a little faster in). Its
+// level follows how much the cat enjoys being petted (sndPurr(set, level 0–1), smoothed on the audio clock), times the
+// panel's purr row (its own volume, apart from the radio); mute silences it. Built on first use (like the bell, the
+// context is made here if nothing made it), stopped a few seconds after it has died down. sndMrr: a short trilled
+// "mrr", a sawtooth gliding up and down through a soft formant.
+const PURR = { level: 0, g: null, nodes: null, stopT: 0 };
+const purrOn = set => !!set && !set.muted && set.purr.on && set.purr.vol > 0;
+function sndPurr(set, level) {
+  if (!purrOn(set)) level = 0;
+  if (!level && !PURR.g) { PURR.level = 0; return; }
+  sndInit();
+  const c = SND.ctx; if (level && c.state !== 'running') c.resume().catch(() => {});
+  if (!PURR.g) {
+    const out = c.createGain(), ns = c.createBufferSource(), hp = c.createBiquadFilter(), lp = c.createBiquadFilter(), am = c.createGain(), br = c.createGain();
+    const pulse = c.createOscillator(), sh = c.createWaveShaper(), lfo = c.createOscillator(), lg = c.createGain(), lf = c.createGain();
+    const curve = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 127.5 - 1; curve[i] = x > 0 ? Math.pow(x, 1.4) : 0; }
+    out.gain.value = 0; out.connect(SND.master);
+    ns.buffer = noiseBuffer('brown'); ns.loop = true; hp.type = 'highpass'; hp.frequency.value = 40; lp.type = 'lowpass'; lp.frequency.value = 420; lp.Q.value = 0.8;
+    am.gain.value = 0; sh.curve = curve; pulse.frequency.value = 26; pulse.connect(sh); sh.connect(am.gain);
+    br.gain.value = 0.75; lfo.frequency.value = 0.38; lg.gain.value = 0.25; lfo.connect(lg); lg.connect(br.gain); lf.gain.value = 2; lfo.connect(lf); lf.connect(pulse.frequency);
+    ns.connect(hp); hp.connect(lp); lp.connect(am); am.connect(br); br.connect(out);
+    ns.start(); pulse.start(); lfo.start();
+    PURR.g = out; PURR.nodes = [ns, hp, lp, am, br, pulse, sh, lfo, lg, lf, out];
+  }
+  PURR.level = level;
+  PURR.g.gain.setTargetAtTime(level ? 0.9 * set.purr.vol * set.purr.vol * level : 0, c.currentTime, level ? 0.3 : 0.7);
+  clearTimeout(PURR.stopT);
+  if (!level) PURR.stopT = setTimeout(() => {
+    if (PURR.level) return;
+    for (const nd of PURR.nodes) { try { nd.stop && nd.stop(); } catch (e) { /* stopped */ } nd.disconnect(); }
+    PURR.g = PURR.nodes = null;
+    if (!sndAny(SND.set) && c.state === 'running') c.suspend();
+  }, 4000);
+}
+function sndMrr(set) {
+  if (!purrOn(set)) return;
+  sndInit();
+  const c = SND.ctx; if (c.state !== 'running') c.resume().catch(() => {});
+  const t = c.currentTime + 0.03, o = c.createOscillator(), tr = c.createOscillator(), tg = c.createGain(), am = c.createGain(), f = c.createBiquadFilter(), env = c.createGain();
+  o.type = 'sawtooth'; o.frequency.setValueAtTime(230, t); o.frequency.linearRampToValueAtTime(360, t + 0.13); o.frequency.linearRampToValueAtTime(290, t + 0.32);
+  tr.frequency.value = 30; tg.gain.value = 0.45; tr.connect(tg); am.gain.value = 0.55; tg.connect(am.gain);
+  f.type = 'bandpass'; f.frequency.value = 850; f.Q.value = 1.4;
+  env.gain.setValueAtTime(0, t); env.gain.linearRampToValueAtTime(0.22 * set.purr.vol * set.purr.vol, t + 0.04); env.gain.setValueAtTime(0.22 * set.purr.vol * set.purr.vol, t + 0.2); env.gain.exponentialRampToValueAtTime(1e-4, t + 0.36);
+  o.connect(am); am.connect(f); f.connect(env); env.connect(SND.master);
+  o.start(t); tr.start(t); o.stop(t + 0.4); tr.stop(t + 0.4);
+  setTimeout(() => { for (const nd of [o, tr, tg, am, f, env]) nd.disconnect(); }, 800);
 }

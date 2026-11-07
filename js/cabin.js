@@ -116,20 +116,26 @@ function layerImg(name, T) {
   if (name === 'room') box(im, 0, 0, LY.size[0], LY.size[1]);
   return im;
 }
-// the cat's parts, back to front (shadow, tail, ears, body), then the whiskers; pivots from layout.json, the body's at
-// the middle of its base (where it sits)
-const PART = {}, PIV = {};
+// The cat's parts, back to front as painted: the shadow, then the body's part holding the tail, the ears, the body's
+// image and the whiskers (so they lean and rise with the body when it is petted; each keeps its own motion about its
+// own pivot). Pivots from layout.json, the body's at the middle of its base (where it sits). REF: the node a part's
+// image goes before (its rim, the whiskers).
+const PART = {}, PIV = {}, REF = {};
 function buildCat() {
-  const cat = $('#kCat');
-  for (const n of LAYERS.slice(1)) {
-    const L = LY.layers[n], d = el('div', { class: 'k-part k-' + n }, cat);
-    box(d, L.x, L.y, L.w, L.h);
+  const cat = $('#kCat'), B = LY.layers.body;
+  const part = (n, parent, ox, oy) => {
+    const L = LY.layers[n], d = el('div', { class: 'k-part k-' + n }, parent);
+    box(d, L.x - ox, L.y - oy, L.w, L.h);
     PIV[n] = L.pivot || [L.x + L.w / 2, L.y + L.h];
     d.style.transformOrigin = `${PIV[n][0] - L.x}px ${PIV[n][1] - L.y}px`;
-    PART[n] = d;
-    if (LT_ON && n !== 'shadow') LT.rim[n] = el('canvas', { class: 'k-rim', 'aria-hidden': 'true' }, d);
-  }
-  cat.appendChild($('#kWhisk'));
+    PART[n] = d; return d;
+  };
+  part('shadow', cat, 0, 0);
+  const body = part('body', cat, 0, 0);
+  for (const n of ['tail', 'earL', 'earR']) part(n, body, B.x, B.y);
+  for (const n of ['tail', 'earL', 'earR', 'body']) if (LT_ON) REF[n] = LT.rim[n] = el('canvas', { class: 'k-rim', 'aria-hidden': 'true' }, PART[n]);
+  const wk = $('#kWhisk'); body.appendChild(wk); box(wk, -B.x, -B.y, LY.size[0], LY.size[1]);
+  REF.body = REF.body || wk;
 }
 // a part's motion now (its CSS animation and the translate / rotate / scale it may carry), about its pivot
 function partMatrix(n) {
@@ -154,7 +160,7 @@ function wantTier(T) {
     if (ART_T !== T) return;
     for (const k of Object.keys(DEC)) if (+k !== T && +k !== MV_CAP) delete DEC[k];
     if (T > MV_CAP && !DEC[MV_CAP]) mvPreload();
-    for (const [n, im] of fresh) { if (IMG[n]) IMG[n].replaceWith(im); else (n === 'room' ? $('#kRoomSlot') : PART[n]).prepend(im); IMG[n] = im; }
+    for (const [n, im] of fresh) { if (IMG[n]) IMG[n].replaceWith(im); else if (n === 'room') $('#kRoomSlot').prepend(im); else PART[n].insertBefore(im, REF[n] || null); IMG[n] = im; }
     ltRoom();
     for (const id of ['#kNight', '#kShine']) $(id).style.setProperty('--room', `url("${new URL(`img/cabin/${T}/room.webp`, location.href)}")`);
     document.body.classList.add('k-ready');
@@ -787,19 +793,22 @@ function drawMove(c) {
   // the light from outside and the ceiling strip (the room's alpha already in them), over the shade
   if (LT_ON && LT.sig) B.drawImage(LT.cv, 0, 0, W, H);
   const so = +getComputedStyle(STRIP).opacity; if (so > 0 && STRIP.width > 1) { B.globalAlpha = so; B.drawImage(STRIP, 0, 0, W, H); B.globalAlpha = 1; }
+  // the cat as the DOM nests it: the shadow; the body's motion over the tail, the ears (each with its own), the body and
+  // the whiskers; the lamp's filter on the images and whiskers, not on the rims
   const f = getComputedStyle(IMG.body).filter, ff = CAT_ID.test(f) ? 'none' : f;
-  for (const n of ['shadow', 'tail', 'earL', 'earR', 'body']) {
-    const L = LY.layers[n], m = partMatrix(n), rim = LT.rim[n], ra = rim ? +rim.style.opacity || 0 : 0;
-    B.save();
-    if (m) { const [ox, oy] = PIV[n]; B.translate(ox, oy); B.transform(m.a, m.b, m.c, m.d, m.e, m.f); B.translate(-ox, -oy); }
+  const move = n => { const m = partMatrix(n); if (m) { const [ox, oy] = PIV[n]; B.translate(ox, oy); B.transform(m.a, m.b, m.c, m.d, m.e, m.f); B.translate(-ox, -oy); } };
+  const layer = n => {
+    const L = LY.layers[n], rim = LT.rim[n], ra = rim ? +rim.style.opacity || 0 : 0;
     B.filter = ff; B.drawImage(im[n], L.x, L.y, L.w, L.h); B.filter = 'none';
-    if (ra > 0) { B.globalAlpha = ra; B.drawImage(rim, L.x, L.y, L.w, L.h); }
-    B.restore();
-  }
-  B.filter = ff;
-  B.strokeStyle = rgba(MV.cream, 1); B.lineWidth = 2.4; B.lineCap = 'round'; B.globalAlpha = 0.72;
+    if (ra > 0) { B.globalAlpha = ra; B.drawImage(rim, L.x, L.y, L.w, L.h); B.globalAlpha = 1; }
+  };
+  B.save(); move('shadow'); layer('shadow'); B.restore();
+  B.save(); move('body');
+  for (const n of ['tail', 'earL', 'earR']) { B.save(); move(n); layer(n); B.restore(); }
+  layer('body');
+  B.filter = ff; B.strokeStyle = rgba(MV.cream, 1); B.lineWidth = 2.4; B.lineCap = 'round'; B.globalAlpha = 0.72;
   for (const p of MV.whisk) B.stroke(p);
-  B.globalAlpha = 1; B.filter = 'none';
+  B.restore(); B.globalAlpha = 1; B.filter = 'none';
   MV.drawn++;
   if (DBG) { DBG.cost.push(performance.now() - t0); DBG.mvT = MV.set.T; }
 }
@@ -1078,7 +1087,7 @@ if (DBG) setInterval(dbgShow, 250);
 // left asks for a tap. The chip names the track, or says the radio cannot be reached; it and the headphones on the
 // desk open the sound panel. A small light on the headphones shows that something is playing.
 const AUD = { set: parseCabAudio(readPref(LS, PREF_KEYS.cabAudio)) };
-const AUD_K = ['music', 'space', 'hum', 'noise', 'chime'];
+const AUD_K = ['music', 'space', 'hum', 'noise', 'chime', 'purr'];
 const audWants = () => sndAny(AUD.set);
 function audChip() {
   const s = SND.state, set = AUD.set, tap = !SND.started && audWants(), lost = SND.started && set.music.on && !set.muted && s.trouble >= RETRY_S.length;
@@ -1250,6 +1259,101 @@ $('#kPomoNotify').addEventListener('change', e => {
 });
 addEventListener('storage', e => { if (e.key === PREF_KEYS.pomo) { poLoad(); poShow(); if (!$('#kPomo').hidden) poSyncSet(); } });
 
+// ---------- petting the cat ----------
+// The mouse moving over the cat, a finger or pen dragged across it, or a click / tap (a pat; Enter on the focused cat
+// too) pets it. A stroke counts by its speed and direction: from the back towards the tail most, against the fur
+// least. The cat's pleasure (PET.e) rises while it is petted and ebbs when it is not; it moves the parts through their
+// rotate / scale properties, on top of their CSS idle motion (partMatrix reads both for the move canvas):
+//   ears: turn towards the hand and lay out sideways as the pleasure grows;
+//   body (with the tail, ears and whiskers on it): leans a little towards the hand and rises (a slight scale, the back
+//   arching up), breathing slowly;
+//   tail: a slow sway, its tip trembling, swung up in a long petting session.
+// Now and then (pleasure over half, every 6–14 s) a small reaction, never the same twice running: a "mrr", a little
+// shake, one ear's flick. Petted too long or too fast (PET.tire), it flicks its tail once, lays its ears back and pays no
+// attention for a few seconds (PET_REST), then may be petted again. The purr (cabin-audio.js sndPurr, the sound panel's
+// purr row) follows the pleasure and dies down slowly. Reduced motion and low-resource mode: only a small ear movement
+// and the sound. Only the existing layers move: no new drawing, no new pose.
+const PET = { raf: 0, last: 0, t: 0, e: 0, tire: 0, stroke: 0, over: false, p: null, pt: 0, rest: 0, next: 0, kind: '', rx: null, purr: 0,
+  v: { earL: 0, earR: 0, body: 0, bsx: 1, bsy: 1, tail: 0 } };
+const PET_DOWN = norm([0.25, 1]);   // down the cat's back, towards the tail (art px)
+const PET_C = [4370, 1900];         // the cat's middle (art px): the hand's side of it turns the ears and the lean
+const PET_REST = 5000;              // ms of no attention after too much
+const PET_KINDS = ['mrr', 'shake', 'ear'];
+const petArt = e => [CAM.x + e.clientX / CAM.s, CAM.y + e.clientY / CAM.s];
+function petInit(hit) {
+  hit.style.touchAction = 'none';
+  const at = e => { PET.p = petArt(e); PET.pt = performance.now(); };
+  hit.addEventListener('pointerenter', e => { at(e); PET.over = true; petRun(); });
+  hit.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') { try { hit.setPointerCapture(e.pointerId); } catch (x) { /* gone */ } } at(e); PET.over = true; petRun(); });
+  hit.addEventListener('pointermove', e => {
+    const p = petArt(e), now = performance.now();
+    if (PET.p && (e.pointerType === 'mouse' || e.buttons)) {
+      const dt = Math.max(8, now - PET.pt) / 1000, d = [p[0] - PET.p[0], p[1] - PET.p[1]], l = Math.hypot(...d);
+      if (l > 2) PET.stroke = Math.max(PET.stroke, Math.min(1, l / dt / 1800) * (0.35 + 0.65 * Math.max(0, (d[0] * PET_DOWN[0] + d[1] * PET_DOWN[1]) / l)));
+      if (PET.stroke > 0.25) hideTip();
+    }
+    PET.p = p; PET.pt = now; PET.over = true; petRun();
+  });
+  for (const ev of ['pointerleave', 'pointercancel']) hit.addEventListener(ev, () => { PET.over = false; });
+  hit.addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') PET.over = false; });
+  hit.addEventListener('click', () => { PET.stroke = Math.max(PET.stroke, 0.5); petRun(); });
+}
+function petRun() { if (!PET.raf && LY && PART.body) { PET.last = performance.now(); PET.raf = requestAnimationFrame(petStep); } }
+// too much: one tail flick, ears back, a few seconds of no attention
+function petEnough(now) {
+  PET.rest = now + PET_REST; PET.tire = 0; PET.e *= 0.4; PET.rx = null;
+  const c = $('#kCat'); c.classList.remove('k-flick'); void c.offsetWidth; c.classList.add('k-flick'); setTimeout(() => c.classList.remove('k-flick'), 950);
+}
+// a small reaction, not the last one again
+function petReact(now) {
+  const kinds = PET_KINDS.filter(k => k !== PET.kind), k = kinds[Math.floor(Math.random() * kinds.length)];
+  PET.kind = k; PET.next = now + 6000 + Math.random() * 8000;
+  PET.rx = { kind: k, t0: now, end: now + (k === 'shake' ? 550 : k === 'mrr' ? 450 : 320) };
+  if (k === 'mrr') sndMrr(AUD.set);
+}
+function petStep(now) {
+  PET.raf = 0;
+  const dt = Math.min(0.1, Math.max(0, (now - PET.last) / 1000)); PET.last = now; PET.t += dt;
+  const resting = now < PET.rest, s = resting ? 0 : PET.stroke, small = still();
+  PET.e = Math.min(1, Math.max(0, PET.e + (s > 0.02 ? 1.1 * s : -0.3) * dt));
+  PET.tire = Math.max(0, PET.tire + (1.2 * s * s + (PET.e > 0.85 ? 0.1 : 0) - 0.08) * dt);
+  PET.stroke *= Math.exp(-dt / 0.3);
+  if (PET.tire > 1 && !resting) petEnough(now);
+  if (!resting && PET.e > 0.45 && now > PET.next) petReact(now);
+  if (!PET.next) PET.next = now + 3000;
+  // where each part wants to be
+  const e = PET.e, p = PET.p || PET_C, side = Math.max(-1, Math.min(1, (p[0] - PET_C[0]) / 260)), look = PET.over || e > 0.05 ? 7 * side : 0;
+  const back = resting && now < PET.rest - PET_REST + 1800 ? 1 : 0, R = PET.rx && now < PET.rx.end ? PET.rx : null, u = R ? (now - R.t0) / (R.end - R.t0) : 0;
+  let earL = look - 12 * e - 16 * back, earR = look + 12 * e + 16 * back;
+  if (R && R.kind === 'ear') earL -= 11 * Math.sin(Math.PI * u);
+  if (R && R.kind === 'mrr') { earL += 5 * Math.sin(Math.PI * u); earR -= 5 * Math.sin(Math.PI * u); }
+  let body = 1.6 * e * side, bsx = 1 + 0.012 * e, bsy = 1 + 0.024 * e + 0.006 * e * Math.sin(PET.t * 2 * Math.PI * 0.38), tail;
+  if (R && R.kind === 'shake') body += 1.4 * Math.sin(u * Math.PI * 6) * (1 - u);
+  const lift = Math.max(0, (e - 0.6) / 0.4);
+  tail = -16 * lift * lift * (3 - 2 * lift) + 4 * e * Math.sin(PET.t * 2 * Math.PI * 0.45) + (e > 0.3 ? 0.9 * Math.sin(PET.t * 2 * Math.PI * 8.5) : 0);
+  if (small) { earL *= 0.35; earR *= 0.35; body = 0; bsx = bsy = 1; tail = 0; }
+  const V = PET.v, k = tau => 1 - Math.exp(-dt / tau);
+  V.earL += (earL - V.earL) * k(0.12); V.earR += (earR - V.earR) * k(0.12); V.body += (body - V.body) * k(0.25);
+  V.bsx += (bsx - V.bsx) * k(0.3); V.bsy += (bsy - V.bsy) * k(0.3); V.tail += (tail - V.tail) * k(0.08);
+  petApply();
+  // the purr follows the pleasure
+  const lv = e > 0.12 && !resting ? Math.min(1, (e - 0.12) / 0.5) : 0;
+  if (Math.abs(lv - PET.purr) > 0.03 || (!lv && PET.purr)) { PET.purr = lv; sndPurr(AUD.set, lv); }
+  const moving = Math.abs(V.earL) + Math.abs(V.earR) + Math.abs(V.body) + Math.abs(V.tail) + Math.abs(V.bsx - 1) + Math.abs(V.bsy - 1) > 0.02;
+  if (!document.hidden && (PET.over || e > 0.001 || PET.stroke > 0.01 || resting || moving)) PET.raf = requestAnimationFrame(petStep); else petClear();
+}
+function petApply() {
+  const V = PET.v, rot = (n, a) => { const v = Math.abs(a) > 0.005 ? a.toFixed(2) + 'deg' : ''; if (PART[n].style.rotate !== v) PART[n].style.rotate = v; };
+  rot('earL', V.earL); rot('earR', V.earR); rot('body', V.body); rot('tail', V.tail);
+  const sc = Math.abs(V.bsx - 1) + Math.abs(V.bsy - 1) > 1e-4 ? `${V.bsx.toFixed(4)} ${V.bsy.toFixed(4)}` : '';
+  if (PART.body.style.scale !== sc) PART.body.style.scale = sc;
+}
+function petClear() {
+  const V = PET.v; V.earL = V.earR = V.body = V.tail = 0; V.bsx = V.bsy = 1; petApply();
+  if (PET.purr) { PET.purr = 0; sndPurr(AUD.set, 0); }
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) { PET.over = false; if (PET.purr) { PET.purr = 0; sndPurr(AUD.set, 0); } } });
+
 // ---------- the lamp ----------
 function setLamp(on, save = true) {
   $('#kRoot').classList.toggle('lamp-off', !on);
@@ -1301,7 +1405,7 @@ function buildHits() {
   }
   $('#hGlass').addEventListener('click', () => go(view === 'desk' ? 'window' : 'desk'));
   $('#hLamp').addEventListener('click', () => setLamp($('#kRoot').classList.contains('lamp-off')));
-  $('#hCat').addEventListener('click', () => { const c = $('#kCat'); c.classList.remove('k-flick'); void c.offsetWidth; c.classList.add('k-flick'); setTimeout(() => c.classList.remove('k-flick'), 950); });
+  petInit($('#hCat'));
   for (const id of ['hBook', 'hTea']) $('#' + id).addEventListener('click', e => showTip(e.currentTarget));
   $('#hClock').addEventListener('click', () => poPanel());
   $('#hPhones').addEventListener('click', () => audPanel());

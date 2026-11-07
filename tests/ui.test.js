@@ -427,7 +427,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   // settings
   assert.deepStrictEqual(P.parseCabAudio(null), P.CAB_AUDIO, 'defaults: radio on, layers off');
   assert.deepStrictEqual(P.parseCabAudio('{"music":{"on":false,"vol":2},"noise":{"type":"red","vol":-1},"muted":"yes"}'),
-    { muted: false, music: { on: false, vol: 1 }, space: { on: false, vol: 0.5 }, hum: { on: false, vol: 0.4 }, noise: { on: false, vol: 0, type: 'pink' }, chime: { on: true, vol: 0.6 } }, 'per-field fallback');
+    { muted: false, music: { on: false, vol: 1 }, space: { on: false, vol: 0.5 }, hum: { on: false, vol: 0.4 }, noise: { on: false, vol: 0, type: 'pink' }, chime: { on: true, vol: 0.6 }, purr: { on: true, vol: 0.5 } }, 'per-field fallback');
   assert.strictEqual(P.parseCabAudio('{"noise":{"type":"brown"}}').noise.type, 'brown');
   assert.ok(P.PREF_KEYS.cabAudio, 'saved under a pref key');
   // next track: a button beside the chip (shown only while the radio plays), a 1 s crossfade to the shuffle's next
@@ -637,6 +637,18 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   }
   // at the glass the cat still answers (petting), the other objects rest
   assert.ok(cab.includes("querySelectorAll('.k-hit:not(#hGlass):not(#hCat)')) b.inert = to !== 'desk';"), 'the cat can be petted at the glass');
+  // petting: the existing layers only (no new image), tail / ears / whiskers on the body so they move with it; reactions
+  // never repeat back to back; too much gives a rest; reduced motion and low mode only move the ears a little; the purr
+  // and the "mrr" are synthesised (no file), with their own row in the sound panel, after a gesture like the rest
+  {
+    const aud = read('js/cabin-audio.js'), page = read('kabin.html');
+    assert.ok(/for \(const n of \['tail', 'earL', 'earR'\]\) part\(n, body, B\.x, B\.y\);/.test(cab) && /body\.appendChild\(wk\)/.test(cab), 'petting: tail, ears and whiskers ride on the body');
+    assert.ok(/const kinds = PET_KINDS\.filter\(k => k !== PET\.kind\)/.test(cab) && /if \(PET\.tire > 1 && !resting\) petEnough\(now\);/.test(cab), 'petting: no repeated reaction, a rest after too much');
+    assert.ok(/if \(small\) \{ earL \*= 0\.35; earR \*= 0\.35; body = 0; bsx = bsy = 1; tail = 0; \}/.test(cab), 'petting: reduced motion moves only the ears a little');
+    assert.ok(/function sndPurr\(set, level\)/.test(aud) && /function sndMrr\(set\)/.test(aud) && !/purr\.(mp3|webm|ogg|wav)/.test(aud + cab), 'purr synthesised, no file');
+    assert.ok(/data-k="purr"/.test(page) && P.CAB_AUDIO.purr && P.CAB_AUDIO.purr.on === true && /'purr'\]/.test(cab), 'purr: its own row and volume');
+    assert.ok(!/<img[^>]*cat/i.test(page) && !/img\/cabin\/[^'"`]*(heart|pose)/.test(cab), 'petting: no new pictures');
+  }
   // the laptop follows the plan while it flies
   assert.ok(/if \(st\) \{ lapPlan\(st\); return; \}/.test(cab), 'laptop: the plan track');
 }

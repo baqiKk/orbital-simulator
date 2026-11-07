@@ -432,6 +432,8 @@ const I18N = {
     'kab.audio.sources': 'Kaynakça',
     'kab.audio.chime': 'Pomodoro zili',
     'kab.audio.volChime': 'Zilin ses düzeyi',
+    'kab.audio.purr': 'Kedinin mırlaması',
+    'kab.audio.volPurr': 'Mırlamanın ses düzeyi',
     // pomodoro (Phase 10): the desk clock's panel, the bell, notifications
     'kab.pomo.title': 'Pomodoro',
     'kab.pomo.open': 'Pomodoro panelini aç',
