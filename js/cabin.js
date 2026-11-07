@@ -1087,7 +1087,7 @@ if (DBG) setInterval(dbgShow, 250);
 // left asks for a tap. The chip names the track, or says the radio cannot be reached; it and the headphones on the
 // desk open the sound panel. A small light on the headphones shows that something is playing.
 const AUD = { set: parseCabAudio(readPref(LS, PREF_KEYS.cabAudio)) };
-const AUD_K = ['music', 'space', 'hum', 'noise', 'chime', 'purr'];
+const AUD_K = ['music', 'space', 'hum', 'noise', 'chime'];
 const audWants = () => sndAny(AUD.set);
 function audChip() {
   const s = SND.state, set = AUD.set, tap = !SND.started && audWants(), lost = SND.started && set.music.on && !set.muted && s.trouble >= RETRY_S.length;
@@ -1279,6 +1279,8 @@ const PET_DOWN = norm([0.25, 1]);   // down the cat's back, towards the tail (ar
 const PET_C = [4370, 1900];         // the cat's middle (art px): the hand's side of it turns the ears and the lean
 const PET_REST = 5000;              // ms of no attention after too much
 const PET_KINDS = ['mrr', 'shake', 'ear'];
+// the purr and the mrr's sound: off for now (the synthesised purr did not sound right); the mrr keeps its ear perk
+const PET_SOUND = false;
 const petArt = e => [CAM.x + e.clientX / CAM.s, CAM.y + e.clientY / CAM.s];
 function petInit(hit) {
   hit.style.touchAction = 'none';
@@ -1309,7 +1311,7 @@ function petReact(now) {
   const kinds = PET_KINDS.filter(k => k !== PET.kind), k = kinds[Math.floor(Math.random() * kinds.length)];
   PET.kind = k; PET.next = now + 6000 + Math.random() * 8000;
   PET.rx = { kind: k, t0: now, end: now + (k === 'shake' ? 550 : k === 'mrr' ? 450 : 320) };
-  if (k === 'mrr') sndMrr(AUD.set);
+  if (k === 'mrr' && PET_SOUND) sndMrr(AUD.set);
 }
 function petStep(now) {
   PET.raf = 0;
@@ -1337,7 +1339,7 @@ function petStep(now) {
   V.bsx += (bsx - V.bsx) * k(0.3); V.bsy += (bsy - V.bsy) * k(0.3); V.tail += (tail - V.tail) * k(0.08);
   petApply();
   // the purr follows the pleasure
-  const lv = e > 0.12 && !resting ? Math.min(1, (e - 0.12) / 0.5) : 0;
+  const lv = PET_SOUND && e > 0.12 && !resting ? Math.min(1, (e - 0.12) / 0.5) : 0;
   if (Math.abs(lv - PET.purr) > 0.03 || (!lv && PET.purr)) { PET.purr = lv; sndPurr(AUD.set, lv); }
   const moving = Math.abs(V.earL) + Math.abs(V.earR) + Math.abs(V.body) + Math.abs(V.tail) + Math.abs(V.bsx - 1) + Math.abs(V.bsy - 1) > 0.02;
   if (!document.hidden && (PET.over || e > 0.001 || PET.stroke > 0.01 || resting || moving)) PET.raf = requestAnimationFrame(petStep); else petClear();

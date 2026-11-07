@@ -646,7 +646,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     assert.ok(/const kinds = PET_KINDS\.filter\(k => k !== PET\.kind\)/.test(cab) && /if \(PET\.tire > 1 && !resting\) petEnough\(now\);/.test(cab), 'petting: no repeated reaction, a rest after too much');
     assert.ok(/if \(small\) \{ earL \*= 0\.35; earR \*= 0\.35; body = 0; bsx = bsy = 1; tail = 0; \}/.test(cab), 'petting: reduced motion moves only the ears a little');
     assert.ok(/function sndPurr\(set, level\)/.test(aud) && /function sndMrr\(set\)/.test(aud) && !/purr\.(mp3|webm|ogg|wav)/.test(aud + cab), 'purr synthesised, no file');
-    assert.ok(/data-k="purr"/.test(page) && P.CAB_AUDIO.purr && P.CAB_AUDIO.purr.on === true && /'purr'\]/.test(cab), 'purr: its own row and volume');
+    assert.ok(/const PET_SOUND = false;/.test(cab) && !/data-k="purr"/.test(page), 'purr: off for now, no panel row');
     assert.ok(!/<img[^>]*cat/i.test(page) && !/img\/cabin\/[^'"`]*(heart|pose)/.test(cab), 'petting: no new pictures');
   }
   // the laptop follows the plan while it flies
