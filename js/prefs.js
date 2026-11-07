@@ -123,11 +123,16 @@ function cabCrop(vw, vh, W = 7136, H = 3528) {
   const fx = CAB_FOCUS[0] + t * (CAB_FOCUS[1] - CAB_FOCUS[0]);
   return { s, x: Math.min(W - w, Math.max(0, fx - w / 2)), y: 0.15 * (H - h) };
 }
-// Window view: the glass (x0, y0, x1, y1) covers the screen, centred as close to the desk view's focus as it allows.
-function cabGlassCam(vw, vh, g) {
-  const gw = g.x1 - g.x0, gh = g.y1 - g.y0, s = Math.max(vw / gw, vh / gh), w = vw / s, h = vh / s, t = Math.min(1, Math.max(0, (1.5 - vw / vh) / 0.7));
-  const fx = CAB_FOCUS[0] + t * (CAB_FOCUS[1] - CAB_FOCUS[0]);
-  return { s, x: Math.min(g.x1 - w, Math.max(g.x0, fx - w / 2)), y: g.y0 + (gh - h) / 2 };
+// Window view: close to the glass, not into it. The window's frame and the sill with the cat stay in the picture
+// (CAB_WIN, art px: the frame's outer edges, from just above it down to the cat's lower back at the screen's bottom):
+// that box fits the screen, and a narrow screen comes closer, the glass at least 60 % of the height (70 % in portrait;
+// CAB_WIN_GLASS),
+// sliding sideways so the cat's right edge (CAB_CAT_X) stays in; never wider than the art. The glass fills most of the view.
+const CAB_WIN = [1560, 40, 5690, 2470], CAB_WIN_GLASS = [0.6, 0.7], CAB_CAT_X = 4720;
+function cabGlassCam(vw, vh, g, W = 7136, H = 3528) {
+  const [x0, y0, x1, y1] = CAB_WIN, s = Math.max(Math.min(vw / (x1 - x0), vh / (y1 - y0)), CAB_WIN_GLASS[vw < vh ? 1 : 0] * vh / (g.y1 - g.y0), vw / W, vh / H), w = vw / s, h = vh / s;
+  const cx = w < x1 - x0 ? Math.max((x0 + x1) / 2, CAB_CAT_X - w / 2) : (x0 + x1) / 2;
+  return { s, x: Math.min(W - w, Math.max(0, cx - w / 2)), y: Math.min(H - h, Math.max(0, y1 - h)) };
 }
 // The room's geometry for the light through the glass (art px; x right, y down, z from the wall towards the viewer).
 // The wall is the picture plane (z = 0 lands on the art 1:1); the eye looks straight at it from z = D, level with the
@@ -203,4 +208,4 @@ function parseSimSnap(raw, now) {
   return o;
 }
 
-if (typeof module !== 'undefined') module.exports = { SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

@@ -386,8 +386,13 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     assert.ok(c.x >= 0 && c.y >= 0 && c.x + w <= W + 1e-6 && c.y + h <= H + 1e-6 && (Math.abs(w - W) < 1e-6 || Math.abs(h - H) < 1e-6), `crop ${vw}×${vh} covers the screen inside the art`);
     assert.ok(c.x <= cat.x && c.x + w >= cat.x + cat.w, `crop ${vw}×${vh} shows the cat`);
     if (vw / vh >= 1.3) assert.ok(c.x <= g.x0 && c.x + w >= g.x1, `crop ${vw}×${vh} shows the whole glass`);
-    const wc = P.cabGlassCam(vw, vh, g);
-    assert.ok(wc.x >= g.x0 - 1e-6 && wc.x + vw / wc.s <= g.x1 + 1e-6 && wc.y >= g.y0 - 1e-6 && wc.y + vh / wc.s <= g.y1 + 1e-6, `window view ${vw}×${vh} stays on the glass`);
+    // window view: closer than the desk, inside the art, the cat and the sill in, the glass at least 60 % of the height,
+    // the whole frame on landscape screens
+    const wc = P.cabGlassCam(vw, vh, g), ww = vw / wc.s, wh = vh / wc.s, a = vw / vh;
+    assert.ok(wc.s >= c.s - 1e-9 && wc.x >= -1e-6 && wc.y >= -1e-6 && wc.x + ww <= W + 1e-6 && wc.y + wh <= H + 1e-6, `window view ${vw}×${vh}: closer, inside the art`);
+    assert.ok(wc.x <= cat.x && wc.x + ww >= cat.x + cat.w && wc.y + wh >= 2300, `window view ${vw}×${vh}: the cat on the sill`);
+    assert.ok((Math.min(g.y1, wc.y + wh) - Math.max(g.y0, wc.y)) * wc.s >= 0.59 * vh, `window view ${vw}×${vh}: the glass fills the height`);
+    if (a >= 1.6 && a <= 2.4) assert.ok(wc.x <= P.CAB_WIN[0] && wc.x + ww >= P.CAB_WIN[2] && wc.y <= P.CAB_WIN[1] + 1e-6, `window view ${vw}×${vh}: the whole frame`);
   }
 }
 
