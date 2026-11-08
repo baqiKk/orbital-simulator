@@ -807,4 +807,19 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(app.includes("function tlRoom() { const tl = $('#timeline').getBoundingClientRect(); $('#wins').style.setProperty('--tl-h', (tl.height ?") && app.includes("new ResizeObserver(() => clampWins()).observe($('#ctrls'))"), 'windows: no timeline room while it is hidden; they follow the controls');
 }
 
+// 25) View controls, simple by default: the bar holds 2D / 3D, "follow" and the view menu; the menu the frames (plain
+// names, a line each, a glossary link), map and camera, the switches and the sky, the quality and the expert switch;
+// every old control keeps its id (moved, not copied); the expert layout puts them back, saved
+{
+  const app = read('js/app.js'), page = read('index.html');
+  for (const id of ['viewMode', 'frameSeg', 'mapSeg', 'sizeSeg', 'followSeg', 'mapBtn', 'fit', 'topView', 'tSoi', 'tTracks', 'tGrid', 'tOsc', 'tSky', 'tMoons'])
+    assert.strictEqual([...page.matchAll(new RegExp('id="' + id + '"', 'g'))].length, 1, 'one #' + id + ' still');
+  for (const id of ['ctrlBar', 'dimSeg', 'viewBtn', 'viewMenu', 'qualSeg', 'expertUi', 'frameNote', 'frameGloss']) assert.ok(page.includes('id="' + id + '"'), '#' + id);
+  for (const k of ['fr.inertial.d', 'fr.centered.d', 'fr.rot.d', 'fr.eq.d', 'fr.p0.d', 'fr.p1.d', 'vw.menu', 'vw.follow', 'vw.expert', 'vw.quality']) assert.ok(has(k), k);
+  assert.strictEqual(DICT['fr.inertial'], 'Yıldızlara göre sabit', 'plain frame names');
+  assert.ok(app.includes("function vwPut(el, slot) { vwHome(el); slot.appendChild(el); }") && app.includes("if (VW.expert) { for (const el of [$('#frameSeg'), ...cam, $('#followSeg'), $('.toggles')]) vwBack(el); }"), 'controls moved into the menu, back in the expert layout');
+  assert.ok(app.includes("writePref(LS, PREF_KEYS.uiExpert, VW.expert ? '1' : '0')") && P.PREF_KEYS.uiExpert, 'the expert layout is saved');
+  assert.ok(app.includes("if (VW.phone.matches && !VW.expert) { vwPut($('#dimSeg'), slot('bar')); vwPut($('#vwFollow'), slot('bar')); }"), 'phones: one button, everything in the sheet');
+}
+
 console.log('OK — all UI tests passed');

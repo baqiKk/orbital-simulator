@@ -1354,11 +1354,11 @@ function renderFrameSeg() {
   const A = S.bodies[0] ? S.bodies[0].name : 'A', B = S.bodies[1] ? S.bodies[1].name : 'B', man = S.kind === 'man';
   const fr = man ? [['eq', _('fr.eq', { name: A })], ['p0', _('fr.p0')], ['p1', _('fr.p1')]]
     : [['inertial', _('fr.inertial')], ['A', _('fr.centered', { name: A })], ['B', _('fr.centered', { name: B })], ['rot', _('fr.rot', { a: A, b: B })]];
-  $('#frameSeg').innerHTML = fr.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${S.frame === v}">${esc(l)}</button>`).join('');
+  $('#frameSeg').innerHTML = fr.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${S.frame === v}" title="${esc(_(v === 'A' || v === 'B' ? 'fr.centered.d' : 'fr.' + v + '.d'))}">${esc(l)}</button>`).join('');
   const fo = [['free', _('fo.free')], ['craft', _('fo.craft')], ['A', A], ...(man ? [] : [['B', B]])];
   $('#followSeg').innerHTML = fo.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${S.follow === v}">${esc(l)}</button>`).join('');
 }
-$('#frameSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.frame = b.dataset.v; renderFrameSeg(); if (S.follow === 'free') needFit = true; });
+$('#frameSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.frame = b.dataset.v; renderFrameSeg(); vwSync(); if (S.follow === 'free') needFit = true; });
 $('#followSeg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return; S.follow = b.dataset.v; renderFrameSeg();
   if (S.follow === 'A' || S.follow === 'B') followZoom(S.follow === 'A' ? 0 : 1);
@@ -3260,6 +3260,7 @@ function setMode(m, save) {
   if (sys && simR) { buildCache(); renderTicks(); }
   PC.base = null; pcSync(); // grid resolution and drawing follow the mode
   document.querySelectorAll('#viewMode button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === m)));
+  vwSync();
   if (save) writePref(LS, PREF_KEYS.mode, m);
   $('#perfTip').hidden = true;
 }
@@ -3270,6 +3271,45 @@ function want3d(save) {
   load3d().then(() => { em.hidden = true; if (want3) setMode('3d', save); })
     .catch(e => { console.error(e); em.hidden = true; want3 = false; setStatus(_('mode.fail')); sync3dUI(); });
 }
+// The view controls, simple by default: on the bar only 2D / 3D, "follow" and "Görünüm ▾"; the frames, the map and
+// camera buttons, the switches, the sky and the quality in that menu (a sheet from the bottom on phones, where the
+// bar's own controls go in too). The controls themselves are the same elements with the same ids and listeners: moved
+// into the menu, and back to their places in the expert layout (PREF_KEYS.uiExpert, html.ui-expert), the old full set.
+const VW = { expert: readPref(LS, PREF_KEYS.uiExpert) === '1', q2: 'normal', homes: new Map(), phone: matchMedia('(max-width: 560px)') };
+function vwHome(el) { if (!VW.homes.has(el)) { const m = document.createComment(el.id || 'ctrl'); el.before(m); VW.homes.set(el, m); } return el; }
+function vwPut(el, slot) { vwHome(el); slot.appendChild(el); }
+function vwBack(el) { const m = VW.homes.get(el); if (m) m.after(el); }
+function vwLayout() {
+  document.documentElement.classList.toggle('ui-expert', VW.expert);
+  const slot = k => $('#viewMenu [data-slot="' + k + '"]'), row = $('#ctrls .row'), cam = [$('#mapBtn'), $('#mapSeg'), $('#fit'), $('#topView'), $('#sizeSeg')];
+  if (VW.expert) { for (const el of [$('#frameSeg'), ...cam, $('#followSeg'), $('.toggles')]) vwBack(el); }
+  else {
+    vwPut($('#frameSeg'), slot('frame')); for (const el of cam) vwPut(el, slot('cam'));
+    vwPut($('.toggles'), slot('toggles')); vwPut($('#followSeg'), $('#vwFollow'));
+  }
+  // phones: the bar's own controls in the sheet too, the bar only the button
+  if (VW.phone.matches && !VW.expert) { vwPut($('#dimSeg'), slot('bar')); vwPut($('#vwFollow'), slot('bar')); } else { vwBack($('#dimSeg')); vwBack($('#vwFollow')); }
+  $('#expertUi').checked = VW.expert; vwSync(); INS = null;
+}
+function vwSync() {
+  if (MODE !== '3d') VW.q2 = MODE;
+  setSeg('#dimSeg', MODE === '3d' ? '3d' : '2d'); setSeg('#qualSeg', MODE === 'low' ? 'low' : 'normal');
+  const b3 = $('#dimSeg [data-v="3d"]'); b3.setAttribute('aria-disabled', String(!GL2 || V3fail)); b3.title = _(!GL2 ? 'mode.noGL' : V3fail ? 'mode.failTip' : 'mode.3dTip');
+  const f = $('#frameSeg [aria-pressed="true"]'), k = f ? f.dataset.v : S.frame;
+  $('#frameNote').textContent = _(k === 'A' || k === 'B' ? 'fr.centered.d' : 'fr.' + k + '.d');
+}
+function vwMenu(open) {
+  const m = $('#viewMenu'); open = open ?? m.hidden; m.hidden = !open;
+  $('#viewBtn').setAttribute('aria-expanded', String(open)); if (open) vwSync(); INS = null;
+}
+$('#viewBtn').addEventListener('click', () => vwMenu());
+document.addEventListener('pointerdown', e => { if (!$('#viewMenu').hidden && !e.target.closest('#viewMenu, #viewBtn')) vwMenu(false); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#viewMenu').hidden) { vwMenu(false); $('#viewBtn').focus(); } });
+$('#dimSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.getAttribute('aria-disabled') === 'true') return; setMode(b.dataset.v === '3d' ? '3d' : VW.q2, true); });
+$('#qualSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.v, true); });
+$('#expertUi').addEventListener('change', e => { VW.expert = e.target.checked; writePref(LS, PREF_KEYS.uiExpert, VW.expert ? '1' : '0'); vwLayout(); });
+$('#frameGloss').addEventListener('click', () => { vwMenu(false); setWin('gloss', { open: true, collapsed: false }); $('#glossQ').value = _('vw.glossQ'); renderGloss($('#glossQ').value); });
+VW.phone.addEventListener?.('change', vwLayout);
 $('#viewMode').addEventListener('click', e => {
   const b = e.target.closest('button');
   if (!b || b.getAttribute('aria-disabled') === 'true') return;
@@ -3355,6 +3395,7 @@ if (start.auto) {
   if (m === 'low') liteTip(CRASHED ? 'lite.crash' : 'lite.text'); else AUTO.on = true;
 } else if (CRASHED && start.mode !== 'low') { start.mode = 'low'; liteTip('lite.crash'); } // a saved mode, but the last start died: light this once
 bind3d();
+vwLayout();
 setMode(start.mode === '3d' ? 'normal' : start.mode, false);
 if (start.mode === '3d') setMode('3d', false); // normal 2D until Three.js has loaded
 const SNAP = parseSimSnap(readPref(SS, PREF_KEYS.simSnap), Date.now()), SNAP_MISSION = SNAP && !SNAP.scene;

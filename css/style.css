@@ -337,6 +337,28 @@ html[data-scene] #readout,html[data-scene] #timeline,.win.scene-hide{display:non
 /* ---------- low-resource mode: no blur, shadows, gradients or transitions ---------- */
 html[data-q=low] .glass,html[data-q=low] .win{backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;background:var(--panel-lo)}
 html[data-q=low] .ask,html[data-q=low] .toast{box-shadow:none}
+/* view controls (js/app.js VW): the bar (2D/3D, follow, the view menu) and the menu holding the rest; the expert
+   layout (html.ui-expert) shows the old full set in place */
+.ctrl-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.vw-follow{display:flex;gap:6px;align-items:center}
+.vw-follow .lbl{font:500 10px/1 var(--f-disp);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.vw-btn{gap:6px}.vw-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.5}.vw-btn svg circle{fill:var(--panel);}
+.vw-caret{font-size:9px;opacity:.7}
+html:not(.ui-expert) #viewMode{display:none}
+html.ui-expert #dimSeg,html.ui-expert .vw-follow .lbl{display:none}
+.view-menu{width:min(340px,calc(100vw - 24px));max-height:calc(100dvh - 90px);overflow:auto;padding:10px 12px 12px;display:flex;flex-direction:column;gap:12px;align-self:flex-end}
+.view-menu h4{margin:0 0 6px;font:600 10.5px/1 var(--f-disp);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.view-menu .seg,.ctrls .view-menu .seg{flex-wrap:wrap;overflow:visible;max-width:100%}
+.view-menu .toggles{display:flex;flex-wrap:wrap;gap:8px 12px;background:none;border:0;padding:0;box-shadow:none}
+.vm-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.vm-note{margin:6px 0 0;font-size:11.5px;line-height:1.35;color:var(--faint)}
+.vm-sec .link{margin-top:4px;font-size:11.5px}
+.vm-sec:empty,.vm-sec:has(>[data-slot]:empty):not(:has(h4~:not([data-slot]))){display:none}
+.vm-expert{padding-top:8px;border-top:1px solid var(--line);white-space:normal;line-height:1.3}
+@media (max-width:560px){
+  .ctrl-bar{justify-content:flex-start}
+  .view-menu{position:fixed;left:0;right:0;bottom:0;width:auto;max-height:72dvh;z-index:45;padding:12px 14px calc(14px + env(safe-area-inset-bottom,0px));border-left:0;border-right:0;border-bottom:0}
+}
 /* the light mode's note (chosen for the device): one line, a link to change it, closes by itself */
 .toast.lite{flex-direction:row;align-items:center;gap:8px;border-left-color:var(--accent);padding:8px 8px 8px 12px}
 .toast.lite p{font-size:12px}

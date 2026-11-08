@@ -43,6 +43,11 @@
     <div class="msg" id="msg" hidden></div>
     <div class="hud-top">
       <div class="ctrls" id="ctrls">
+        <div class="ctrl-bar" id="ctrlBar">
+          <div class="seg" id="dimSeg" role="group" data-i18n-aria-label="vw.dimAria"><button type="button" data-v="2d" data-i18n="vw.2d"></button><button type="button" data-v="3d" data-i18n="vw.3d"></button></div>
+          <div class="vw-follow" id="vwFollow"><span class="lbl" data-i18n="vw.follow"></span></div>
+          <button class="ghost vw-btn" id="viewBtn" type="button" aria-expanded="false" aria-controls="viewMenu" data-i18n-title="vw.menu"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14"/><circle cx="7" cy="6" r="1.6"/><circle cx="13" cy="10" r="1.6"/><circle cx="8" cy="14" r="1.6"/></svg><span data-i18n="vw.menu"></span><span class="vw-caret" aria-hidden="true">▾</span></button>
+        </div>
         <div class="seg vmode" id="viewMode" role="group" data-i18n-aria-label="mode.aria">
           <button type="button" data-v="low" data-i18n="mode.low"></button>
           <button type="button" data-v="normal" data-i18n="mode.normal"></button>
@@ -64,6 +69,14 @@
           <button class="ghost" id="topView" type="button" data-i18n="v3.top" data-i18n-title="v3.topTip" hidden></button>
         </div>
         <div class="glass focus-tag" id="focusTag" hidden><span class="lbl" data-i18n="focus.tag"></span><b id="focusName"></b><button type="button" class="ibtn x" id="focusOff" data-i18n-aria-label="focus.release" data-i18n-title="focus.release"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></div>
+        <div class="glass view-menu" id="viewMenu" role="dialog" data-i18n-aria-label="vw.menu" hidden>
+          <div class="vm-sec" data-slot="bar"></div>
+          <div class="vm-sec"><h4 data-i18n="vw.frame"></h4><div data-slot="frame"></div><p class="vm-note" id="frameNote"></p><button class="link" type="button" id="frameGloss" data-i18n="vw.frameGloss"></button></div>
+          <div class="vm-sec"><h4 data-i18n="vw.camera"></h4><div class="vm-row" data-slot="cam"></div></div>
+          <div class="vm-sec"><h4 data-i18n="vw.show"></h4><div data-slot="toggles"></div></div>
+          <div class="vm-sec"><h4 data-i18n="vw.quality"></h4><div class="seg" id="qualSeg" role="group" data-i18n-aria-label="vw.quality"><button type="button" data-v="low" data-i18n="vw.low"></button><button type="button" data-v="normal" data-i18n="vw.normal"></button></div><p class="vm-note" data-i18n="vw.lowNote"></p></div>
+          <label class="chk vm-expert"><input type="checkbox" id="expertUi"><span data-i18n="vw.expert"></span></label>
+        </div>
         <div class="glass toggles">
           <label class="chk" id="mapMoonsWrap" hidden><input type="checkbox" id="tMoons" checked><span data-i18n="map.moons"></span></label>
           <label class="chk" id="tSoiWrap"><input type="checkbox" id="tSoi"><span data-i18n="ui.soi"></span></label>
