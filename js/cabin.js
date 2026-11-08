@@ -816,8 +816,9 @@ function drawMove(c) {
 // flies; off in low-resource mode and on phones (and with ?debug=1&sun=0).
 const LT_ON = !LOWQ && !DEV.phone && (!DBG || DBG.sun);
 const LT_S0 = 1, LT_GAIN = [1.5, 2];       // the staged light: slope down for the glass's middle, gains per tangent across / up
-const LT_SUN = { a: 0.32, beam: 0.06, frame: 0.3, rim: 0.7 }, LT_BODY = { a: 0.1, beam: 0, frame: 0.06, rim: 0.22 };
-const LT_LAMP = 0.6, LT_TAU = 1.5, LT_TAU_DIR = 0.6, LT_F = ['a', 'beam', 'frame', 'rim'];
+const LT_SUN = { a: 0.45, beam: 0.07, frame: 0.35, rim: 0.7 }, LT_BODY = { a: 0.4, beam: 0, frame: 0.14, rim: 0.32 };
+const LT_SIDE = [75 * deg, 95 * deg], LT_SIDE_T = 0.55, LT_BIG_TE = 0.05; // the Sun outside the glass, in front of the window or just past its plane (light through a deep frame): full up to 75° off the axis, none from 95°
+const LT_LAMP = 1, LT_TAU = 1.5, LT_TAU_DIR = 0.6, LT_F = ['a', 'beam', 'frame', 'rim'];
 const LT = { cv: $('#kSun'), src: {}, timer: 0, t: 0, sig: '', rimSig: '', rim: {}, outline: null, col: {}, lit: [], scratch: null };
 const ltCol = k => LT.col[k] || (LT.col[k] = rgbOf(k === 'sun' ? 'var(--cab-light)' : `color-mix(in srgb, var(--cab-screen) 35%, ${BODIES[k].color})`));
 // what each source should give now: direction L (room axes), patch, beam, frame and rim strengths
@@ -840,12 +841,26 @@ function ltTargets(st, cam) {
         if (vdot(norm(cam.f.map((v, k) => v + (a - ox) * cam.r[k] + (e - oy) * cam.u[k])), dn) > ca) { n++; sa += a; se += e; }
       }
       if (!n) return null;
-      ta = sa / n; te = se / n; vis = Math.min(1, n / 21);
+      // a big body fills much of the glass, its light from all of it: staged no shallower than LT_BIG_TE (the patch on the desk)
+      ta = sa / n; te = Math.max(LT_BIG_TE, se / n); vis = Math.min(1, n / 21);
     }
     return vis ? { vis, L: norm([-LT_GAIN[0] * ta, LT_S0 + LT_GAIN[1] * te, 1]), ang: 2 * al } : null;
   };
   const bod = st.b.list.filter(q => q.key !== 'sun').map(q => { const d = vsub(q.p, y), dist = Math.hypot(...d); return { q, d, dist, al: Math.asin(Math.min(1, BODIES[q.key].radius * 1e3 / dist)) }; });
-  const sd = vsub(st.b.sunP, y), sdist = Math.hypot(...sd), sal = Math.asin(Math.min(1, BODIES.sun.radius * 1e3 / sdist)), so = look(sd, sal);
+  // the Sun shines through the window from anywhere in front of it, not only from inside the glass (a real window
+  // lets in sunlight from a Sun the viewer cannot see): off the glass, by its angle from the axis (LT_SIDE), the staged
+  // direction from its tangents, held within the glass's reach
+  const side = d => {
+    const dist = Math.hypot(...d), z = vdot(d, cam.f) / dist, th = Math.acos(Math.max(-1, Math.min(1, z)));
+    const vis = Math.min(1, Math.max(0, (LT_SIDE[1] - th) / (LT_SIDE[1] - LT_SIDE[0]))); if (!vis) return null;
+    // its direction across the glass, staged no further than just past the glass's edge (LT_SIDE_T), so the patch stays on
+    // the sill and the desk
+    let ta = vdot(d, cam.r), te = vdot(d, cam.u); const m = Math.hypot(ta, te) / LT_SIDE_T;
+    if (m > 0) { ta /= m; te /= m; } ta += ox; te += oy;
+    return { vis, L: norm([-LT_GAIN[0] * ta, LT_S0 + LT_GAIN[1] * te, 1]), ang: 0.01 };
+  };
+  const sd = vsub(st.b.sunP, y), sdist = Math.hypot(...sd), sal = Math.asin(Math.min(1, BODIES.sun.radius * 1e3 / sdist));
+  let so = look(sd, sal); { const sw = side(sd); if (sw && (!so || sw.vis > so.vis)) so = sw; }
   if (so) {
     let cov = 0; for (const b of bod) if (b.dist < sdist) cov = Math.max(cov, cabDiscCover(sal, b.al, vang(norm(sd), norm(b.d))));
     const k = so.vis * (1 - cov) * lamp; out.sun = { ...so, cov, col: ltCol('sun') }; for (const f of LT_F) out.sun[f] = LT_SUN[f] * k;
@@ -906,7 +921,7 @@ function ltDraw() {
       // diffuse glow, no sharp window) and the frame's inner edge facing the light (each edge's outward normal along the
       // light's slant on the wall) ...
       h.setTransform(1, 0, 0, 1, 0, 0); h.globalCompositeOperation = 'source-over'; h.clearRect(0, 0, S.width, S.height); h.setTransform(k, 0, 0, k, 0, 0);
-      const blur = Math.min(420, 30 + 1800 * Math.tan(Math.min(s.ang, 2.2) / 2)), black = [0, 0, 0];
+      const blur = Math.min(200, 30 + 1800 * Math.tan(Math.min(s.ang, 2.2) / 2)), black = [0, 0, 0];
       if (p) for (const poly of [p.sill, p.desk]) if (poly.length > 2 && s.a > 0.002) ltSoft(h, k, black, s.a, blur, () => { polyPath(h, poly); h.fill(); });
       if (s.frame > 0.002) ltSoft(h, k, black, s.frame, 28, () => {
         const o = LT.outline; h.lineWidth = 46; h.lineCap = 'round';

@@ -79,21 +79,22 @@ const VS_MARS_EPOCH = Date.UTC(2026, 10, 8, 5, 25, 30);
 
 const VISTAS = {
   // Saturn and its rings: 750 000 km out, 22° above the ring plane on its sunlit side (the Sun's own elevation on the rings
-  // is small in 2026, about 8° south), 30° round from the Sun's azimuth, slowly swaying; its moons where they are.
+  // is small in 2026, about 8° south), 100° round from the Sun's azimuth (the Sun beside and a little ahead of the eye:
+  // the globe about 40 % lit, and sunlight comes in through the window), slowly swaying; its moons where they are.
   // Live, 60× (Mimas round in 23 minutes).
   saturn: { keys: ['sun', 'saturn', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'titan', 'iapetus'], rate: 60, look: 'saturn',
     at(B, c) {
       const S = B.at('saturn'), z = vsPole('saturn', c.T), sun = vsN(vsSub(B.at('sun').p, S.p)), side = vsDot(sun, z) < 0 ? -1 : 1;
       const w = c.tau / 1800 * 2 * Math.PI;
-      return vsAbout(B, c.T, 'saturn', 7.5e8, side * (22 + 2 * Math.sin(w)) * VS_D2R, (30 + 5 * Math.sin(w * 0.7)) * VS_D2R, -14 * VS_D2R);
+      return vsAbout(B, c.T, 'saturn', 7.5e8, side * (22 + 2 * Math.sin(w)) * VS_D2R, (100 + 5 * Math.sin(w * 0.7)) * VS_D2R, -14 * VS_D2R);
     } },
-  // Jupiter and the Galilean moons: 1 million km out (between Europa's and Ganymede's orbits), 4° above its equator, 15°
-  // round from the Sun (nearly full); Io and Europa swing across the glass, Ganymede and Callisto pass wide; live,
+  // Jupiter and the Galilean moons: 1 million km out (between Europa's and Ganymede's orbits), 4° above its equator, 100°
+  // round from the Sun (beside and a little ahead of the eye: about 40 % lit, sunlight through the window); Io and Europa swing across the glass, Ganymede and Callisto pass wide; live,
   // 120× (Io round in 21 minutes, Jupiter turns in 5)
   jupiter: { keys: ['sun', 'jupiter', 'io', 'europa', 'ganymede', 'callisto'], rate: 120, look: 'jupiter',
     at(B, c) {
       const w = c.tau / 2400 * 2 * Math.PI;
-      return vsAbout(B, c.T, 'jupiter', 1.0e9, (4 + 1.5 * Math.sin(w)) * VS_D2R, (15 + 4 * Math.sin(w * 0.6)) * VS_D2R, -8 * VS_D2R);
+      return vsAbout(B, c.T, 'jupiter', 1.0e9, (4 + 1.5 * Math.sin(w)) * VS_D2R, (100 + 4 * Math.sin(w * 0.6)) * VS_D2R, -8 * VS_D2R);
     } },
   // Earthrise from lunar orbit at Apollo 8's moment (1968-12-24 16:40 UTC, the photo AS08-14-2383 on the poster): a
   // circular orbit 110 km up whose plane holds the Earth's direction (near the lunar equator, as Apollo 8's was), the

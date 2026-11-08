@@ -1066,6 +1066,12 @@ const sEM = realSys(['earth', 'mars', 'sun']);
     for (const d of [Mo, Ea]) assert.ok(Math.abs(Math.atan(dot(nrm(sub(d, v.y)), v.cam.r) / dot(nrm(sub(d, v.y)), v.cam.f))) / D2R + (d === Mo ? wM : wE) / 2 < 21, 'Earth–Moon: both inside the glass');
   }
   VS.VISTAS.earth.pick = 12;
+  // Saturn and Jupiter: the Sun beside the eye and a little ahead (in front of the window: its light comes in), the
+  // globe partly lit
+  for (const id of ['saturn', 'jupiter']) {
+    const v = VS.vistaAt(id, ms0, view), sd = nrm(sub(v.sunP, v.y)), th = Math.acos(dot(sd, v.cam.f)) / D2R;
+    assert.ok(th > 60 && th < 90, id + ': the Sun ' + th.toFixed(0) + '° off the axis, in front of the window');
+  }
   // live clocks run from now at their rate; loops wrap
   const c1 = VS.vistaClock('jupiter', ms0 + 10000, view), c2 = VS.vistaClock('jupiter', ms0 + 20000, view);
   assert.ok(Math.abs(c2.T - c1.T - 1200) < 1e-6, 'Jupiter: 120× real time');

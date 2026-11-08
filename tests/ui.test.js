@@ -633,6 +633,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     assert.ok(mx(p1.desk) > mx(p0.desk) + 100, 'light from the left: the patch to the right');
     assert.ok(P.cabDiscCover(0.005, 0.3, 1) === 0 && P.cabDiscCover(0.005, 0.3, 0.1) === 1 && Math.abs(P.cabDiscCover(0.005, 0.3, 0.3) - 0.5) < 0.02, 'eclipse cover');
     let prev = 1; for (let d = 0.29; d <= 0.31; d += 0.0005) { const v = P.cabDiscCover(0.005, 0.3, d); assert.ok(v <= prev + 1e-9); prev = v; }
+    assert.ok(/const LT_SIDE = \[75 \* deg, 95 \* deg\]/.test(cab) && /let so = look\(sd, sal\); \{ const sw = side\(sd\);/.test(cab) && /const LT_LAMP = 1,/.test(cab) && /te = Math\.max\(LT_BIG_TE, se \/ n\)/.test(cab), 'light from outside: the Sun in front of the window lights the room unseen; big bodies on the desk; the lamp does not dim it');
     assert.ok(/const LT_ON = !LOWQ && !DEV\.phone && \(!DBG \|\| DBG\.sun\);/.test(cab) && /function ltRun\(\) \{ if \(LT_ON && /.test(cab), 'light from outside: off in low mode, on phones, with sun=0');
     assert.ok(/if \(ANIM \|\| document\.hidden\) return; \/\/ held while the camera moves \(and unseen\)\n  let tg = \{\};/.test(cab), 'light from outside: held during camera moves');
     assert.ok(!/mix-blend-mode/.test(css) && /\.k-moving :is\([^)]*#kSun,#kCat\)\{visibility:hidden\}/.test(css), 'no blend modes; light hidden with the room during moves');
