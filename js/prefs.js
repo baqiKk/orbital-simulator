@@ -1,7 +1,7 @@
 // Persisted UI preferences: view mode and window layout.
 // DOM-free: the storage object is passed in (localStorage, sessionStorage, a stub or null), so Node tests can run it.
 // Every storage access is wrapped: private windows, blocked site data and quota errors must never break the page.
-const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabStrip: 'orbsim.cab.strip', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify', cabSaver: 'orbsim.cab.saver.v1', cabPanHint: 'orbsim.cab.panHint' };
+const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabStrip: 'orbsim.cab.strip', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify', cabSaver: 'orbsim.cab.saver.v1', cabPanHint: 'orbsim.cab.panHint', cabBoot: 'orbsim.cab.boot' };
 const VIEW_MODES = ['low', 'normal', '3d'];
 // placement order: overview's default spot sits under Results, so it comes after it
 const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'gloss', 'model', 'credits'];
@@ -111,7 +111,26 @@ function trailAlpha(age, fade, keep = TRAIL_REVS, span = TRAIL_FADE) {
 // The art's width tiers (img/cabin/<px>/). The largest one this device may load: 7136 only on a desktop with at least
 // 8 GB (navigator.deviceMemory; unknown counts as enough on a desktop), phones at most 2560, anything else 3840.
 const CAB_TIERS = [1600, 2560, 3840, 7136];
-function cabTierMax(dev) { return dev.phone ? 2560 : dev.desktop && (dev.mem == null || dev.mem >= 8) ? 7136 : 3840; }
+function cabTierMax(dev) { return dev.phone || dev.ios ? 2560 : dev.desktop && (dev.mem == null || dev.mem >= 8) ? 7136 : 3840; }
+// the cabin's canvas resolution: the screen's pixel ratio, at most 2 (1.5 on phones: an iPhone's 3 would make every
+// canvas four times the memory)
+function cabDpr(dev, dpr) { return Math.min(dpr || 1, dev.phone ? 1.5 : 2); }
+// The cabin's decoded memory at its worst (MB, w × h × 4 bytes per pixel), as the page sizes things: the art layers at
+// tier (the room three times: its image and the CSS masks of the shine and the night layers), the night canvas (a
+// quarter of the art), the move canvases (two, the screen's size, during a camera move or a pan), the 3D glass (the
+// sky box at dpr: colour and depth, × 4 with MSAA, plus the resolved frame), the cross-fade canvas, and the planet
+// textures (texLayers images at texCap wide, 2:1, decoded once and on the GPU with mipmaps, × 7/3) and the Milky Way
+// (sky px wide, the same). o: { vw, vh, dpr, tier, layout, box: { w, h } (CSS px), msaa, texCap, texLayers, sky }
+function cabMemEstimate(o) {
+  const MB = 1 / 1048576, [W] = o.layout.size, k = o.tier / W, d2 = o.dpr * o.dpr;
+  let art = 3 * Math.round(W * k) * Math.round(o.layout.size[1] * k) * 4; // the room
+  for (const L of Object.values(o.layout.layers)) art += Math.round(L.w * k) * Math.round(L.h * k) * 4; // the cat's layers
+  const night = Math.round(W / 4) * Math.round(o.layout.size[1] / 4) * 4, move = 2 * o.vw * o.vh * d2 * 4;
+  const px = o.box.w * o.box.h * d2, gl = px * 8 * (o.msaa ? 4 : 1) + px * 4, xf = px * 4;
+  const tex = o.texLayers * o.texCap * o.texCap / 2 * 4 * 7 / 3 + o.sky * o.sky / 2 * 4 * 7 / 3;
+  const parts = { art: art * MB, night: night * MB, move: move * MB, gl: gl * MB, xf: xf * MB, tex: tex * MB };
+  return { parts, total: Object.values(parts).reduce((a, b) => a + b, 0) };
+}
 // smallest tier with about one texel per device pixel (need: device px across the whole art), within the limit
 function cabTier(need, max) { const ok = CAB_TIERS.filter(t => t <= max); return ok.find(t => t >= need * 0.9) || ok[ok.length - 1]; }
 // Desk view: the art covers the screen (no bars). Sideways it centres the window on wide screens and slides towards
@@ -240,4 +259,4 @@ function parseSimSnap(raw, now) {
   return o;
 }
 
-if (typeof module !== 'undefined') module.exports = { SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_TAIL_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_TAIL_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

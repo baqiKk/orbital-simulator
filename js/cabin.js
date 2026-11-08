@@ -14,10 +14,20 @@ const NS = 'http://www.w3.org/2000/svg';
 const RM = matchMedia('(prefers-reduced-motion: reduce)');
 // the simulator's saved low-resource mode (or ?q=low): no animation, no textures, a plain sky
 const LS = (() => { try { return window.localStorage; } catch (e) { return null; } })();
-const LOWQ = startupMode(LS).mode === 'low' || /[?&]q=low\b/.test(location.search);
+// The safety net: iOS Safari kills a tab that runs out of memory and loads it again, which can loop. A mark in
+// sessionStorage while the page starts (gone after 20 s, or when the page is left normally: pagehide); found at the
+// start, the last start died, so this one runs in low-resource mode and says so (#kSafe).
+const SS = (() => { try { return window.sessionStorage; } catch (e) { return null; } })();
+const CRASHED = readPref(SS, PREF_KEYS.cabBoot) != null;
+const bootMark = () => { writePref(SS, PREF_KEYS.cabBoot, String(Date.now())); setTimeout(() => clearPref(SS, PREF_KEYS.cabBoot), 20000); };
+bootMark();
+addEventListener('pagehide', () => clearPref(SS, PREF_KEYS.cabBoot));
+addEventListener('pageshow', e => { if (e.persisted) bootMark(); });
+const LOWQ = CRASHED || startupMode(LS).mode === 'low' || /[?&]q=low\b/.test(location.search);
 if (LOWQ) document.documentElement.dataset.q = 'low';
 const still = () => LOWQ || RM.matches;
 const DEV = { phone: matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600,
+  ios: /iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1),
   desktop: matchMedia('(hover: hover) and (pointer: fine)').matches, mem: navigator.deviceMemory };
 // the GPU, asked once (not in the low-resource mode): WebGL 2 at all (the 3D glass), and the largest texture it takes; no
 // art tier and no planet texture above that limit
@@ -40,6 +50,7 @@ const DBG = (() => {
 })();
 if (DBG && VISTAS.earth.sep[DBG.em]) VISTAS.earth.pick = +DBG.em;
 const TMAX = Math.min(cabTierMax(DEV), GPU.max ? CAB_TIERS.filter(t => t <= GPU.max).pop() || CAB_TIERS[0] : Infinity);
+if (DEV.phone || DEV.ios) TEXOPT.keepBase = false; // planet base images go when unused too (the saver's turn would gather them all)
 const TEX_CAP = Math.min(DEV.phone ? 2048 : 4096, GPU.max || Infinity, DBG && DBG.cap || Infinity);
 const deg = Math.PI / 180;
 
@@ -424,7 +435,7 @@ function xfSnap(prev, dur) {
   const g = x.getContext('2d'); g.clearRect(0, 0, x.width, x.height); g.drawImage(cv, 0, 0);
   clearTimeout(XF.timer); x.style.transition = 'none'; x.style.opacity = '1'; x.hidden = false; void x.offsetWidth;
   x.style.transition = `opacity ${dur}ms ease-in-out`; requestAnimationFrame(() => { x.style.opacity = '0'; });
-  XF.timer = setTimeout(() => { x.hidden = true; }, dur + 80);
+  XF.timer = setTimeout(() => { x.hidden = true; x.width = x.height = 0; }, dur + 80);
   return true;
 }
 
@@ -590,7 +601,8 @@ function fvGlare(st, cam, occ) {
 }
 // the 2D path: the plain sky, shaded discs (far ones first)
 function fvDraw2(st, cam) {
-  const g = SP.cv.getContext('2d'), { a, b } = st, y = a.y, F = FV.F = st.F, cw = SP.cv.width / DPR, ch = SP.cv.height / DPR, voidC = getComputedStyle(document.documentElement).getPropertyValue('--void');
+  const bw = Math.round(SP.box.w * DPR), bh = Math.round(SP.box.h * DPR); if (SP.cv.width !== bw || SP.cv.height !== bh) { SP.cv.width = bw; SP.cv.height = bh; FV.plain = null; }
+  const g = SP.cv.getContext('2d'), { a, b } = st, y = a.y, F = FV.F = st.F, cw = SP.box.w, ch = SP.box.h, voidC = getComputedStyle(document.documentElement).getPropertyValue('--void');
   if (!FV.plain) FV.plain = plainSky();
   g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(FV.plain, 0, 0);
   g.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -627,8 +639,9 @@ function fvKick() {
 }
 function fvSize() {
   for (const c of [FV.cv, XF.cv]) Object.assign(c.style, { left: SP.cv.style.left, top: SP.cv.style.top, width: SP.cv.style.width, height: SP.cv.style.height });
-  const cw = SP.cv.width / DPR, ch = SP.cv.height / DPR;
+  const cw = SP.box.w, ch = SP.box.h;
   FV.plain = null; FV.cam = null; FV.prev = null;
+  if (FV.V3) SP.cv.width = SP.cv.height = 0; // the 2D canvas is not drawn while the 3D one is: its memory goes
   if (FV.V3) FV.V3.size(cw, ch, DPR);
 }
 function fvStart() {
@@ -638,7 +651,7 @@ function fvStart() {
   if (!FV.load) {
     FV.load = import(new URL('js/view3d.js', location.href).href).then(m => {
       const css = getComputedStyle(document.documentElement);
-      FV.V3 = m.create(FV.cv, { fov: 45, void: css.getPropertyValue('--void').trim(), grid: css.getPropertyValue('--cyan').trim() }); fvSize();
+      FV.V3 = m.create(FV.cv, { antialias: !DEV.phone && !DEV.ios, fov: 45, void: css.getPropertyValue('--void').trim(), grid: css.getPropertyValue('--cyan').trim() }); fvSize();
     }).catch(() => { FV.fail = true; });
   }
   FV.load.then(() => {
@@ -710,6 +723,7 @@ function buildNight() {
 }
 const MV = { on: false, drawn: 0, set: null, A: $('#kMoveA'), B: $('#kMoveB'), whisk: null, lamp: null, cream: null, shine: null };
 const GLOW = $('#kGlow'), NIGHT = $('#kNight'), STRIP = $('#kStrip');
+for (const c of [MV.A, MV.B, $('#kSpaceX')]) c.width = c.height = 0; // no memory until used
 const CAT_ID = /^(none|grayscale\(0\) brightness\(1\) sepia\(0\) hue-rotate\(0deg\) saturate\(1\))$/;
 // the decoded art set for the canvases: the sharpest up to MV_CAP, else the smallest there is
 function mvSet() {
@@ -734,7 +748,7 @@ function mvEnd() {
   if (!MV.on) return; MV.on = false; MV.set = null; MV.drawn = 0;
   dbgHand('out', performance.now() - LIFE_T < 8);
   $('#kRoot').classList.remove('k-moving');
-  for (const cv of [MV.A, MV.B]) { cv.hidden = true; cv.width = cv.height = 1; } // their memory goes too
+  for (const cv of [MV.A, MV.B]) { cv.hidden = true; cv.width = cv.height = 0; } // their memory goes too
 }
 function drawMove(c) {
   const t0 = performance.now(), A = MV.A.getContext('2d'), B = MV.B.getContext('2d'), k = c.s * DPR, [W, H] = LY.size, im = MV.set.img;
@@ -1021,6 +1035,26 @@ function go(to) {
 
 // ---------- debugging overlay (?debug=1, temporary) ----------
 const texBytes = () => { let b = 0; for (const e of TEXC.values()) if (e.ok && e.img) b += (e.img.naturalWidth || 0) * (e.img.naturalHeight || 0) * 4; return b; };
+// The decoded memory now (w × h × 4 per pixel): every canvas (the 3D one with its depth buffer, × 4 with MSAA, and
+// the resolved frame), the art images (the room again for each CSS mask that uses it), the planet textures (decoded,
+// and on the GPU with mipmaps in 3D); the debug overlay shows it (MB)
+function memDump() {
+  const rows = [], add = (name, b) => { if (b > 0) rows.push([name, b / 1048576]); }, seen = new Set();
+  for (const cv of document.querySelectorAll('canvas')) {
+    const px = cv.width * cv.height;
+    add(cv.id || cv.className || 'canvas', cv === FV.cv && FV.V3 ? px * (8 * (FV.V3.renderer.getContext().getContextAttributes().antialias ? 4 : 1) + 4) : px * 4);
+  }
+  for (const c of [LT.scratch, FV.plain, ...LT.lit.map(e => e.cv), ...Object.values(LT.rim)]) if (c) add('offscreen', c.width * c.height * 4);
+  const img = (name, im, k = 1) => { if (im && !seen.has(im)) { seen.add(im); add(name, im.naturalWidth * im.naturalHeight * 4 * k); } };
+  for (const [n, im] of Object.entries(IMG)) img('art ' + n, im, n === 'room' && !LOWQ ? 3 : 1);
+  for (const [T, set] of Object.entries(DEC)) for (const [n, im] of Object.entries(set)) img(`art ${T} ${n}`, im);
+  for (const [f, e] of TEXC) if (e.ok && e.img) img(f.replace(/^.*\//, ''), e.img, FV.V3 ? 7 / 3 : 1);
+  return { rows, total: rows.reduce((a, r) => a + r[1], 0) };
+}
+function memLine() {
+  const m = memDump(), top = [...m.rows].sort((a, b) => b[1] - a[1]).slice(0, 4).map(r => `${r[0]} ${r[1].toFixed(0)}`).join(', ');
+  return `memory ≈ ${m.total.toFixed(0)} MB decoded (${top})${CRASHED ? ' · safe mode after a crash' : ''}`;
+}
 // the last two seconds of [time, ms] samples
 function dbgWin(a, t, ms) { a.push([t, ms]); while (a.length && t - a[0][0] > 2000) a.shift(); }
 function dbgGlassLine() {
@@ -1053,6 +1087,7 @@ function dbgShow() {
     ...dbgGlassLine(),
     `light from outside: ${LT_ON ? DBG.light || 'none' : 'off'}`,
     `planet textures ${(texBytes() / 1048576).toFixed(0)} MB decoded`,
+    memLine(),
     `switches move=${DBG.dom ? 'dom' : 'canvas'} sun=${+DBG.sun} shine=${+DBG.shine} cap=${DBG.cap || '-'} wc=${+DBG.wc} warm=${DBG.warm}`,
   ].join('\n');
 }
@@ -1343,7 +1378,7 @@ function setLamp(on, save = true) {
 
 // ---------- layout ----------
 function layout() {
-  VW = innerWidth; VH = innerHeight; DPR = Math.min(devicePixelRatio || 1, 2);
+  VW = innerWidth; VH = innerHeight; DPR = cabDpr(DEV, devicePixelRatio);
   if (!VW || !VH) return; // a hidden frame: wait for its resize
   const d = deskCam(), w = winCam(), cam = view === 'desk' ? d : w;
   // the sky canvas covers the screen for every camera between the two views and the whole glass at the desk scale
@@ -1351,7 +1386,7 @@ function layout() {
   const pd = gScreen(d), pw = gScreen(w), bx = cabSkyBox(VW, VH, pd, pw, (LY.glass.x1 - LY.glass.x0) * d.s, (LY.glass.y1 - LY.glass.y0) * d.s);
   SP.cv.width = Math.round(bx.w * DPR); SP.cv.height = Math.round(bx.h * DPR);
   Object.assign(SP.cv.style, { left: bx.l + 'px', top: bx.t + 'px', width: bx.w + 'px', height: bx.h + 'px' });
-  SP.P0 = pd; SP.G = bx.g; // the glass's centre on screen and in canvas px at the desk view
+  SP.box = bx; SP.P0 = pd; SP.G = bx.g; // the glass's centre on screen and in canvas px at the desk view
   // the view's centre (where the camera looks): the middle of the part of the glass the desk view shows (a portrait
   // screen shows only its right part, by the cat); SP.V its offset from the glass's centre (CSS px at the desk view)
   { const g = LY.glass, gc = glassC(), x0 = Math.max(g.x0, d.x), x1 = Math.min(g.x1, d.x + VW / d.s), y0 = Math.max(g.y0, d.y), y1 = Math.min(g.y1, d.y + VH / d.s);
@@ -1592,6 +1627,7 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   poDo(pomoAdvance); setInterval(() => { poDo(pomoAdvance); saverTick(); }, 1000);
   lapTick(); setInterval(() => { if (!document.hidden) lapTick(); }, 2000);
   setTimeout(panHint, 1800);
+  if (CRASHED) { const n = $('#kSafe'); n.hidden = false; setTimeout(() => { n.hidden = true; }, 9000); }
   loopStart();
 });
 $('#kGo').addEventListener('click', () => go(view === 'desk' ? 'window' : 'desk'));

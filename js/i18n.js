@@ -541,6 +541,7 @@ const I18N = {
     'kab.lamp': 'Lamba · aç / kapat',
     'kab.strip': 'Tavan ışığı · aç / kapat',
     'kab.panHint': '← sürükle →',
+    'kab.safeMode': 'Cihazın belleği için hafif mod açıldı',
     'kab.tea': 'Çay',
     'kab.cat': 'Van kedisi',
     'kab.poster.photoCap': 'Dünya doğuşu · Apollo 8 · 1968',

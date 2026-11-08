@@ -735,4 +735,32 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/\.k-root\{touch-action:pan-y pinch-zoom\}/.test(css), 'the browser keeps vertical gestures and pinch');
 }
 
+// 22) Cabin memory (iOS Safari kills a tab over its memory and reloads it): canvases at most 2× the CSS size (1.5× on
+// phones), art tiers at most 2560 on phones and iOS (never 7136), 2k planet textures and no 4k sky on phones, no MSAA
+// there, hidden canvases freed, planet base images dropped when unused; the worst case computed from the same rules
+// stays under 250 MB on phones; a start that died is followed by one in low-resource mode with a note; ?debug=1 shows
+// the decoded memory
+{
+  const cab = read('js/cabin.js'), page = read('kabin.html'), L = JSON.parse(read('img/cabin/layout.json'));
+  assert.strictEqual(P.cabDpr({ phone: true }, 3), 1.5); assert.strictEqual(P.cabDpr({ desktop: true }, 3), 2); assert.strictEqual(P.cabDpr({ desktop: true }, 1), 1);
+  assert.strictEqual(P.cabTierMax({ phone: false, desktop: false, ios: true, mem: 8 }), 2560, 'iPad: 2560');
+  assert.strictEqual(P.cabTierMax({ phone: true, desktop: false, ios: true }), 2560, 'iPhone: 2560, never 7136');
+  for (const [vw, vh] of [[375, 812], [390, 844], [414, 896], [430, 932]]) {
+    const dev = { phone: true, ios: true }, d = P.cabCrop(vw, vh, ...L.size), w = P.cabGlassCam(vw, vh, L.glass, ...L.size), g = L.glass;
+    const gc = [(g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2], scr = c => [(gc[0] - c.x) * c.s, (gc[1] - c.y) * c.s];
+    const box = P.cabSkyBox(vw, vh, scr(d), scr(w), (g.x1 - g.x0) * d.s, (g.y1 - g.y0) * d.s);
+    // the worst view: Earth and Moon (Earth's surface, clouds, night, ocean; the Moon's surface and relief)
+    const e = P.cabMemEstimate({ vw, vh, dpr: P.cabDpr(dev, 3), tier: P.cabTierMax(dev), layout: L, box, msaa: false, texCap: 2048, texLayers: 6, sky: 2048 });
+    assert.ok(e.total < 250, `phone ${vw}×${vh}: ${e.total.toFixed(0)} MB decoded at worst (under 250)`);
+  }
+  assert.ok(/DPR = cabDpr\(DEV, devicePixelRatio\)/.test(cab) && /const TMAX = Math\.min\(cabTierMax\(DEV\)/.test(cab), 'cabin: canvas ratio and art tier from the device');
+  assert.ok(/const TEX_CAP = Math\.min\(DEV\.phone \? 2048 : 4096/.test(cab) && /skyReady\(true, !DEV\.phone && /.test(cab), 'phones: 2k textures, no 4k sky');
+  assert.ok(/m\.create\(FV\.cv, \{ antialias: !DEV\.phone && !DEV\.ios,/.test(cab) && /antialias: opts\.antialias !== false/.test(read('js/view3d.js')), 'no MSAA on phones and iOS');
+  assert.ok(/if \(DEV\.phone \|\| DEV\.ios\) TEXOPT\.keepBase = false;/.test(cab) && /\(!base\.has\(f\) \|\| !TEXOPT\.keepBase\)/.test(read('js/globe.js')), 'phones: unused planet base images go');
+  assert.ok(/x\.hidden = true; x\.width = x\.height = 0;/.test(cab) && /cv\.hidden = true; cv\.width = cv\.height = 0;/.test(cab) && /if \(FV\.V3\) SP\.cv\.width = SP\.cv\.height = 0;/.test(cab), 'hidden canvases freed');
+  assert.ok(/const CRASHED = readPref\(SS, PREF_KEYS\.cabBoot\) != null;/.test(cab) && /const LOWQ = CRASHED \|\| /.test(cab) && /addEventListener\('pagehide', \(\) => clearPref\(SS, PREF_KEYS\.cabBoot\)\)/.test(cab) && /clearPref\(SS, PREF_KEYS\.cabBoot\), 20000\)/.test(cab), 'safety net: a start that died → low-resource mode');
+  assert.ok(has('kab.safeMode') && /id="kSafe"/.test(page) && /if \(CRASHED\) \{ const n = \$\('#kSafe'\)/.test(cab), 'safety net: its note');
+  assert.ok(/function memDump\(\)/.test(cab) && /    memLine\(\),/.test(cab), 'debug: the decoded memory');
+}
+
 console.log('OK — all UI tests passed');

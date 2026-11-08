@@ -235,9 +235,9 @@ function globeUniforms(white) {
   const o = {}; for (const k in U) o[k] = { value: U[k] }; return o;
 }
 
-// opts: fov (deg), void (clear colour), grid (grid colour)
+// opts: fov (deg), void (clear colour), grid (grid colour), antialias (MSAA; false saves memory: the cabin on phones)
 export function create(canvas, opts) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: opts.antialias !== false, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
   renderer.setClearColor(new THREE.Color(opts.void), 1);
   renderer.toneMapping = THREE.CustomToneMapping;
   renderer.autoClear = false;

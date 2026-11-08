@@ -15,7 +15,7 @@ const TEX_FADE = 300;   // ms: a texture (or a sharper tier) fades in once loade
 const EVICT_MS = 30000; // a sharper tier not drawn for this long is dropped
 const BIG_MAX = 2;      // tiers wider than 2048 px held at once
 const RELIEF_PX = 40, SHADOW_PX = 140; // on-screen radius from which relief, then cast shadows are drawn
-const TEXOPT = { venusRadar: false, clouds: true };
+const TEXOPT = { venusRadar: false, clouds: true, keepBase: true }; // keepBase false: base files go too when unused (the cabin on phones)
 const TEXC = new Map(); // file -> { img, ok, err, t, used, hi }
 const TEX_DROP = [];    // callbacks (img) => void: free the GPU copies of a dropped image
 
@@ -82,7 +82,7 @@ let evictT = 0;
 function texEvict() {
   const now = performance.now(); if (now - evictT < 5000) return; evictT = now;
   const base = new Set(); for (const b of Object.values(BODIES)) for (const s of [b.tex, b.texAlt, b.relief, b.clouds, b.night, b.ocean]) if (s) base.add(s.file);
-  for (const [f, e] of TEXC) if (!base.has(f) && e.ok && now - e.used > EVICT_MS && /img\/planets\//.test(f)) { TEXC.delete(f); for (const d of TEX_DROP) d(e.img); }
+  for (const [f, e] of TEXC) if ((!base.has(f) || !TEXOPT.keepBase) && e.ok && now - e.used > EVICT_MS && /img\/planets\//.test(f)) { TEXC.delete(f); for (const d of TEX_DROP) d(e.img); }
 }
 
 // ---------- body axes ----------
