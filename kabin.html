@@ -24,6 +24,7 @@
 <div class="k-root" id="kRoot">
   <canvas id="kSpace" aria-hidden="true"></canvas>
   <canvas id="kSpace3" aria-hidden="true" hidden></canvas>
+  <canvas id="kSpaceX" aria-hidden="true" hidden></canvas>
   <canvas id="kMoveA" class="k-move" aria-hidden="true" hidden></canvas>
   <div id="kStage" class="k-stage">
     <div id="kGlow" class="k-glow"></div>
@@ -89,15 +90,18 @@
   <p class="k-acred" id="kPomoNote" hidden></p>
 </div>
 <footer class="k-hud bot">
-  <div class="seg" id="kScene" role="group" data-i18n-aria-label="wc.sceneAria">
-    <button type="button" data-scene="earth" aria-pressed="true" data-i18n="wc.earth"></button>
-    <button type="button" data-scene="saturn" aria-pressed="false" data-i18n="wc.saturn"></button>
-  </div>
+  <button type="button" class="ghost k-vbtn" id="kVista" aria-haspopup="dialog" aria-expanded="false" aria-controls="kVistaMenu"><span data-i18n="kab.vista.label"></span><b id="kVistaName"></b><span aria-hidden="true">▾</span></button>
   <button type="button" class="ghost" id="kLamp" aria-pressed="false" data-i18n="kab.lampOff"></button>
   <button type="button" class="ghost" id="kStripBtn" aria-pressed="false" data-i18n="kab.stripOn"></button>
   <button type="button" class="ghost k-more" id="kMore" aria-expanded="false" data-i18n-aria-label="kab.more" data-i18n-title="kab.more">⋯</button>
   <button type="button" class="btn primary" id="kGo" data-i18n="kab.toWindow"></button>
 </footer>
+<div id="kVistaMenu" class="k-audio k-vmenu" role="dialog" data-i18n-aria-label="kab.vista.title" hidden>
+  <div class="k-audio-h"><span data-i18n="kab.vista.title"></span><button type="button" class="k-x" id="kVistaX" data-i18n-aria-label="kab.audio.close">×</button></div>
+  <div class="k-vlist" id="kVistaList" role="group" data-i18n-aria-label="kab.vista.title"></div>
+  <p class="k-acred" id="kVistaNote" data-i18n="kab.vista.flight" hidden></p>
+  <p class="k-acred" id="kVistaInfo"></p>
+</div>
 <div id="kFlight" class="k-flight" hidden>
   <div class="k-fl1"><span id="kFlightL" class="k-fll"></span><span id="kFlightT" class="k-flt"></span></div>
   <div class="k-flbar" id="kFlightBar" aria-hidden="true"></div>
@@ -114,6 +118,7 @@
 <script src="js/pomodoro.js"></script>
 <script src="js/flightplans.js"></script>
 <script src="js/flightdata.js"></script>
+<script src="js/vistas.js"></script>
 <script src="js/cabin.js"></script>
 </body>
 </html>

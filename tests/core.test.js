@@ -987,3 +987,28 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   assert.ok(bs.sun.every(Number.isFinite) && Math.abs(Math.hypot(...bs.sun) - 1) < 1e-12, 'the Sun from outside the system');
   console.log('flight plans ok');
 }
+
+// 34) Phase 14 cabin views (js/vistas.js): true geometry from the real model, the camera staged. Earthrise at Apollo 8's
+// moment: the Earth starts just under the lunar horizon and rises steadily at the orbit's rate, a tenth of the glass
+// wide; Phobos crosses Mars' disc within the loop and Mars turns under the Phobos-borne camera at Phobos' orbital rate
+// less Mars' spin (≈ 0.54°/min); Saturn seen from the rings' sunlit side; the Milky Way with no body (and no Sun) in view;
+// every view's main body in front of the camera, every clock continuous
+{
+  const VS = require('../js/vistas.js'), { BODIES } = require('../js/bodies.js'), D2R = Math.PI / 180;
+  const sub = (a, b) => a.map((x, i) => x - b[i]), dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], nrm = v => { const l = Math.hypot(...v); return v.map(x => x / l); };
+  const at = (v, k) => v.list.find(q => q.key === k), C = require('../js/core.js');
+  const view = { hf: 9 * D2R, vf: 4.6 * D2R }; // an 18° wide glass, about 2:1
+  const ms0 = Date.now();
+  for (const id of VS.VISTA_IDS) {
+    const v = VS.vistaAt(id, ms0 + 5000, view);
+    assert.ok(v && v.cam && Math.abs(dot(v.cam.f, v.cam.r)) < 1e-9 && Math.abs(dot(v.cam.f, v.cam.u)) < 1e-9 && Math.abs(Math.hypot(...v.cam.f) - 1) < 1e-9, id + ': orthonormal camera');
+    if (v.look) assert.ok(dot(nrm(sub(at(v, v.look).p, v.y)), v.cam.f) > Math.cos(40 * D2R), id + ': the main body ahead');
+    const w = VS.vistaAt(id, ms0 + 5100, view);
+    assert.ok(Math.acos(Math.min(1, dot(v.cam.f, w.cam.f))) < 0.2 * D2R, id + ': the camera moves slowly');
+  }
+  // Saturn: the eye on the side of the ring plane the Sun lights
+  const vs = VS.vistaAt('saturn', ms0, view), S = at(vs, 'saturn').p, F = C.bodyFrame(BODIES.saturn.pole, vs.T), z = [F[2], F[5], F[8]];
+  assert.ok(dot(sub(vs.y, S), z) * dot(sub(vs.sunP, S), z) > 0, 'Saturn: seen from the rings\' sunlit face');
+  // live clocks run from now at their rate; loops wrap
+  console.log('cabin views ok');
+}

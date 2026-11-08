@@ -358,11 +358,13 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   for (const m of page.matchAll(/data-i18n(?:-[a-z-]+)?="([^"]+)"/g)) assert.ok(has(m[1]), `kabin.html key missing from dictionary: ${m[1]}`);
   for (const m of js.matchAll(/'((?:kab|kabin|wc)\.[A-Za-z0-9_.]+)'/g)) assert.ok(has(m[1]), `cabin.js key missing from dictionary: ${m[1]}`);
   assert.ok(page.includes(`content="${DICT['kabin.description']}"`) && page.includes(`<title>${DICT['kabin.title']}</title>`), 'kabin.html static title and description match the dictionary');
-  assert.ok(/<script src="js\/bodies\.js"><\/script>\s*<script src="js\/core\.js"><\/script>\s*<script src="js\/globe\.js"><\/script>\s*<script src="js\/sounds\.js"><\/script>\s*<script src="js\/cabin-audio\.js"><\/script>\s*<script src="js\/pomodoro\.js"><\/script>\s*<script src="js\/flightplans\.js"><\/script>\s*<script src="js\/flightdata\.js"><\/script>\s*<script src="js\/cabin\.js">/.test(page),
-    'cabin scripts in order: bodies, core, globe, sounds, cabin-audio, pomodoro, flightplans, flightdata, cabin');
+  assert.ok(/<script src="js\/bodies\.js"><\/script>\s*<script src="js\/core\.js"><\/script>\s*<script src="js\/globe\.js"><\/script>\s*<script src="js\/sounds\.js"><\/script>\s*<script src="js\/cabin-audio\.js"><\/script>\s*<script src="js\/pomodoro\.js"><\/script>\s*<script src="js\/flightplans\.js"><\/script>\s*<script src="js\/flightdata\.js"><\/script>\s*<script src="js\/vistas\.js"><\/script>\s*<script src="js\/cabin\.js">/.test(page),
+    'cabin scripts in order: bodies, core, globe, sounds, cabin-audio, pomodoro, flightplans, flightdata, vistas, cabin');
   assert.ok(!/img\/planets|img\/sky/.test(page + js), 'cabin images of bodies and sky only through globeLook / skyReady');
   for (const m of js.matchAll(/globeLook\(([^;]*?)\)/g)) assert.ok(/, !LOWQ, !LOWQ,/.test(m[1]), 'cabin globeLook: nothing drawn or fetched in low mode: ' + m[1]);
-  assert.ok(/if \(LOWQ\) SP\.sky = plainSky\(\); else \{ const sk = skyReady\(/.test(js), 'cabin sky: skyReady only outside low mode');
+  // the sky: through skyReady only on the 3D path (never in low mode: no Three.js there), the plain sky otherwise
+  assert.strictEqual([...js.matchAll(/skyReady\(/g)].length, 1, 'cabin: one skyReady call');
+  assert.ok(/function fvDraw3\(st, cam\) \{[^]*?skyReady\(true, /.test(js) && /if \(!FV\.plain\) FV\.plain = plainSky\(\);/.test(js), 'cabin sky: skyReady on the 3D path only, the plain sky on the 2D path');
   assert.ok(!/localStorage\.|sessionStorage\./.test(js.replace(/window\.localStorage/, '')), 'cabin storage only through prefs.js');
   const L = JSON.parse(read('img/cabin/layout.json'));
   assert.deepStrictEqual(L.tiers, P.CAB_TIERS, 'layout tiers = CAB_TIERS');
@@ -598,8 +600,8 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(!/if \(ANIM && !force\) return/.test(cab) && !/if \(ANIM\) \{ FV\.timer/.test(cab), 'the view through the glass keeps flowing during the move');
   // in a break (or a fast picture) the glass is drawn on every animation frame (30 a second in low-resource mode), its
   // time from performance.now() anchored to the wall clock; reduced motion keeps a slow timer
-  assert.ok(/if \(tp - FV\.last < \(FV\.fast \? \(LOWQ \? 32 : 0\) :/.test(cab) && /FV\.fast = st\.w\.mode !== 'work' \|\|/.test(cab) && /st = fvState\(wallNow\(t\)\)/.test(cab) && /FV\.last = tp; fvFrame\(false, tp\);/.test(cab) && !/t - FV\.drawn < 50/.test(cab), 'glass: every frame in a break, continuous time');
-  assert.ok(/if \(!FV\.on \|\| document\.hidden \|\| RM\.matches\) return;/.test(cab) && /FV\.timer = setTimeout\(fvKick, FV\.fade \? 470 : 5000\);/.test(cab), 'glass: reduced motion, a still picture every 5 s');
+  assert.ok(/if \(tp - FV\.last < \(FV\.fast \? \(LOWQ \|\| DEV\.phone \? 32 : 0\) :/.test(cab) && /FV\.fast = st\.w\.mode !== 'work' \|\|/.test(cab) && /st = fvState\(wallNow\(t\)\)/.test(cab) && /FV\.last = tp; fvFrame\(false, tp\);/.test(cab) && !/t - FV\.drawn < 50/.test(cab), 'glass: every frame in a break, continuous time');
+  assert.ok(/if \(!FV\.on \|\| document\.hidden \|\| RM\.matches\) return;/.test(cab) && /FV\.timer = setTimeout\(fvKick, FV\.fade \? 470 : RM\.matches \? 5000 : 60000\);/.test(cab), 'glass: reduced motion, a still picture every 5 s');
   // camera moves: the room, its light and shade and the cat on screen-sized canvases (those DOM layers hidden
   // meanwhile), the DOM stage back at rest at the shown tier; no will-change on the stage (only with
   // ?debug=1&move=dom&wc=1); no blend mode on the large light and shade layers; the canvases draw from a decoded set no
@@ -637,7 +639,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     assert.ok(/setStrip\(readPref\(LS, PREF_KEYS\.cabStrip\) === '1', false\)/.test(cab) && P.PREF_KEYS.cabStrip && has('kab.stripOn') && has('kab.stripOff'), 'ceiling strip: off by default, saved, worded');
   }
   // narrow screens at the glass: one compact row, the other buttons folded into ⋯
-  assert.ok(css.includes('.k-win:not(.k-more-open) .k-hud.bot>:is(#kScene,#kLamp,#kStripBtn){display:none}') && read('kabin.html').includes('id="kMore"') && has('kab.more') && cab.includes('cabGlassCam(VW, VH, LY.glass, ...LY.size, winBot())'),'compact bar at the glass on phones; the view keeps the cat above it');
+  assert.ok(css.includes('.k-win:not(.k-more-open) .k-hud.bot>:is(#kVista,#kLamp,#kStripBtn){display:none}') && read('kabin.html').includes('id="kMore"') && has('kab.more') && cab.includes('cabGlassCam(VW, VH, LY.glass, ...LY.size, winBot())'),'compact bar at the glass on phones; the view keeps the cat above it');
   // at the glass the cat still answers (petting), the other objects rest
   assert.ok(cab.includes("querySelectorAll('.k-hit:not(#hGlass):not(#hCat)')) b.inert = to !== 'desk';"), 'the cat can be petted at the glass');
   // petting: the existing layers only (no new image), tail / ears / whiskers on the body so they move with it; reactions
@@ -665,6 +667,21 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/if \(!r\.hit\) setStatus\(_\(Number\.isFinite\(r\.miss\) && r\.miss < 1e6 \? 'st\.nearest' : 'st\.nearestNone', \{ km: nf1\.format\(r\.miss\) \}\) \+ info, true\);/.test(app), 'a miss: the nearest attempt, said as such');
   assert.ok(/\{km\}/.test(DICT['st.nearest']) && /çözüm değil/.test(DICT['st.nearest']) && has('st.nearestNone') && has('st.tries'), 'miss texts');
   assert.ok(/\.status\.warn\{color:var\(--warn\)\}/.test(read('css/style.css')), 'warning colour');
+}
+
+// 20) Phase 14 cabin views and screen saver: every view has its name and line; the picker is built from VISTA_IDS (no view
+// written into the markup); the pick and the saver's idle start are saved (off by default); the saver asks for full screen
+// only from its button, hides the interface, ends on input, keeps the pomodoro in a corner and its bell; a view in
+// low-resource mode is a still picture; phones at most 30 frames a second; Phobos' shape from the PCK
+{
+  const V = require('../js/vistas.js'), cab = read('js/cabin.js'), page = read('kabin.html'), css = read('css/style.css');
+  for (const id of V.VISTA_IDS) for (const k of ['kab.vista.' + id, 'kab.vista.' + id + '.d']) assert.ok(has(k), 'view text: ' + k);
+  for (const k of ['kab.vista.label', 'kab.vista.title', 'kab.vista.flight']) assert.ok(has(k), k);
+  assert.ok(/for \(const id of VISTA_IDS\) \{/.test(cab) && !/data-v="/.test(page) && /id="kVistaList"/.test(page), 'picker built from VISTA_IDS');
+  assert.ok(['earth', 'saturn'].every(k => V.VISTAS[k]) && /if \(VISTAS\[from\]\) writePref\(LS, PREF_KEYS\.cabScene, from\);/.test(cab), 'the simulator\'s ?manzara= still lands');
+  assert.ok(/if \(LOWQ && FV\.vista\) \{ cancelAnimationFrame\(FV\.raf\); FV\.raf = 0; FV\.timer = setTimeout\(fvKick, 60000\); return; \}/.test(cab), 'low-resource mode: a view is a still picture');
+  assert.ok(/LOWQ \|\| DEV\.phone \? 32 : 0/.test(cab), 'phones: at most 30 frames a second');
+  assert.ok(/if \(FV\.sig && sig !== FV\.sig && !still\(\)\)/.test(cab) && /xfSnap\(pv, wrap \? 2500 : VI\.dur\)/.test(cab), 'cross-fade, never in low-resource mode or with reduced motion');
 }
 
 console.log('OK — all UI tests passed');
