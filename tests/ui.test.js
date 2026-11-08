@@ -445,6 +445,18 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     const next = sb.shuffleBag(['a', 'b', 'c', 'd']), seq = Array.from({ length: 400 }, next);
     assert.ok(seq.every((x, i) => !i || x !== seq[i - 1]), 'no immediate repeat');
     for (let r = 0; r < 100; r++) assert.strictEqual(new Set(seq.slice(4 * r, 4 * r + 4)).size, 4, 'every track once per round');
+    // with the real list: a random first track (300 fresh starts land on most tracks), each round shuffled anew (not
+    // the last round's order), every round a full set without repeats, no repeat across a round's edge
+    const { MUSIC } = require('../js/sounds.js'), N = MUSIC.length, first = new Set();
+    for (let k = 0; k < 300; k++) first.add(sb.shuffleBag(MUSIC)().id);
+    assert.ok(first.size > N / 2, 'random first track (' + first.size + ' of ' + N + ')');
+    const nx = sb.shuffleBag(MUSIC), rounds = Array.from({ length: 6 }, () => Array.from({ length: N }, () => nx().id));
+    for (let r = 0; r < rounds.length; r++) {
+      assert.strictEqual(new Set(rounds[r]).size, N, 'round ' + r + ': every track once');
+      if (r) { assert.notDeepStrictEqual(rounds[r], rounds[r - 1], 'round ' + r + ': shuffled anew'); assert.notStrictEqual(rounds[r][0], rounds[r - 1][N - 1], 'round ' + r + ': no repeat at the edge'); }
+    }
+    // the radio, the skip button and the fall-through after a failure all take the next track from that one bag
+    assert.ok(['makeDeck(l.g, (bag => () => { const m = bag();', 'shuffleBag(MUSIC)', 'D.item = next(); load(B, D.item);', 'D.item = next(); load(E, D.item);'].every(t => aud.includes(t)), 'start, skip and fall-through follow the shuffle');
   }
 }
 
