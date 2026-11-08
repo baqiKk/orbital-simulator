@@ -1540,15 +1540,15 @@ const SAVER_EVERY = 3 * 60000, SAVER_FADE = 4000, SAVER_MOVE = 12;
 const SV = { on: false, set: parseCabSaver(readPref(LS, PREF_KEYS.cabSaver)), idle: Date.now(), next: 0, bag: [], from: 'desk', fs: false, armed: 0, moved: 0, mx: null };
 function viUi() {
   $('#kVistaName').textContent = _(`kab.vista.${VI.pick}`);
-  for (const b of document.querySelectorAll('#kVistaList button')) { b.setAttribute('aria-pressed', String(b.dataset.v === VI.pick)); b.disabled = FV.flight; }
-  $('#kVistaLock').hidden = !FV.flight; if (!FV.flight) $('#kPomoAsk').hidden = true;
+  for (const b of document.querySelectorAll('#kVistaList button')) b.setAttribute('aria-pressed', String(!FV.flight && b.dataset.v === VI.pick));
+  $('#kVistaLock').hidden = !FV.flight; if (!FV.flight) { $('#kPomoAsk').hidden = true; $('#kVistaAsk').hidden = true; }
   $('#kVistaInfo').hidden = FV.flight; // the line about a view the glass does not show
   $('#kVistaInfo').textContent = _(`kab.vista.${VI.pick}.d`);
 }
 function viMenu(open) {
   const m = $('#kVistaMenu'); open = open ?? m.hidden; m.hidden = !open; hideTip();
   $('#kVista').setAttribute('aria-expanded', String(open));
-  if (open) { audPanel(false); poPanel(false); viUi(); } else $('#kPomoAsk').hidden = true;
+  if (open) { audPanel(false); poPanel(false); viUi(); } else { $('#kPomoAsk').hidden = true; $('#kVistaAsk').hidden = true; }
 }
 function saverStart(user) {
   if (SV.on || !LY) return;
@@ -1645,14 +1645,22 @@ addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!$('#kAud
 for (const id of VISTA_IDS) {
   const b = el('button', { type: 'button', 'data-v': id, 'aria-pressed': 'false' }, $('#kVistaList'));
   b.textContent = _(`kab.vista.${id}`);
-  b.addEventListener('click', () => viSet(id));
+  b.addEventListener('click', () => viPick(id));
 }
 for (const m of CAB_SAVER_AUTO) el('option', { value: m }, $('#kSaverAuto')).textContent = m ? _('kab.saver.after', { m }) : _('kab.saver.off');
 $('#kSaverAuto').value = SV.set.auto;
 $('#kSaverAuto').addEventListener('change', e => { SV.set.auto = +e.target.value; writePref(LS, PREF_KEYS.cabSaver, JSON.stringify(SV.set)); SV.idle = Date.now(); });
 $('#kVista').addEventListener('click', () => viMenu());
+// a view picked while a flight plan flies: asked once ("the plan stops, the timer goes on"), then the plan is dropped
+// (the pomodoro keeps running, without a plan) and the glass turns to the view
+function viPick(id) {
+  if (!FV.flight) { viSet(id); return; }
+  VI.ask = id; $('#kPomoAsk').hidden = true; $('#kVistaAsk').hidden = false; $('#kVistaYes').focus();
+}
+$('#kVistaYes').addEventListener('click', () => { const id = VI.ask; $('#kVistaAsk').hidden = true; poSet(s => { s.plan = ''; s.flight = 0; }); if (id) viSet(id); });
+$('#kVistaNo').addEventListener('click', () => { $('#kVistaAsk').hidden = true; VI.ask = null; });
 // a flight plan holds the glass: "end the pomodoro" asks once, then stops the timer (and so the flight: idle) and frees the views
-$('#kPomoEnd').addEventListener('click', () => { $('#kPomoAsk').hidden = false; $('#kPomoEndYes').focus(); });
+$('#kPomoEnd').addEventListener('click', () => { $('#kVistaAsk').hidden = true; $('#kPomoAsk').hidden = false; $('#kPomoEndYes').focus(); });
 $('#kPomoEndNo').addEventListener('click', () => { $('#kPomoAsk').hidden = true; });
 $('#kPomoEndYes').addEventListener('click', () => { $('#kPomoAsk').hidden = true; poDo(pomoReset); viUi(); });
 $('#kVistaX').addEventListener('click', () => viMenu(false));
