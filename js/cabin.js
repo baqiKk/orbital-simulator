@@ -1541,13 +1541,14 @@ const SV = { on: false, set: parseCabSaver(readPref(LS, PREF_KEYS.cabSaver)), id
 function viUi() {
   $('#kVistaName').textContent = _(`kab.vista.${VI.pick}`);
   for (const b of document.querySelectorAll('#kVistaList button')) { b.setAttribute('aria-pressed', String(b.dataset.v === VI.pick)); b.disabled = FV.flight; }
-  $('#kVistaNote').hidden = !FV.flight;
+  $('#kVistaLock').hidden = !FV.flight; if (!FV.flight) $('#kPomoAsk').hidden = true;
+  $('#kVistaInfo').hidden = FV.flight; // the line about a view the glass does not show
   $('#kVistaInfo').textContent = _(`kab.vista.${VI.pick}.d`);
 }
 function viMenu(open) {
   const m = $('#kVistaMenu'); open = open ?? m.hidden; m.hidden = !open; hideTip();
   $('#kVista').setAttribute('aria-expanded', String(open));
-  if (open) { audPanel(false); poPanel(false); viUi(); }
+  if (open) { audPanel(false); poPanel(false); viUi(); } else $('#kPomoAsk').hidden = true;
 }
 function saverStart(user) {
   if (SV.on || !LY) return;
@@ -1650,6 +1651,10 @@ for (const m of CAB_SAVER_AUTO) el('option', { value: m }, $('#kSaverAuto')).tex
 $('#kSaverAuto').value = SV.set.auto;
 $('#kSaverAuto').addEventListener('change', e => { SV.set.auto = +e.target.value; writePref(LS, PREF_KEYS.cabSaver, JSON.stringify(SV.set)); SV.idle = Date.now(); });
 $('#kVista').addEventListener('click', () => viMenu());
+// a flight plan holds the glass: "end the pomodoro" asks once, then stops the timer (and so the flight: idle) and frees the views
+$('#kPomoEnd').addEventListener('click', () => { $('#kPomoAsk').hidden = false; $('#kPomoEndYes').focus(); });
+$('#kPomoEndNo').addEventListener('click', () => { $('#kPomoAsk').hidden = true; });
+$('#kPomoEndYes').addEventListener('click', () => { $('#kPomoAsk').hidden = true; poDo(pomoReset); viUi(); });
 $('#kVistaX').addEventListener('click', () => viMenu(false));
 $('#kSaverGo').addEventListener('click', () => saverStart(true));
 document.addEventListener('pointerdown', e => { const m = $('#kVistaMenu'); if (!m.hidden && !m.contains(e.target) && !$('#kVista').contains(e.target)) viMenu(false); });

@@ -97,7 +97,11 @@
 <div id="kVistaMenu" class="k-audio k-vmenu" role="dialog" data-i18n-aria-label="kab.vista.title" hidden>
   <div class="k-audio-h"><span data-i18n="kab.vista.title"></span><button type="button" class="k-x" id="kVistaX" data-i18n-aria-label="kab.audio.close">×</button></div>
   <div class="k-vlist" id="kVistaList" role="group" data-i18n-aria-label="kab.vista.title"></div>
-  <p class="k-acred" id="kVistaNote" data-i18n="kab.vista.flight" hidden></p>
+  <div class="k-vlock" id="kVistaLock" hidden>
+    <p class="k-acred" data-i18n="kab.vista.flight"></p>
+    <button type="button" class="btn" id="kPomoEnd" data-i18n="kab.vista.end"></button>
+    <div class="k-vask" id="kPomoAsk" hidden><span data-i18n="kab.vista.endAsk"></span><button type="button" class="btn primary" id="kPomoEndYes" data-i18n="kab.vista.endYes"></button><button type="button" class="btn" id="kPomoEndNo" data-i18n="kab.vista.endNo"></button></div>
+  </div>
   <p class="k-acred" id="kVistaInfo"></p>
   <div class="k-vsaver">
     <button type="button" class="btn" id="kSaverGo" data-i18n="kab.saver.start"></button>
