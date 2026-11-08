@@ -822,4 +822,10 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(app.includes("if (VW.phone.matches && !VW.expert) { vwPut($('#dimSeg'), slot('bar')); vwPut($('#vwFollow'), slot('bar')); }"), 'phones: one button, everything in the sheet');
 }
 
+// 26) The mode title at the top middle: the scene (and its way back once moved), a mission, one's own design, the map
+{
+  const app = read('js/app.js'), page = read('index.html');
+  assert.ok(page.includes('id="modeChip"') && page.includes('id="modeBack"') && ['chip.scene', 'chip.free', 'chip.backSaturn', 'chip.backEarth', 'chip.mission', 'chip.design', 'chip.designMan', 'chip.map'].every(has), 'mode title and its texts');
+  assert.ok(app.includes("if (SCENE.free) { t = _('chip.free'); back = SCENE.kind === 'earth' ? 'chip.backEarth' : 'chip.backSaturn'; }") && app.includes("$('#modeBack').addEventListener('click', () => { if (SCENE.on) { sceneSet(SCENE.kind); needFit = true; } });"), 'moved in the scene: a way back');
+}
 console.log('OK — all UI tests passed');

@@ -337,6 +337,14 @@ html[data-scene] #readout,html[data-scene] #timeline,.win.scene-hide{display:non
 /* ---------- low-resource mode: no blur, shadows, gradients or transitions ---------- */
 html[data-q=low] .glass,html[data-q=low] .win{backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;background:var(--panel-lo)}
 html[data-q=low] .ask,html[data-q=low] .toast{box-shadow:none}
+/* where the viewer is (js/app.js modeChip): a small title at the top middle; in the scene, once the view was moved, a
+   way back to it */
+.mode-chip{position:absolute;z-index:6;top:12px;left:50%;transform:translateX(-50%);max-width:calc(100% - 560px);min-width:0;padding:6px 12px;display:flex;gap:10px;align-items:center;font:500 11.5px/1.2 var(--f-disp);letter-spacing:.04em;color:var(--ink);white-space:nowrap}
+.mode-chip #modeText{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mode-chip .link{font-size:11.5px;flex:none}
+.mode-chip:empty,.mode-chip[hidden]{display:none}
+@media (max-width:860px){.mode-chip{max-width:calc(100% - 300px)}}
+@media (max-width:560px){.mode-chip{left:auto;right:8px;top:8px;transform:none;max-width:calc(100% - 150px);padding:6px 9px;font-size:11px}}
 /* view controls (js/app.js VW): the bar (2D/3D, follow, the view menu) and the menu holding the rest; the expert
    layout (html.ui-expert) shows the old full set in place */
 .ctrl-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}

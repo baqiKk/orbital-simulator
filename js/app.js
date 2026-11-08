@@ -2277,6 +2277,19 @@ function sceneEnd(toMission) {
 function sceneUnhide(id) { if (!SCENE.hide.delete(id)) return false; winEl(id).classList.remove('scene-hide'); INS = null; return true; }
 // the viewer moved the camera or picked a body: the scene keeps running without its aim
 function sceneTouch() { FLY.on = false; if (SCENE.on) SCENE.free = true; }
+// Where the viewer is, at the top middle: "Manzara · Satürn" (once the view was moved: "Serbest bakış · Satürn'e dön",
+// which aims it again), "Görev · <scenario>", "Tasarım · A → B" (a setup of one's own), the solar system map
+function modeChip() {
+  let t, back = '';
+  if (SCENE.on) { if (SCENE.free) { t = _('chip.free'); back = SCENE.kind === 'earth' ? 'chip.backEarth' : 'chip.backSaturn'; } else t = _('chip.scene', { name: _(SCENE.kind === 'earth' ? 'wc.earth' : 'wc.saturn') }); }
+  else if (MAP.on) t = _('chip.map');
+  else if (S.scenario) t = _('chip.mission', { name: _('sc.' + S.scenario + '.name') });
+  else { const a = S.bodies[0] ? S.bodies[0].name : '', b = S.bodies[1] ? S.bodies[1].name : ''; t = S.kind === 'man' ? _('chip.designMan', { a }) : _('chip.design', { a, b }); }
+  const key = t + '|' + back; if (key === modeChip.k) return; modeChip.k = key;
+  $('#modeText').textContent = t; const bb = $('#modeBack'); bb.hidden = !back; if (back) bb.textContent = _(back);
+  INS = null;
+}
+$('#modeBack').addEventListener('click', () => { if (SCENE.on) { sceneSet(SCENE.kind); needFit = true; } });
 // 2D: Saturn followed, the orbits out to Rhea's in view, breathing slowly; the Earth on one side, the Moon on the other
 function sceneAim2(pos) {
   if (SCENE.free || MAP.follow == null) return;
@@ -2758,7 +2771,7 @@ function draw(now) {
     }
   }
   const glow = Q.glow && !lowQ;
-  HITS = []; CAPTION.length = 0;
+  HITS = []; CAPTION.length = 0; modeChip();
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   const v3 = is3d(); // 3D: the WebGL canvas below draws the scene, this one only the overlay
   if (SCENE.wait) { ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H); requestAnimationFrame(draw); return; } // first-run question open
