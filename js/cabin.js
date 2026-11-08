@@ -475,7 +475,7 @@ function fvGL() {
 // the glass now: the flight (plan data, where: fpWhere, the craft: fpAt, the bodies: fpBodies) while a plan flies, else
 // the picked view (viState, D null); T: the bodies' time (s since J2000), F: the focal length (CSS px)
 function fvState(now) {
-  const s = PO.s, D = s && FLIGHT_DATA[s.plan], w = D && fpWhere(D, s, pomoView(s, now), now);
+  const s = PO.s, D = s && fpPlan(FLIGHT_DATA[s.plan], s), w = D && fpWhere(D, s, pomoView(s, now), now);
   if (!w) return LY ? viState(now) : null;
   const a = fpAt(D, w);
   return { D, w, a, b: fpBodies(D, a), T: a.tr.M.t0 * DAY + a.t, F: SP.F };
@@ -487,7 +487,11 @@ function fvCam(st) {
   let f, up;
   if (a.around) {
     const q = at(a.around), r = norm(vsub(y, q.p)), v = norm(vsub(y.slice(3), q.v));
-    if (RM.matches) { f = r.map(c => -c); up = v; } else { f = norm(v.map((c, i) => Math.cos(FV_TILT) * c - Math.sin(FV_TILT) * r[i])); up = r; }
+    if (RM.matches) { f = r.map(c => -c); up = v; } else {
+      f = norm(v.map((c, i) => Math.cos(FV_TILT) * c - Math.sin(FV_TILT) * r[i])); up = r;
+      // just after an approach: from looking at the body to along the orbit
+      if (a.ease != null && a.ease < 1) { f = slerp(r.map(c => -c), f, a.ease); up = slerp(v, r, a.ease); }
+    }
   } else {
     f = norm(vsub(at(a.look).p, y));
     if (a.mix) f = slerp(f, norm(vsub(at(a.look2).p, y)), a.mix);
@@ -510,7 +514,8 @@ function wallNow(tp = performance.now()) {
 function fvFrame(force, tp) {
   const t = tp ?? performance.now(), st = fvState(wallNow(t));
   if (!st) { fvStop(); return; }
-  const cam = fvCam(st), sig = st.w.leg + st.w.mode + (st.w.mode === 'work' ? '' : st.a.around || st.a.look) + (st.w.cycle ?? '');
+  // (the approach flows into the orbit without a jump)
+  const cam = fvCam(st), sig = st.w.leg + (st.w.mode === 'approach' ? 'orbit' : st.w.mode) + (st.w.mode === 'work' ? '' : st.a.around || st.a.look) + (st.w.cycle ?? '');
   FV.vista = st.w.mode === 'vista';
   if (FV.sig && sig !== FV.sig && !still()) {
     // a change of view or a loop's wrap: the old frame cross-fades into the new one; a flight's jump: fade out and in
@@ -1191,7 +1196,7 @@ function poShow(now = Date.now()) {
 function hudShow(now) {
   const h = $('#kFlight'), v = PO.v, s = PO.s, off = v.phase === 'idle' || !PO.hud || !$('#kPomo').hidden;
   h.hidden = off; if (off) return;
-  const D = FLIGHT_DATA[s.plan], w = D && fpWhere(D, s, v, now), lb = w && fpLabel(s.plan, D, w);
+  const D = fpPlan(FLIGHT_DATA[s.plan], s), w = D && fpWhere(D, s, v, now), lb = w && fpLabel(s.plan, D, w);
   let txt = lb ? _(lb.key, { ...lb.p, b: lb.p.b ? _('body.' + lb.p.b) : '' }) : _(PO_PH[v.phase], { k: v.k, n: v.every });
   if (lb && lb.u != null) txt = _('fp.pct', { l: txt, p: Math.floor(lb.u * 100) });
   $('#kFlightL').textContent = txt;

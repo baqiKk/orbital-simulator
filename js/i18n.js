@@ -501,6 +501,7 @@ const I18N = {
     'fp.mars.go': 'Mars seyri · gün {d}/{n}',
     'fp.mars.cruise': 'Seyirde mola · araç yavaşça dönüyor',
     'fp.mars.done': 'Mars yörüngesinde · görev tamamlandı',
+    'fp.mars.approach': 'Mars\'a yaklaşma · yörüngeye giriş',
     'fp.orbit': '{b} yörüngesinde mola',
     'fp.pct': '{l} · %{p}',
     'kab.title': 'Kabin · taslak',

@@ -911,12 +911,13 @@ const sEM = realSys(['earth', 'mars', 'sun']);
       }
       assert.ok(wi <= 1, `${id}: the thinned track within its tolerance (worst ${wi.toFixed(3)})`);
     }
-    // break orbits: start at the leg's end, period, closed
-    for (const leg of D.legs) {
+    // break orbits: start at the leg's end, period, closed (Mars as flown in a 4-session cycle)
+    const Dp = F.fpPlan(D, { cfg: { every: 4 } });
+    for (const leg of Dp.legs) {
       if (leg.brk.cruise) continue;
       const tr = D.tracks[leg.tr], sys = F.fpSystem(tr.keys), i = tr.keys.indexOf(leg.brk.body);
       assert.ok(Math.abs(leg.brk.P - 2 * Math.PI * Math.sqrt(leg.brk.rho ** 3 / sys.mu[i])) < 1e-2, `${id}: break orbit period`);
-      const a0 = F.fpAt(D, { leg: D.legs.indexOf(leg), mode: 'orbit', tau: 0 }), a1 = F.fpAt(D, { leg: D.legs.indexOf(leg), mode: 'orbit', tau: leg.brk.P });
+      const a0 = F.fpAt(Dp, { leg: Dp.legs.indexOf(leg), mode: 'orbit', tau: 0 }), a1 = F.fpAt(Dp, { leg: Dp.legs.indexOf(leg), mode: 'orbit', tau: leg.brk.P });
       const P = new Float64Array(3 * sys.N), V = new Float64Array(3 * sys.N); C.states(sys, tr.M.t0 * DAY + leg.tb + leg.brk.P, P, V);
       const r1 = [0, 1, 2].map(j => a1.y[j] - P[3 * i + j]), v1 = [0, 1, 2].map(j => a1.y[3 + j] - V[3 * i + j]);
       assert.ok(Math.abs(Math.hypot(...r1) - leg.brk.rho) < 1 && Math.abs(Math.hypot(...v1) - Math.sqrt(sys.mu[i] / leg.brk.rho)) < 1e-6 * Math.sqrt(sys.mu[i] / leg.brk.rho), `${id}: circular`);
@@ -928,10 +929,23 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   assert.ok(E.loop && E.legs.length === 2 && E.legs[0].ta === 0 && E.legs[1].ta === E.legs[0].tb && E.legs[0].look === 'moon' && E.legs[1].look === 'earth');
   assert.ok(Math.abs(alt(Es, E.tracks[0], E.legs[0].tb, 'moon') - 250) < 1 && Math.abs(alt(Es, E.tracks[0], E.legs[1].tb, 'earth') - 60) < 1, 'free return: 250 km perilune, 60 km perigee');
   assert.ok(Math.abs(E.legs[1].brk.rho / 1e3 - Es.R[0] / 1e3 - 185) < 0.01 && E.legs[0].brk.body === 'moon', 'breaks: lunar orbit at the perilune, the 185 km parking orbit');
-  // Mars: eight contiguous slices to the periareion, looking back for four; a 300 km orbit after the last
-  const Ma = FLIGHT_DATA.mars, Ms = F.fpSystem(Ma.tracks[0].keys);
-  assert.ok(!Ma.loop && Ma.legs.length === 8 && Ma.legs.every((l, k) => (k ? l.ta === Ma.legs[k - 1].tb : l.ta === 0) && l.look === (k < 4 ? 'earth' : 'mars') && !!l.brk.cruise === k < 7));
-  assert.ok(Math.abs(alt(Ms, Ma.tracks[0], Ma.legs[7].tb, 'mars') - 300) < 1 && Math.abs(Ma.legs[7].brk.rho / 1e3 - Ms.R[1] / 1e3 - 300) < 1, 'Mars: 300 km');
+  // Mars, scaled to the pomodoro's cycle (2–8 sessions): contiguous legs to the periareion, the first half looking back at
+  // the Earth, the last session warped by Mars' size; a 300 km orbit after it
+  const Ma = F.fpPlan(FLIGHT_DATA.mars, { cfg: { every: 4 } }), Ms = F.fpSystem(Ma.tracks[0].keys), MD = FLIGHT_DATA.mars;
+  for (let n = 2; n <= 8; n++) {
+    const L = F.fpLegs(MD, n), turn = Math.max(0, Math.ceil((n - 1) / 2) - 1);
+    assert.ok(L.length === n && L.every((l, k) => (k ? l.ta === L[k - 1].tb : l.ta === 0) && l.look === (k <= turn ? 'earth' : 'mars') && !!l.brk.cruise === k < n - 1), 'Mars: ' + n + ' legs for ' + n + ' sessions');
+  }
+  assert.ok(!Ma.loop && Ma.legs.length === 4 && Math.abs(alt(Ms, Ma.tracks[0], Ma.legs[3].tb, 'mars') - 300) < 1 && Math.abs(Ma.legs[3].brk.rho / 1e3 - Ms.R[1] / 1e3 - 300) < 1, 'Mars: 300 km');
+  // Mars' angular size in the glass (its width at the desk view through the sky's projection: about 69°)
+  const GLASS = 69, marsW = a => { const b = F.fpBodies(Ma, a), m = b.list.find(q => q.key === 'mars').p, d = Math.hypot(m[0] - a.y[0], m[1] - a.y[1], m[2] - a.y[2]); return 2 * Math.asin(Math.min(1, Ms.R[1] / d)) * 180 / Math.PI / GLASS; };
+  const mLast = Ma.legs.length - 1, ws = [0, 0.25, 0.5, 0.75, 1].map(u => marsW(F.fpAt(Ma, { leg: mLast, mode: 'work', u })));
+  assert.ok(ws[0] < 0.01 && ws[4] >= 0.2, `Mars grows over the last session: ${(100 * ws[0]).toFixed(1)} → ${(100 * ws[4]).toFixed(1)} % of the glass`);
+  for (let k = 1; k < 5; k++) assert.ok(Math.abs((ws[k] - ws[k - 1]) - (ws[4] - ws[0]) / 4) < 0.02 * (ws[4] - ws[0]) + 0.002, 'Mars grows evenly over the last session');
+  for (const u of [0, 0.3, 0.7, 1]) assert.ok(marsW(F.fpAt(Ma, { leg: mLast, mode: 'approach', u })) >= 0.2, 'Mars large in the glass through the final approach');
+  for (const tau of [0, 0.3, 0.7].map(f => f * Ma.legs[mLast].brk.P)) assert.ok(marsW(F.fpAt(Ma, { leg: mLast, mode: 'orbit', tau })) >= 0.2, 'and in orbit');
+  // the other plans arrive at every break already: each leg ends at its target's periapsis
+  for (const id of ['em', 'saturn', 'jupiter']) { const D = FLIGHT_DATA[id]; assert.ok(D.legs.every(l => !l.brk.cruise), id + ': a body at every break'); }
   // the tours: closed loops, dates in order, each arrival at the tour altitude
   for (const id of ['saturn', 'jupiter']) {
     const D = FLIGHT_DATA[id], tour = F.FLIGHT_PLANS[id].tour;
@@ -966,17 +980,22 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   assert.ok(s.phase === 'long' && w.leg === 1 && F.fpAt(E, w).around === 'earth' && Math.abs(w.tau - 1.5 * E.legs[1].brk.P) < 1e-6, 'the long break: three turns of the parking orbit');
   s.flight = 4; s.phase = 'work'; s.t0 = t0; s.paused = 0;
   assert.strictEqual(F.fpWhere(E, s, T.pomoView(s, t0), t0).leg, 0, 'round and round');
-  // Mars: the cruise breaks roll, the fourth turns the view, the ninth session is in Mars orbit for good
-  const m = T.pomoNew('p25'), mw = now => F.fpWhere(Ma, m, T.pomoView(m, now), now);
-  m.flight = 3; T.pomoStart(m, t0); T.pomoAdvance(m, t0 + 25 * MIN);
-  let a = F.fpAt(Ma, mw(t0 + 27.5 * MIN));
-  assert.ok(a.look === 'earth' && a.look2 === 'mars' && Math.abs(a.mix - 0.5) < 1e-9 && a.t === Ma.legs[3].tb && Math.abs(a.roll - 2 * Math.PI * 2.5 / 20) < 1e-9, 'the fourth break turns from Earth to Mars, rolling');
-  m.flight = 2; a = F.fpAt(Ma, mw(t0 + 27.5 * MIN)); assert.ok(a.mix === 0 && a.look === 'earth', 'other cruise breaks keep their view');
-  m.flight = 8; a = F.fpAt(Ma, mw(t0 + 27.5 * MIN)); assert.strictEqual(a.around, 'mars', 'after the last slice: Mars orbit');
-  m.flight = 9; assert.strictEqual(mw(t0 + 27.5 * MIN).mode, 'done');
-  m.phase = 'work'; m.t0 = t0; assert.strictEqual(mw(t0 + MIN).mode, 'done', 'a finished plan stays in orbit');
-  const lb = F.fpLabel('mars', Ma, { leg: 2, mode: 'work', u: 0.5 });
-  assert.ok(lb.key === 'fp.mars.go' && lb.p.d === Math.floor((Ma.legs[2].ta + Ma.legs[2].tb) / 2 / DAY) && lb.p.n === Math.round(Ma.legs[7].tb / DAY), 'Mars: day of the cruise');
+  // Mars in a 25/5 cycle (4 sessions): the cruise breaks roll, the second turns the view, the fourth session flies the
+  // approach, its long break the periapsis pass and the orbit insertion, then round; the fifth session is in orbit for good
+  const m = T.pomoNew('p25'), mp = () => F.fpPlan(FLIGHT_DATA.mars, m), mw = now => F.fpWhere(mp(), m, T.pomoView(m, now), now);
+  assert.strictEqual(mp().legs.length, m.cfg.every, 'Mars: as many legs as the cycle\'s sessions');
+  m.flight = 1; T.pomoStart(m, t0); T.pomoAdvance(m, t0 + 25 * MIN);
+  let a = F.fpAt(mp(), mw(t0 + 27.5 * MIN));
+  assert.ok(a.look === 'earth' && a.look2 === 'mars' && Math.abs(a.mix - 0.5) < 1e-9 && a.t === mp().legs[1].tb && Math.abs(a.roll - 2 * Math.PI * 2.5 / 20) < 1e-9, 'the second break turns from Earth to Mars, rolling');
+  m.flight = 3; a = F.fpAt(mp(), mw(t0 + 27.5 * MIN)); assert.ok(a.mix === 0 && a.look === 'mars', 'other cruise breaks keep their view');
+  m.flight = 4; m.n = 4; m.phase = 'long'; m.t0 = t0; m.paused = 0;
+  w = F.fpWhere(mp(), m, T.pomoView(m, t0 + 3 * MIN), t0 + 3 * MIN);
+  assert.ok(w.mode === 'approach' && Math.abs(w.u - 0.5) < 1e-9, 'the long break opens with the approach');
+  w = F.fpWhere(mp(), m, T.pomoView(m, t0 + 10 * MIN), t0 + 10 * MIN); a = F.fpAt(mp(), w);
+  assert.ok(w.mode === 'orbit' && a.around === 'mars' && a.ease === 1, 'then the orbit');
+  m.flight = 5; m.phase = 'work'; m.t0 = t0; assert.strictEqual(mw(t0 + MIN).mode, 'done', 'a finished plan stays in orbit');
+  const lb = F.fpLabel('mars', Ma, { leg: 1, mode: 'work', u: 0.5 }), la = F.fpLabel('mars', Ma, { leg: 3, mode: 'approach', u: 0.5 });
+  assert.ok(lb.key === 'fp.mars.go' && lb.p.d === Math.floor((Ma.legs[1].ta + Ma.legs[1].tb) / 2 / DAY) && lb.p.n === Math.round(Ma.legs[3].tb / DAY) && la.key === 'fp.mars.approach', 'Mars: day of the cruise, the approach');
   // the bodies to draw: the system, extras about their anchors, the Sun's direction
   const bm = F.fpBodies(Ma, F.fpAt(Ma, { leg: 0, mode: 'work', u: 0.5 })), pe = bm.list.find(b => b.key === 'earth').p, pm = bm.list.find(b => b.key === 'moon').p;
   assert.ok(Math.abs(Math.hypot(pe[0] - pm[0], pe[1] - pm[1], pe[2] - pm[2]) / 1e6 - 384) < 30 && Math.abs(Math.hypot(...bm.sun) - 1) < 1e-12, 'Mars: the Moon beside the Earth');

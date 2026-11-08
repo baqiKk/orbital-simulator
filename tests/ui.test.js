@@ -591,13 +591,13 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 {
   const F = require('../js/flightplans.js'), { FLIGHT_DATA } = require('../js/flightdata.js');
   for (const id of F.FP_IDS) {
-    const D = FLIGHT_DATA[id]; assert.ok(D && has('fp.name.' + id), 'plan name: ' + id);
+    const D = F.fpPlan(FLIGHT_DATA[id], { cfg: { every: 4 } }); assert.ok(D && has('fp.name.' + id), 'plan name: ' + id);
     D.legs.forEach((leg, j) => {
       const w = F.fpLabel(id, D, { leg: j, mode: 'work', u: 0.5 }); assert.ok(has(w.key), `${id}: ${w.key}`);
       const b = F.fpLabel(id, D, leg.brk.cruise ? { leg: j, mode: 'cruise' } : { leg: j, mode: 'orbit' }); assert.ok(has(b.key) && (!b.p.b || has('body.' + b.p.b)), `${id}: break ${b.key}`);
     });
   }
-  for (const k of ['fp.plan', 'fp.name.none', 'fp.restart', 'fp.note', 'fp.mars.done']) assert.ok(has(k), k);
+  for (const k of ['fp.plan', 'fp.name.none', 'fp.restart', 'fp.note', 'fp.mars.done', 'fp.mars.approach']) assert.ok(has(k), k);
   // the light through the glass: off in the low-resource mode (not computed, not shown); the body colour only mixed
   // into the screen token
   const cab = read('js/cabin.js'), css = read('css/style.css');

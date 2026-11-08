@@ -12,6 +12,12 @@
 //     turn per short break, a long break the same speed (more turns); the bodies move on by the orbit's time. In a cruise
 //     (Mars): the craft rolls slowly (passive thermal control, one turn in FP_ROLL), the view turning from the plan's
 //     first look to its second in the turning break.
+//   Mars is scaled to the pomodoro's cycle (its sessions before the long break, s.cfg.every; 4 by default; fpPlan): the
+//   sessions before the last fly the cruise up to Mars' near space (nearest[0] away), the first half looking back at the
+//   shrinking Earth and Moon; the last session flies the approach so that Mars' angular size grows evenly over it, to
+//   nearest[1] away (about 15° across); the last break opens with the final approach, the periapsis pass and the entry into
+//   the 300 km orbit (its first FP_APPROACH, Mars' angular size again growing evenly: the time is warped by Mars' size, not
+//   linear), then the craft goes round.
 const FPX = typeof buildSystem === 'function' ? { buildSystem, states, BODIES, DAY } : { ...require('./core.js'), ...require('./bodies.js') };
 
 // sc: the simulator's scenario (js/app.js SCENARIOS) a plan flies; tour: [body, orbit altitude km] in order, the last
@@ -22,7 +28,7 @@ const FLIGHT_PLANS = {
   em: { sc: 'r_em_free', loop: true, park: 185, extra: [] },
   // Earth to Mars (r_e_mars, 2026-11-08): the cruise in eight slices, looking back at the shrinking Earth and Moon in
   // the first four and ahead at Mars in the rest, the turn in the fourth break; after the eighth, a 300 km Mars orbit
-  mars: { sc: 'r_e_mars', loop: false, slices: 8, turn: 4, extra: [['moon', 'earth']] },
+  mars: { sc: 'r_e_mars', loop: false, scaled: true, nearest: [2e9, 2.5e7], extra: [['moon', 'earth']] },
   // Saturn's moons: Titan → Enceladus → Dione → Rhea → Titan, from 2026-11-15, each leg on its lowest-Δv date after
   // the last arrival; the long break of a 4-session cycle falls at Titan
   saturn: { loop: true, parent: 'saturn', from: Date.UTC(2026, 10, 15), tour: [['titan', 1500], ['enceladus', 100], ['dione', 100], ['rhea', 100]],
@@ -33,6 +39,33 @@ const FLIGHT_PLANS = {
 };
 const FP_IDS = Object.keys(FLIGHT_PLANS);
 const FP_ROLL = 20 * 60000; // ms per turn of the cruise roll (Apollo's barbecue roll: about three an hour)
+const FP_APPROACH = 0.4;    // the share of a scaled plan's last break given to the final approach (then the orbit)
+
+// A scaled plan's legs for n sessions (FLIGHT_DATA.mars: scale { tC, tB (s on the track: the last session's start, the
+// periapsis), aC, aD, aB (Mars' angular radius proxy R/d at the last session's start and end and at the periapsis),
+// inv (the track's time at evenly spaced R/d from aC to aB) } and brk, the orbit). Plans without scale keep their legs.
+function fpLegs(D, n) {
+  if (!D.scale) return D.legs;
+  const S = D.scale, N = Math.max(2, Math.min(8, Math.round(n) || 4)), turn = Math.max(0, Math.ceil((N - 1) / 2) - 1), keys = D.tracks[0].keys, legs = [];
+  for (let k = 0; k < N - 1; k++) legs.push({ tr: 0, ta: k ? legs[k - 1].tb : 0, tb: k === N - 2 ? S.tC : S.tC * (k + 1) / (N - 1), look: k <= turn ? keys[0] : keys[1], brk: { cruise: true } }); // contiguous to the float
+  legs.push({ tr: 0, ta: S.tC, tb: S.tB, look: keys[1], warp: [S.aC, S.aD], brk: { ...D.brk, approach: { a: [S.aD, S.aB], f: FP_APPROACH } } });
+  return legs;
+}
+const FP_PLANS = new Map();
+// plan D as flown with pomodoro state s: its legs for the cycle (a scaled plan), else D itself
+function fpPlan(D, s) {
+  if (!D || !D.scale) return D;
+  const n = s && s.cfg ? s.cfg.every : 4, k = D.scale.tB + '/' + n;
+  if (!FP_PLANS.has(k)) FP_PLANS.set(k, { ...D, legs: fpLegs(D, n) });
+  return FP_PLANS.get(k);
+}
+// the track's time where R/d = a (a scaled plan's warp; linear between the table's samples)
+function fpTimeAt(S, a) {
+  const n = S.inv.length - 1, x = Math.max(0, Math.min(n, (a - S.aC) / (S.aB - S.aC) * n)), i = Math.min(n - 1, Math.floor(x));
+  return S.inv[i] + (S.inv[i + 1] - S.inv[i]) * (x - i);
+}
+// the time on the track of a work leg at u (0–1): linear, or warped by Mars' size
+const fpLegT = (D, leg, u) => (leg.warp ? fpTimeAt(D.scale, leg.warp[0] + u * (leg.warp[1] - leg.warp[0])) : leg.ta + u * (leg.tb - leg.ta));
 
 // the real model's system for body keys, as the simulator builds it (parents from js/bodies.js)
 function fpSystem(keys) {
@@ -82,6 +115,11 @@ function fpWhere(D, s, v, now) {
   const B = D.legs[j].brk;
   if (B.cruise) return { leg: j, mode: 'cruise', frac: el / dur, el };
   const turns = brk === 'long' ? Math.max(1, Math.round(s.cfg.long / s.cfg.short)) : 1;
+  if (B.approach) { // the final approach first, then the orbit for the rest of the break
+    const fr = el / dur, f = B.approach.f;
+    if (fr < f) return { leg: j, mode: 'approach', u: fr / f, el };
+    return { leg: j, mode: 'orbit', tau: (fr - f) / (1 - f) * turns * B.P, el };
+  }
   return { leg: j, mode: 'orbit', tau: el / dur * turns * B.P, el };
 }
 // a finished plan (Mars): round and round the last orbit, one turn per short break
@@ -94,8 +132,9 @@ function fpDone(D, s, el) {
 // roll (rad), around (orbited body key) }
 function fpAt(D, w) {
   const leg = D.legs[w.leg], tr = D.tracks[leg.tr];
-  if (w.mode === 'work') return { tr, t: leg.ta + w.u * (leg.tb - leg.ta), y: fpTrack(tr, leg.ta + w.u * (leg.tb - leg.ta)), look: leg.look, roll: 0 };
+  if (w.mode === 'work') { const t = fpLegT(D, leg, w.u); return { tr, t, y: fpTrack(tr, t), look: leg.look, roll: 0 }; }
   const B = leg.brk;
+  if (w.mode === 'approach') { const t = fpTimeAt(D.scale, B.approach.a[0] + w.u * (B.approach.a[1] - B.approach.a[0])); return { tr, t, y: fpTrack(tr, t), look: leg.look, roll: 0 }; }
   if (w.mode === 'cruise') {
     const nx = D.legs[w.leg + 1], mix = nx && nx.look !== leg.look ? Math.min(1, Math.max(0, w.frac)) : 0, e = mix * mix * (3 - 2 * mix);
     return { tr, t: leg.tb, y: fpTrack(tr, leg.tb), look: leg.look, look2: nx ? nx.look : leg.look, mix: e, roll: 2 * Math.PI * (w.el / FP_ROLL % 1) };
@@ -105,7 +144,9 @@ function fpAt(D, w) {
   FPX.states(sys, tr.M.t0 * FPX.DAY + t, P, V);
   const ph = 2 * Math.PI * (w.tau / B.P % 1), c = Math.cos(ph), sn = Math.sin(ph), vc = 2 * Math.PI * B.rho / B.P, y = new Array(6);
   for (let j = 0; j < 3; j++) { y[j] = P[3 * i + j] + B.rho * (c * B.u[j] + sn * B.w[j]); y[3 + j] = V[3 * i + j] + vc * (c * B.w[j] - sn * B.u[j]); }
-  return { tr, t, y, look: null, roll: 0, around: B.body };
+  // after an approach the view turns from the body to along the orbit over the first fifth of a turn (ease 0 → 1)
+  const ease = B.approach ? Math.min(1, w.tau / (0.2 * B.P)) : 1;
+  return { tr, t, y, look: null, roll: 0, around: B.body, ease: ease * ease * (3 - 2 * ease) };
 }
 
 // The bodies to draw at fpAt result a: the track's system exactly, extras about their anchors (from the anchor's own
@@ -140,12 +181,13 @@ function fpBodies(D, a) {
 function fpLabel(id, D, w) {
   const leg = D.legs[w.leg];
   if (w.mode === 'work') {
-    if (id === 'mars') { const tot = D.legs[D.legs.length - 1].tb; return { key: 'fp.mars.go', p: { d: Math.floor((leg.ta + w.u * (leg.tb - leg.ta)) / FPX.DAY), n: Math.round(tot / FPX.DAY) }, u: w.u }; }
+    if (id === 'mars') { const tot = D.legs[D.legs.length - 1].tb; return { key: 'fp.mars.go', p: { d: Math.floor(fpLegT(D, leg, w.u) / FPX.DAY), n: Math.round(tot / FPX.DAY) }, u: w.u }; }
     return { key: `fp.${id}.go${w.leg}`, p: {}, u: w.u };
   }
   if (w.mode === 'done') return { key: 'fp.mars.done', p: {}, u: null };
+  if (w.mode === 'approach') return { key: 'fp.mars.approach', p: {}, u: w.u };
   if (w.mode === 'cruise') return { key: 'fp.mars.cruise', p: {}, u: null };
   return { key: 'fp.orbit', p: { b: leg.brk.body }, u: null };
 }
 
-if (typeof module !== 'undefined') module.exports = { FLIGHT_PLANS, FP_IDS, FP_ROLL, fpSystem, fpSys, fpHermite, fpTrack, fpWhere, fpAt, fpBodies, fpLabel };
+if (typeof module !== 'undefined') module.exports = { FLIGHT_PLANS, FP_IDS, FP_ROLL, FP_APPROACH, fpLegs, fpPlan, fpTimeAt, fpLegT, fpSystem, fpSys, fpHermite, fpTrack, fpWhere, fpAt, fpBodies, fpLabel };
