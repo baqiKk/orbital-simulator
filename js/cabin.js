@@ -1143,7 +1143,7 @@ function poEnded(e) {
 }
 function poShow(now = Date.now()) {
   const s = PO.s, v = PO.v = pomoView(s, now);
-  clockTick(); poStats(now); hudShow(now); fvSync();
+  clockTick(); poStats(now); hudShow(now); saverClock(v); fvSync();
   if ($('#kPomo').hidden) return;
   const ph = _(PO_PH[v.phase], { k: v.k, n: v.every });
   $('#kPomoPh').textContent = v.paused ? _('kab.pomo.paused', { ph }) : ph;
@@ -1391,9 +1391,17 @@ function buildHits() {
   $('#hPhones').addEventListener('click', () => audPanel());
 }
 
-// ---------- the view picker (Phase 14) ----------
-// A button in the bottom bar (on phones at the glass inside ⋯) opening a small panel with the views (the one shown
-// pressed) and a line on it. While a flight plan flies the glass is the flight's: the views rest (a note says so).
+// ---------- the view picker and the screen saver (Phase 14) ----------
+// The picker: a button in the bottom bar (on phones at the glass inside ⋯) opening a small panel with the views (the
+// one shown pressed), a line on it, and the screen saver's controls. While a flight plan flies the glass is the
+// flight's: the views rest (a note says so).
+// The screen saver: its button, or (optional, off by default) N minutes without input: to the glass, the interface and
+// the pointer hidden, a view every few minutes (SAVER_EVERY, a shuffled turn without repeats; a flight plan keeps the
+// glass) with a slow cross-fade; full screen when the browser allows it (only from the button: a request needs the
+// viewer's gesture). Any pointer move (past a few px), touch, wheel or key ends it (that input does nothing else: an
+// overlay takes it). A running pomodoro stays in a small faint corner clock; its bell rings as ever.
+const SAVER_EVERY = 3 * 60000, SAVER_FADE = 4000, SAVER_MOVE = 12;
+const SV = { on: false, set: parseCabSaver(readPref(LS, PREF_KEYS.cabSaver)), idle: Date.now(), next: 0, bag: [], from: 'desk', fs: false, armed: 0, moved: 0, mx: null };
 function viUi() {
   $('#kVistaName').textContent = _(`kab.vista.${VI.pick}`);
   for (const b of document.querySelectorAll('#kVistaList button')) { b.setAttribute('aria-pressed', String(b.dataset.v === VI.pick)); b.disabled = FV.flight; }
@@ -1405,6 +1413,59 @@ function viMenu(open) {
   $('#kVista').setAttribute('aria-expanded', String(open));
   if (open) { audPanel(false); poPanel(false); viUi(); }
 }
+function saverStart(user) {
+  if (SV.on || !LY) return;
+  SV.on = true; SV.from = view; SV.armed = performance.now() + 900; SV.moved = 0; SV.mx = null; SV.next = Date.now() + SAVER_EVERY;
+  viMenu(false); audPanel(false); poPanel(false); moreMenu(false); hideTip();
+  document.body.classList.add('k-saver'); $('#kSaverHit').hidden = false;
+  const de = document.documentElement;
+  if (user && de.requestFullscreen && !document.fullscreenElement) de.requestFullscreen().then(() => { SV.fs = true; }, () => {});
+  go('window'); poShow();
+}
+function saverEnd() {
+  if (!SV.on) return;
+  SV.on = false; SV.idle = Date.now();
+  document.body.classList.remove('k-saver'); $('#kSaverHit').hidden = true; $('#kSaverClock').hidden = true;
+  if (SV.fs && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  SV.fs = false;
+  if (VI.id !== VI.pick) viSet(VI.pick, { save: false });
+  if (SV.from === 'desk') go('desk');
+}
+// the next view of the turn: shuffled, never the one shown (the Milky Way left out in low-resource mode: no sky there)
+function saverNext() {
+  if (!SV.bag.length) { SV.bag = VISTA_IDS.filter(id => id !== VI.id && !(LOWQ && id === 'milky')); for (let i = SV.bag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [SV.bag[i], SV.bag[j]] = [SV.bag[j], SV.bag[i]]; } }
+  return SV.bag.pop();
+}
+// once a second: the turn, the idle start, the corner clock
+function saverTick() {
+  const now = Date.now();
+  if (SV.on) {
+    if (now >= SV.next && !document.hidden) { SV.next = now + SAVER_EVERY; if (!FV.flight) viSet(saverNext(), { save: false, dur: SAVER_FADE }); }
+    return;
+  }
+  const panels = !$('#kAudio').hidden || !$('#kPomo').hidden || !$('#kVistaMenu').hidden;
+  if (SV.set.auto > 0 && !document.hidden && !panels && !ANIM && now - SV.idle >= SV.set.auto * 60000) saverStart(false);
+}
+function saverClock(v) {
+  const c = $('#kSaverClock'), on = SV.on && v && v.phase !== 'idle';
+  c.hidden = !on; if (!on) return;
+  c.textContent = v.phase === 'wait' ? _('kab.pomo.hud.wait') : pomoClock(v.left);
+  c.classList.toggle('brk', v.phase !== 'work'); c.classList.toggle('held', !!v.paused);
+}
+// input: keeps the idle clock; in the saver, ends it (the first input does nothing else)
+function saverInput(e) {
+  SV.idle = Date.now();
+  if (!SV.on || performance.now() < SV.armed) return;
+  if (e.type === 'pointermove') {
+    if (SV.mx) SV.moved += Math.hypot(e.clientX - SV.mx[0], e.clientY - SV.mx[1]);
+    SV.mx = [e.clientX, e.clientY];
+    if (SV.moved < SAVER_MOVE) return;
+  }
+  if (e.type === 'keydown') { e.preventDefault(); e.stopImmediatePropagation(); }
+  saverEnd();
+}
+for (const t of ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(t, saverInput, { capture: true, passive: t !== 'keydown' });
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) SV.fs = false; });
 
 // ---------- start ----------
 fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
@@ -1425,7 +1486,7 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   viUi();
   setLamp(readPref(LS, PREF_KEYS.cabLamp) !== '0', false); setStrip(readPref(LS, PREF_KEYS.cabStrip) === '1', false);
   layout();
-  poDo(pomoAdvance); setInterval(() => poDo(pomoAdvance), 1000);
+  poDo(pomoAdvance); setInterval(() => { poDo(pomoAdvance); saverTick(); }, 1000);
   lapTick(); setInterval(() => { if (!document.hidden) lapTick(); }, 2000);
   loopStart();
 });
@@ -1441,14 +1502,18 @@ $('#kMore').addEventListener('click', () => moreMenu(!document.body.classList.co
 document.addEventListener('pointerdown', e => { if (document.body.classList.contains('k-more-open') && !e.target.closest('.k-hud.bot')) moreMenu(false); });
 $('#kStripBtn').addEventListener('click', () => setStrip(!$('#kRoot').classList.contains('strip-on')));
 addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!$('#kAudio').hidden) audPanel(false); else if (!$('#kPomo').hidden) poPanel(false); else if (!$('#kVistaMenu').hidden) viMenu(false); else go('desk'); });
-// the view picker: one button per view
+// the view picker: one button per view, the screen saver's button and its idle start
 for (const id of VISTA_IDS) {
   const b = el('button', { type: 'button', 'data-v': id, 'aria-pressed': 'false' }, $('#kVistaList'));
   b.textContent = _(`kab.vista.${id}`);
   b.addEventListener('click', () => viSet(id));
 }
+for (const m of CAB_SAVER_AUTO) el('option', { value: m }, $('#kSaverAuto')).textContent = m ? _('kab.saver.after', { m }) : _('kab.saver.off');
+$('#kSaverAuto').value = SV.set.auto;
+$('#kSaverAuto').addEventListener('change', e => { SV.set.auto = +e.target.value; writePref(LS, PREF_KEYS.cabSaver, JSON.stringify(SV.set)); SV.idle = Date.now(); });
 $('#kVista').addEventListener('click', () => viMenu());
 $('#kVistaX').addEventListener('click', () => viMenu(false));
+$('#kSaverGo').addEventListener('click', () => saverStart(true));
 document.addEventListener('pointerdown', e => { const m = $('#kVistaMenu'); if (!m.hidden && !m.contains(e.target) && !$('#kVista').contains(e.target)) viMenu(false); });
 let rsz = 0;
 addEventListener('resize', () => { clearTimeout(rsz); rsz = setTimeout(() => { if (LY) layout(); }, 150); });

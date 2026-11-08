@@ -536,7 +536,8 @@ html[data-q=low] #kSun{display:none}
 .k-led{border-radius:50%;background:var(--cab-screen);opacity:0;transition:opacity .4s;box-shadow:0 0 14px 6px color-mix(in srgb,var(--cab-screen) 55%,transparent);pointer-events:none}
 .k-led.on{opacity:.95;animation:kLed 3.2s ease-in-out infinite}
 @keyframes kLed{0%,100%{opacity:.95}50%{opacity:.55}}
-/* Phase 14: the view picker (a panel above the bottom bar) */
+/* Phase 14: the view picker (a panel above the bottom bar) and the screen saver (interface and pointer hidden, an
+   overlay takes the input that ends it, a faint pomodoro clock in the corner) */
 .k-vbtn{gap:7px}
 .k-vbtn b{font-weight:500;color:var(--ink)}
 .k-vmenu{top:auto;bottom:calc(max(12px,env(safe-area-inset-bottom,0px)) + 48px)}
@@ -545,6 +546,14 @@ html[data-q=low] #kSun{display:none}
 .k-vlist button:hover{color:var(--ink);background:var(--raise)}
 .k-vlist button[aria-pressed=true]{color:var(--ink);background:var(--raise2);box-shadow:inset 2px 0 0 var(--accent)}
 .k-vlist button:disabled{opacity:.4;cursor:default}
+.k-vsaver{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:end;padding-top:8px;border-top:1px solid var(--line)}
+.k-vsaver .btn{padding:8px 10px;font-size:10.5px}
+.k-saver,.k-saver *{cursor:none!important}
+.k-saver :is(.k-hud,.k-flight,.k-audio,.k-tip){display:none!important}
+.k-saverhit{position:fixed;inset:0;z-index:8}
+.k-saverclock{position:fixed;z-index:8;right:max(16px,env(safe-area-inset-right,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));font:500 13px/1 var(--f-mono);font-variant-numeric:tabular-nums;color:var(--cab-lamp);opacity:.35;pointer-events:none}
+.k-saverclock.brk{color:var(--cab-screen)}
+.k-saverclock.held{animation:kBlink 2s steps(1) infinite}
 /* ?debug=1 overlay (temporary developer aid) */
 .k-debug{position:fixed;z-index:9;right:8px;bottom:56px;margin:0;padding:6px 8px;background:var(--panel-lo);border:1px solid var(--line2);font:400 10.5px/1.4 var(--f-mono);color:var(--ink);pointer-events:none;white-space:pre}
 html.paused .k-root *{animation-play-state:paused!important}

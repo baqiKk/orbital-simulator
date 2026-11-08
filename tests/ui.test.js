@@ -571,7 +571,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/function sndChime\(set, kind\) \{\n  if \(set\.muted \|\| !set\.chime\.on/.test(aud) && /linearRampToValueAtTime\(0\.2 \* lv/.test(aud) && !/audio\/cabin\/[a-z]+\/chime/.test(aud), 'bell: level, mute, ducked radio, no file');
   assert.ok(/document\.querySelector\('\.k-arow\[data-k=chime\]/.test(cab) && /data-k="chime"/.test(read('kabin.html')), 'the bell has its row in the sound panel');
   assert.ok(!/localStorage|sessionStorage|document|window/.test(po), 'pomodoro.js: no DOM, no storage');
-  assert.ok(!/setInterval\(clockTick/.test(cab) && /setInterval\(\(\) => poDo\(pomoAdvance\), 1000\)/.test(cab), 'one tick a second drives the clock');
+  assert.ok(!/setInterval\(clockTick/.test(cab) && /setInterval\(\(\) => \{ poDo\(pomoAdvance\); saverTick\(\); \}, 1000\)/.test(cab), 'one tick a second drives the clock');
   assert.ok(/id="kPomoDay"/.test(read('kabin.html')) && /LAP\.today\.textContent = /.test(cab) && /pomoStatsAdd\(st, ev\)\) writePref\(LS, PREF_KEYS\.pomoStats/.test(cab), 'daily statistics: saved, in the panel and on the laptop');
 }
 
@@ -676,9 +676,18 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 {
   const V = require('../js/vistas.js'), cab = read('js/cabin.js'), page = read('kabin.html'), css = read('css/style.css');
   for (const id of V.VISTA_IDS) for (const k of ['kab.vista.' + id, 'kab.vista.' + id + '.d']) assert.ok(has(k), 'view text: ' + k);
-  for (const k of ['kab.vista.label', 'kab.vista.title', 'kab.vista.flight']) assert.ok(has(k), k);
+  for (const k of ['kab.vista.label', 'kab.vista.title', 'kab.vista.flight', 'kab.saver.start', 'kab.saver.auto', 'kab.saver.off', 'kab.saver.after', 'kab.saver.note']) assert.ok(has(k), k);
+  assert.ok(/\{m\}/.test(DICT['kab.saver.after']), 'idle minutes in the text');
   assert.ok(/for \(const id of VISTA_IDS\) \{/.test(cab) && !/data-v="/.test(page) && /id="kVistaList"/.test(page), 'picker built from VISTA_IDS');
   assert.ok(['earth', 'saturn'].every(k => V.VISTAS[k]) && /if \(VISTAS\[from\]\) writePref\(LS, PREF_KEYS\.cabScene, from\);/.test(cab), 'the simulator\'s ?manzara= still lands');
+  assert.deepStrictEqual(P.parseCabSaver(null), { auto: 0 }, 'saver: off by default');
+  assert.deepStrictEqual(P.parseCabSaver('{"auto":10}'), { auto: 10 }); assert.deepStrictEqual(P.parseCabSaver('{"auto":7}'), { auto: 0 }, 'saver: only listed minutes');
+  assert.ok(P.PREF_KEYS.cabSaver && P.CAB_SAVER_AUTO[0] === 0, 'saver: saved under its key');
+  assert.strictEqual([...cab.matchAll(/requestFullscreen\(/g)].length, 1, 'one full-screen request');
+  assert.ok(/if \(user && de\.requestFullscreen/.test(cab) && /\$\('#kSaverGo'\)\.addEventListener\('click', \(\) => saverStart\(true\)\)/.test(cab) && /saverStart\(false\)/.test(cab), 'full screen only from the button');
+  assert.ok(/\.k-saver :is\(\.k-hud,\.k-flight,\.k-audio,\.k-tip\)\{display:none!important\}/.test(css) && /\.k-saverhit\{position:fixed;inset:0;z-index:8\}/.test(css), 'saver: interface hidden, an overlay takes the input');
+  assert.ok(/for \(const t of \['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart'\]\) addEventListener\(t, saverInput/.test(cab), 'saver: any input ends it');
+  assert.ok(/saverClock\(v\)/.test(cab) && /function poEnded\(e\) \{[^]*?sndChime\(/.test(cab), 'saver: the pomodoro in a corner, its bell as ever');
   assert.ok(/if \(LOWQ && FV\.vista\) \{ cancelAnimationFrame\(FV\.raf\); FV\.raf = 0; FV\.timer = setTimeout\(fvKick, 60000\); return; \}/.test(cab), 'low-resource mode: a view is a still picture');
   assert.ok(/LOWQ \|\| DEV\.phone \? 32 : 0/.test(cab), 'phones: at most 30 frames a second');
   assert.ok(/if \(FV\.sig && sig !== FV\.sig && !still\(\)\)/.test(cab) && /xfSnap\(pv, wrap \? 2500 : VI\.dur\)/.test(cab), 'cross-fade, never in low-resource mode or with reduced motion');
