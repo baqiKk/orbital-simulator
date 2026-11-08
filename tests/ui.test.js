@@ -798,4 +798,13 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/id="liteTip"/.test(page) && has('lite.text') && has('lite.crash') && has('lite.change') && /\$\('#liteGo'\)\.addEventListener\('click', \(\) => \{ \$\('#liteTip'\)\.hidden = true; setMode\('normal', true\); \}\);/.test(app), 'the light note and its "change"');
 }
 
+// 24) Layout: on phones the view fills the screen down to the rail (100dvh, the home indicator's inset), no empty band;
+// the windows' room above the timeline is none while it is hidden (the opening scene), so a window in its default spot
+// sits under the view controls, and moves when they change height
+{
+  const css = read('css/style.css'), app = read('js/app.js');
+  assert.ok(css.includes('.stage{grid-column:1;grid-row:1;height:calc(100vh - 46px - env(safe-area-inset-bottom,0px));height:calc(100dvh - 46px - env(safe-area-inset-bottom,0px))') && !css.includes('.stage{height:84vh'), 'phones: the view down to the rail');
+  assert.ok(app.includes("function tlRoom() { const tl = $('#timeline').getBoundingClientRect(); $('#wins').style.setProperty('--tl-h', (tl.height ?") && app.includes("new ResizeObserver(() => clampWins()).observe($('#ctrls'))"), 'windows: no timeline room while it is hidden; they follow the controls');
+}
+
 console.log('OK — all UI tests passed');

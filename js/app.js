@@ -1099,9 +1099,11 @@ function skyAdapt(dt) {
 const skyGain = () => SKYU.user * SKYU.adapt;
 $('#tSky').value = Math.round(SKYU.user * 100);
 $('#tSky').addEventListener('input', e => { SKYU.user = skyGainOf(+e.target.value / 100); writePref(LS, PREF_KEYS.sky, String(SKYU.user)); if (!is3d()) skyLater(); });
+// the room windows keep above the timeline (none while it is hidden, as in the opening scene: its top would read 0)
+function tlRoom() { const tl = $('#timeline').getBoundingClientRect(); $('#wins').style.setProperty('--tl-h', (tl.height ? Math.ceil(stage.getBoundingClientRect().bottom - tl.top + 8) : 0) + 'px'); }
 const ro = new ResizeObserver(() => {
   resize();
-  $('#wins').style.setProperty('--tl-h', Math.ceil(stage.getBoundingClientRect().bottom - $('#timeline').getBoundingClientRect().top + 8) + 'px');
+  tlRoom();
   clampWins(); INS = null;
 });
 for (const el of [stage, $('#ctrls'), $('#hudBot'), $('#wins')]) ro.observe(el);
@@ -2268,6 +2270,7 @@ function sceneEnd(toMission) {
   SCENE.on = false; delete document.documentElement.dataset.scene;
   for (const id of SCENE.hide) winEl(id).classList.remove('scene-hide');
   SCENE.hide.clear(); $('#welcome').hidden = true; INS = null; MAP.needFit = true;
+  tlRoom(); clampWins(); // the timeline is back: windows keep above it again
   if (toMission) { setMap(false); needFit = true; if (!reduceMotion) { S.playing = true; setPlayIcon(); } }
 }
 // a window set aside by the scene comes back (rail button, "pick a mission")
@@ -3158,6 +3161,8 @@ function placeWin(id) {
   el.style.left = x + 'px'; el.style.top = y + 'px';
 }
 function clampWins() { for (const id of WIN_IDS) placeWin(id); INS = null; }
+// the view controls change height (the map's scale, 3D's buttons): windows in their default spots move with them
+if (typeof ResizeObserver === 'function') new ResizeObserver(() => clampWins()).observe($('#ctrls'));
 function applyWin(id) {
   const st = WINS[id], el = winEl(id), cb = el.querySelector('[data-act=collapse]');
   el.hidden = !st.open;

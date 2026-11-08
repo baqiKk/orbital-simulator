@@ -349,7 +349,11 @@ html[data-q=low] *,html[data-q=low] *::before,html[data-q=low] *::after{transiti
   body{overflow:auto}
   html,body{height:auto}
   .app{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;height:auto}
-  .stage{grid-column:1;grid-row:1;height:68vh;min-height:420px}
+  /* the view fills the screen down to the rail (no empty band under it when no window is open: 100dvh follows the
+     browser's own bars, the rail keeps clear of the home indicator); open windows follow below and the page scrolls */
+  .stage{grid-column:1;grid-row:1;height:calc(100vh - 46px - env(safe-area-inset-bottom,0px));height:calc(100dvh - 46px - env(safe-area-inset-bottom,0px));min-height:420px}
+  .rail{padding-bottom:env(safe-area-inset-bottom,0px)!important}
+  .wins:not(:has(>.win:not([hidden]):not(.scene-hide))){padding:0}
   .rail{grid-column:1;grid-row:2;flex-direction:row;padding:0 4px;border-right:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:sticky;top:0;overflow-x:auto;scrollbar-width:none}
   .rail-mark{border-bottom:0;margin:0;width:40px;height:44px}
   .rail-btn{width:44px;height:44px;flex:none}
@@ -364,7 +368,7 @@ html[data-q=low] *,html[data-q=low] *::before,html[data-q=low] *::after{transiti
   .toast{left:12px;max-width:calc(100vw - 24px)}
 }
 @media (max-width:560px){
-  .stage{height:84vh;min-height:560px}
+  .stage{min-height:480px} /* the height as above: down to the rail */
   .hud-top{top:8px;left:8px;right:8px}
   .ctrls{width:100%;gap:5px;align-items:flex-start}
   .ctrls .row{justify-content:flex-start}
