@@ -944,6 +944,19 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   for (let k = 1; k < 5; k++) assert.ok(Math.abs((ws[k] - ws[k - 1]) - (ws[4] - ws[0]) / 4) < 0.02 * (ws[4] - ws[0]) + 0.002, 'Mars grows evenly over the last session');
   for (const u of [0, 0.3, 0.7, 1]) assert.ok(marsW(F.fpAt(Ma, { leg: mLast, mode: 'approach', u })) >= 0.2, 'Mars large in the glass through the final approach');
   for (const tau of [0, 0.3, 0.7].map(f => f * Ma.legs[mLast].brk.P)) assert.ok(marsW(F.fpAt(Ma, { leg: mLast, mode: 'orbit', tau })) >= 0.2, 'and in orbit');
+  // the other plans: each work leg's time warped by its target's size, so the target grows over the session (half way it
+  // is already a good part of its size at the end; linear time left it a dot until the last minutes)
+  for (const id of ['em', 'saturn', 'jupiter']) {
+    const D = FLIGHT_DATA[id];
+    D.legs.forEach((leg, k) => {
+      const tr = D.tracks[leg.tr], sys = F.fpSystem(tr.keys), b = tr.keys.indexOf(leg.look), P = new Float64Array(3 * sys.N), V = new Float64Array(3 * sys.N);
+      const size = u => { const tt = F.fpLegT(D, leg, u), y = F.fpTrack(tr, tt); C.states(sys, tr.M.t0 * DAY + tt, P, V); return sys.R[b] / Math.hypot(y[0] - P[3 * b], y[1] - P[3 * b + 1], y[2] - P[3 * b + 2]); };
+      assert.ok(leg.inv && F.fpLegT(D, leg, 0) === leg.ta && F.fpLegT(D, leg, 1) === leg.tb, id + ' leg ' + k + ': warped, from start to end');
+      let prev = -1; for (let u = 0; u <= 1.0001; u += 0.05) { const tt = F.fpLegT(D, leg, Math.min(1, u)); assert.ok(tt > prev || u === 0); prev = tt; }
+      const lin = (tt => { const y = F.fpTrack(tr, tt); C.states(sys, tr.M.t0 * DAY + tt, P, V); return sys.R[b] / Math.hypot(y[0] - P[3 * b], y[1] - P[3 * b + 1], y[2] - P[3 * b + 2]); })((leg.ta + leg.tb) / 2);
+      assert.ok(size(0.5) >= 0.3 * size(1) && size(0.5) > 3 * lin, `${id} leg ${k}: half way the target is ${(100 * size(0.5) / size(1)).toFixed(0)} % of its final size (linear: ${(100 * lin / size(1)).toFixed(1)} %)`);
+    });
+  }
   // the other plans arrive at every break already: each leg ends at its target's periapsis
   for (const id of ['em', 'saturn', 'jupiter']) { const D = FLIGHT_DATA[id]; assert.ok(D.legs.every(l => !l.brk.cruise), id + ': a body at every break'); }
   // the tours: closed loops, dates in order, each arrival at the tour altitude
@@ -965,7 +978,7 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   let w = where(t0); assert.ok(w.mode === 'work' && w.leg === 0 && F.fpAt(E, w).t === 0, 'the first session leaves Earth');
   let last = -1;
   for (let m = 0; m < 25; m += 0.5) { const a = F.fpAt(E, where(t0 + m * MIN)); assert.ok(a.t > last); last = a.t; }
-  assert.ok(Math.abs(F.fpAt(E, where(t0 + 12.5 * MIN)).t - E.legs[0].tb / 2) < 1, 'linear in the session');
+  assert.ok(Math.abs(F.fpAt(E, where(t0 + 12.5 * MIN)).t - F.fpLegT(E, E.legs[0], 0.5)) < 1, 'half way through the session: the warped time');
   T.pomoPause(s, t0 + 10 * MIN); const tp = F.fpAt(E, where(t0 + 10 * MIN)).t;
   assert.strictEqual(F.fpAt(E, where(t0 + 40 * MIN)).t, tp, 'paused: the craft stops');
   T.pomoStart(s, t0 + 40 * MIN);

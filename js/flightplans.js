@@ -64,8 +64,13 @@ function fpTimeAt(S, a) {
   const n = S.inv.length - 1, x = Math.max(0, Math.min(n, (a - S.aC) / (S.aB - S.aC) * n)), i = Math.min(n - 1, Math.floor(x));
   return S.inv[i] + (S.inv[i + 1] - S.inv[i]) * (x - i);
 }
-// the time on the track of a work leg at u (0–1): linear, or warped by Mars' size
-const fpLegT = (D, leg, u) => (leg.warp ? fpTimeAt(D.scale, leg.warp[0] + u * (leg.warp[1] - leg.warp[0])) : leg.ta + u * (leg.tb - leg.ta));
+// the time on the track of a work leg at u (0–1): warped by the target's size (Mars' last session: scale; the other
+// legs: their table inv, evenly spaced u; tools/flight-plans/build.js warpTable), else linear (Mars' cruise)
+function fpLegT(D, leg, u) {
+  if (leg.warp) return fpTimeAt(D.scale, leg.warp[0] + u * (leg.warp[1] - leg.warp[0]));
+  if (leg.inv) { const n = leg.inv.length - 1, x = Math.max(0, Math.min(n, u * n)), i = Math.min(n - 1, Math.floor(x)); return leg.inv[i] + (leg.inv[i + 1] - leg.inv[i]) * (x - i); }
+  return leg.ta + u * (leg.tb - leg.ta);
+}
 
 // the real model's system for body keys, as the simulator builds it (parents from js/bodies.js)
 function fpSystem(keys) {
@@ -127,6 +132,7 @@ function fpDone(D, s, el) {
   const j = D.legs.length - 1;
   return { leg: j, mode: 'done', tau: Math.max(0, el) / (s.cfg.short * 60000) * D.legs[j].brk.P, el };
 }
+// (work: the time warped by the target's size, fpLegT)
 // The craft for a fpWhere result: { tr (track), t (s after the track's departure: the bodies' time), y (absolute in the
 // track's system), look (body key the camera turns to, or null: along the orbit), look2 + mix (a turning break),
 // roll (rad), around (orbited body key) }

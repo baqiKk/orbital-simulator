@@ -57,6 +57,26 @@ function track(keys, M, sys, sim, tEnd) {
   const rec = recorded(sim, tEnd), keep = thin(sys, M.t0 * DAY, rec);
   return { keys, M, t: keep.map(i => r3(rec.t[i])), y: keep.flatMap(i => rec.y[i].map((q, j) => (j < 3 ? r1(q) : r4(q)))), n: rec.t.length };
 }
+// A work leg's warp (the Moon, the tours): the track's time at evenly spaced u (FP_WARP_N + 1 samples), u growing
+// FP_WARP_K with the target's angular size so far (its running maximum of R/d: always growing, though the distance to a
+// moving moon need not fall steadily) and the rest with the time, so the target grows evenly over the session instead of
+// only in its last minutes (cf. js/flightplans.js fpLegT)
+const FP_WARP_K = 0.85, FP_WARP_N = 160;
+function warpTable(sys, M, tr, ta, tb, b) {
+  const P = new Float64Array(3 * sys.N), V = new Float64Array(3 * sys.N), n = 2000, ts = [], us = [];
+  let A = 0;
+  for (let k = 0; k <= n; k++) {
+    const t = ta + (tb - ta) * k / n, y = F.fpTrack(tr, t); C.states(sys, M.t0 * DAY + t, P, V);
+    A = Math.max(A, sys.R[b] / Math.hypot(y[0] - P[3 * b], y[1] - P[3 * b + 1], y[2] - P[3 * b + 2])); ts.push(t); us.push(A);
+  }
+  const A0 = us[0], A1 = us[n]; for (let k = 0; k <= n; k++) us[k] = (1 - FP_WARP_K) * k / n + FP_WARP_K * (us[k] - A0) / (A1 - A0);
+  const inv = []; let j = 0;
+  for (let k = 0; k <= FP_WARP_N; k++) {
+    const u = k / FP_WARP_N; while (j < n - 1 && us[j + 1] < u) j++;
+    inv.push(r3(k === 0 ? ta : k === FP_WARP_N ? tb : ts[j] + (ts[j + 1] - ts[j]) * (u - us[j]) / (us[j + 1] - us[j])));
+  }
+  return inv;
+}
 // the break orbit about body b of sys: circular, radius rho, in the plane of the state y relative to b at t, starting
 // at its direction; P: the period
 function breakOrbit(sys, M, y, t, b, rho) {
@@ -78,8 +98,8 @@ function fromScenario(id) {
   let legs;
   if (id === 'em') {
     const tB = sim.bPeri.t, tA = sim.aRet.t;
-    legs = [{ tr: 0, ta: 0, tb: r3(tB), look: 'moon', brk: breakOrbit(sys, M, yB, tB, 1, sim.bPeri.d) },
-      { tr: 0, ta: r3(tB), tb: r3(tA), look: 'earth', brk: breakOrbit(sys, M, at(tA), tA, 0, sys.R[0] + def.park * 1e3) }];
+    legs = [{ tr: 0, ta: 0, tb: r3(tB), look: 'moon', inv: warpTable(sys, M, tr, 0, tB, 1), brk: breakOrbit(sys, M, yB, tB, 1, sim.bPeri.d) },
+      { tr: 0, ta: r3(tB), tb: r3(tA), look: 'earth', inv: warpTable(sys, M, tr, tB, tA, 0), brk: breakOrbit(sys, M, at(tA), tA, 0, sys.R[0] + def.park * 1e3) }];
   } else {
     const T = sim.bPeri.t, R = sys.R[1], P = new Float64Array(3 * sys.N), V = new Float64Array(3 * sys.N);
     const dist = t => { const y = at(t); C.states(sys, M.t0 * DAY + t, P, V); return Math.hypot(y[0] - P[3], y[1] - P[4], y[2] - P[5]); };
@@ -121,7 +141,7 @@ async function tour(id) {
     const { M, sim } = done, tB = sim.bPeri.t, pre = sim.t.findIndex(q => q === tB);
     const tr = track(keys, M, sys, sim, tB); delete tr.n;
     tracks.push(tr);
-    legs.push({ tr: k, ta: 0, tb: r3(tB), look: b, brk: breakOrbit(sys, M, [sim.x[pre], sim.y[pre], sim.z[pre], sim.vx[pre], sim.vy[pre], sim.vz[pre]], tB, 1, sim.bPeri.d) });
+    legs.push({ tr: k, ta: 0, tb: r3(tB), look: b, inv: warpTable(sys, M, tr, 0, tB, 1), brk: breakOrbit(sys, M, [sim.x[pre], sim.y[pre], sim.z[pre], sim.vx[pre], sim.vy[pre], sim.vz[pre]], tB, 1, sim.bPeri.d) });
     t = M.t0 + tB / DAY + 0.25; // the next leg leaves after the arrival
   }
   return { loop: def.loop, extra: def.extra, tracks, legs };
