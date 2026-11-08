@@ -405,8 +405,6 @@ const I18N = {
     'kab.glass': 'Cam · yakından bak',
     'kab.lampOn': 'Lambayı aç',
     'kab.lampOff': 'Lambayı kapat',
-    'kab.stripOn': 'Tavan ışığını aç',
-    'kab.stripOff': 'Tavan ışığını kapat',
     'kab.lap.title': 'SERBEST DÖNÜŞ · DÜNYA–AY',
     'kab.lap.met': 'T+ {d} g {h} sa',
     // cabin sound (Phase 11): the radio chip and the sound panel
@@ -539,7 +537,6 @@ const I18N = {
     'kab.notebook': 'Defter · notlar (yakında)',
     'kab.phones': 'Kulaklık · ses paneli',
     'kab.lamp': 'Lamba · aç / kapat',
-    'kab.strip': 'Tavan ışığı · aç / kapat',
     'kab.panHint': '← sürükle →',
     'kab.safeMode': 'Cihazın belleği için hafif mod açıldı',
     'kab.tea': 'Çay',

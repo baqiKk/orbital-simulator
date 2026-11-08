@@ -722,7 +722,7 @@ function buildNight() {
   const cv = $('#kNight'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(tmp, 0, 0);
 }
 const MV = { on: false, drawn: 0, set: null, A: $('#kMoveA'), B: $('#kMoveB'), whisk: null, lamp: null, cream: null, shine: null };
-const GLOW = $('#kGlow'), NIGHT = $('#kNight'), STRIP = $('#kStrip');
+const GLOW = $('#kGlow'), NIGHT = $('#kNight');
 for (const c of [MV.A, MV.B, $('#kSpaceX')]) c.width = c.height = 0; // no memory until used
 const CAT_ID = /^(none|grayscale\(0\) brightness\(1\) sepia\(0\) hue-rotate\(0deg\) saturate\(1\))$/;
 // the decoded art set for the canvases: the sharpest up to MV_CAP, else the smallest there is
@@ -774,9 +774,8 @@ function drawMove(c) {
     B.globalAlpha = nt; B.drawImage(NIGHT, 0, 0, W, H); B.globalAlpha = 1;
     B.globalCompositeOperation = 'destination-in'; B.drawImage(im.room, 0, 0, W, H); B.globalCompositeOperation = 'source-over';
   }
-  // the light from outside and the ceiling strip (the room's alpha already in them), over the shade
+  // the light from outside (the room's alpha already in it), over the shade
   if (LT_ON && LT.sig) B.drawImage(LT.cv, 0, 0, W, H);
-  const so = +getComputedStyle(STRIP).opacity; if (so > 0 && STRIP.width > 1) { B.globalAlpha = so; B.drawImage(STRIP, 0, 0, W, H); B.globalAlpha = 1; }
   // the cat as the DOM nests it: the shadow; the body's motion over the tail, the ears (each with its own), the body and
   // the whiskers; the lamp's filter on the images and whiskers, not on the rims
   const f = getComputedStyle(IMG.body).filter, ff = CAT_ID.test(f) ? 'none' : f;
@@ -955,28 +954,9 @@ function ltLit(col) {
   return o;
 }
 const ltScratch = () => LT.scratch || (LT.scratch = Object.assign(document.createElement('canvas'), { width: LT.cv.width, height: LT.cv.height }));
-// a new art tier: the light's mask, its lit rooms and the rims from the new images, the strip again
-function ltRoom() { LT.sig = '\u0000'; LT.rimSig = ''; LT.lit = []; buildStrip(); }
+// a new art tier: the light's mask, its lit rooms and the rims from the new images
+function ltRoom() { LT.sig = '\u0000'; LT.rimSig = ''; LT.lit = []; }
 function ltInit() { if (!LT_ON) return; LT.outline = cabGlassOutline(LY.glass); LT.cv.width = Math.round(LY.size[0] / 4); LT.cv.height = Math.round(LY.size[1] / 4); }
-// The ceiling strip (optional, off by default): a soft warm LED strip just above the picture, lighting the top of the
-// wall; drawn once (a quarter of the art's size, the room's alpha in it), shown with the button beside the lamp's.
-// Cheap and static: on phones and in low-resource mode too.
-function buildStrip() {
-  if (!IMG.room) return;
-  const [W, H] = LY.size, cv = STRIP, w = cv.width = Math.round(W / 4), h = cv.height = Math.round(H / 4), g = cv.getContext('2d'), col = rgbOf('color-mix(in srgb, var(--cab-lamp) 30%, var(--cab-light))');
-  const gr = g.createLinearGradient(0, 0, 0, h * 0.36);
-  gr.addColorStop(0, rgba(col, 0.5)); gr.addColorStop(0.05, rgba(col, 0.24)); gr.addColorStop(0.4, rgba(col, 0.08)); gr.addColorStop(1, rgba(col, 0));
-  g.fillStyle = gr; g.fillRect(0, 0, w, h);
-  const sx = g.createLinearGradient(0, 0, w, 0); sx.addColorStop(0, 'rgba(0,0,0,.55)'); sx.addColorStop(0.5, 'rgba(0,0,0,0)'); sx.addColorStop(1, 'rgba(0,0,0,.55)');
-  g.globalCompositeOperation = 'destination-out'; g.fillStyle = sx; g.fillRect(0, 0, w, h);
-  g.globalCompositeOperation = 'destination-in'; g.drawImage(IMG.room, 0, 0, w, h); g.globalCompositeOperation = 'source-over';
-}
-function setStrip(on, save = true) {
-  $('#kRoot').classList.toggle('strip-on', on);
-  $('#kStripBtn').setAttribute('aria-pressed', String(on));
-  $('#kStripBtn').textContent = _(on ? 'kab.stripOff' : 'kab.stripOn');
-  if (save) writePref(LS, PREF_KEYS.cabStrip, on ? '1' : '0');
-}
 
 // ---------- camera ----------
 // A camera is the stage's scale s and the art point (x, y) at the screen's top left. The desk view crops the art to
@@ -993,7 +973,7 @@ function apply(c) {
 // the bottom bar's share of a portrait screen at the glass (one compact row there, .k-win): the view keeps the cat above it
 const winBot = () => (VW < VH ? Math.max(0, Math.round(VH - $('.k-hud.bot').getBoundingClientRect().top) + 8) : 0);
 const deskCam = () => cabCrop(VW, VH, ...LY.size), winCam = () => cabGlassCam(VW, VH, LY.glass, ...LY.size, winBot());
-// narrow screens at the glass: the scene, lamp and strip buttons fold into ⋯
+// narrow screens at the glass: the view and lamp buttons fold into ⋯
 function moreMenu(open) { document.body.classList.toggle('k-more-open', open); $('#kMore').setAttribute('aria-expanded', String(open)); }
 function go(to) {
   if (to === view) return;
@@ -1509,8 +1489,7 @@ function hideTip() { tip.hidden = true; }
 // hit areas over the painted objects (art px: x, y, w, h)
 const HITS = { hGlass: [1797, 246, 3623, 1846, 'kab.glass'], hLamp: [1290, 1560, 480, 500, 'kab.lamp'], hClock: [4975, 2540, 700, 330, 'kab.clock'],
   hLap: [6300, 1910, 836, 1200, 'kab.tablet'], hBook: [2620, 2870, 1720, 520, 'kab.notebook'], hPhones: [140, 2680, 940, 420, 'kab.phones'],
-  hTea: [2120, 2730, 480, 420, 'kab.tea'], hCat: [4120, 1500, 520, 1100, 'kab.cat'],
-  hStrip: [0, 0, 7136, 230, 'kab.strip'] }; // the ceiling strip: the band above the window
+  hTea: [2120, 2730, 480, 420, 'kab.tea'], hCat: [4120, 1500, 520, 1100, 'kab.cat'] };
 function buildHits() {
   const layer = $('#kHits');
   for (const [id, [x, y, w, h, key]] of Object.entries(HITS)) {
@@ -1522,7 +1501,6 @@ function buildHits() {
   }
   $('#hGlass').addEventListener('click', () => go(view === 'desk' ? 'window' : 'desk'));
   $('#hLamp').addEventListener('click', () => setLamp($('#kRoot').classList.contains('lamp-off')));
-  $('#hStrip').addEventListener('click', () => setStrip(!$('#kRoot').classList.contains('strip-on')));
   petInit($('#hCat'));
   for (const id of ['hBook', 'hTea']) $('#' + id).addEventListener('click', e => showTip(e.currentTarget));
   $('#hClock').addEventListener('click', () => poPanel());
@@ -1613,7 +1591,7 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   { const c = LY.clock, s = $('#kGlowArt'); s.setAttribute('viewBox', `${c.x0} ${c.y0} ${c.x1 - c.x0} ${c.y1 - c.y0}`); box(s, c.x0, c.y0, c.x1 - c.x0, c.y1 - c.y0); }
   box($('#kNight'), 0, 0, LY.size[0], LY.size[1]); box($('#kShine'), 0, 0, LY.size[0], LY.size[1]); buildNight();
   const g = LY.glass; box($('#kGlow'), g.x0, g.y0 + (g.y1 - g.y0) * 0.35, (g.x1 - g.x0) * 0.42, (g.y1 - g.y0) * 0.65);
-  box($('#kSun'), 0, 0, LY.size[0], LY.size[1]); box(STRIP, 0, 0, LY.size[0], LY.size[1]);
+  box($('#kSun'), 0, 0, LY.size[0], LY.size[1]);
   buildCat(); buildArt(); buildHits(); initLife(); ltInit();
   box($('#kLed'), PHONES_LED[0] - PHONES_LED[2], PHONES_LED[1] - PHONES_LED[2], 2 * PHONES_LED[2], 2 * PHONES_LED[2]);
   audSync(); audChip();
@@ -1622,7 +1600,8 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   if (VISTAS[from]) writePref(LS, PREF_KEYS.cabScene, from);
   const sc = readPref(LS, PREF_KEYS.cabScene); if (VISTAS[sc]) VI.pick = VI.id = sc;
   viUi();
-  setLamp(readPref(LS, PREF_KEYS.cabLamp) !== '0', false); setStrip(readPref(LS, PREF_KEYS.cabStrip) === '1', false);
+  setLamp(readPref(LS, PREF_KEYS.cabLamp) !== '0', false);
+  for (const k of PREF_OLD) clearPref(LS, k); // settings of features that are gone
   layout();
   poDo(pomoAdvance); setInterval(() => { poDo(pomoAdvance); saverTick(); }, 1000);
   lapTick(); setInterval(() => { if (!document.hidden) lapTick(); }, 2000);
@@ -1640,7 +1619,6 @@ $('#kBack').addEventListener('click', e => {
 $('#kLamp').addEventListener('click', () => setLamp($('#kRoot').classList.contains('lamp-off')));
 $('#kMore').addEventListener('click', () => moreMenu(!document.body.classList.contains('k-more-open')));
 document.addEventListener('pointerdown', e => { if (document.body.classList.contains('k-more-open') && !e.target.closest('.k-hud.bot')) moreMenu(false); });
-$('#kStripBtn').addEventListener('click', () => setStrip(!$('#kRoot').classList.contains('strip-on')));
 addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!$('#kAudio').hidden) audPanel(false); else if (!$('#kPomo').hidden) poPanel(false); else if (!$('#kVistaMenu').hidden) viMenu(false); else go('desk'); });
 // the view picker: one button per view, the screen saver's button and its idle start
 for (const id of VISTA_IDS) {

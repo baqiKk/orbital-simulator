@@ -608,7 +608,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   // sharper than MV_CAP
   assert.ok(/const cv = mvBegin\(\), wc = !cv && DBG && DBG\.wc;/.test(cab) && /if \(MV\.on\) drawMove\(CAM\);/.test(cab) && /tierSwapNow\(\); sizeLife\(\); lifeNow\(\); mvEnd\(\);/.test(cab) && /drawMove\(CAM\); \$\('#kRoot'\)\.classList\.add\('k-moving'\);/.test(cab), 'camera move on the canvases, DOM back at rest; each handoff in one task, the side taking over complete first');
   assert.ok(!/willChange = 'transform'/.test(cab) && (cab.match(/stageWC\('transform'\)/g) || []).length === 1, 'no will-change on the stage outside the debug switch');
-  assert.ok(/\.k-moving :is\(#kGlow,#kRoomSlot,#kShine,#kAqua,#kSteam,#kNight,#kSun,#kStrip,#kCat\)\{visibility:hidden\}/.test(css), 'DOM room layers hidden during the move');
+  assert.ok(/\.k-moving :is\(#kGlow,#kRoomSlot,#kShine,#kAqua,#kSteam,#kNight,#kSun,#kCat\)\{visibility:hidden\}/.test(css), 'DOM room layers hidden during the move');
   assert.ok(!/mix-blend-mode/.test(css.match(/\.k-night\{[^}]*\}/)[0] + css.match(/\.k-shine\{[^}]*\}/)[0]), 'no blend mode on the light and the shade');
   assert.ok(/const DEC = \{\}, MV_CAP = 3840;/.test(cab) && /const T = ks\.filter\(t => t <= MV_CAP\)\.pop\(\) \|\| ks\[0\]/.test(cab), 'move canvases: tier up to MV_CAP');
   // art tiers and planet textures stay within the GPU's texture limit; the debugging overlay exists only with ?debug=1
@@ -635,11 +635,11 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     let prev = 1; for (let d = 0.29; d <= 0.31; d += 0.0005) { const v = P.cabDiscCover(0.005, 0.3, d); assert.ok(v <= prev + 1e-9); prev = v; }
     assert.ok(/const LT_ON = !LOWQ && !DEV\.phone && \(!DBG \|\| DBG\.sun\);/.test(cab) && /function ltRun\(\) \{ if \(LT_ON && /.test(cab), 'light from outside: off in low mode, on phones, with sun=0');
     assert.ok(/if \(ANIM \|\| document\.hidden\) return; \/\/ held while the camera moves \(and unseen\)\n  let tg = \{\};/.test(cab), 'light from outside: held during camera moves');
-    assert.ok(!/mix-blend-mode/.test(css) && /\.k-moving :is\([^)]*#kSun,#kStrip[^)]*\)\{visibility:hidden\}/.test(css), 'no blend modes; light hidden with the room during moves');
-    assert.ok(/setStrip\(readPref\(LS, PREF_KEYS\.cabStrip\) === '1', false\)/.test(cab) && P.PREF_KEYS.cabStrip && has('kab.stripOn') && has('kab.stripOff'), 'ceiling strip: off by default, saved, worded');
+    assert.ok(!/mix-blend-mode/.test(css) && /\.k-moving :is\([^)]*#kSun,#kCat\)\{visibility:hidden\}/.test(css), 'no blend modes; light hidden with the room during moves');
+    assert.ok(!/strip/i.test(cab.replace(/\/\/[^\n]*/g, '')) && !/kStrip|strip-on/.test(css + read('kabin.html')) && !P.PREF_KEYS.cabStrip && !has('kab.stripOn') && !has('kab.strip') && P.PREF_OLD.includes('orbsim.cab.strip') && /for \(const k of PREF_OLD\) clearPref\(LS, k\);/.test(cab), 'ceiling strip gone: no button, area, drawing, key or words; the old setting cleared');
   }
   // narrow screens at the glass: one compact row, the other buttons folded into ⋯
-  assert.ok(css.includes('.k-win:not(.k-more-open) .k-hud.bot>:is(#kVista,#kLamp,#kStripBtn){display:none}') && read('kabin.html').includes('id="kMore"') && has('kab.more') && cab.includes('cabGlassCam(VW, VH, LY.glass, ...LY.size, winBot())'),'compact bar at the glass on phones; the view keeps the cat above it');
+  assert.ok(css.includes('.k-win:not(.k-more-open) .k-hud.bot>:is(#kVista,#kLamp){display:none}') && read('kabin.html').includes('id="kMore"') && has('kab.more') && cab.includes('cabGlassCam(VW, VH, LY.glass, ...LY.size, winBot())'),'compact bar at the glass on phones; the view keeps the cat above it');
   // at the glass the cat still answers (petting), the other objects rest
   assert.ok(cab.includes("querySelectorAll('.k-hit:not(#hGlass):not(#hCat)')) b.inert = to !== 'desk';"), 'the cat can be petted at the glass');
   // petting: the existing layers only (no new image), tail / ears / whiskers on the body so they move with it; reactions
@@ -703,7 +703,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // views and the whole glass at the desk scale (a panned glass is never without sky); touch and pen only, a drag on the
 // cat pets it, a tap stays a tap and the click after a drag is swallowed; the room moves on the move canvases; no glide
 // and no animated return in reduced motion or low-resource mode; back to the focus when idle, at a pomodoro's end and on
-// the way to the glass; the strip in the picture; the hint once, on touch screens
+// the way to the glass; the lamp in the picture; the hint once, on touch screens
 {
   const cab = read('js/cabin.js'), css = read('css/style.css'), page = read('kabin.html'), C = P.CAB_PAN;
   for (const x of [-500, -60, -1, 0, 30, 100, 101, 200, 5000]) {
@@ -729,8 +729,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/function panBegin\(\) \{ hideTip\(\); if \(!MV\.on\) mvBegin\(\);/.test(cab) && /function panShow\(x\) \{[^}]*if \(MV\.on\) drawMove\(CAM\);/.test(cab) && /tierSwapNow\(\); sizeLife\(\); lifeNow\(\); mvEnd\(\); FV\.cam = null; fvKick\(\);\n  clearTimeout\(PAN\.timer\)/.test(cab), 'pan: on the move canvases, the DOM stage back at rest');
   assert.ok(/if \(still\(\)\) \{ PAN\.x = Math\.min\(hi, Math\.max\(lo, PAN\.x\)\); panShow\(PAN\.x\); panEnd\(\); return; \}/.test(cab) && /if \(still\(\)\) \{ PAN\.x = 0; panBegin\(\); panShow\(0\); panEnd\(\); return; \}/.test(cab), 'pan: no glide, no animated return in reduced motion and low mode');
   assert.ok(/PAN\.timer = setTimeout\(\(\) => \{ if \(!PAN\.drag\) panHome\(\); \}, CAB_PAN\.idle\)/.test(cab) && /function poEnded\(e\) \{\n  panHome\(\);/.test(cab) && /panStop\(\); PAN\.x = 0; \/\/ a panned room goes back/.test(cab), 'pan: back to the focus when idle, at a pomodoro\'s end, via the glass');
-  assert.ok(/hStrip: \[0, 0, 7136, 230, 'kab\.strip'\]/.test(cab) && /\$\('#hStrip'\)\.addEventListener\('click', \(\) => setStrip\(/.test(cab) && has('kab.strip') && /\$\('#hLamp'\)\.addEventListener\('click'/.test(cab), 'lamp and ceiling strip clickable in the picture');
-  assert.ok(/id="kStripBtn"/.test(page) && /id="kLamp"/.test(page), 'the bar keeps its lamp and strip buttons');
+  assert.ok(/\$\('#hLamp'\)\.addEventListener\('click'/.test(cab) && /id="kLamp"/.test(page), 'the lamp clickable in the picture and in the bar');
   assert.ok(/readPref\(LS, PREF_KEYS\.cabPanHint\) === '1'/.test(cab) && /writePref\(LS, PREF_KEYS\.cabPanHint, '1'\)/.test(cab) && /matchMedia\('\(pointer: coarse\)'\)/.test(cab) && has('kab.panHint') && /id="kPanHint"/.test(page), 'pan hint: once, on touch screens');
   assert.ok(/\.k-root\{touch-action:pan-y pinch-zoom\}/.test(css), 'the browser keeps vertical gestures and pinch');
 }
