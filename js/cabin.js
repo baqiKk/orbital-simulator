@@ -51,6 +51,23 @@ const DBG = (() => {
 if (DBG && VISTAS.earth.sep[DBG.em]) VISTAS.earth.pick = +DBG.em;
 const TMAX = Math.min(cabTierMax(DEV), GPU.max ? CAB_TIERS.filter(t => t <= GPU.max).pop() || CAB_TIERS[0] : Infinity);
 if (DEV.phone || DEV.ios) TEXOPT.keepBase = false; // planet base images go when unused too (the saver's turn would gather them all)
+// Every canvas the page sizes goes through cvSize: it resizes only on a change (setting a size clears and reallocates
+// even when it is the same) and counts what it allocated: CVS.area (px allocated so far), CVS.n (resizes), CVS.by (per
+// canvas); ?debug=1 shows them. iOS Safari gives canvas memory back late, so churn adds up to its limit ("Total canvas
+// memory use exceeds the maximum limit").
+const CVS = { area: 0, n: 0, by: {} };
+function cvSize(cv, w, h) {
+  w = Math.max(0, Math.round(w)); h = Math.max(0, Math.round(h));
+  if (cv.width === w && cv.height === h) return false;
+  cv.width = w; cv.height = h; cvNote(cv);
+  return true;
+}
+function cvNote(cv) { CVS.n++; CVS.area += cv.width * cv.height; const k = cv.id || cv.className || 'offscreen'; CVS.by[k] = (CVS.by[k] || 0) + 1; }
+// Phones and iOS keep the screen-sized canvases used now and then (the camera move's two, the cross-fade) once sized,
+// hidden at rest, sized again only when the screen turns or resizes. Freeing them at rest (0 × 0) holds less while
+// idle (≈ 6 MB at 390 × 844 × 1.5²), but each move would allocate them anew, and as iOS returns canvas memory late,
+// repeated moves pile up several sets; kept, the cost is that one set, known and bounded (cabMemEstimate counts it).
+const KEEP_CV = DEV.phone || DEV.ios;
 const TEX_CAP = Math.min(DEV.phone ? 2048 : 4096, GPU.max || Infinity, DBG && DBG.cap || Infinity);
 const deg = Math.PI / 180;
 
@@ -312,13 +329,13 @@ function initLife() {
   for (const f of AQ.fish) { f.dir = Math.sign(f.vx); f.face = f.dir; f.tx = f.x; f.ty = f.y; }
   AQ.bub = Array.from({ length: 12 }, () => ({ x: 0, y: -1, r: 0, v: 0, ph: 0 }));
   // steam sprite: a soft warm puff (cached once)
-  const sp = document.createElement('canvas'); sp.width = sp.height = 64; const g = sp.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  const sp = document.createElement('canvas'); cvSize(sp, 64, 64); const g = sp.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
   gr.addColorStop(0, 'rgba(255,240,220,.55)'); gr.addColorStop(0.5, 'rgba(255,232,205,.22)'); gr.addColorStop(1, 'rgba(255,225,195,0)');
   g.fillStyle = gr; g.fillRect(0, 0, 64, 64); ST.sprite = sp;
   ST.puffs = Array.from({ length: 22 }, () => ({ age: 1, life: 0 }));
 }
 function sizeLife() {
-  for (const cv of [AQ.cv, ST.cv]) { const k = CAM.s * DPR; cv.width = Math.max(1, Math.round(parseFloat(cv.style.width) * k)); cv.height = Math.max(1, Math.round(parseFloat(cv.style.height) * k)); }
+  for (const cv of [AQ.cv, ST.cv]) { const k = CAM.s * DPR; cvSize(cv, Math.max(1, Math.round(parseFloat(cv.style.width) * k)), Math.max(1, Math.round(parseFloat(cv.style.height) * k))); }
 }
 function drawFish(g, f, t) {
   const L = f.len, H = L * 0.46, wag = Math.sin(t * 7 + f.ph) * 0.18;
@@ -390,7 +407,7 @@ const FX = { clouds: true, relief: true, glint: true };
 const norm = v => { const l = Math.hypot(...v); return v.map(c => c / l); };
 // low-resource sky: plain points, the same every time
 function plainSky() {
-  const out = document.createElement('canvas'); out.width = SP.cv.width; out.height = SP.cv.height;
+  const out = document.createElement('canvas'); cvSize(out, SP.cv.width, SP.cv.height);
   const g = out.getContext('2d'); g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--void'); g.fillRect(0, 0, out.width, out.height);
   let s = 7; const r = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   const n = Math.round(out.width * out.height / 9000);
@@ -431,11 +448,11 @@ const XF = { cv: $('#kSpaceX'), timer: 0 };
 function xfSnap(prev, dur) {
   const cv = fvCanvas(), x = XF.cv; if (!cv.width || !cv.height) return false;
   FV.F = prev.F; if (FV.V3) fvDraw3(prev, fvCam(prev)); else fvDraw2(prev, fvCam(prev));
-  x.width = cv.width; x.height = cv.height;
+  cvSize(x, cv.width, cv.height);
   const g = x.getContext('2d'); g.clearRect(0, 0, x.width, x.height); g.drawImage(cv, 0, 0);
   clearTimeout(XF.timer); x.style.transition = 'none'; x.style.opacity = '1'; x.hidden = false; void x.offsetWidth;
   x.style.transition = `opacity ${dur}ms ease-in-out`; requestAnimationFrame(() => { x.style.opacity = '0'; });
-  XF.timer = setTimeout(() => { x.hidden = true; x.width = x.height = 0; }, dur + 80);
+  XF.timer = setTimeout(() => { x.hidden = true; if (!KEEP_CV) cvSize(x, 0, 0); }, dur + 80);
   return true;
 }
 
@@ -606,7 +623,7 @@ function fvGlare(st, cam, occ) {
 }
 // the 2D path: the plain sky, shaded discs (far ones first)
 function fvDraw2(st, cam) {
-  const bw = Math.round(SP.box.w * DPR), bh = Math.round(SP.box.h * DPR); if (SP.cv.width !== bw || SP.cv.height !== bh) { SP.cv.width = bw; SP.cv.height = bh; FV.plain = null; }
+  const bw = Math.round(SP.box.w * DPR), bh = Math.round(SP.box.h * DPR); if (cvSize(SP.cv, bw, bh)) FV.plain = null;
   const g = SP.cv.getContext('2d'), { a, b } = st, y = a.y, F = FV.F = st.F, cw = SP.box.w, ch = SP.box.h, voidC = getComputedStyle(document.documentElement).getPropertyValue('--void');
   if (!FV.plain) FV.plain = plainSky();
   g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(FV.plain, 0, 0);
@@ -646,8 +663,8 @@ function fvSize() {
   for (const c of [FV.cv, XF.cv]) Object.assign(c.style, { left: SP.cv.style.left, top: SP.cv.style.top, width: SP.cv.style.width, height: SP.cv.style.height });
   const cw = SP.box.w, ch = SP.box.h;
   FV.plain = null; FV.cam = null; FV.prev = null;
-  if (FV.V3) SP.cv.width = SP.cv.height = 0; // the 2D canvas is not drawn while the 3D one is: its memory goes
-  if (FV.V3) FV.V3.size(cw, ch, DPR);
+  if (FV.V3) cvSize(SP.cv, 0, 0); // the 2D canvas is not drawn while the 3D one is: its memory goes
+  if (FV.V3) { const w0 = FV.cv.width, h0 = FV.cv.height; FV.V3.size(cw, ch, DPR); if (FV.cv.width !== w0 || FV.cv.height !== h0) cvNote(FV.cv); }
 }
 function fvStart() {
   fvShineRun(); ltRun();
@@ -708,7 +725,7 @@ function ellFill(g, cx, cy, rx, ry, stops, x, y, w, h) {
 // Per pixel, for the multiply tone M: alpha a = 1 − mean(M) (the multiply's average darkening) and a dark tint
 // P = 0.45 · (M − (1 − a)) (premultiplied; the least-squares line through x · M over mid tones keeps its cool cast).
 function buildNight() {
-  const [W, H] = LY.size, w = Math.round(W / 4), h = Math.round(H / 4), tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
+  const [W, H] = LY.size, w = Math.round(W / 4), h = Math.round(H / 4), tmp = document.createElement('canvas'); cvSize(tmp, w, h);
   const g = tmp.getContext('2d', { willReadFrequently: true }), mix = (p, a, b) => a.map((x, i) => p * x + (1 - p) * b[i]);
   const scr = rgbOf('var(--cab-screen)'), c0 = mix(0.3, scr, rgbOf('var(--cab-wall-lo)')), c1 = mix(0.08, scr, rgbOf('var(--cab-shadow)')), c2 = mix(0.46, scr, rgbOf('var(--cab-wall)'));
   g.scale(w / W, h / H);
@@ -724,11 +741,11 @@ function buildNight() {
     d[i + 3] = Math.round(255 * a);
   }
   g.putImageData(im, 0, 0);
-  const cv = $('#kNight'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(tmp, 0, 0);
+  const cv = $('#kNight'); cvSize(cv, w, h); cv.getContext('2d').drawImage(tmp, 0, 0);
 }
 const MV = { on: false, drawn: 0, set: null, A: $('#kMoveA'), B: $('#kMoveB'), whisk: null, lamp: null, cream: null, shine: null };
 const GLOW = $('#kGlow'), NIGHT = $('#kNight');
-for (const c of [MV.A, MV.B, $('#kSpaceX')]) c.width = c.height = 0; // no memory until used
+for (const c of [MV.A, MV.B, $('#kSpaceX')]) cvSize(c, 0, 0); // no memory until used
 const CAT_ID = /^(none|grayscale\(0\) brightness\(1\) sepia\(0\) hue-rotate\(0deg\) saturate\(1\))$/;
 // the decoded art set for the canvases: the sharpest up to MV_CAP, else the smallest there is
 function mvSet() {
@@ -742,7 +759,7 @@ function mvBegin() {
   if (!MV.whisk) { MV.whisk = [...$('#kWhisk').querySelectorAll('path')].map(p => new Path2D(p.getAttribute('d'))); MV.lamp = rgbOf('var(--cab-lamp)'); MV.cream = rgbOf('var(--cab-cream)'); }
   MV.shine = rgbOf(getComputedStyle($('#kShine')).getPropertyValue('--fv-col').trim() || 'var(--cab-screen)');
   MV.set = set; MV.on = true;
-  for (const cv of [MV.A, MV.B]) { cv.width = Math.round(VW * DPR); cv.height = Math.round(VH * DPR); Object.assign(cv.style, { width: VW + 'px', height: VH + 'px' }); cv.hidden = false; }
+  for (const cv of [MV.A, MV.B]) { cvSize(cv, VW * DPR, VH * DPR); Object.assign(cv.style, { width: VW + 'px', height: VH + 'px' }); cv.hidden = false; }
   drawMove(CAM); $('#kRoot').classList.add('k-moving'); // drawn first, then the DOM layers go, in the same frame
   dbgHand('in', MV.drawn > 0);
   return true;
@@ -753,7 +770,7 @@ function mvEnd() {
   if (!MV.on) return; MV.on = false; MV.set = null; MV.drawn = 0;
   dbgHand('out', performance.now() - LIFE_T < 8);
   $('#kRoot').classList.remove('k-moving');
-  for (const cv of [MV.A, MV.B]) { cv.hidden = true; cv.width = cv.height = 0; } // their memory goes too
+  for (const cv of [MV.A, MV.B]) { cv.hidden = true; if (!KEEP_CV) cvSize(cv, 0, 0); } // their memory goes too (kept on phones: KEEP_CV)
 }
 function drawMove(c) {
   const t0 = performance.now(), A = MV.A.getContext('2d'), B = MV.B.getContext('2d'), k = c.s * DPR, [W, H] = LY.size, im = MV.set.img;
@@ -957,7 +974,7 @@ function ltDraw() {
 function ltRim(u, col) {
   for (const n of Object.keys(LT.rim)) {
     const L = LY.layers[n], im = IMG[n], cv = LT.rim[n]; if (!im || !im.naturalWidth) continue;
-    const w = cv.width = Math.round(L.w / 2), h = cv.height = Math.round(L.h / 2), g = cv.getContext('2d'), o = 6;
+    cvSize(cv, L.w / 2, L.h / 2); const w = cv.width, h = cv.height, g = cv.getContext('2d'), o = 6;
     g.drawImage(im, 0, 0, w, h); g.globalCompositeOperation = 'destination-out'; g.drawImage(im, -u[0] * o, -u[1] * o, w, h);
     g.globalCompositeOperation = 'source-in'; g.fillStyle = rgba(col, 1); g.fillRect(0, 0, w, h); g.globalCompositeOperation = 'source-over';
   }
@@ -967,16 +984,16 @@ function ltRim(u, col) {
 // recent colours. In the patch it replaces the room at the patch's strength: the surface brightens, it is not veiled.
 function ltLit(col) {
   const key = col.join(), hit = LT.lit.find(e => e.key === key); if (hit) return hit.cv;
-  const w = LT.cv.width, h = LT.cv.height, a = document.createElement('canvas'), o = document.createElement('canvas'); a.width = o.width = w; a.height = o.height = h;
+  const w = LT.cv.width, h = LT.cv.height, a = document.createElement('canvas'), o = document.createElement('canvas'); cvSize(a, w, h); cvSize(o, w, h);
   const ga = a.getContext('2d'); ga.drawImage(IMG.room, 0, 0, w, h); ga.globalCompositeOperation = 'multiply'; ga.fillStyle = rgba(col, 1); ga.fillRect(0, 0, w, h);
   const go = o.getContext('2d'); go.globalCompositeOperation = 'lighter'; go.drawImage(a, 0, 0); go.drawImage(a, 0, 0);
   LT.lit.unshift({ key, cv: o }); LT.lit.length = Math.min(LT.lit.length, 2);
   return o;
 }
-const ltScratch = () => LT.scratch || (LT.scratch = Object.assign(document.createElement('canvas'), { width: LT.cv.width, height: LT.cv.height }));
+const ltScratch = () => { if (!LT.scratch) { LT.scratch = document.createElement('canvas'); cvSize(LT.scratch, LT.cv.width, LT.cv.height); } return LT.scratch; };
 // a new art tier: the light's mask, its lit rooms and the rims from the new images
 function ltRoom() { LT.sig = '\u0000'; LT.rimSig = ''; LT.lit = []; }
-function ltInit() { if (!LT_ON) return; LT.outline = cabGlassOutline(LY.glass); LT.cv.width = Math.round(LY.size[0] / 4); LT.cv.height = Math.round(LY.size[1] / 4); }
+function ltInit() { if (!LT_ON) return; LT.outline = cabGlassOutline(LY.glass); cvSize(LT.cv, LY.size[0] / 4, LY.size[1] / 4); }
 
 // ---------- camera ----------
 // A camera is the stage's scale s and the art point (x, y) at the screen's top left. The desk view crops the art to
@@ -984,11 +1001,13 @@ function ltInit() { if (!LT_ON) return; LT.outline = cabGlassOutline(LY.glass); 
 // centre slides linearly, the scale changes geometrically. The sky canvas follows the glass's centre without growing.
 const glassC = () => [(LY.glass.x0 + LY.glass.x1) / 2, (LY.glass.y0 + LY.glass.y1) / 2];
 const gScreen = c => { const g = glassC(); return [(g[0] - c.x) * c.s, (g[1] - c.y) * c.s]; };
-function apply(c) {
+// live: a pan under way: the same scale, the translation as translate3d (the compositor moves the layers, nothing is
+// rastered again); at rest a plain 2D transform again (no layer kept, no will-change)
+function apply(c, live = false) {
   CAM = c;
-  const tf = `translate(${-c.x * c.s}px,${-c.y * c.s}px) scale(${c.s})`; for (const s of STAGES) s.style.transform = tf;
-  const p = gScreen(c);
-  SP.cv.style.transform = FV.cv.style.transform = XF.cv.style.transform = `translate(${p[0] - SP.P0[0]}px,${p[1] - SP.P0[1]}px)`;
+  const tf = live ? `translate3d(${-c.x * c.s}px,${-c.y * c.s}px,0) scale(${c.s})` : `translate(${-c.x * c.s}px,${-c.y * c.s}px) scale(${c.s})`; for (const s of STAGES) s.style.transform = tf;
+  const p = gScreen(c), dx = p[0] - SP.P0[0], dy = p[1] - SP.P0[1];
+  SP.cv.style.transform = FV.cv.style.transform = XF.cv.style.transform = live ? `translate3d(${dx}px,${dy}px,0)` : `translate(${dx}px,${dy}px)`;
 }
 // the bottom bar's share of a portrait screen at the glass (one compact row there, .k-win): the view keeps the cat above it
 const winBot = () => (VW < VH ? Math.max(0, Math.round(VH - $('.k-hud.bot').getBoundingClientRect().top) + 8) : 0);
@@ -1049,11 +1068,11 @@ function memDump() {
   for (const [n, im] of Object.entries(IMG)) img('art ' + n, im, n === 'room' && !LOWQ ? 3 : 1);
   for (const [T, set] of Object.entries(DEC)) for (const [n, im] of Object.entries(set)) img(`art ${T} ${n}`, im);
   for (const [f, e] of TEXC) if (e.ok && e.img) img(f.replace(/^.*\//, ''), e.img, FV.V3 ? 7 / 3 : 1);
-  return { rows, total: rows.reduce((a, r) => a + r[1], 0) };
+  return { rows, total: rows.reduce((a, r) => a + r[1], 0), alloc: CVS.area * 4 / 1048576, resizes: CVS.n, by: { ...CVS.by } };
 }
 function memLine() {
   const m = memDump(), top = [...m.rows].sort((a, b) => b[1] - a[1]).slice(0, 4).map(r => `${r[0]} ${r[1].toFixed(0)}`).join(', ');
-  return `memory ≈ ${m.total.toFixed(0)} MB decoded (${top})${CRASHED ? ' · safe mode after a crash' : ''}`;
+  return `memory ≈ ${m.total.toFixed(0)} MB decoded (${top}) · canvases allocated so far ${m.alloc.toFixed(0)} MB in ${m.resizes} resizes${CRASHED ? ' · safe mode after a crash' : ''}`;
 }
 // the last two seconds of [time, ms] samples
 function dbgWin(a, t, ms) { a.push([t, ms]); while (a.length && t - a[0][0] > 2000) a.shift(); }
@@ -1383,8 +1402,9 @@ function layout() {
   const d = deskCam(), w = winCam(), cam = view === 'desk' ? d : w;
   // the sky canvas covers the screen for every camera between the two views and the whole glass at the desk scale
   // (a panned room, prefs.js cabSkyBox)
-  const pd = gScreen(d), pw = gScreen(w), bx = cabSkyBox(VW, VH, pd, pw, (LY.glass.x1 - LY.glass.x0) * d.s, (LY.glass.y1 - LY.glass.y0) * d.s);
-  SP.cv.width = Math.round(bx.w * DPR); SP.cv.height = Math.round(bx.h * DPR);
+  const pr = DEV.phone ? cabPanRange(d, VW, LY.size[0]).map((v, i) => v * d.s + (i ? CAB_PAN.rubber : -CAB_PAN.rubber)) : null; // phones: the glass shown over the pan range
+  const pd = gScreen(d), pw = gScreen(w), bx = cabSkyBox(VW, VH, pd, pw, (LY.glass.x1 - LY.glass.x0) * d.s, (LY.glass.y1 - LY.glass.y0) * d.s, 40, pr, pr && [(LY.glass.x1 - LY.glass.x0) * w.s, (LY.glass.y1 - LY.glass.y0) * w.s]);
+  if (!FV.V3) cvSize(SP.cv, bx.w * DPR, bx.h * DPR); // (the 3D glass: fvSize sizes its own, this one stays 0 × 0)
   Object.assign(SP.cv.style, { left: bx.l + 'px', top: bx.t + 'px', width: bx.w + 'px', height: bx.h + 'px' });
   SP.box = bx; SP.P0 = pd; SP.G = bx.g; // the glass's centre on screen and in canvas px at the desk view
   // the view's centre (where the camera looks): the middle of the part of the glass the desk view shows (a portrait
@@ -1402,10 +1422,12 @@ function layout() {
 // the room follows the finger, stretches a little past its edges (prefs.js cabRubber) and, let go, glides on and
 // settles (a fling, CAB_PAN.tau), then stays. Untouched for CAB_PAN.idle, at a pomodoro's end, and on the way to the
 // glass and back it returns to its focus (the desk crop). A drag starting on the cat pets it instead (#hCat keeps its
-// own pointer); a tap stays a tap (CAB_PAN.tap), the click after a drag is swallowed. While it moves the room is drawn
-// on the move canvases, as in a camera move (mvBegin / drawMove), the DOM stage back at rest; ANIM holds the light
-// filters and the tier swaps meanwhile (-1: a pan with no frame pending). Reduced motion and low-resource mode: no
-// glide and no animated return, the room jumps. PAN.x: the offset (art px) from the crop, PAN.show: what is shown.
+// own pointer); a tap stays a tap (CAB_PAN.tap), the click after a drag is swallowed. A pan only translates: the DOM
+// stage (its layers as they are) moves by one translate3d (apply live), no canvas is drawn or sized (the move canvases
+// are for the zooming camera moves only); let go, it comes to rest on a whole pixel as a plain 2D transform. ANIM holds
+// the light filters and the tier swaps meanwhile (-1: a pan with no frame pending). Reduced motion and low-resource
+// mode (the safety net's too): it pans, without glide and without animated return. PAN.x: the offset (art px) from the
+// crop, PAN.show: what is shown.
 const PAN = { x: 0, show: 0, drag: null, v: 0, raf: 0, timer: 0, eat: false, anim: null };
 const ROOT = $('#kRoot');
 const panRange = () => cabPanRange(deskCam(), VW, LY.size[0]);
@@ -1413,14 +1435,21 @@ const panAble = () => !!LY && view === 'desk' && (panRange()[1] - panRange()[0])
 const deskAt = x => { const d = deskCam(); return { s: d.s, x: d.x + x, y: d.y }; };
 function panShow(x) {
   const [lo, hi] = panRange(); PAN.show = cabRubber(x, lo, hi, CAB_PAN.rubber / deskCam().s);
-  apply(deskAt(PAN.show)); if (MV.on) drawMove(CAM);
+  apply(deskAt(PAN.show), true);
 }
-function panBegin() { hideTip(); if (!MV.on) mvBegin(); if (!ANIM) ANIM = -1; }
+function panBegin() { hideTip(); if (!ANIM) ANIM = -1; }
+// the shown offset on a whole screen pixel, inside the art
+function panPixel(x) {
+  const d = deskCam(), [lo, hi] = panRange(); x = Math.min(hi, Math.max(lo, x));
+  const v = (d.x + x) * d.s, r = Math.round(v), q = r / d.s - d.x;
+  return q < lo ? Math.ceil(v) / d.s - d.x : q > hi ? Math.floor(v) / d.s - d.x : q;
+}
 // at rest: the DOM stage back at its place (as a camera move's end), then the return timer
 function panEnd() {
   cancelAnimationFrame(PAN.raf); PAN.raf = 0; PAN.anim = null;
   if (ANIM === -1) ANIM = 0;
-  tierSwapNow(); sizeLife(); lifeNow(); mvEnd(); FV.cam = null; fvKick();
+  PAN.x = PAN.show = panPixel(PAN.show); apply(deskAt(PAN.show));
+  tierSwapNow(); sizeLife(); lifeNow(); FV.cam = null; fvKick();
   clearTimeout(PAN.timer); if (Math.abs(PAN.x) > 0.5) PAN.timer = setTimeout(() => { if (!PAN.drag) panHome(); }, CAB_PAN.idle);
 }
 // stop whatever moves (a drag, a glide, a return) where it is, without settling

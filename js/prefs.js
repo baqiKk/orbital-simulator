@@ -267,10 +267,16 @@ function cabRubber(x, lo, hi, r) {
 // The sky canvas's box (CSS px, screen at the desk view; it then moves with the glass): it covers the screen at the
 // desk and the window view (and every camera between) and the whole glass at the desk scale, so a panned room never
 // shows the glass's edge without sky. pd, pw: the glass's centre on screen at the two views; gw, gh: the glass's size
-// at the desk scale. g: the glass's centre inside the box.
-function cabSkyBox(vw, vh, pd, pw, gw, gh, pad = 40) {
-  const L = Math.ceil(Math.max(pd[0], pw[0], gw / 2)) + pad, R = Math.ceil(Math.max(vw - pd[0], vw - pw[0], gw / 2)) + pad;
-  const T = Math.ceil(Math.max(pd[1], pw[1], gh / 2)) + pad, B = Math.ceil(Math.max(vh - pd[1], vh - pw[1], gh / 2)) + pad;
+// at the desk scale. g: the glass's centre inside the box. pan (phones): [lo, hi] the room's pan range at the desk view
+// in CSS px (with the rubber stretch), gwin: the glass's size at the window view [w, h]: then the box spans only the
+// glass the screen shows (over that range at the desk view, and at the window view), each side capped at the glass's
+// half-size at the window view: the glass is largest there, and its centre slides linearly between the two views, so no
+// camera between them shows glass outside the box; around the glass the room is opaque. Less canvas memory.
+function cabSkyBox(vw, vh, pd, pw, gw, gh, pad = 40, pan = null, gwin = null) {
+  const ex = pan ? [Math.min(gw / 2, pd[0] - pan[0]), Math.min(gw / 2, vw - pd[0] + pan[1])] : [gw / 2, gw / 2], ey = pan ? 0 : gh / 2;
+  const cx = pan && gwin ? gwin[0] / 2 : Infinity, cy = pan && gwin ? gwin[1] / 2 : Infinity;
+  const L = Math.ceil(Math.min(cx, Math.max(pd[0], pw[0], ex[0]))) + pad, R = Math.ceil(Math.min(cx, Math.max(vw - pd[0], vw - pw[0], ex[1]))) + pad;
+  const T = Math.ceil(Math.min(cy, Math.max(pd[1], pw[1], ey))) + pad, B = Math.ceil(Math.min(cy, Math.max(vh - pd[1], vh - pw[1], ey))) + pad;
   return { l: pd[0] - L, t: pd[1] - T, w: L + R, h: T + B, g: [L, T] };
 }
 // The simulator's state left for the way back from the cabin (sessionStorage, read once): null unless it is a fresh

@@ -738,11 +738,21 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     const covers = (q, x0, x1, y0, y1) => q[0] - bx.g[0] <= x0 + 1e-6 && q[0] - bx.g[0] + bx.w >= x1 - 1e-6 && q[1] - bx.g[1] <= y0 + 1e-6 && q[1] - bx.g[1] + bx.h >= y1 - 1e-6;
     assert.ok(covers(pd, 0, vw, 0, vh) && covers(pw, 0, vw, 0, vh), `sky box ${vw}×${vh}: the screen at desk and window`);
     for (const px of [r[0], 0, r[1]]) { const q = [pd[0] - px * d.s, pd[1]]; assert.ok(covers(q, q[0] - (g.x1 - g.x0) * d.s / 2, q[0] + (g.x1 - g.x0) * d.s / 2, q[1] - (g.y1 - g.y0) * d.s / 2, q[1] + (g.y1 - g.y0) * d.s / 2), `sky box ${vw}×${vh}: the whole glass when panned`); }
+    // phones: only the glass the screen shows over the pan range (with the stretch), smaller
+    const rb = C.rubber, pr = [r[0] * d.s - rb, r[1] * d.s + rb], gwin = [(g.x1 - g.x0) * w.s, (g.y1 - g.y0) * w.s], bp = P.cabSkyBox(vw, vh, pd, pw, (g.x1 - g.x0) * d.s, (g.y1 - g.y0) * d.s, 40, pr, gwin);
+    const coversP = (q, x0, x1, y0, y1) => q[0] - bp.g[0] <= x0 + 1e-6 && q[0] - bp.g[0] + bp.w >= x1 - 1e-6 && q[1] - bp.g[1] <= y0 + 1e-6 && q[1] - bp.g[1] + bp.h >= y1 - 1e-6;
+    // the glass the screen shows (screen ∩ glass) at a camera: glass centre q, scale s; checked panned at the desk view and along the move to the window view
+    const shown = (q, s) => { const hw = (g.x1 - g.x0) * s / 2, hh = (g.y1 - g.y0) * s / 2; return [Math.max(0, q[0] - hw), Math.min(vw, q[0] + hw), Math.max(0, q[1] - hh), Math.min(vh, q[1] + hh)]; };
+    for (const px of [pr[0] / d.s, r[0], 0, r[1], pr[1] / d.s]) { const q = [pd[0] - px * d.s, pd[1]]; assert.ok(coversP(q, ...shown(q, d.s)), `phone sky box ${vw}×${vh}: the shown glass panned by ${px.toFixed(0)}`); }
+    for (let k = 0; k <= 20; k++) { const t = k / 20, q = [pd[0] + (pw[0] - pd[0]) * t, pd[1] + (pw[1] - pd[1]) * t], s = d.s * Math.pow(w.s / d.s, t); assert.ok(coversP(q, ...shown(q, s)), `phone sky box ${vw}×${vh}: the shown glass along the move (${t})`); }
+    assert.ok(bp.w * bp.h < bx.w * bx.h, `phone sky box ${vw}×${vh}: smaller (${bp.w}×${bp.h} vs ${bx.w}×${bx.h})`);
   }
   assert.ok(C.idle >= 8000 && C.idle <= 10000 && C.rubber > 0 && C.tap >= 6, 'pan: idle 8–10 s, a stretch, a tap threshold');
   assert.ok(/if \(e\.pointerType === 'mouse' \|\| !e\.isPrimary \|\| !panAble\(\)[^\n]*e\.target\.closest\('#hCat'\)\) return;/.test(cab), 'pan: touch and pen only, not from the cat');
   assert.ok(/if \(Math\.abs\(dx\) <= CAB_PAN\.tap\) return;/.test(cab) && /ROOT\.addEventListener\('click', e => \{ if \(PAN\.eat\)/.test(cab), 'pan: a tap stays a tap, the click after a drag is swallowed');
-  assert.ok(/function panBegin\(\) \{ hideTip\(\); if \(!MV\.on\) mvBegin\(\);/.test(cab) && /function panShow\(x\) \{[^}]*if \(MV\.on\) drawMove\(CAM\);/.test(cab) && /tierSwapNow\(\); sizeLife\(\); lifeNow\(\); mvEnd\(\); FV\.cam = null; fvKick\(\);\n  clearTimeout\(PAN\.timer\)/.test(cab), 'pan: on the move canvases, the DOM stage back at rest');
+  { const pb = cab.slice(cab.indexOf('function panBegin()'), cab.indexOf('// stop whatever moves')), ps = cab.slice(cab.indexOf('function panShow(x)'), cab.indexOf('function panBegin()'));
+    assert.ok(!/mvBegin|drawMove|mvEnd|cvSize/.test(pb + ps) && ps.includes('apply(deskAt(PAN.show), true);'), 'pan: no canvas drawn or sized, the DOM stage translated');
+    assert.ok(cab.includes("const tf = live ? `translate3d(") && cab.includes('PAN.x = PAN.show = panPixel(PAN.show); apply(deskAt(PAN.show));'), 'pan: translate3d while it moves, at rest on a whole pixel as a 2D transform'); }
   assert.ok(/if \(still\(\)\) \{ PAN\.x = Math\.min\(hi, Math\.max\(lo, PAN\.x\)\); panShow\(PAN\.x\); panEnd\(\); return; \}/.test(cab) && /if \(still\(\)\) \{ PAN\.x = 0; panBegin\(\); panShow\(0\); panEnd\(\); return; \}/.test(cab), 'pan: no glide, no animated return in reduced motion and low mode');
   assert.ok(/PAN\.timer = setTimeout\(\(\) => \{ if \(!PAN\.drag\) panHome\(\); \}, CAB_PAN\.idle\)/.test(cab) && /function poEnded\(e\) \{\n  panHome\(\);/.test(cab) && /panStop\(\); PAN\.x = 0; \/\/ a panned room goes back/.test(cab), 'pan: back to the focus when idle, at a pomodoro\'s end, via the glass');
   assert.ok(/\$\('#hLamp'\)\.addEventListener\('click'/.test(cab) && /id="kLamp"/.test(page), 'the lamp clickable in the picture and in the bar');
@@ -763,7 +773,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   for (const [vw, vh] of [[375, 812], [390, 844], [414, 896], [430, 932]]) {
     const dev = { phone: true, ios: true }, d = P.cabCrop(vw, vh, ...L.size), w = P.cabGlassCam(vw, vh, L.glass, ...L.size), g = L.glass;
     const gc = [(g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2], scr = c => [(gc[0] - c.x) * c.s, (gc[1] - c.y) * c.s];
-    const box = P.cabSkyBox(vw, vh, scr(d), scr(w), (g.x1 - g.x0) * d.s, (g.y1 - g.y0) * d.s);
+    const r = P.cabPanRange(d, vw, L.size[0]), box = P.cabSkyBox(vw, vh, scr(d), scr(w), (g.x1 - g.x0) * d.s, (g.y1 - g.y0) * d.s, 40, [r[0] * d.s - P.CAB_PAN.rubber, r[1] * d.s + P.CAB_PAN.rubber], [(g.x1 - g.x0) * w.s, (g.y1 - g.y0) * w.s]);
     // the worst view: Earth and Moon (Earth's surface, clouds, night, ocean; the Moon's surface and relief)
     const e = P.cabMemEstimate({ vw, vh, dpr: P.cabDpr(dev, 3), tier: P.cabTierMax(dev), layout: L, box, msaa: false, texCap: 2048, texLayers: 6, sky: 2048 });
     assert.ok(e.total < 250, `phone ${vw}×${vh}: ${e.total.toFixed(0)} MB decoded at worst (under 250)`);
@@ -772,7 +782,11 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/const TEX_CAP = Math\.min\(DEV\.phone \? 2048 : 4096/.test(cab) && /skyReady\(true, !DEV\.phone && /.test(cab), 'phones: 2k textures, no 4k sky');
   assert.ok(/m\.create\(FV\.cv, \{ antialias: !DEV\.phone && !DEV\.ios,/.test(cab) && /antialias: opts\.antialias !== false/.test(read('js/view3d.js')), 'no MSAA on phones and iOS');
   assert.ok(/if \(DEV\.phone \|\| DEV\.ios\) TEXOPT\.keepBase = false;/.test(cab) && /\(!base\.has\(f\) \|\| !TEXOPT\.keepBase\)/.test(read('js/globe.js')), 'phones: unused planet base images go');
-  assert.ok(/x\.hidden = true; x\.width = x\.height = 0;/.test(cab) && /cv\.hidden = true; cv\.width = cv\.height = 0;/.test(cab) && /if \(FV\.V3\) SP\.cv\.width = SP\.cv\.height = 0;/.test(cab), 'hidden canvases freed');
+  assert.ok(cab.includes('x.hidden = true; if (!KEEP_CV) cvSize(x, 0, 0);') && cab.includes('cv.hidden = true; if (!KEEP_CV) cvSize(cv, 0, 0);') && cab.includes('if (FV.V3) cvSize(SP.cv, 0, 0);') && cab.includes('const KEEP_CV = DEV.phone || DEV.ios;'), 'hidden canvases freed (desktop); phones keep the move and fade canvases once sized, no churn');
+  // every canvas size goes through cvSize (resizes only on a change, counted for ?debug=1)
+  { const body = cab.replace(/function cvSize[\s\S]*?\n\}\n/, ''); const bad = body.split('\n').filter(l => /(?<!style)\.(width|height)\s*=(?!=)/.test(l) && !/style\./.test(l.match(/(\S+)\.(width|height)\s*=(?!=)/)[1]));
+    assert.deepStrictEqual(bad, [], 'canvas sizes only through cvSize'); }
+  assert.ok(cab.includes('alloc: CVS.area * 4 / 1048576, resizes: CVS.n') && cab.includes('canvases allocated so far'), 'debug: canvas memory allocated so far and the resizes');
   assert.ok(/const CRASHED = readPref\(SS, PREF_KEYS\.cabBoot\) != null;/.test(cab) && /const LOWQ = CRASHED \|\| /.test(cab) && /addEventListener\('pagehide', \(\) => clearPref\(SS, PREF_KEYS\.cabBoot\)\)/.test(cab) && /clearPref\(SS, PREF_KEYS\.cabBoot\), 20000\)/.test(cab), 'safety net: a start that died → low-resource mode');
   assert.ok(has('kab.safeMode') && /id="kSafe"/.test(page) && /if \(CRASHED\) \{ const n = \$\('#kSafe'\)/.test(cab), 'safety net: its note');
   assert.ok(/function memDump\(\)/.test(cab) && /    memLine\(\),/.test(cab), 'debug: the decoded memory');
