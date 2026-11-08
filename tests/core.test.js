@@ -1051,6 +1051,9 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   // Saturn: the eye on the side of the ring plane the Sun lights
   const vs = VS.vistaAt('saturn', ms0, view), S = at(vs, 'saturn').p, F = C.bodyFrame(BODIES.saturn.pole, vs.T), z = [F[2], F[5], F[8]];
   assert.ok(dot(sub(vs.y, S), z) * dot(sub(vs.sunP, S), z) > 0, 'Saturn: seen from the rings\' sunlit face');
+  // the Milky Way: no body, the Sun behind the eye, the gaze on the galactic equator
+  const vm = VS.vistaAt('milky', ms0, view);
+  assert.ok(vm.list.length === 0 && dot(nrm(sub(vm.sunP, vm.y)), vm.cam.f) < -0.99 && Math.abs(dot(vm.cam.f, VS.VS_GAL.Z)) < 1e-9, 'Milky Way: no body, no Sun, along the galactic equator');
   // live clocks run from now at their rate; loops wrap
   const c1 = VS.vistaClock('jupiter', ms0 + 10000, view), c2 = VS.vistaClock('jupiter', ms0 + 20000, view);
   assert.ok(Math.abs(c2.T - c1.T - 1200) < 1e-6, 'Jupiter: 120× real time');

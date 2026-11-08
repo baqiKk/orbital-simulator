@@ -65,6 +65,13 @@ function vsAbout(B, T, key, D, el, az, roll) {
   return { y: eye, cam: vsCam(vsSub(c.p, eye), z, roll) };
 }
 
+// galactic axes in the J2000 ecliptic (IAU 1958 frame: the north galactic pole at RA 192.85948°, Dec +27.12825°, the
+// centre at RA 266.40510°, Dec −28.93617°, J2000)
+const VS_GAL = (() => {
+  const eq = (ra, de) => { ra *= VS_D2R; de *= VS_D2R; const x = Math.cos(de) * Math.cos(ra), y = Math.cos(de) * Math.sin(ra), z = Math.sin(de), e = 23.4392911 * VS_D2R; return [x, Math.cos(e) * y + Math.sin(e) * z, -Math.sin(e) * y + Math.cos(e) * z]; };
+  const Z = eq(192.85948, 27.12825), X0 = eq(266.40510, -28.93617), X = vsN(vsSub(X0, Z.map(v => v * vsDot(X0, Z))));
+  return { X, Y: vsX(Z, X), Z };
+})();
 
 // Phobos over Mars' afternoon: the pass's moment (found once by tests/core.test.js "vistas": the Sun 35° from the
 // Mars–Phobos line, Phobos moving away from the subsolar point)
@@ -121,6 +128,13 @@ const VISTAS = {
       const dm = vsN(vsSub(M.p, eye)), dp = vsN(vsSub(P.p, eye));
       return { y: eye, cam: vsCam(vsSlerp(dm, dp, 0.62), n, 30 * VS_D2R) };
     } },
+  // the Milky Way: no body in view (the Sun behind the eye), the gaze sliding along the galactic equator, a turn in 2.5 h
+  // (0.04°/s), the band across the glass at a slant
+  milky: { keys: [], rate: 1, look: null,
+    at(B, c) {
+      const l = c.tau * 0.04 * VS_D2R + 3.6, f = vsAdd(VS_GAL.X.map(v => v * Math.cos(l)), VS_GAL.Y, Math.sin(l));
+      return { y: [0, 0, 0], cam: vsCam(f, VS_GAL.Z, 28 * VS_D2R) };
+    } },
   // Earth and Moon (the simulator's landing view): the Moon near and the Earth behind it, true sizes. Candidate
   // framings (a, b, c) until one is picked:
   //   a: 20 000 km behind the Moon, a little aside, the glass between the two;
@@ -138,7 +152,7 @@ const VISTAS = {
       return { y: eye, cam: vsCam(vsSlerp(dm, de, k), [0, 0, 1]) };
     } },
 };
-const VISTA_IDS = ['saturn', 'jupiter', 'earthrise', 'mars', 'earth'];
+const VISTA_IDS = ['saturn', 'jupiter', 'earthrise', 'mars', 'milky', 'earth'];
 const vistaLens = id => (VISTAS[id] && VISTAS[id].fovW) || 0;
 // the view's clock at wall time ms: T, tau, cycle, loop length L (view: for a loop that depends on the glass)
 function vistaClock(id, ms, view) {
@@ -155,4 +169,4 @@ function vistaAt(id, ms, view) {
   return { id, T: c.T, tau: c.tau, cycle: c.cycle, L: c.L, y: o.y, list: V.keys.length ? B.list : [], sunP, cam: o.cam, look: V.look };
 }
 
-if (typeof module !== 'undefined') module.exports = { VISTAS, VISTA_IDS, VS_MARS_EPOCH, vistaLens, vistaClock, vistaAt, vsSystem, vsBodies };
+if (typeof module !== 'undefined') module.exports = { VISTAS, VISTA_IDS, VS_GAL, VS_MARS_EPOCH, vistaLens, vistaClock, vistaAt, vsSystem, vsBodies };
