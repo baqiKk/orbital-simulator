@@ -803,7 +803,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // sits under the view controls, and moves when they change height
 {
   const css = read('css/style.css'), app = read('js/app.js');
-  assert.ok(css.includes('.stage{grid-column:1;grid-row:1;height:calc(100vh - 46px - env(safe-area-inset-bottom,0px));height:calc(100dvh - 46px - env(safe-area-inset-bottom,0px))') && !css.includes('.stage{height:84vh'), 'phones: the view down to the rail');
+  assert.ok(css.includes('.stage{grid-column:1;grid-row:1;height:calc(100vh - 54px - env(safe-area-inset-bottom,0px));height:calc(100dvh - 54px - env(safe-area-inset-bottom,0px))') && !css.includes('.stage{height:84vh'), 'phones: the view down to the rail');
   assert.ok(app.includes("function tlRoom() { const tl = $('#timeline').getBoundingClientRect(); $('#wins').style.setProperty('--tl-h', (tl.height ?") && app.includes("new ResizeObserver(() => clampWins()).observe($('#ctrls'))"), 'windows: no timeline room while it is hidden; they follow the controls');
 }
 
@@ -841,5 +841,17 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(app.includes("if (go === 'cabin') { writePref(LS, PREF_KEYS.start, 'scene'); return; }") && app.includes("$('#startBtn').addEventListener('click', startOpen);") && app.includes("if (e.key === 'Escape' && !$('#start').hidden) { e.stopPropagation(); startClose(); startScene(); }"), 'remembered, not the cabin; Esc: the scene; the logo opens it');
   assert.ok(/@media \(max-width:560px\)\{\n  \.start\{[^}]*\}\n  \.start-in\{[^}]*\}\n  \.start-cards\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/.test(css), 'phones: 2 × 2');
   assert.ok(!page.includes('id="welcome"'), 'the old welcome card is gone');
+}
+// 28) The rail's names (hover on desktop, under the icons on phones), the less used ones in "Diğer" on phones so no name
+// is shortened, and a short tour offered once when the viewer first chooses to design
+{
+  const app = read('js/app.js'), page = read('index.html'), css = read('css/style.css');
+  for (const w of ['mission', 'bodies', 'results', 'overview', 'transfer', 'gloss', 'model', 'credits'])
+    assert.ok(page.includes('data-win="' + w + '" data-i18n-aria-label="win.' + w + '" data-i18n-data-label="rail.' + w + '"') && has('rail.' + w), 'rail name ' + w);
+  assert.ok(page.includes('data-i18n-data-label="rail.cabin"') && page.includes('data-i18n-data-label="rail.reset"') && page.includes('id="railMore"') && page.includes('id="railMoreList"'), 'cabin, reset, more');
+  assert.ok(app.includes("more: ['bodies', 'transfer', 'gloss', 'model', 'credits']") && app.includes("$('#resetWins')]"), 'the less used ones go into Diğer');
+  assert.ok(css.includes('.rail-btn::after{content:attr(data-label)') && !css.includes('text-overflow:ellipsis;content:attr'), 'names from data-label, not cut');
+  for (const k of ['tour.1', 'tour.2', 'tour.3', 'tour.4', 'tour.skip', 'tour.next', 'tour.done', 'tour.n']) assert.ok(has(k), k);
+  assert.ok(P.PREF_KEYS.tour && app.includes('function tourStart() { if (readPref(LS, PREF_KEYS.tour)) return;') && app.includes("writePref(LS, PREF_KEYS.tour, '1')") && app.includes('setTimeout(tourStart, 700)'), 'tour once, skippable, from the design choice');
 }
 console.log('OK — all UI tests passed');

@@ -327,6 +327,22 @@ html[data-scene] #readout,html[data-scene] #timeline,.win.scene-hide{display:non
 /* ---------- low-resource mode: no blur, shadows, gradients or transitions ---------- */
 html[data-q=low] .glass,html[data-q=low] .win{backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;background:var(--panel-lo)}
 html[data-q=low] .toast{box-shadow:none}
+/* the rail's names: beside the icon on hover (desktop), under it on phones; on phones the less used ones in "Diğer" */
+.rail-more{display:none}
+.rail-more-list{position:fixed;z-index:50;display:flex;flex-direction:column;padding:4px;min-width:200px}
+.rail-more-list[hidden]{display:none}
+.rail-more-list .rail-btn{display:flex;flex-direction:row;justify-content:flex-start;gap:10px;height:42px;width:auto;padding:0 12px}
+.rail-more-list .rail-btn::after{content:attr(data-label);font:500 12px/1 var(--f-disp);letter-spacing:.03em;position:static;opacity:1;background:none;border:0;padding:0;transform:none;color:inherit}
+@media (hover:hover) and (min-width:861px){
+  .rail-btn::after{content:attr(data-label);position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%);padding:6px 9px;background:var(--panel-lo);border:1px solid var(--line2);font:500 11px/1 var(--f-disp);letter-spacing:.05em;color:var(--ink);white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .12s;z-index:50}
+  .rail-btn:hover::after,.rail-btn:focus-visible::after{opacity:1;transition-delay:.15s}
+}
+/* the short tour (js/app.js TOUR): a bubble by what it explains */
+.tour{position:fixed;z-index:55;width:min(300px,calc(100vw - 24px));padding:12px 12px 10px;display:flex;flex-direction:column;gap:10px;border-left:2px solid var(--accent)}
+.tour p{margin:0;font-size:12.5px;line-height:1.45;color:var(--ink)}
+.tour-act{display:flex;gap:6px;align-items:center}
+.tour-n{flex:1;font:500 11px/1 var(--f-mono);color:var(--faint)}
+.tour-hl{outline:2px solid var(--accent);outline-offset:2px}
 /* the start screen (js/app.js START): four cards, 2 × 2 on phones without scrolling */
 .start{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:color-mix(in srgb,var(--void) 62%,transparent)}
 .start-in{width:min(860px,100%);padding:22px 22px 16px;display:flex;flex-direction:column;gap:16px}
@@ -393,12 +409,20 @@ html[data-q=low] *,html[data-q=low] *::before,html[data-q=low] *::after{transiti
   .app{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;height:auto}
   /* the view fills the screen down to the rail (no empty band under it when no window is open: 100dvh follows the
      browser's own bars, the rail keeps clear of the home indicator); open windows follow below and the page scrolls */
-  .stage{grid-column:1;grid-row:1;height:calc(100vh - 46px - env(safe-area-inset-bottom,0px));height:calc(100dvh - 46px - env(safe-area-inset-bottom,0px));min-height:420px}
+  .stage{grid-column:1;grid-row:1;height:calc(100vh - 54px - env(safe-area-inset-bottom,0px));height:calc(100dvh - 54px - env(safe-area-inset-bottom,0px));min-height:420px}
   .rail{padding-bottom:env(safe-area-inset-bottom,0px)!important}
   .wins:not(:has(>.win:not([hidden]):not(.scene-hide))){padding:0}
   .rail{grid-column:1;grid-row:2;flex-direction:row;padding:0 4px;border-right:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:sticky;top:0;overflow-x:auto;scrollbar-width:none}
   .rail-mark{border-bottom:0;margin:0;width:40px;height:44px}
-  .rail-btn{width:44px;height:44px;flex:none}
+  /* six equal columns: the logo, Görev, Sonuçlar, Genel bakış, Kabin, Diğer; full names, never cut */
+  .rail{overflow-x:visible!important;display:grid!important;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);padding:0 2px!important}
+  .rail-btn,.rail-mark{width:auto!important;min-width:0;height:54px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;padding:0}
+  .rail-btn::after{content:attr(data-label);font:500 9.5px/1.1 var(--f-disp);letter-spacing:0;white-space:nowrap}
+  .rail-more-list .rail-btn{height:42px;flex-direction:row}
+  .rail-more{display:flex}
+  .rail-cabin svg{transform:none}
+  .rail-beta{bottom:auto;top:3px;left:auto;right:3px;transform:none}
+  .rail-sp{display:none}
   .rail-mark{order:-2}
   .rail-cabin{order:-1} /* phones: the cabin next to the mark, not past the scroll edge */
   .rail-btn[aria-pressed=true]::before{left:8px;right:8px;top:auto;bottom:0;width:auto;height:2px}

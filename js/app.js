@@ -2355,6 +2355,7 @@ function startDesign() {
   APP.mode = 'design';
   if (SCENE.on) sceneEnd(true);
   for (const id of ['mission', 'results']) setWin(id, { open: true, collapsed: false });
+  setTimeout(tourStart, 700); // offered once
 }
 function startMission(id) { APP.mode = 'mission'; writePref(LS, PREF_KEYS.start, 'mission:' + id); loadScenario(id); startClose(); }
 $('#startCards').addEventListener('click', e => {
@@ -2370,6 +2371,47 @@ $('#startBack').addEventListener('click', () => { $('#startMis').hidden = true; 
 $('#start').addEventListener('pointerdown', e => { if (e.target === $('#start')) { startClose(); startScene(); } });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#start').hidden) { e.stopPropagation(); startClose(); startScene(); } }, true);
 $('#startBtn').addEventListener('click', startOpen);
+
+// The rail on phones: its names under the icons, and the less used windows (and "reset") in "Diğer" (a list above the
+// rail) so the names never shrink or get cut. The buttons are moved, the rail's own click handler still serves them.
+const RAIL = { more: ['bodies', 'transfer', 'gloss', 'model', 'credits'], phone: matchMedia('(max-width: 860px)'), homes: new Map() };
+function railLayout() {
+  const list = $('#railMoreList'), btns = [...RAIL.more.map(id => railBtn(id)), $('#resetWins')];
+  for (const b of btns) { if (!RAIL.homes.has(b)) { const m = document.createComment('rail'); b.before(m); RAIL.homes.set(b, m); } }
+  if (RAIL.phone.matches) for (const b of btns) list.appendChild(b); else { for (const b of btns) RAIL.homes.get(b).after(b); railMore(false); }
+}
+function railMore(open) {
+  const l = $('#railMoreList'), b = $('#railMore'); open = open ?? l.hidden; l.hidden = !open; b.setAttribute('aria-expanded', String(open));
+  if (open) { const r = b.getBoundingClientRect(); Object.assign(l.style, { right: Math.max(8, innerWidth - r.right) + 'px', bottom: (innerHeight - r.top + 6) + 'px' }); }
+}
+$('#railMore').addEventListener('click', e => { e.stopPropagation(); railMore(); });
+$('#railMoreList').addEventListener('click', () => railMore(false));
+document.addEventListener('pointerdown', e => { if (!$('#railMoreList').hidden && !e.target.closest('#railMoreList, #railMore')) railMore(false); });
+RAIL.phone.addEventListener?.('change', railLayout); // laid out at the start (below: the rail's helpers come later)
+
+// A short tour, offered once: the first time the viewer chooses to design (PREF_KEYS.tour). Four steps, each a bubble by
+// what it explains (on phones by the rail's buttons: the windows are below the view); "Atla" ends it.
+const TOUR = { i: -1, hl: null, steps: [['#w-mission', 'mission', 'tour.1'], ['#w-results', 'results', 'tour.2'], [null, 'overview', 'tour.3'], ['#railCabin', null, 'tour.4']] };
+function tourStep() {
+  if (TOUR.hl) TOUR.hl.classList.remove('tour-hl');
+  const st = TOUR.steps[TOUR.i]; if (!st) { tourEnd(); return; }
+  const [sel, win, key] = st, phone = RAIL.phone.matches;
+  let el = sel && !(phone && win) ? $(sel) : railBtn(win) || $(sel);
+  if (!el || !el.getClientRects().length) el = win ? railBtn(win) : $(sel);
+  TOUR.hl = el; el.classList.add('tour-hl');
+  $('#tourText').textContent = _(key); $('#tourN').textContent = _('tour.n', { i: TOUR.i + 1, n: TOUR.steps.length });
+  $('#tourNext').textContent = _(TOUR.i === TOUR.steps.length - 1 ? 'tour.done' : 'tour.next');
+  const t = $('#tour'); t.hidden = false;
+  const r = el.getBoundingClientRect(), w = t.offsetWidth, hh = t.offsetHeight, m = 10;
+  let x = r.right + m, y = r.top; // beside it, else below or above
+  if (x + w > innerWidth - m) { x = Math.min(innerWidth - w - m, Math.max(m, r.left)); y = r.bottom + m; if (y + hh > innerHeight - m) y = r.top - hh - m; }
+  Object.assign(t.style, { left: Math.max(m, x) + 'px', top: Math.max(m, Math.min(innerHeight - hh - m, y)) + 'px' });
+  $('#tourNext').focus();
+}
+function tourStart() { if (readPref(LS, PREF_KEYS.tour)) return; TOUR.i = 0; tourStep(); }
+function tourEnd() { if (TOUR.hl) TOUR.hl.classList.remove('tour-hl'); TOUR.hl = null; TOUR.i = -1; $('#tour').hidden = true; writePref(LS, PREF_KEYS.tour, '1'); }
+$('#tourNext').addEventListener('click', () => { TOUR.i++; tourStep(); });
+$('#tourSkip').addEventListener('click', tourEnd);
 
 // Logarithmic scale: radial distance from the Sun r -> AU·ln(1 + r/r0); directions are kept.
 const LOG_R0 = 0.05 * AU;
@@ -3430,7 +3472,7 @@ if (start.auto) {
   if (m === 'low') liteTip(CRASHED ? 'lite.crash' : 'lite.text'); else AUTO.on = true;
 } else if (CRASHED && start.mode !== 'low') { start.mode = 'low'; liteTip('lite.crash'); } // a saved mode, but the last start died: light this once
 bind3d();
-vwLayout();
+vwLayout(); railLayout();
 setMode(start.mode === '3d' ? 'normal' : start.mode, false);
 if (start.mode === '3d') setMode('3d', false); // normal 2D until Three.js has loaded
 const SNAP = parseSimSnap(readPref(SS, PREF_KEYS.simSnap), Date.now()), SNAP_MISSION = SNAP && !SNAP.scene;
