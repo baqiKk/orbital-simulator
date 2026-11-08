@@ -91,6 +91,7 @@
       </div>
     </div>
     <div class="hud-bot" id="hudBot">
+      <div class="glass guide" id="guide" role="status" aria-live="polite" hidden><span id="guideText"></span><button class="btn sm primary" type="button" id="guideGo" data-i18n="guide.go" hidden></button></div>
       <div class="hud-row">
       <div class="caption" id="caption" hidden></div>
       <div class="glass readout" id="readout">
@@ -118,6 +119,7 @@
           <label class="chk" data-i18n-title="ui.focusTip"><input type="checkbox" id="focus" checked><span data-i18n="ui.focus"></span></label>
           <label class="chk" data-i18n-title="ui.loopTip"><input type="checkbox" id="loop"><span data-i18n="ui.loop"></span></label>
           <label class="chk" data-i18n-title="ui.slowTip"><input type="checkbox" id="slow" checked><span data-i18n="ui.slow"></span></label>
+          <label class="chk" id="evStopWrap" data-i18n-title="ui.evStopTip" hidden><input type="checkbox" id="evStop"><span data-i18n="ui.evStop"></span></label>
         </div>
       </div>
     </div>

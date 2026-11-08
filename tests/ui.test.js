@@ -854,4 +854,16 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   for (const k of ['tour.1', 'tour.2', 'tour.3', 'tour.4', 'tour.skip', 'tour.next', 'tour.done', 'tour.n']) assert.ok(has(k), k);
   assert.ok(P.PREF_KEYS.tour && app.includes('function tourStart() { if (readPref(LS, PREF_KEYS.tour)) return;') && app.includes("writePref(LS, PREF_KEYS.tour, '1')") && app.includes('setTimeout(tourStart, 700)'), 'tour once, skippable, from the design choice');
 }
+// 29) Guided missions: a caption line for each event (departure, leaving / entering a sphere of influence, the closest
+// point, capture, the return); "Olaylarda dur" off by default, saved, stops at each event after the departure with "Devam";
+// only in a mission chosen from the start screen
+{
+  const app = read('js/app.js'), page = read('index.html');
+  for (const k of ['ui.evStop', 'ui.evStopTip', 'guide.go', 'guide.depart', 'guide.soiOut', 'guide.soiOutRoot', 'guide.soiIn', 'guide.peri', 'guide.capture', 'guide.aero', 'guide.raise', 'guide.return', 'guide.entry', 'guide.impact']) assert.ok(has(k), k);
+  assert.ok(page.includes('id="guide"') && page.includes('id="guideGo"') && page.includes('<input type="checkbox" id="evStop">'), 'caption line, Devam, the switch (unchecked in the page)');
+  assert.ok(P.PREF_KEYS.evStop && app.includes("stop: readPref(LS, PREF_KEYS.evStop) === '1'") && app.includes("writePref(LS, PREF_KEYS.evStop, GUIDE.stop ? '1' : '0')"), 'off by default, saved');
+  assert.ok(app.includes("const guideOn = () => APP.mode === 'mission' && !!S.scenario && S.kind !== 'man'"), 'only in a guided mission');
+  assert.ok(app.includes('if (e.t > 0 && e.t > GUIDE.last && e.t > t0 && e.t <= t1)') && app.includes('GUIDE.held = e; setPlayIcon();'), 'stops at events after the departure, holds for Devam');
+  assert.ok(app.includes("$('#guide')]") , 'the caption is an obstacle for fitting');
+}
 console.log('OK — all UI tests passed');

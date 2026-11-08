@@ -851,6 +851,40 @@ function buildCache() {
     if (!two) { const rel = [0, 1, 2].map(j => vB[j] - SVo[3 * b + j]), l = Math.hypot(...rel) || 1; va = vB.map((q, j) => q - (e.dv || 0) * rel[j] / l); }
     C.imp.push({ t: e.t, b, va, vb: vB });
   }
+  guideBuild(r);
+}
+// The guided mission (APP.mode 'mission'): its events in order, each with a caption — the departure burn, leaving the
+// departure body's sphere of influence, entering the target's, the closest point, capture (or aerobraking and the raise),
+// the return. The sphere crossings are found here from the integrated samples (once per mission, O(samples)).
+function guideBuild(r) {
+  const ev = [], B = S.bodies[1] ? S.bodies[1].name : '', A = S.bodies[0] ? S.bodies[0].name : '', km = v => nf1.format(v / 1e3);
+  for (const e of C.markers) {
+    let k = null, p = {};
+    if (e.type === 'burn' && e.body === 0) { k = 'guide.depart'; p = { v: nf0.format(e.dv), b: B }; }
+    else if (e.type === 'burn' && e.body === 1) { k = e.txt === _('mk.raiseDv', { v: nf0.format(e.dv) }) ? 'guide.raise' : 'guide.capture'; p = { v: nf0.format(e.dv), b: B }; }
+    else if (e.type === 'aero') { k = 'guide.aero'; p = { v: nf0.format(e.dv), b: B }; }
+    else if (e.type === 'peri' && e.body === 1) { k = 'guide.peri'; p = { peri: peri(1), alt: km(e.alt) }; }
+    else if (e.type === 'peri' && e.body === 0) { k = e.alt < 150e3 ? 'guide.entry' : 'guide.return'; p = { peri: peri(0), alt: km(e.alt) }; }
+    else if (e.type === 'impact') { k = 'guide.impact'; p = { name: S.bodies[e.body] ? S.bodies[e.body].name : '' }; }
+    if (k) ev.push({ t: e.t, text: _(k, p) });
+  }
+  if (S.kind !== 'man' && sys.soi && sys.soi.length > 1) {
+    const so = sys.soi, n = r.t.length, P = new Float64Array(3 * so.length), V = new Float64Array(3 * so.length);
+    const dist = (k, b) => Math.hypot(r.x[k] - P[3 * b], r.y[k] - P[3 * b + 1], r.z[k] - P[3 * b + 2]);
+    let out = -1, inn = -1, was0 = true, was1 = false;
+    for (let k = 0; k < n && (out < 0 || inn < 0); k++) {
+      states(sys, S.M.t0 * DAY + r.t[k], P, V);
+      const in0 = isFinite(so[0]) && dist(k, 0) < so[0], in1 = isFinite(so[1]) && dist(k, 1) < so[1];
+      if (out < 0 && was0 && !in0 && isFinite(so[0])) out = k;
+      if (inn < 0 && !was1 && in1 && k > 0) inn = k;
+      was0 = in0; was1 = in1;
+    }
+    if (out >= 0) { const p = sys.parent[0], pn = p >= 0 && S.bodies[p] ? S.bodies[p].name : ''; ev.push({ t: r.t[out], text: pn ? _('guide.soiOut', { a: A, p: pn }) : _('guide.soiOutRoot', { a: A }) }); }
+    if (inn >= 0) ev.push({ t: r.t[inn], text: _('guide.soiIn', { b: B }) });
+  }
+  ev.sort((a, b) => a.t - b.t);
+  for (let j = ev.length - 1; j > 0; j--) if (ev[j].t - ev[j - 1].t < 1) { ev[j - 1].text += ' ' + ev[j].text; ev.splice(j, 1); } // the same moment: one line
+  GUIDE.ev = ev; GUIDE.cur = -2; GUIDE.last = -1; GUIDE.held = null;
 }
 // the thrust direction (ecliptic) at mission time t for the craft at abs, or null with the engine off
 function thrustNow(t, abs) {
@@ -1135,7 +1169,7 @@ function measureFree() {
   const sr = stage.getBoundingClientRect(), gap = 12;
   const rel = el => { const r = el.getBoundingClientRect(); return { x0: r.left - sr.left, x1: r.right - sr.left, y0: r.top - sr.top, y1: r.bottom - sr.top }; };
   const shown = el => !el.hidden && el.getClientRects().length > 0;
-  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline'), $('#caption'), $('#modeChip')].filter(shown).map(rel);
+  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline'), $('#caption'), $('#modeChip'), $('#guide')].filter(shown).map(rel);
   const wins = floating() ? [...document.querySelectorAll('.win:not([hidden])')].filter(shown).map(rel) : [];
   const rects = freeRects(W, H, [...hud, ...wins], gap);
   // too little room left between the windows: let them overlap the plot instead (HUD still counts)
@@ -1416,6 +1450,35 @@ S.slow = readPref(LS, PREF_KEYS.slow) !== '0';
 $('#tOsc').checked = S.osc; $('#slow').checked = S.slow;
 $('#tOsc').addEventListener('change', e => { S.osc = e.target.checked; writePref(LS, PREF_KEYS.osc, S.osc ? '1' : '0'); });
 $('#slow').addEventListener('change', e => { S.slow = e.target.checked; writePref(LS, PREF_KEYS.slow, S.slow ? '1' : '0'); });
+// The guided mission's captions (GUIDE, built by guideBuild): the latest event passed shows in one line above the readout
+// for GUIDE_S seconds; with "Olaylarda dur" (#evStop, off by default, saved) playback stops at each event after the
+// departure and the line shows "Devam". Only in a mission chosen from the start screen; transfers of one's own and
+// maneuvers have no captions.
+const GUIDE = { ev: [], cur: -2, at: 0, last: -1, held: null, stop: readPref(LS, PREF_KEYS.evStop) === '1' }, GUIDE_S = 9;
+const guideOn = () => APP.mode === 'mission' && !!S.scenario && S.kind !== 'man' && !SCENE.on && !MAP.on;
+$('#evStop').checked = GUIDE.stop;
+$('#evStop').addEventListener('change', e => { GUIDE.stop = e.target.checked; writePref(LS, PREF_KEYS.evStop, GUIDE.stop ? '1' : '0'); if (!GUIDE.stop && GUIDE.held) guideGo(); });
+// playback from t0 to t1 this frame: the first event after the departure in (t0, t1] not yet stopped at, or null
+function guideStopAt(t0, t1) {
+  if (!GUIDE.stop || !guideOn()) return null;
+  if (t0 < GUIDE.last - 1e-6) GUIDE.last = t0 - 1e-6; // time went back: its events stop again
+  for (const e of GUIDE.ev) if (e.t > 0 && e.t > GUIDE.last && e.t > t0 && e.t <= t1) { GUIDE.last = e.t; return e; }
+  return null;
+}
+function guideGo() { GUIDE.held = null; S.playing = true; setPlayIcon(); }
+$('#guideGo').addEventListener('click', guideGo);
+// this frame's caption at mission time t
+function guideShow(t, now) {
+  const on = guideOn();
+  $('#evStopWrap').hidden = !on;
+  let i = -1; if (on) for (let j = 0; j < GUIDE.ev.length && GUIDE.ev[j].t <= t + 1e-6; j++) i = j;
+  if (i !== GUIDE.cur) { GUIDE.cur = i; GUIDE.at = now; }
+  if (GUIDE.held && S.playing) GUIDE.held = null;
+  const show = i >= 0 && (!!GUIDE.held || now - GUIDE.at < GUIDE_S * 1e3);
+  const txt = show ? GUIDE.ev[i].text : '', key = txt + (GUIDE.held ? '|h' : '');
+  if (key === guideShow.k) return; guideShow.k = key;
+  $('#guide').hidden = !show; $('#guideText').textContent = txt; $('#guideGo').hidden = !GUIDE.held; INS = null;
+}
 const OSC_PTS = new Float64Array(3 * 200), OSC_R = [0, 0, 0], OSC_V = [0, 0, 0];
 let OSCF = null; // this frame's: { b, c (conicPoints result), pts } or null
 const ease3 = x => x * x * (3 - 2 * x);
@@ -2867,7 +2930,10 @@ function draw(now) {
       if (S.loop) { hold += dt; if (hold > 1.6) { S.u = 0; S.ext = 0; hold = 0; } }
       else if (C.orbit) S.ext += dt * (S.rate || S.speed * C.orbit.P / 8);
       else { S.playing = false; setPlayIcon(); }
-    } else S.u = playStep(dt);
+    } else {
+      const u0 = S.u, u1 = playStep(dt), e = guideStopAt(uToT(u0), u1 >= 1 ? C.T : uToT(u1));
+      if (e) { S.u = tToU(e.t); S.playing = false; GUIDE.held = e; setPlayIcon(); } else S.u = u1;
+    }
   } else if (!$('#slowTag').hidden) $('#slowTag').hidden = true;
   if (S.u < 1) S.ext = 0;
   const ext = S.ext > 0 && C.orbit;
@@ -2875,6 +2941,7 @@ function draw(now) {
   const segH = simR.t[si + 1] - simR.t[si];
   const tNow = ext ? C.T + S.ext : simR.t[si] + (segH > 0 ? sf * segH : 0);
   tNowG = tNow;
+  guideShow(tNow, now);
   const craft = ext ? orbitPos(tNow, [0, 0, 0]) : segH > 0 ? herm(si, sf, [0, 0, 0]) : [simR.x[si + 1], simR.y[si + 1], simR.z[si + 1]];
   const pathIdx = ext ? C.pt.length - 1 : Math.min(C.pt.length - 1, C.segStart[si] + Math.floor(sf * (segH > 0 ? C.sub : 0)));
   // a point a little later: the craft's velocity direction (finite difference)
