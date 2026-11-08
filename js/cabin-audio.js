@@ -10,13 +10,15 @@
 // scheduled on the audio clock, a track's end also arrives as a media event. Muted or silent: the context is suspended.
 const SND = { ctx: null, master: null, set: null, ext: 'mp3', started: false, layers: {}, onState: null, state: { track: null, trouble: 0 } };
 
+// false without Web Audio (the page stays silent, nothing else changes)
 function sndInit() {
-  if (SND.ctx) return;
-  const AC = window.AudioContext || window.webkitAudioContext;
-  SND.ctx = new AC();
+  if (SND.ctx) return true;
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
+  try { SND.ctx = new AC(); } catch (e) { return false; }
   SND.master = SND.ctx.createGain(); SND.master.connect(SND.ctx.destination);
   SND.ext = document.createElement('audio').canPlayType('audio/webm; codecs="opus"') ? 'webm' : 'mp3';
   for (const k of ['music', 'space', 'hum', 'noise']) { const g = SND.ctx.createGain(); g.gain.value = 0; g.connect(SND.master); SND.layers[k] = { g, on: false }; }
+  return true;
 }
 const sndEmit = () => { if (SND.onState) SND.onState(SND.state); };
 
@@ -149,7 +151,7 @@ function sndApply(set) {
 }
 // the first gesture: build the graph and play what the settings ask for
 function sndStart(set) {
-  sndInit(); SND.started = true;
+  if (!sndInit()) return; SND.started = true;
   SND.ctx.resume();
   sndApply(set || SND.set);
 }
@@ -178,7 +180,7 @@ const BOWL = [[1, 1, 2.8], [2.76, 0.35, 1.5], [5.4, 0.12, 0.7]]; // frequency ra
 const sndAny = set => !!set && !set.muted && ['music', 'space', 'hum', 'noise'].some(k => set[k].on);
 function sndChime(set, kind) {
   if (set.muted || !set.chime.on || !(set.chime.vol > 0)) return;
-  sndInit();
+  if (!sndInit()) return;
   const c = SND.ctx; if (c.state !== 'running') c.resume().catch(() => {});
   const t0 = c.currentTime + 0.05, f0 = kind === 'break' ? 392 : 523.25, out = c.createGain();
   out.gain.value = 0.32 * set.chime.vol * set.chime.vol; out.connect(SND.master);
@@ -209,7 +211,7 @@ const purrOn = set => !!set && !set.muted && set.purr.on && set.purr.vol > 0;
 function sndPurr(set, level) {
   if (!purrOn(set)) level = 0;
   if (!level && !PURR.g) { PURR.level = 0; return; }
-  sndInit();
+  if (!sndInit()) return;
   const c = SND.ctx; if (level && c.state !== 'running') c.resume().catch(() => {});
   if (!PURR.g) {
     const out = c.createGain(), ns = c.createBufferSource(), hp = c.createBiquadFilter(), lp = c.createBiquadFilter(), am = c.createGain(), br = c.createGain();
@@ -235,7 +237,7 @@ function sndPurr(set, level) {
 }
 function sndMrr(set) {
   if (!purrOn(set)) return;
-  sndInit();
+  if (!sndInit()) return;
   const c = SND.ctx; if (c.state !== 'running') c.resume().catch(() => {});
   const t = c.currentTime + 0.03, o = c.createOscillator(), tr = c.createOscillator(), tg = c.createGain(), am = c.createGain(), f = c.createBiquadFilter(), env = c.createGain();
   o.type = 'sawtooth'; o.frequency.setValueAtTime(230, t); o.frequency.linearRampToValueAtTime(360, t + 0.13); o.frequency.linearRampToValueAtTime(290, t + 0.32);
