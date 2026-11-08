@@ -77,6 +77,14 @@ const VISTAS = {
       const w = c.tau / 1800 * 2 * Math.PI;
       return vsAbout(B, c.T, 'saturn', 7.5e8, side * (22 + 2 * Math.sin(w)) * VS_D2R, (30 + 5 * Math.sin(w * 0.7)) * VS_D2R, -14 * VS_D2R);
     } },
+  // Jupiter and the Galilean moons: 1 million km out (between Europa's and Ganymede's orbits), 4° above its equator, 15°
+  // round from the Sun (nearly full); Io and Europa swing across the glass, Ganymede and Callisto pass wide; live,
+  // 120× (Io round in 21 minutes, Jupiter turns in 5)
+  jupiter: { keys: ['sun', 'jupiter', 'io', 'europa', 'ganymede', 'callisto'], rate: 120, look: 'jupiter',
+    at(B, c) {
+      const w = c.tau / 2400 * 2 * Math.PI;
+      return vsAbout(B, c.T, 'jupiter', 1.0e9, (4 + 1.5 * Math.sin(w)) * VS_D2R, (15 + 4 * Math.sin(w * 0.6)) * VS_D2R, -8 * VS_D2R);
+    } },
   // Earth and Moon (the simulator's landing view): the Moon near and the Earth behind it, true sizes. Candidate
   // framings (a, b, c) until one is picked:
   //   a: 20 000 km behind the Moon, a little aside, the glass between the two;
@@ -94,7 +102,7 @@ const VISTAS = {
       return { y: eye, cam: vsCam(vsSlerp(dm, de, k), [0, 0, 1]) };
     } },
 };
-const VISTA_IDS = ['saturn', 'earth'];
+const VISTA_IDS = ['saturn', 'jupiter', 'earth'];
 const vistaLens = id => (VISTAS[id] && VISTAS[id].fovW) || 0;
 // the view's clock at wall time ms: T, tau, cycle, loop length L (view: for a loop that depends on the glass)
 function vistaClock(id, ms, view) {

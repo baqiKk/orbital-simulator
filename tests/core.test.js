@@ -1010,5 +1010,7 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   const vs = VS.vistaAt('saturn', ms0, view), S = at(vs, 'saturn').p, F = C.bodyFrame(BODIES.saturn.pole, vs.T), z = [F[2], F[5], F[8]];
   assert.ok(dot(sub(vs.y, S), z) * dot(sub(vs.sunP, S), z) > 0, 'Saturn: seen from the rings\' sunlit face');
   // live clocks run from now at their rate; loops wrap
+  const c1 = VS.vistaClock('jupiter', ms0 + 10000, view), c2 = VS.vistaClock('jupiter', ms0 + 20000, view);
+  assert.ok(Math.abs(c2.T - c1.T - 1200) < 1e-6, 'Jupiter: 120× real time');
   console.log('cabin views ok');
 }
