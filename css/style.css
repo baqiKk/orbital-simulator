@@ -554,6 +554,11 @@ html[data-q=low] #kSun{display:none}
 .k-saverclock{position:fixed;z-index:8;right:max(16px,env(safe-area-inset-right,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));font:500 13px/1 var(--f-mono);font-variant-numeric:tabular-nums;color:var(--cab-lamp);opacity:.35;pointer-events:none}
 .k-saverclock.brk{color:var(--cab-screen)}
 .k-saverclock.held{animation:kBlink 2s steps(1) infinite}
+/* panning the room with a finger (js/cabin.js PAN): the browser keeps vertical gestures and pinch; the one-time hint */
+.k-root{touch-action:pan-y pinch-zoom}
+.k-panhint{position:fixed;z-index:6;left:50%;bottom:calc(max(12px,env(safe-area-inset-bottom,0px)) + 120px);transform:translateX(-50%);pointer-events:none;
+  font:500 13px/1 var(--f-disp);letter-spacing:.18em;color:var(--ink);opacity:0;transition:opacity .6s;padding:7px 14px;background:color-mix(in srgb,var(--void) 55%,transparent)}
+.k-panhint.on{opacity:.55}
 /* ?debug=1 overlay (temporary developer aid) */
 .k-debug{position:fixed;z-index:9;right:8px;bottom:56px;margin:0;padding:6px 8px;background:var(--panel-lo);border:1px solid var(--line2);font:400 10.5px/1.4 var(--f-mono);color:var(--ink);pointer-events:none;white-space:pre}
 html.paused .k-root *{animation-play-state:paused!important}

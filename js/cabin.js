@@ -374,7 +374,7 @@ function lifeNow() { if (still()) drawStill(); else { stepAqua(0, LOOP.t); stepS
 // The glass always shows a live view from the 3D renderer (below; in low-resource mode, with reduced motion or without
 // WebGL 2 the plain sky and shaded discs at their true places): the flight plan's while one flies, else the view picked
 // from the ready-made ones (js/vistas.js, Phase 14).
-const SP = { cv: $('#kSpace'), M: 0, F: 1, G: [0, 0], V: [0, 0], C: [0, 0], GV: [1, 1], P0: [0, 0] };
+const SP = { cv: $('#kSpace'), F: 1, G: [0, 0], V: [0, 0], C: [0, 0], GV: [1, 1], P0: [0, 0] };
 const FX = { clouds: true, relief: true, glint: true };
 const norm = v => { const l = Math.hypot(...v); return v.map(c => c / l); };
 // low-resource sky: plain points, the same every time
@@ -983,6 +983,7 @@ const deskCam = () => cabCrop(VW, VH, ...LY.size), winCam = () => cabGlassCam(VW
 function moreMenu(open) { document.body.classList.toggle('k-more-open', open); $('#kMore').setAttribute('aria-expanded', String(open)); }
 function go(to) {
   if (to === view) return;
+  panStop(); PAN.x = 0; // a panned room goes back to its focus (from where it is now)
   view = to; hideTip(); moreMenu(false); document.body.classList.toggle('k-win', to === 'window');
   $('#kGo').textContent = _(to === 'desk' ? 'kab.toWindow' : 'kab.toDesk');
   // at the glass only the glass (back to the desk) and the cat (it can be petted there too) answer
@@ -1136,6 +1137,7 @@ function poDo(fn) {
 // a settings change: up to now first, then the change
 function poSet(f) { poDo((s, now) => { const ev = pomoAdvance(s, now); f(s); return ev; }); poSyncSet(); }
 function poEnded(e) {
+  panHome();
   if (e.late >= POMO_LATE) { PO.late = e; return; }
   const brk = e.phase === 'work', g = CLOCK.g;
   sndChime(AUD.set, brk ? 'break' : 'work');
@@ -1344,22 +1346,120 @@ function layout() {
   VW = innerWidth; VH = innerHeight; DPR = Math.min(devicePixelRatio || 1, 2);
   if (!VW || !VH) return; // a hidden frame: wait for its resize
   const d = deskCam(), w = winCam(), cam = view === 'desk' ? d : w;
-  // the sky canvas covers the screen for every camera between the two views
-  const pd = gScreen(d), pw = gScreen(w);
-  SP.M = Math.ceil(Math.max(Math.abs(pd[0] - VW / 2), Math.abs(pw[0] - VW / 2), Math.abs(pd[1] - VH / 2), Math.abs(pw[1] - VH / 2))) + 40;
-  const cw = VW + 2 * SP.M, ch = VH + 2 * SP.M;
-  SP.cv.width = Math.round(cw * DPR); SP.cv.height = Math.round(ch * DPR);
-  Object.assign(SP.cv.style, { left: -SP.M + 'px', top: -SP.M + 'px', width: cw + 'px', height: ch + 'px' });
-  SP.P0 = pd; SP.G = [pd[0] + SP.M, pd[1] + SP.M]; // the glass's centre on screen and in canvas px at the desk view
+  // the sky canvas covers the screen for every camera between the two views and the whole glass at the desk scale
+  // (a panned room, prefs.js cabSkyBox)
+  const pd = gScreen(d), pw = gScreen(w), bx = cabSkyBox(VW, VH, pd, pw, (LY.glass.x1 - LY.glass.x0) * d.s, (LY.glass.y1 - LY.glass.y0) * d.s);
+  SP.cv.width = Math.round(bx.w * DPR); SP.cv.height = Math.round(bx.h * DPR);
+  Object.assign(SP.cv.style, { left: bx.l + 'px', top: bx.t + 'px', width: bx.w + 'px', height: bx.h + 'px' });
+  SP.P0 = pd; SP.G = bx.g; // the glass's centre on screen and in canvas px at the desk view
   // the view's centre (where the camera looks): the middle of the part of the glass the desk view shows (a portrait
   // screen shows only its right part, by the cat); SP.V its offset from the glass's centre (CSS px at the desk view)
   { const g = LY.glass, gc = glassC(), x0 = Math.max(g.x0, d.x), x1 = Math.min(g.x1, d.x + VW / d.s), y0 = Math.max(g.y0, d.y), y1 = Math.min(g.y1, d.y + VH / d.s);
     SP.V = [((x0 + x1) / 2 - gc[0]) * d.s, ((y0 + y1) / 2 - gc[1]) * d.s]; SP.C = [SP.G[0] + SP.V[0], SP.G[1] + SP.V[1]]; SP.GV = [(x1 - x0) * d.s, (y1 - y0) * d.s]; }
   SP.F = Math.max(VW, VH) / 2 / Math.tan(50 * deg); fvSize();
-  cancelAnimationFrame(ANIM); ANIM = 0; mvEnd(); stageWC(''); tierSwapNow();
+  panStop(); PAN.x = 0; cancelAnimationFrame(ANIM); ANIM = 0; mvEnd(); stageWC(''); tierSwapNow();
   apply(cam); wantTier(needTier(cam.s)); sizeLife(); lifeNow();
   fvKick();
 }
+
+// ---------- panning the room (Phase 14: touch, desk view) ----------
+// On a screen whose desk crop hides part of the room (a phone held upright), a finger or pen dragged sideways pans it:
+// the room follows the finger, stretches a little past its edges (prefs.js cabRubber) and, let go, glides on and
+// settles (a fling, CAB_PAN.tau), then stays. Untouched for CAB_PAN.idle, at a pomodoro's end, and on the way to the
+// glass and back it returns to its focus (the desk crop). A drag starting on the cat pets it instead (#hCat keeps its
+// own pointer); a tap stays a tap (CAB_PAN.tap), the click after a drag is swallowed. While it moves the room is drawn
+// on the move canvases, as in a camera move (mvBegin / drawMove), the DOM stage back at rest; ANIM holds the light
+// filters and the tier swaps meanwhile (-1: a pan with no frame pending). Reduced motion and low-resource mode: no
+// glide and no animated return, the room jumps. PAN.x: the offset (art px) from the crop, PAN.show: what is shown.
+const PAN = { x: 0, show: 0, drag: null, v: 0, raf: 0, timer: 0, eat: false, anim: null };
+const ROOT = $('#kRoot');
+const panRange = () => cabPanRange(deskCam(), VW, LY.size[0]);
+const panAble = () => !!LY && view === 'desk' && (panRange()[1] - panRange()[0]) * deskCam().s > 8 && !(typeof SV !== 'undefined' && SV.on);
+const deskAt = x => { const d = deskCam(); return { s: d.s, x: d.x + x, y: d.y }; };
+function panShow(x) {
+  const [lo, hi] = panRange(); PAN.show = cabRubber(x, lo, hi, CAB_PAN.rubber / deskCam().s);
+  apply(deskAt(PAN.show)); if (MV.on) drawMove(CAM);
+}
+function panBegin() { hideTip(); if (!MV.on) mvBegin(); if (!ANIM) ANIM = -1; }
+// at rest: the DOM stage back at its place (as a camera move's end), then the return timer
+function panEnd() {
+  cancelAnimationFrame(PAN.raf); PAN.raf = 0; PAN.anim = null;
+  if (ANIM === -1) ANIM = 0;
+  tierSwapNow(); sizeLife(); lifeNow(); mvEnd(); FV.cam = null; fvKick();
+  clearTimeout(PAN.timer); if (Math.abs(PAN.x) > 0.5) PAN.timer = setTimeout(() => { if (!PAN.drag) panHome(); }, CAB_PAN.idle);
+}
+// stop whatever moves (a drag, a glide, a return) where it is, without settling
+function panStop() { cancelAnimationFrame(PAN.raf); PAN.raf = 0; PAN.anim = null; PAN.drag = null; clearTimeout(PAN.timer); if (ANIM === -1) ANIM = 0; }
+// a frame of the glide or the return (an animation: PAN.anim(dt) returns false when done)
+function panRun() {
+  let last = performance.now();
+  const step = now => {
+    PAN.raf = 0; const dt = Math.min(100, now - last); last = now;
+    const more = PAN.anim && PAN.anim(dt); panShow(PAN.x);
+    if (more) PAN.raf = requestAnimationFrame(step); else panEnd();
+  };
+  PAN.raf = requestAnimationFrame(step);
+}
+// let go: glide on with the finger's speed, pulled back inside the edges
+function panFling() {
+  const [lo, hi] = panRange();
+  if (still()) { PAN.x = Math.min(hi, Math.max(lo, PAN.x)); panShow(PAN.x); panEnd(); return; }
+  PAN.anim = dt => {
+    const out = PAN.x > hi ? hi : PAN.x < lo ? lo : null;
+    if (out == null) { PAN.v *= Math.exp(-dt / CAB_PAN.tau); PAN.x += PAN.v * dt; }
+    else { PAN.v *= Math.exp(-dt / 40); PAN.x += PAN.v * dt; PAN.x += (out - PAN.x) * (1 - Math.exp(-dt / 110)); }
+    const settled = Math.abs(PAN.v) * deskCam().s < 0.01 && PAN.x >= lo - 0.5 / deskCam().s && PAN.x <= hi + 0.5 / deskCam().s;
+    if (settled) PAN.x = Math.min(hi, Math.max(lo, PAN.x));
+    return !settled;
+  };
+  panBegin(); panRun();
+}
+// back to the focus: slowly (eased), or at once in reduced motion and low-resource mode
+function panHome() {
+  if (PAN.drag || Math.abs(PAN.x) < 0.5 && Math.abs(PAN.show) < 0.5) return;
+  panStop();
+  if (view !== 'desk' || ANIM) { PAN.x = PAN.show = 0; return; }
+  if (still()) { PAN.x = 0; panBegin(); panShow(0); panEnd(); return; }
+  const x0 = PAN.show; let t = 0; PAN.x = x0;
+  PAN.anim = dt => { t = Math.min(1, t + dt / CAB_PAN.back); const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; PAN.x = x0 * (1 - e); return t < 1; };
+  panBegin(); panRun();
+}
+ROOT.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse' || !e.isPrimary || !panAble() || (ANIM && ANIM !== -1) || e.target.closest('#hCat')) return;
+  const was = !!PAN.anim; panStop(); if (was) PAN.x = PAN.show; // a touch catches a glide or a return where it is
+  PAN.drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, p0: PAN.x, on: false, lx: e.clientX, lt: e.timeStamp };
+  PAN.v = 0;
+});
+addEventListener('pointermove', e => {
+  const d = PAN.drag; if (!d || e.pointerId !== d.id) return;
+  const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+  if (!d.on) {
+    if (Math.abs(dy) > CAB_PAN.tap && Math.abs(dy) > Math.abs(dx)) { PAN.drag = null; return; }
+    if (Math.abs(dx) <= CAB_PAN.tap) return;
+    d.on = true; try { ROOT.setPointerCapture(d.id); } catch (err) { /* gone */ }
+    panBegin(); panHintHide();
+  }
+  const s = deskCam().s, dt = Math.max(1, e.timeStamp - d.lt), v = -(e.clientX - d.lx) / s / dt;
+  PAN.v = PAN.v * 0.6 + v * 0.4; d.lx = e.clientX; d.lt = e.timeStamp;
+  PAN.x = d.p0 - dx / s;
+  if (!PAN.raf) PAN.raf = requestAnimationFrame(() => { PAN.raf = 0; if (PAN.drag) panShow(PAN.x); });
+});
+for (const t of ['pointerup', 'pointercancel']) addEventListener(t, e => {
+  const d = PAN.drag; if (!d || e.pointerId !== d.id) return;
+  PAN.drag = null; if (!d.on) return;
+  if (e.timeStamp - d.lt > 80) PAN.v = 0; // held still before letting go: no glide
+  PAN.eat = true; setTimeout(() => { PAN.eat = false; }, 400);
+  cancelAnimationFrame(PAN.raf); PAN.raf = 0; panFling();
+});
+ROOT.addEventListener('click', e => { if (PAN.eat) { PAN.eat = false; e.stopPropagation(); e.preventDefault(); } }, true);
+// the hint, once on a touch screen that can pan (prefs: PREF_KEYS.cabPanHint)
+function panHint() {
+  if (!matchMedia('(pointer: coarse)').matches || readPref(LS, PREF_KEYS.cabPanHint) === '1' || !panAble()) return;
+  writePref(LS, PREF_KEYS.cabPanHint, '1');
+  const h = $('#kPanHint'); h.hidden = false; requestAnimationFrame(() => h.classList.add('on'));
+  setTimeout(panHintHide, 3600);
+}
+function panHintHide() { const h = $('#kPanHint'); h.classList.remove('on'); setTimeout(() => { h.hidden = true; }, 700); }
 
 // ---------- interaction ----------
 const tip = $('#kTip');
@@ -1374,7 +1474,8 @@ function hideTip() { tip.hidden = true; }
 // hit areas over the painted objects (art px: x, y, w, h)
 const HITS = { hGlass: [1797, 246, 3623, 1846, 'kab.glass'], hLamp: [1290, 1560, 480, 500, 'kab.lamp'], hClock: [4975, 2540, 700, 330, 'kab.clock'],
   hLap: [6300, 1910, 836, 1200, 'kab.tablet'], hBook: [2620, 2870, 1720, 520, 'kab.notebook'], hPhones: [140, 2680, 940, 420, 'kab.phones'],
-  hTea: [2120, 2730, 480, 420, 'kab.tea'], hCat: [4120, 1500, 520, 1100, 'kab.cat'] };
+  hTea: [2120, 2730, 480, 420, 'kab.tea'], hCat: [4120, 1500, 520, 1100, 'kab.cat'],
+  hStrip: [0, 0, 7136, 230, 'kab.strip'] }; // the ceiling strip: the band above the window
 function buildHits() {
   const layer = $('#kHits');
   for (const [id, [x, y, w, h, key]] of Object.entries(HITS)) {
@@ -1386,6 +1487,7 @@ function buildHits() {
   }
   $('#hGlass').addEventListener('click', () => go(view === 'desk' ? 'window' : 'desk'));
   $('#hLamp').addEventListener('click', () => setLamp($('#kRoot').classList.contains('lamp-off')));
+  $('#hStrip').addEventListener('click', () => setStrip(!$('#kRoot').classList.contains('strip-on')));
   petInit($('#hCat'));
   for (const id of ['hBook', 'hTea']) $('#' + id).addEventListener('click', e => showTip(e.currentTarget));
   $('#hClock').addEventListener('click', () => poPanel());
@@ -1489,6 +1591,7 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   layout();
   poDo(pomoAdvance); setInterval(() => { poDo(pomoAdvance); saverTick(); }, 1000);
   lapTick(); setInterval(() => { if (!document.hidden) lapTick(); }, 2000);
+  setTimeout(panHint, 1800);
   loopStart();
 });
 $('#kGo').addEventListener('click', () => go(view === 'desk' ? 'window' : 'desk'));

@@ -539,6 +539,8 @@ const I18N = {
     'kab.notebook': 'Defter · notlar (yakında)',
     'kab.phones': 'Kulaklık · ses paneli',
     'kab.lamp': 'Lamba · aç / kapat',
+    'kab.strip': 'Tavan ışığı · aç / kapat',
+    'kab.panHint': '← sürükle →',
     'kab.tea': 'Çay',
     'kab.cat': 'Van kedisi',
     'kab.poster.photoCap': 'Dünya doğuşu · Apollo 8 · 1968',

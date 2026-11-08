@@ -698,4 +698,41 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/uniform vec3 uSun, uCam, uAx;/.test(read('js/view3d.js')) && /uAx: new THREE\.Vector3\(1, 1, 1\)/.test(read('js/view3d.js')), 'triaxial globe in 3D');
 }
 
+// 21) Panning the room with a finger (desk view, a crop that hides part of the room): the rubber band never stretches
+// more than its reach and is the identity inside; the range spans the art; the sky canvas covers the screen at both
+// views and the whole glass at the desk scale (a panned glass is never without sky); touch and pen only, a drag on the
+// cat pets it, a tap stays a tap and the click after a drag is swallowed; the room moves on the move canvases; no glide
+// and no animated return in reduced motion or low-resource mode; back to the focus when idle, at a pomodoro's end and on
+// the way to the glass; the strip in the picture; the hint once, on touch screens
+{
+  const cab = read('js/cabin.js'), css = read('css/style.css'), page = read('kabin.html'), C = P.CAB_PAN;
+  for (const x of [-500, -60, -1, 0, 30, 100, 101, 200, 5000]) {
+    const y = P.cabRubber(x, 0, 100, 40);
+    if (x >= 0 && x <= 100) assert.strictEqual(y, x, 'rubber: inside unchanged');
+    else assert.ok(y > -40 && y < 140 && (x > 100 ? y > 100 : y < 0), 'rubber: past the edge, at most its reach');
+  }
+  let prev = -Infinity; for (let x = -300; x <= 400; x += 7) { const y = P.cabRubber(x, 0, 100, 40); assert.ok(y > prev); prev = y; }
+  const LY2 = JSON.parse(read('img/cabin/layout.json')), [W, H] = LY2.size, g = LY2.glass;
+  for (const [vw, vh] of [[375, 812], [414, 896], [390, 844], [1600, 900]]) {
+    const d = P.cabCrop(vw, vh, W, H), r = P.cabPanRange(d, vw, W);
+    assert.ok(Math.abs(d.x + r[0]) < 1e-9 && Math.abs(d.x + r[1] + vw / d.s - W) < 1e-6, 'pan range: the art\'s two edges');
+    const w = P.cabGlassCam(vw, vh, g, W, H), gc = [(g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2], scr = c => [(gc[0] - c.x) * c.s, (gc[1] - c.y) * c.s];
+    const pd = scr(d), pw = scr(w), bx = P.cabSkyBox(vw, vh, pd, pw, (g.x1 - g.x0) * d.s, (g.y1 - g.y0) * d.s);
+    // the box moves with the glass: at a camera whose glass centre is at q, it spans [q − g, q − g + size]
+    const covers = (q, x0, x1, y0, y1) => q[0] - bx.g[0] <= x0 + 1e-6 && q[0] - bx.g[0] + bx.w >= x1 - 1e-6 && q[1] - bx.g[1] <= y0 + 1e-6 && q[1] - bx.g[1] + bx.h >= y1 - 1e-6;
+    assert.ok(covers(pd, 0, vw, 0, vh) && covers(pw, 0, vw, 0, vh), `sky box ${vw}×${vh}: the screen at desk and window`);
+    for (const px of [r[0], 0, r[1]]) { const q = [pd[0] - px * d.s, pd[1]]; assert.ok(covers(q, q[0] - (g.x1 - g.x0) * d.s / 2, q[0] + (g.x1 - g.x0) * d.s / 2, q[1] - (g.y1 - g.y0) * d.s / 2, q[1] + (g.y1 - g.y0) * d.s / 2), `sky box ${vw}×${vh}: the whole glass when panned`); }
+  }
+  assert.ok(C.idle >= 8000 && C.idle <= 10000 && C.rubber > 0 && C.tap >= 6, 'pan: idle 8–10 s, a stretch, a tap threshold');
+  assert.ok(/if \(e\.pointerType === 'mouse' \|\| !e\.isPrimary \|\| !panAble\(\)[^\n]*e\.target\.closest\('#hCat'\)\) return;/.test(cab), 'pan: touch and pen only, not from the cat');
+  assert.ok(/if \(Math\.abs\(dx\) <= CAB_PAN\.tap\) return;/.test(cab) && /ROOT\.addEventListener\('click', e => \{ if \(PAN\.eat\)/.test(cab), 'pan: a tap stays a tap, the click after a drag is swallowed');
+  assert.ok(/function panBegin\(\) \{ hideTip\(\); if \(!MV\.on\) mvBegin\(\);/.test(cab) && /function panShow\(x\) \{[^}]*if \(MV\.on\) drawMove\(CAM\);/.test(cab) && /tierSwapNow\(\); sizeLife\(\); lifeNow\(\); mvEnd\(\); FV\.cam = null; fvKick\(\);\n  clearTimeout\(PAN\.timer\)/.test(cab), 'pan: on the move canvases, the DOM stage back at rest');
+  assert.ok(/if \(still\(\)\) \{ PAN\.x = Math\.min\(hi, Math\.max\(lo, PAN\.x\)\); panShow\(PAN\.x\); panEnd\(\); return; \}/.test(cab) && /if \(still\(\)\) \{ PAN\.x = 0; panBegin\(\); panShow\(0\); panEnd\(\); return; \}/.test(cab), 'pan: no glide, no animated return in reduced motion and low mode');
+  assert.ok(/PAN\.timer = setTimeout\(\(\) => \{ if \(!PAN\.drag\) panHome\(\); \}, CAB_PAN\.idle\)/.test(cab) && /function poEnded\(e\) \{\n  panHome\(\);/.test(cab) && /panStop\(\); PAN\.x = 0; \/\/ a panned room goes back/.test(cab), 'pan: back to the focus when idle, at a pomodoro\'s end, via the glass');
+  assert.ok(/hStrip: \[0, 0, 7136, 230, 'kab\.strip'\]/.test(cab) && /\$\('#hStrip'\)\.addEventListener\('click', \(\) => setStrip\(/.test(cab) && has('kab.strip') && /\$\('#hLamp'\)\.addEventListener\('click'/.test(cab), 'lamp and ceiling strip clickable in the picture');
+  assert.ok(/id="kStripBtn"/.test(page) && /id="kLamp"/.test(page), 'the bar keeps its lamp and strip buttons');
+  assert.ok(/readPref\(LS, PREF_KEYS\.cabPanHint\) === '1'/.test(cab) && /writePref\(LS, PREF_KEYS\.cabPanHint, '1'\)/.test(cab) && /matchMedia\('\(pointer: coarse\)'\)/.test(cab) && has('kab.panHint') && /id="kPanHint"/.test(page), 'pan hint: once, on touch screens');
+  assert.ok(/\.k-root\{touch-action:pan-y pinch-zoom\}/.test(css), 'the browser keeps vertical gestures and pinch');
+}
+
 console.log('OK — all UI tests passed');

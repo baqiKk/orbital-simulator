@@ -1,7 +1,7 @@
 // Persisted UI preferences: view mode and window layout.
 // DOM-free: the storage object is passed in (localStorage, sessionStorage, a stub or null), so Node tests can run it.
 // Every storage access is wrapped: private windows, blocked site data and quota errors must never break the page.
-const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabStrip: 'orbsim.cab.strip', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify', cabSaver: 'orbsim.cab.saver.v1' };
+const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabStrip: 'orbsim.cab.strip', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify', cabSaver: 'orbsim.cab.saver.v1', cabPanHint: 'orbsim.cab.panHint' };
 const VIEW_MODES = ['low', 'normal', '3d'];
 // placement order: overview's default spot sits under Results, so it comes after it
 const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'gloss', 'model', 'credits'];
@@ -209,6 +209,27 @@ function parseCabSaver(raw) {
   let o = null; try { o = JSON.parse(raw); } catch (e) { /* default */ }
   return { auto: o && CAB_SAVER_AUTO.includes(o.auto) ? o.auto : 0 };
 }
+// Panning the room with a finger at the desk view: rubber (screen px) the most the room stretches past its edge, tap
+// (px) the move that turns a touch into a drag, tau (ms) the fling's decay, idle (ms) untouched before the view goes
+// back to its focus, back (ms) that move's length
+const CAB_PAN = { rubber: 56, tap: 8, tau: 325, idle: 9000, back: 900 };
+// the offsets (art px, from the desk crop's x) the room can be panned to: its left edge to its right edge on screen
+function cabPanRange(crop, vw, W) { return [-crop.x, W - vw / crop.s - crop.x]; }
+// x past [lo, hi] shown stretched: never more than r beyond the edge, as a rubber band; inside, as it is
+function cabRubber(x, lo, hi, r) {
+  if (x > hi) return hi + r * (1 - 1 / (1 + (x - hi) / r));
+  if (x < lo) return lo - r * (1 - 1 / (1 + (lo - x) / r));
+  return x;
+}
+// The sky canvas's box (CSS px, screen at the desk view; it then moves with the glass): it covers the screen at the
+// desk and the window view (and every camera between) and the whole glass at the desk scale, so a panned room never
+// shows the glass's edge without sky. pd, pw: the glass's centre on screen at the two views; gw, gh: the glass's size
+// at the desk scale. g: the glass's centre inside the box.
+function cabSkyBox(vw, vh, pd, pw, gw, gh, pad = 40) {
+  const L = Math.ceil(Math.max(pd[0], pw[0], gw / 2)) + pad, R = Math.ceil(Math.max(vw - pd[0], vw - pw[0], gw / 2)) + pad;
+  const T = Math.ceil(Math.max(pd[1], pw[1], gh / 2)) + pad, B = Math.ceil(Math.max(vh - pd[1], vh - pw[1], gh / 2)) + pad;
+  return { l: pd[0] - L, t: pd[1] - T, w: L + R, h: T + B, g: [L, T] };
+}
 // The simulator's state left for the way back from the cabin (sessionStorage, read once): null unless it is a fresh
 // (12 h), well-formed snapshot. scene: the opening scene's view when it was on ('' otherwise).
 const SNAP_MAX_MS = 12 * 3600 * 1000;
@@ -219,4 +240,4 @@ function parseSimSnap(raw, now) {
   return o;
 }
 
-if (typeof module !== 'undefined') module.exports = { SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_TAIL_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_TAIL_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
