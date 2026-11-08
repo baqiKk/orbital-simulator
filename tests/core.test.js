@@ -1006,6 +1006,24 @@ const sEM = realSys(['earth', 'mars', 'sun']);
     const w = VS.vistaAt(id, ms0 + 5100, view);
     assert.ok(Math.acos(Math.min(1, dot(v.cam.f, w.cam.f))) < 0.2 * D2R, id + ': the camera moves slowly');
   }
+  // Earthrise: 1968-12-24 16:40 UTC, 110 km up; the Earth's centre from under the horizon, rising at ≈ 3°/min
+  const er = VS.VISTAS.earthrise, L = VS.vistaClock('earthrise', ms0, view).L;
+  // the Earth's centre above the lunar horizon (deg) at ten steps through the loop
+  const T0 = Date.UTC(1968, 11, 24, 16, 40), rise = [];
+  for (let k = 0; k <= 10; k++) {
+    // the loop's clock: a wall time whose tau is k/10 of L
+    const c0 = VS.vistaClock('earthrise', ms0, view), ms = ms0 - c0.tau * 1000 + k / 10 * L * 1000 * 0.999;
+    const v = VS.vistaAt('earthrise', ms, view), M = at(v, 'moon').p, E = at(v, 'earth').p, up = nrm(sub(v.y, M));
+    const R = BODIES.moon.radius * 1e3, dip = Math.acos(R / Math.hypot(...sub(v.y, M)));
+    rise.push(Math.asin(dot(nrm(sub(E, v.y)), up)) / D2R + dip / D2R);
+    if (k === 0) assert.ok(Math.abs(v.T - (require('../js/core.js').utcToDays(T0) * 86400)) < 1, 'Earthrise: at Apollo 8\'s moment');
+  }
+  assert.ok(rise[0] < -1 && rise[0] > -2, `Earthrise: the Earth starts just under the horizon (${rise[0].toFixed(2)}°)`);
+  for (let k = 1; k < rise.length; k++) assert.ok(rise[k] > rise[k - 1], 'Earthrise: the Earth keeps rising');
+  const rate = (rise[10] - rise[0]) / (0.999 * L / 60);
+  assert.ok(Math.abs(rate - 360 / (2 * Math.PI / er.om()) * 60) < 0.05 && rate > 2.9 && rate < 3.1, `Earthrise: ${rate.toFixed(2)}°/min, the orbit's rate`);
+  const ve = VS.vistaAt('earthrise', ms0, view), de = Math.hypot(...sub(at(ve, 'earth').p, ve.y)), wE = 2 * Math.asin(BODIES.earth.radius * 1e3 / de) / D2R;
+  assert.ok(wE / VS.vistaLens('earthrise') >= 0.08, `Earthrise: the Earth ${(100 * wE / 18).toFixed(1)} % of the glass's width`);
   // Saturn: the eye on the side of the ring plane the Sun lights
   const vs = VS.vistaAt('saturn', ms0, view), S = at(vs, 'saturn').p, F = C.bodyFrame(BODIES.saturn.pole, vs.T), z = [F[2], F[5], F[8]];
   assert.ok(dot(sub(vs.y, S), z) * dot(sub(vs.sunP, S), z) > 0, 'Saturn: seen from the rings\' sunlit face');

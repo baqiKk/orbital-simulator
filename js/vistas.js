@@ -85,6 +85,23 @@ const VISTAS = {
       const w = c.tau / 2400 * 2 * Math.PI;
       return vsAbout(B, c.T, 'jupiter', 1.0e9, (4 + 1.5 * Math.sin(w)) * VS_D2R, (15 + 4 * Math.sin(w * 0.6)) * VS_D2R, -8 * VS_D2R);
     } },
+  // Earthrise from lunar orbit at Apollo 8's moment (1968-12-24 16:40 UTC, the photo AS08-14-2383 on the poster): a
+  // circular orbit 110 km up whose plane holds the Earth's direction (near the lunar equator, as Apollo 8's was), the
+  // camera level along the ground towards the Earth, the horizon low in the glass; the Earth rises at the orbit's true
+  // rate (360° in 1.98 h, 3°/min), from just under the horizon to the glass's upper part, the camera tilting up a little.
+  // Telephoto: 18° across the glass (the Earth 1.9°, a tenth of its width). L follows: the rise across the glass.
+  earthrise: { keys: ['sun', 'earth', 'moon'], epoch: Date.UTC(1968, 11, 24, 16, 40), fovW: 18, look: 'earth', alt: 1.1e5,
+    loop(view) { const om = this.om(); return (1.35 * view.vf + 1.5 * VS_D2R) / om; },
+    om() { const r = (VSX.BODIES.moon.radius * 1e3 + this.alt); return Math.sqrt(VSX.BODIES.moon.gm * 1e9 / (r * r * r)); },
+    at(B, c, view) {
+      const M = B.at('moon'), E = B.at('earth'), e = vsN(vsSub(E.p, M.p)), F = VSX.equatorFrame(VSX.BODIES.moon.axis, c.T, 4), zm = [F[2], F[5], F[8]];
+      const n = vsN(vsSub(zm, e.map(v => v * vsDot(zm, e)))), w = vsX(n, e), R = VSX.BODIES.moon.radius * 1e3, rc = R + this.alt, dip = Math.acos(R / rc);
+      const ph = Math.acos(Math.sin(-dip - 1.5 * VS_D2R)) - this.om() * c.tau, rh = vsAdd(e.map(v => v * Math.cos(ph)), w, Math.sin(ph)), eye = vsAdd(M.p, rh, rc);
+      const ec = vsN(vsSub(E.p, eye)), h = vsN(vsSub(ec, rh.map(v => v * vsDot(ec, rh)))), right = vsX(h, rh);
+      // the horizon from half the glass's half-height under the middle to 0.85 of it: the camera tips up with the time
+      const below = view.vf * (0.5 + 0.35 * c.tau / c.L), pitch = below - dip;
+      return { y: eye, cam: vsCam(vsRot(h, right, pitch), rh) };
+    } },
   // Earth and Moon (the simulator's landing view): the Moon near and the Earth behind it, true sizes. Candidate
   // framings (a, b, c) until one is picked:
   //   a: 20 000 km behind the Moon, a little aside, the glass between the two;
@@ -102,7 +119,7 @@ const VISTAS = {
       return { y: eye, cam: vsCam(vsSlerp(dm, de, k), [0, 0, 1]) };
     } },
 };
-const VISTA_IDS = ['saturn', 'jupiter', 'earth'];
+const VISTA_IDS = ['saturn', 'jupiter', 'earthrise', 'earth'];
 const vistaLens = id => (VISTAS[id] && VISTAS[id].fovW) || 0;
 // the view's clock at wall time ms: T, tau, cycle, loop length L (view: for a loop that depends on the glass)
 function vistaClock(id, ms, view) {
