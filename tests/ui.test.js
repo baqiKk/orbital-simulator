@@ -676,7 +676,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 {
   const V = require('../js/vistas.js'), cab = read('js/cabin.js'), page = read('kabin.html'), css = read('css/style.css');
   for (const id of V.VISTA_IDS) for (const k of ['kab.vista.' + id, 'kab.vista.' + id + '.d']) assert.ok(has(k), 'view text: ' + k);
-  for (const k of ['kab.vista.label', 'kab.vista.title', 'kab.vista.flight', 'kab.saver.start', 'kab.saver.auto', 'kab.saver.off', 'kab.saver.after', 'kab.saver.note']) assert.ok(has(k), k);
+  for (const k of ['kab.vista.label', 'kab.vista.title', 'kab.vista.flight', 'kab.saver.start', 'kab.saver.auto', 'kab.saver.off', 'kab.saver.after', 'kab.saver.note', 'ui.model10']) assert.ok(has(k), k);
   assert.ok(/\{m\}/.test(DICT['kab.saver.after']), 'idle minutes in the text');
   assert.ok(/for \(const id of VISTA_IDS\) \{/.test(cab) && !/data-v="/.test(page) && /id="kVistaList"/.test(page), 'picker built from VISTA_IDS');
   assert.ok(['earth', 'saturn'].every(k => V.VISTAS[k]) && /if \(VISTAS\[from\]\) writePref\(LS, PREF_KEYS\.cabScene, from\);/.test(cab), 'the simulator\'s ?manzara= still lands');

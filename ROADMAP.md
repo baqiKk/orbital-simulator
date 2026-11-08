@@ -225,9 +225,19 @@ Genel ilkeler:
 - Defterde takımyıldız sayfaları: adı, en parlak yıldızları, gökyüzünde nasıl bulunur, kökeni ve hikâyesi. Yunan mitolojisinin yanında Türk gök kültürü (ör. Demirkazık, Ülker, Yedigen) de anlatılsın. Hikâye metinleri özgün yazılsın, kaynaklar belirtilsin.
 - "Kâşif" modu: camdan ya da gökyüzünden bir takımyıldıza tıklayınca defterdeki sayfası açılsın.
 
-## Faz 14 — Manzara presetleri
+## Faz 14 — Manzara presetleri ✅ tamamlandı (2026-11-08)
 - Hazır manzaralar: Satürn ve halkaları, Jüpiter ve Galile uyduları, Ay yörüngesinden Dünya doğuşu, Mars yakın plan, Samanyolu bakışı vb.
 - Ekran koruyucu modu: manzaralar arasında yavaş geçiş, arayüz gizli.
+- Yapılanlar: `js/vistas.js` (DOM'suz). Cam her zaman uçuş planlarının 3B yolundan çizilir; plan yokken seçili manzara. Odaya düşen ışık ve dışarıdan gelen ışık (leke, huzme, çerçeve, kedinin kenarı) manzaralarda da geometriden çalışır, sahnelenmiş açıyla. Eski elle yerleştirilmiş Dünya–Ay / Satürn çizimi kalktı. Three.js artık cam bir manzara gösterirken de iner (oda yüklendikten sonra); düşük kaynakta, azaltılmış harekette ve WebGL 2 yokken inmez (kullanıcı onayı).
+  - Satürn: 750 000 km, halkaların aydınlık yüzünden 22° (Güneş Kasım 2026'da halkalara ≈ 8° güneyden), canlı tarih, ×60.
+  - Jüpiter: 1 milyon km, ekvatorun 4° üstü, canlı, ×120 (Io 21 dakikada bir tur). Uzak uydular gerçek boyutta 1 pikselin altında kaldığından en az 1,6 piksel yarıçapla çizilir (simülatörün 3B görünümündeki gibi).
+  - Dünya doğuşu: Apollo 8 anı (1968-12-24 16:40 UTC, afişle aynı geometri). Ay'ın 110 km üstünde, düzlemi Dünya yönünü içeren dairesel yörünge, batıya giden; gerçek hız (≈ 3°/dk). Telefoto: camın genişliği 18°, Dünya camın %10,7'si. Döngü süresi camın yüksekliğinden hesaplanır (≈ 2,6 dk), çapraz geçişle başa döner. O anda Güneş araçtan bakınca neredeyse tepededir, Ay yüzeyi düz ışıklı görünür; Dünya ≈ %69 aydınlık.
+  - Mars ve Phobos: kamera Phobos'la birlikte 200 km uzakta, yörünge düzlemine dik salınır. Phobos diskin önünden geçip kenarı aşar. Mars yüzeyi Phobos'un açısal hızı eksi Mars'ın dönüşüyle kayar: ortalama 0,54°/dk, dış merkezlilikle ±%3 (bu anda 0,56°/dk; testte). Mars öğleden sonrası, gerçek hız, 8 dakikalık döngü. Phobos: USGS Mars Express SRC küresel mozaiği (kamu malı; 1024 ve 2048 kademe, ≈ 0,3 MB) ve NAIF PCK üç eksenli elipsoid (13,0 × 11,4 × 9,1 km).
+  - Samanyolu: cisim yok, Güneş arkada; bakış galaktik ekvator boyunca 0,04°/s, masaüstünde 4k gökyüzü.
+  - Dünya–Ay: üç aday kadraj (a: Ay'ın 20 000 km arkası; b: L2 yakını, 61 000 km, telefoto 20°; c: Ay'dan 8 000 km). Seçim kullanıcıda, şimdilik b. Canlı tarih: Dünya'nın ve Ay'ın evresi gerçek, dolunay haftasında ikisi de karanlık yüzünü gösterir.
+- Seçici alt çubukta ("Manzara: …" paneli; telefonda camda ⋯ içinde), seçim kaydedilir. Ekran koruyucu panelden (tam ekran isteğiyle) ya da isteğe bağlı 5/10/20 dakika boşta kalınca (varsayılan kapalı): cama geçer, arayüz ve imleç gizli, 3 dakikada bir karışık sırayla 4 saniyelik çapraz geçiş; ilk fare hareketi, dokunma ya da tuş yalnızca çıkarır. Pomodoro köşede küçük ve soluk görünür, zil çalar; uçuş planı çalışırken cam uçuşu gösterir.
+- Yük: düşük kaynakta manzara sabit kare (dakikada bir), geçişler kesme; telefonda en çok 30 kare/s (uçuş camında da). Dikey ekranda görüş merkezi camın görünen kısmının ortasına alındı (önceden ekran dışındaydı; uçuşlarda da).
+- `?debug=1`: etkin manzara, manzara saati, döngü, lens ve kare süreleri; `t=<s>` saati kaydırır, `em=a|b|c` Dünya–Ay adayı.
 
 ## Faz 15 — Benimle çalış
 - Benimle çalış (work with me) sekmesi: kameranın geri çekilip masada ders çalışan özgün bir karakterin görüldüğü, lo-fi çalışma videolarına benzer bir görünüme geçiş. Karakter özgün olacak, mevcut bir eser ya da markaya benzemeyecek; büyük ihtimalle illüstratör çizimi gerekecek.
