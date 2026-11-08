@@ -819,7 +819,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.strictEqual(DICT['fr.inertial'], 'Yıldızlara göre sabit', 'plain frame names');
   assert.ok(app.includes("function vwPut(el, slot) { vwHome(el); slot.appendChild(el); }") && app.includes("if (VW.expert) { for (const el of [$('#frameSeg'), ...cam, $('#followSeg'), $('.toggles')]) vwBack(el); }"), 'controls moved into the menu, back in the expert layout');
   assert.ok(app.includes("writePref(LS, PREF_KEYS.uiExpert, VW.expert ? '1' : '0')") && P.PREF_KEYS.uiExpert, 'the expert layout is saved');
-  assert.ok(app.includes("if (VW.phone.matches && !VW.expert) { vwPut($('#dimSeg'), slot('bar')); vwPut($('#vwFollow'), slot('bar')); }"), 'phones: one button, everything in the sheet');
+  assert.ok(app.includes("if (VW.phone.matches && !VW.expert) vwPut($('#dimSeg'), slot('bar')); else vwBack($('#dimSeg'));"), 'phones: the view button and the follow control, the rest in the sheet');
 }
 
 // 26) The mode title at the top middle: the scene (and its way back once moved), a mission, one's own design, the map
@@ -864,6 +864,17 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(P.PREF_KEYS.evStop && app.includes("stop: readPref(LS, PREF_KEYS.evStop) === '1'") && app.includes("writePref(LS, PREF_KEYS.evStop, GUIDE.stop ? '1' : '0')"), 'off by default, saved');
   assert.ok(app.includes("const guideOn = () => APP.mode === 'mission' && !!S.scenario && S.kind !== 'man'"), 'only in a guided mission');
   assert.ok(app.includes('if (e.t > 0 && e.t > GUIDE.last && e.t > t0 && e.t <= t1)') && app.includes('GUIDE.held = e; setPlayIcon();'), 'stops at events after the departure, holds for Devam');
-  assert.ok(app.includes("$('#guide')]") , 'the caption is an obstacle for fitting');
+  assert.ok(!app.includes("$('#modeChip'), $('#guide')]") && app.includes('function guidePlace()'), 'the caption at the top under the mode title, not an obstacle: the view does not move for it');
+}
+// 30) One follow control ("Takip: Satürn ▾", the choices in its menu, × lets go; the expert layout keeps the old row and
+// tag); Turkish capitals keep their dots (no line box of 1 with overflow hidden on an uppercase label); in the scene the
+// overview starts closed
+{
+  const app = read('js/app.js'), page = read('index.html'), css = read('css/style.css');
+  assert.ok(page.includes('<html lang="tr">') && page.includes('id="followBtn"') && page.includes('id="followMenu"') && page.includes('id="followX"') && has('vw.followOn'), 'follow control');
+  assert.ok(app.includes("vwPut($('#followSeg'), $('#followMenu'))") && app.includes("$('#followTxt').textContent = _('vw.followOn', { name: n || _('fo.free') })") && css.includes('html:not(.ui-expert) #focusTag,html:not(.ui-expert) .vw-follow>.lbl,html.ui-expert #followCtl{display:none}'), 'one control, the old ones in the expert layout');
+  for (const rule of css.split('}')) if (/text-transform:uppercase/.test(rule) && /overflow:hidden/.test(rule) && /\/1[ ;]/.test(rule)) assert.ok(/padding:3px 0/.test(rule) || /padding:\s*3px/.test(rule), 'dots cut: ' + rule.trim().slice(0, 50));
+  assert.ok(app.includes("for (const id of ['mission', 'results', 'overview']) if (WINS[id].open) { SCENE.hide.add(id);"), 'scene: the overview aside');
+  assert.ok(css.includes('.vw-btn{display:inline-flex;align-items:center;gap:7px}'), 'view button: icon and text apart');
 }
 console.log('OK — all UI tests passed');

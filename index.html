@@ -44,11 +44,12 @@
     <canvas id="cv" data-i18n-aria-label="ui.canvas"></canvas>
     <div class="msg" id="msg" hidden></div>
     <div class="mode-chip glass" id="modeChip" role="status"><span id="modeText"></span><div class="seg chip-scene" id="wcScene" role="group" data-i18n-aria-label="wc.sceneAria" hidden><button type="button" data-v="saturn" data-i18n="wc.saturn"></button><button type="button" data-v="earth" data-i18n="wc.earth"></button></div><button type="button" class="link" id="modeBack" hidden></button></div>
+    <div class="glass guide" id="guide" role="status" aria-live="polite" hidden><span id="guideText"></span><button class="btn sm primary" type="button" id="guideGo" data-i18n="guide.go" hidden></button></div>
     <div class="hud-top">
       <div class="ctrls" id="ctrls">
         <div class="ctrl-bar" id="ctrlBar">
           <div class="seg" id="dimSeg" role="group" data-i18n-aria-label="vw.dimAria"><button type="button" data-v="2d" data-i18n="vw.2d"></button><button type="button" data-v="3d" data-i18n="vw.3d"></button></div>
-          <div class="vw-follow" id="vwFollow"><span class="lbl" data-i18n="vw.follow"></span></div>
+          <div class="vw-follow" id="vwFollow"><span class="lbl" data-i18n="vw.follow"></span><div class="follow-ctl" id="followCtl"><button class="ghost follow-btn" id="followBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="followMenu"><span id="followTxt"></span><span class="vw-caret" aria-hidden="true">▾</span></button><button class="ghost follow-x" id="followX" type="button" data-i18n-aria-label="focus.release" data-i18n-title="focus.release" hidden><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button><div class="glass follow-menu" id="followMenu" hidden><div class="follow-map" id="followMap" hidden></div></div></div></div>
           <button class="ghost vw-btn" id="viewBtn" type="button" aria-expanded="false" aria-controls="viewMenu" data-i18n-title="vw.menu"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14"/><circle cx="7" cy="6" r="1.6"/><circle cx="13" cy="10" r="1.6"/><circle cx="8" cy="14" r="1.6"/></svg><span data-i18n="vw.menu"></span><span class="vw-caret" aria-hidden="true">▾</span></button>
         </div>
         <div class="seg vmode" id="viewMode" role="group" data-i18n-aria-label="mode.aria">
@@ -91,7 +92,6 @@
       </div>
     </div>
     <div class="hud-bot" id="hudBot">
-      <div class="glass guide" id="guide" role="status" aria-live="polite" hidden><span id="guideText"></span><button class="btn sm primary" type="button" id="guideGo" data-i18n="guide.go" hidden></button></div>
       <div class="hud-row">
       <div class="caption" id="caption" hidden></div>
       <div class="glass readout" id="readout">

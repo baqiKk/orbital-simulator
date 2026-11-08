@@ -1169,7 +1169,7 @@ function measureFree() {
   const sr = stage.getBoundingClientRect(), gap = 12;
   const rel = el => { const r = el.getBoundingClientRect(); return { x0: r.left - sr.left, x1: r.right - sr.left, y0: r.top - sr.top, y1: r.bottom - sr.top }; };
   const shown = el => !el.hidden && el.getClientRects().length > 0;
-  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline'), $('#caption'), $('#modeChip'), $('#guide')].filter(shown).map(rel);
+  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline'), $('#caption'), $('#modeChip')].filter(shown).map(rel);
   const wins = floating() ? [...document.querySelectorAll('.win:not([hidden])')].filter(shown).map(rel) : [];
   const rects = freeRects(W, H, [...hud, ...wins], gap);
   // too little room left between the windows: let them overlap the plot instead (HUD still counts)
@@ -1360,6 +1360,31 @@ function unfollow() {
   else if (S.follow !== 'free') { S.follow = 'free'; renderFrameSeg(); }
 }
 $('#focusOff').addEventListener('click', unfollow);
+// The one follow control of the simple layout: "Takip: <name> ▾" (or "Serbest"); the menu holds the mission's choices
+// (#followSeg, moved in) or on the map the followed system's bodies and the planets; × lets go.
+function followMapList() {
+  const f = MAP.follow, top = f == null ? -1 : isMoon(f) ? MPAR[f] : f, ids = [];
+  if (top >= 0 && MKIDS[top].length) ids.push(top, ...MKIDS[top]);
+  for (const p of MKIDS[MSUN]) if (!ids.includes(p)) ids.push(p);
+  const sep = top >= 0 && MKIDS[top].length ? MKIDS[top].length + 1 : -1; // the first planet after the followed system
+  return [['free', _('fo.free')], ...ids.map((i, j) => [i, _('body.' + MAPK[i]), j === sep])];
+}
+function followMenu(open) {
+  const m = $('#followMenu'), b = $('#followBtn'); open = open ?? m.hidden; m.hidden = !open; b.setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  const fm = $('#followMap'); fm.hidden = !MAP.on;
+  if (MAP.on) fm.innerHTML = followMapList().map(([v, l, sep]) => `<button type="button"${sep ? ' class="sep"' : ''} data-v="${v}" aria-pressed="${v === 'free' ? MAP.follow == null : MAP.follow === v}">${esc(l)}</button>`).join('');
+}
+$('#followBtn').addEventListener('click', e => { e.stopPropagation(); followMenu(); });
+$('#followMap').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  sceneTouch();
+  if (b.dataset.v === 'free') unfollow(); else focusHit({ kind: 'm', id: +b.dataset.v }, true);
+});
+$('#followMenu').addEventListener('click', e => { if (e.target.closest('button')) followMenu(false); });
+$('#followX').addEventListener('click', () => { sceneTouch(); unfollow(); });
+document.addEventListener('pointerdown', e => { if (!$('#followMenu').hidden && !e.target.closest('#followCtl')) followMenu(false); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#followMenu').hidden) { followMenu(false); $('#followBtn').focus(); } });
 function focusName() {
   if (MAP.on) return MAP.follow == null ? '' : _('body.' + MAPK[MAP.follow]);
   if (S.follow === 'free') return '';
@@ -1371,7 +1396,7 @@ function focusName() {
 function frameEnd() {
   setCaption();
   const n = focusName();
-  if (n !== focusTxt) { focusTxt = n; $('#focusName').textContent = n; $('#focusTag').hidden = !n; }
+  if (n !== focusTxt) { focusTxt = n; $('#focusName').textContent = n; $('#focusTag').hidden = !n; $('#followTxt').textContent = _('vw.followOn', { name: n || _('fo.free') }); $('#followX').hidden = !n; INS = null; }
   const h = hoverPt && !ptrs.size ? hitAt(hoverPt.x, hoverPt.y, HIT_PX.mouse) : null;
   if (!!h !== !!hoverHit) cv.classList.toggle('hot', !!h);
   hoverHit = h;
@@ -1477,8 +1502,16 @@ function guideShow(t, now) {
   const show = i >= 0 && (!!GUIDE.held || now - GUIDE.at < GUIDE_S * 1e3);
   const txt = show ? GUIDE.ev[i].text : '', key = txt + (GUIDE.held ? '|h' : '');
   if (key === guideShow.k) return; guideShow.k = key;
-  $('#guide').hidden = !show; $('#guideText').textContent = txt; $('#guideGo').hidden = !GUIDE.held; INS = null;
+  const g = $('#guide'); g.hidden = !show; $('#guideText').textContent = txt; $('#guideGo').hidden = !GUIDE.held;
+  if (show) guidePlace();
 }
+// at the top, under the mode title (on phones under the controls too); not an obstacle: the view does not move for it
+function guidePlace() {
+  const g = $('#guide'); if (g.hidden) return;
+  const st = $('#stage').getBoundingClientRect(), b = el => el && el.getClientRects().length ? el.getBoundingClientRect().bottom - st.top : 0;
+  g.style.top = Math.round(Math.max(b($('#modeChip')), VW.phone.matches ? b($('#ctrls')) : 0) + 6) + 'px';
+}
+addEventListener('resize', guidePlace);
 const OSC_PTS = new Float64Array(3 * 200), OSC_R = [0, 0, 0], OSC_V = [0, 0, 0];
 let OSCF = null; // this frame's: { b, c (conicPoints result), pts } or null
 const ease3 = x => x * x * (3 - 2 * x);
@@ -2316,7 +2349,7 @@ function sceneSet(kind) {
 // the mission's readout, timeline and windows step aside (from the first-run question on)
 function sceneAside() {
   document.documentElement.dataset.scene = '';
-  for (const id of ['mission', 'results']) if (WINS[id].open) { SCENE.hide.add(id); winEl(id).classList.add('scene-hide'); }
+  for (const id of ['mission', 'results', 'overview']) if (WINS[id].open) { SCENE.hide.add(id); winEl(id).classList.add('scene-hide'); }
   INS = null;
 }
 function sceneStart() {
@@ -3429,10 +3462,10 @@ function vwLayout() {
   if (VW.expert) { for (const el of [$('#frameSeg'), ...cam, $('#followSeg'), $('.toggles')]) vwBack(el); }
   else {
     vwPut($('#frameSeg'), slot('frame')); for (const el of cam) vwPut(el, slot('cam'));
-    vwPut($('.toggles'), slot('toggles')); vwPut($('#followSeg'), $('#vwFollow'));
+    vwPut($('.toggles'), slot('toggles')); vwPut($('#followSeg'), $('#followMenu'));
   }
   // phones: the bar's own controls in the sheet too, the bar only the button
-  if (VW.phone.matches && !VW.expert) { vwPut($('#dimSeg'), slot('bar')); vwPut($('#vwFollow'), slot('bar')); } else { vwBack($('#dimSeg')); vwBack($('#vwFollow')); }
+  if (VW.phone.matches && !VW.expert) vwPut($('#dimSeg'), slot('bar')); else vwBack($('#dimSeg'));
   $('#expertUi').checked = VW.expert; vwSync(); INS = null;
 }
 function vwSync() {

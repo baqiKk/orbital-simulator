@@ -105,6 +105,7 @@ const I18N = {
     'vw.2d': '2B',
     'vw.3d': '3B',
     'vw.follow': 'Takip et',
+    'vw.followOn': 'Takip: {name}',
     'vw.menu': 'Görünüm',
     'vw.frame': 'Referans çerçevesi',
     'vw.frameGloss': 'Sözlükte: referans çerçevesi',
