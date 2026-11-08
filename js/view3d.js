@@ -20,6 +20,9 @@ const CHUNK_REL = 1e5;     // a chunk ends when a point is this many local steps
 // Everything else — textures and their tiers, relief, Earth's layers, rings, haze — is the shared GLSL of js/globe.js
 // (GLOBE_GLSL, a classic script loaded before this module), so 2D and 3D look the same. uEmit 1 = self-lit (the Sun).
 // Colours are linear with a sunlit white = 1; the renderer's tone mapping (TONEMAP_GLSL) compresses what is brighter.
+// uAx: a triaxial body's semi-axes over its radius (Phobos; else 1, 1, 1): the mesh is scaled by them, the texture is
+// looked up along the planetocentric direction of the surface point and lit on the ellipsoid's normal (the Sun and the
+// viewer turned by the rotation taking that normal onto the lookup direction, so the photometry sees the true angles).
 export const BODY_VS = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_vertex>
@@ -32,13 +35,16 @@ void main() {
 export const BODY_FS = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_fragment>
-uniform vec3 uSun, uCam;
+uniform vec3 uSun, uCam, uAx;
 varying vec3 vO;
 ${GLOBE_GLSL}
+// the rotation taking unit a onto unit b, applied to x
+vec3 rotTo(vec3 a, vec3 b, vec3 x) { vec3 c = cross(a, b); float d = dot(a, b); return x * d + cross(c, x) + c * dot(c, x) / max(1.0 + d, 1e-6); }
 void main() {
   #include <logdepthbuf_fragment>
-  vec3 n = normalize(vO);
-  gl_FragColor = vec4(globeColor(n, uSun, normalize(uCam - n), uRing > 0.5 ? ringShadow(uRingR, n, uSun) : 1.0), 1.0);
+  vec3 o = normalize(vO), p = o * uAx, n = normalize(p), nl = normalize(o / uAx);
+  vec3 s = rotTo(nl, n, uSun), v = rotTo(nl, n, normalize(uCam - p));
+  gl_FragColor = vec4(globeColor(n, s, v, uRing > 0.5 ? ringShadow(uRingR, n, uSun) : 1.0), 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
@@ -225,7 +231,7 @@ function globeUniforms(white) {
     uTex: 0, uMix: 0, uMix2: 0, uSat: 1, uLimb: 0, uRing: 0, uRingHas: 0, uTauHas: 0, uPhot: 0, uEmit: 0, uCloudRot: 0,
     uMap: white, uMap2: white, uRingMap: white, uTau: white, uClouds: white, uNight: white, uOcean: white, uRelief: white,
     uRingR: new THREE.Vector2(1, 2), uLayers: new THREE.Vector4(), uRelief4: new THREE.Vector4(), uHaze: new THREE.Vector4(), uHazeC: new THREE.Vector4(), uHazeL: new THREE.Vector3(0, 1, 0),
-    uVoid: new THREE.Vector4(), uVoidZ: new THREE.Vector2() };
+    uVoid: new THREE.Vector4(), uVoidZ: new THREE.Vector2(), uAx: new THREE.Vector3(1, 1, 1) };
   const o = {}; for (const k in U) o[k] = { value: U[k] }; return o;
 }
 
@@ -292,7 +298,7 @@ export function create(canvas, opts) {
       const uni = globeUniforms(white); uni.uColor.value.set(d.color); uni.uEmit.value = d.sun ? 1 : 0;
       const mesh = new THREE.Mesh(sphere, new THREE.ShaderMaterial({ vertexShader: BODY_VS, fragmentShader: BODY_FS, uniforms: uni }));
       mesh.visible = false; roots[set].add(mesh);
-      return { set, mesh, ring: null, haze: null, hazeTop: 0, p: [0, 0, 0], r: 1, rot: null, sun: new THREE.Vector3(1, 0, 0) };
+      return { set, mesh, ring: null, haze: null, hazeTop: 0, p: [0, 0, 0], r: 1, ax: [1, 1, 1], rot: null, sun: new THREE.Vector3(1, 0, 0) };
     });
   }
   // the ring annulus (radii in body radii) and the haze shell of a body, made on first use; they share the body's
@@ -313,7 +319,8 @@ export function create(canvas, opts) {
     return b.haze;
   }
   // body i of a set at p (metres), drawn radius r (metres), sun: unit vector towards the Sun in world axes (null keeps
-  // it). o (optional): rot (body axes -> world, row-major), look (js/globe.js globeLook), mix (first fade-in)
+  // it). o (optional): rot (body axes -> world, row-major), look (js/globe.js globeLook), mix (first fade-in), shape
+  // (semi-axes over r: a triaxial body)
   const _m4 = new THREE.Matrix4();
   function body(set, i, p, r, sun, show, o) {
     const b = sets[set][i]; if (!b) return;
@@ -324,6 +331,7 @@ export function create(canvas, opts) {
     b.rot = o && o.rot ? o.rot : null;
     if (b.rot) { const m = b.rot; b.mesh.quaternion.setFromRotationMatrix(_m4.set(m[0], m[1], m[2], 0, m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, 0, 0, 0, 1)); }
     else b.mesh.quaternion.identity();
+    const ax = o && o.shape ? o.shape : [1, 1, 1]; b.ax[0] = ax[0]; b.ax[1] = ax[1]; b.ax[2] = ax[2]; u.uAx.value.set(ax[0], ax[1], ax[2]);
     const L = o && o.look, tx = L && L.tex;
     u.uTex.value = tx ? 1 : 0; u.uMap.value = tx ? texOf(tx.e.img, true) : white; u.uMix.value = tx ? o.mix : 0;
     u.uMap2.value = tx && tx.old ? texOf(tx.old.img, true) : white; u.uMix2.value = tx && tx.old ? tx.mix : 0;
@@ -502,7 +510,7 @@ export function create(canvas, opts) {
     const rel = (p, o) => o.set((p[0] - T[0]) * KM, (p[1] - T[1]) * KM, (p[2] - T[2]) * KM);
     for (const b of sets[active]) {
       if (!b.mesh.visible) continue;
-      rel(b.p, b.mesh.position); b.mesh.scale.setScalar(b.r * KM);
+      rel(b.p, b.mesh.position); b.mesh.scale.set(b.r * KM * b.ax[0], b.r * KM * b.ax[1], b.r * KM * b.ax[2]);
       // Sun and camera in the body's axes (camera in body radii)
       const u = b.mesh.material.uniforms, q = _q.copy(b.mesh.quaternion).invert();
       u.uSun.value.copy(b.sun).applyQuaternion(q);

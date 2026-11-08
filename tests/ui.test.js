@@ -682,6 +682,9 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/if \(LOWQ && FV\.vista\) \{ cancelAnimationFrame\(FV\.raf\); FV\.raf = 0; FV\.timer = setTimeout\(fvKick, 60000\); return; \}/.test(cab), 'low-resource mode: a view is a still picture');
   assert.ok(/LOWQ \|\| DEV\.phone \? 32 : 0/.test(cab), 'phones: at most 30 frames a second');
   assert.ok(/if \(FV\.sig && sig !== FV\.sig && !still\(\)\)/.test(cab) && /xfSnap\(pv, wrap \? 2500 : VI\.dur\)/.test(cab), 'cross-fade, never in low-resource mode or with reduced motion');
+  const { BODIES } = require('../js/bodies.js');
+  assert.deepStrictEqual(BODIES.phobos.shape, [13.0, 11.4, 9.1], 'Phobos: PCK triaxial radii');
+  assert.ok(/uniform vec3 uSun, uCam, uAx;/.test(read('js/view3d.js')) && /uAx: new THREE\.Vector3\(1, 1, 1\)/.test(read('js/view3d.js')), 'triaxial globe in 3D');
 }
 
 console.log('OK — all UI tests passed');

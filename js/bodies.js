@@ -70,6 +70,9 @@
 //   Express SPICAV/VMC; Wilquet et al. 2009, J. Geophys. Res. 114, E00B42).
 // phot: 'lambert' — the day side darkens as cos(sun elevation) (Earth); bodies with relief use Lommel–Seeliger (a
 //   regolith surface: flat at full phase, dark towards the terminator); the others keep the plain lit/unlit look.
+// shape (Phobos; display only): the triaxial ellipsoid's semi-axes in km, NAIF pck00011 BODY401_RADII (13.0, 11.4, 9.1;
+//   the long axis towards Mars, as the lock below puts longitude 0), drawn in 3D by scaling the globe (js/view3d.js);
+//   positions, sizes on screen and the physics use the mean radius.
 // lock: synchronous moon, its prime meridian (texture longitude 0) faces the parent along the orbit (this app's orbit;
 //   the PCK rotation of these moons would disagree with our mean elements by the libration and the orbit phase).
 // tex: surface texture (equirectangular, longitude 0 in the middle, north up), drawn only in the normal 2D and 3D modes
@@ -116,6 +119,10 @@
 //   vesta    USGS Astrogeology, Vesta Dawn FC HAMO global mosaic 60 m (DLR, 2013; shifted by USGS to the IAU "Claudia
 //            double prime" longitudes that the PCK rotation below uses), Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif
 //            (26704×13352, d95355b7…) -> 1024, 2048, 4096 wide; the dark north was in its winter night during the survey
+//   phobos   USGS Astrogeology, Phobos Mars Express SRC Global Mosaic 12m (Mars Express HRSC team, DLR; 26 SRC and 8 Viking
+//            images, Willner et al. 2008, A&A 488, 361), Phobos_ME_SRC_Mosaic_Global_16ppd.tif (5760×2880, 8 bit, simple
+//            cylindrical, planetocentric, east positive, longitude 0 in the middle; a89a88c5…) -> 1024, 2048 wide (grey
+//            values kept). Its dark patches are shadows in the source images. Drawn on the triaxial ellipsoid (shape).
 //   nodata (Ceres, Vesta): the source's black, data-less cap (lat: the latitude band it lies in, deg) is drawn in the body's
 //            mean tone instead (js/globe.js voidFill; the files stay as they are): tone = the area-weighted mean of the
 //            4k map's data pixels (value > 12) in linear light, Ceres 136/255, Vesta 88/255
@@ -189,7 +196,8 @@ const BODIES = {
     simple: { mass: 6.4171e23, radius: 3389.5, a: 227939000 },
     orb: { jpl: [[1.52371034, 0.09339410, 1.84969142, -4.55343205, -23.94362959, 49.55953891],
                  [0.00001847, 0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343]] } },
-  phobos: { parent: 'mars', gm: 7.0875e-4, radius: 11.08, tilt: 0, color: '#a08f7e', lock: true,
+  phobos: { parent: 'mars', gm: 7.0875e-4, radius: 11.08, tilt: 0, color: '#a08f7e', lock: true, shape: [13.0, 11.4, 9.1],
+    tex: { file: 'img/planets/phobos.jpg', src: 'srcPhobos', hi: [[2048, 'img/planets/phobos_2k.jpg']] },
     simple: { mass: 1.0659e16, radius: 11.27, a: 9376 },
     orb: { sat: [9375, 0.015, 216.3, 189.7, 1.1, 169.2, 0.3187, 1.1, 2.3], lp: [317.7, 52.9, 0.0] } },
   deimos: { parent: 'mars', gm: 9.6156e-5, radius: 6.2, tilt: 0, color: '#9a8c7f', lock: true,
@@ -263,6 +271,7 @@ const TEX_SRC = {
   coiss: 'https://pds-rings.seti.org/holdings/volumes/COISS_3xxx/',
   dawnCeres: 'https://astrogeology.usgs.gov/search/map/ceres_dawn_fc_global_mosaic_400m',
   dawnVesta: 'https://astrogeology.usgs.gov/search/map/vesta_dawn_fc_hamo_global_mosaic_60m',
+  srcPhobos: 'https://astrogeology.usgs.gov/search/map/phobos_mars_express_src_global_mosaic_12m',
   bsc: 'https://cdsarc.cds.unistra.fr/viz-bin/cat/V/50',
 };
 // The sky (normal 2D and 3D modes; never in the low-resource mode): the Milky Way — NASA SVS 4851 "Deep Star Maps 2020",

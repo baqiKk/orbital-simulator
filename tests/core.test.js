@@ -1024,11 +1024,37 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   assert.ok(Math.abs(rate - 360 / (2 * Math.PI / er.om()) * 60) < 0.05 && rate > 2.9 && rate < 3.1, `Earthrise: ${rate.toFixed(2)}°/min, the orbit's rate`);
   const ve = VS.vistaAt('earthrise', ms0, view), de = Math.hypot(...sub(at(ve, 'earth').p, ve.y)), wE = 2 * Math.asin(BODIES.earth.radius * 1e3 / de) / D2R;
   assert.ok(wE / VS.vistaLens('earthrise') >= 0.08, `Earthrise: the Earth ${(100 * wE / 18).toFixed(1)} % of the glass's width`);
+  // Mars: Phobos in front of Mars' disc at some time in the loop, behind none; the surface turns at ≈ 0.54°/min
+  const Lm = VS.VISTAS.mars.L, cm = VS.vistaClock('mars', ms0, view), base = ms0 - cm.tau * 1000;
+  let inFront = 0, limbOut = 0;
+  for (let k = 0; k <= 40; k++) {
+    const v = VS.vistaAt('mars', base + k / 40 * Lm * 1000 * 0.999, view), Ma = at(v, 'mars').p, Ph = at(v, 'phobos').p;
+    const dm = sub(Ma, v.y), dp = sub(Ph, v.y), sep = Math.acos(dot(nrm(dm), nrm(dp))), rM = Math.asin(BODIES.mars.radius * 1e3 / Math.hypot(...dm));
+    assert.ok(Math.hypot(...dp) < Math.hypot(...dm), 'Mars: Phobos between the eye and Mars');
+    if (sep < rM) inFront++; else limbOut++;
+  }
+  assert.ok(inFront > 10 && limbOut > 0, `Mars: Phobos crosses the disc and passes the limb (${inFront} / ${limbOut} of 41)`);
+  const lonAt = ms => { const v = VS.vistaAt('mars', ms, view), F = C.bodyFrame(BODIES.mars.pole, v.T), d = nrm(sub(at(v, 'phobos').p, at(v, 'mars').p)); return Math.atan2(dot(d, [F[1], F[4], F[7]]), dot(d, [F[0], F[3], F[6]])); };
+  const lonCam = ms => { const v = VS.vistaAt('mars', ms, view), F = C.bodyFrame(BODIES.mars.pole, v.T), d = nrm(sub(v.y, at(v, 'mars').p)); return Math.atan2(dot(d, [F[1], F[4], F[7]]), dot(d, [F[0], F[3], F[6]])); };
+  const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+  const slide = wrap(lonAt(base + 300e3) - lonAt(base)) / D2R / 5, slideCam = wrap(lonCam(base + 300e3) - lonCam(base)) / D2R / 5;
+  const nP = 360 / (BODIES.phobos.orb.sat[6] * 24 * 60), wM = BODIES.mars.pole[5] / (24 * 60);
+  assert.ok(Math.abs(nP - wM - 0.54) < 0.01, 'Phobos\' orbital rate less Mars\' spin ≈ 0.54°/min');
+  // the mean is 0.54°/min; Phobos' eccentricity (0.015) moves its angular rate by up to ±3 % (±0.025°/min); exactly:
+  // its angular rate now (|r × v| / r²) less Mars' spin
+  const vp = VS.vistaAt('mars', base + 150e3, view), rr = sub(at(vp, 'phobos').p, at(vp, 'mars').p), vv = sub(at(vp, 'phobos').v, at(vp, 'mars').v);
+  const cr = [rr[1] * vv[2] - rr[2] * vv[1], rr[2] * vv[0] - rr[0] * vv[2], rr[0] * vv[1] - rr[1] * vv[0]], nNow = Math.hypot(...cr) / dot(rr, rr) / D2R * 60;
+  assert.ok(Math.abs(slide - (nNow - wM)) < 0.01, `Mars turns under Phobos at ${slide.toFixed(3)}°/min = its angular rate less Mars' spin (${(nNow - wM).toFixed(3)})`);
+  assert.ok(Math.abs(slide - 0.54) < 0.035, 'about the mean 0.54°/min');
+  // the camera's swing (across the orbit plane) adds nothing along the surface's own slide
+  assert.ok(Math.abs(slideCam - slide) < 0.02, `and under the camera at ${slideCam.toFixed(3)}°/min`);
   // Saturn: the eye on the side of the ring plane the Sun lights
   const vs = VS.vistaAt('saturn', ms0, view), S = at(vs, 'saturn').p, F = C.bodyFrame(BODIES.saturn.pole, vs.T), z = [F[2], F[5], F[8]];
   assert.ok(dot(sub(vs.y, S), z) * dot(sub(vs.sunP, S), z) > 0, 'Saturn: seen from the rings\' sunlit face');
   // live clocks run from now at their rate; loops wrap
   const c1 = VS.vistaClock('jupiter', ms0 + 10000, view), c2 = VS.vistaClock('jupiter', ms0 + 20000, view);
   assert.ok(Math.abs(c2.T - c1.T - 1200) < 1e-6, 'Jupiter: 120× real time');
+  const w1 = VS.vistaClock('mars', base + (Lm - 1) * 1000, view), w2 = VS.vistaClock('mars', base + (Lm + 1) * 1000, view);
+  assert.ok(w2.cycle === w1.cycle + 1 && w2.tau < 2, 'Mars: the loop wraps');
   console.log('cabin views ok');
 }

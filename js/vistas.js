@@ -66,6 +66,9 @@ function vsAbout(B, T, key, D, el, az, roll) {
 }
 
 
+// Phobos over Mars' afternoon: the pass's moment (found once by tests/core.test.js "vistas": the Sun 35° from the
+// Mars–Phobos line, Phobos moving away from the subsolar point)
+const VS_MARS_EPOCH = Date.UTC(2026, 10, 8, 5, 25, 30);
 
 const VISTAS = {
   // Saturn and its rings: 750 000 km out, 22° above the ring plane on its sunlit side (the Sun's own elevation on the rings
@@ -102,6 +105,22 @@ const VISTAS = {
       const below = view.vf * (0.5 + 0.35 * c.tau / c.L), pitch = below - dip;
       return { y: eye, cam: vsCam(vsRot(h, right, pitch), rh) };
     } },
+  // Mars close up, Phobos passing: the eye rides with Phobos (its orbit's frame: out from Mars, along the track, the
+  // orbit's normal) about 200 km off it on the side away from Mars, a little behind it along the track, swinging across
+  // the orbit plane over the loop, so Phobos (its true triaxial shape, about 7° long) crosses Mars' disc from one limb to
+  // the other; the camera between Mars' centre and Phobos, rolled 30° (the crossing on a slant). Mars turns under at
+  // Phobos' orbital rate less its own spin (47.1 − 14.6 ≈ 32.4°/h, 0.54°/min on the mean; Phobos' eccentricity moves it by
+  // ±3 %); the swing, across the orbit plane, adds nothing along that slide. Afternoon over Mars' day side, the Sun behind
+  // the eye. Real time, an 8-minute loop.
+  mars: { keys: ['sun', 'mars', 'phobos', 'deimos'], epoch: VS_MARS_EPOCH, L: 480, look: 'mars', D: 2e5,
+    at(B, c) {
+      const M = B.at('mars'), P = B.at('phobos'), rr = vsN(vsSub(P.p, M.p)), vr = vsSub(P.v, M.v);
+      const t = vsN(vsSub(vr, rr.map(v => v * vsDot(vr, rr)))), n = vsX(rr, t);
+      const a = (-26 + 52 * vsSmooth(c.tau / c.L)) * VS_D2R;
+      const u = vsN(vsAdd(vsAdd(rr.map(v => v * Math.cos(a)), n, Math.sin(a)), t, -0.12)), eye = vsAdd(P.p, u, this.D);
+      const dm = vsN(vsSub(M.p, eye)), dp = vsN(vsSub(P.p, eye));
+      return { y: eye, cam: vsCam(vsSlerp(dm, dp, 0.62), n, 30 * VS_D2R) };
+    } },
   // Earth and Moon (the simulator's landing view): the Moon near and the Earth behind it, true sizes. Candidate
   // framings (a, b, c) until one is picked:
   //   a: 20 000 km behind the Moon, a little aside, the glass between the two;
@@ -119,7 +138,7 @@ const VISTAS = {
       return { y: eye, cam: vsCam(vsSlerp(dm, de, k), [0, 0, 1]) };
     } },
 };
-const VISTA_IDS = ['saturn', 'jupiter', 'earthrise', 'earth'];
+const VISTA_IDS = ['saturn', 'jupiter', 'earthrise', 'mars', 'earth'];
 const vistaLens = id => (VISTAS[id] && VISTAS[id].fovW) || 0;
 // the view's clock at wall time ms: T, tau, cycle, loop length L (view: for a loop that depends on the glass)
 function vistaClock(id, ms, view) {
@@ -136,4 +155,4 @@ function vistaAt(id, ms, view) {
   return { id, T: c.T, tau: c.tau, cycle: c.cycle, L: c.L, y: o.y, list: V.keys.length ? B.list : [], sunP, cam: o.cam, look: V.look };
 }
 
-if (typeof module !== 'undefined') module.exports = { VISTAS, VISTA_IDS, vistaLens, vistaClock, vistaAt, vsSystem, vsBodies };
+if (typeof module !== 'undefined') module.exports = { VISTAS, VISTA_IDS, VS_MARS_EPOCH, vistaLens, vistaClock, vistaAt, vsSystem, vsBodies };
