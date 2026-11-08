@@ -38,7 +38,7 @@ const DBG = (() => {
   const q = new URLSearchParams(location.search); if (q.get('debug') !== '1') return null;
   return { toff: +q.get('t') || 0, em: q.get('em'), dom: q.get('move') === 'dom', sun: q.get('sun') !== '0', shine: q.get('shine') !== '0', cap: +q.get('cap') || 0, warm: q.has('warm') ? +q.get('warm') : 3, wc: q.get('wc') === '1', frames: [], draws: 0, cost: [], path: '-', hand: {}, glass: [], raf: [], light: '', el: null };
 })();
-if (DBG && /^[abc]$/.test(DBG.em || '')) VISTAS.earth.pick = DBG.em;
+if (DBG && VISTAS.earth.sep[DBG.em]) VISTAS.earth.pick = +DBG.em;
 const TMAX = Math.min(cabTierMax(DEV), GPU.max ? CAB_TIERS.filter(t => t <= GPU.max).pop() || CAB_TIERS[0] : Infinity);
 const TEX_CAP = Math.min(DEV.phone ? 2048 : 4096, GPU.max || Infinity, DBG && DBG.cap || Infinity);
 const deg = Math.PI / 180;
@@ -374,7 +374,7 @@ function lifeNow() { if (still()) drawStill(); else { stepAqua(0, LOOP.t); stepS
 // The glass always shows a live view from the 3D renderer (below; in low-resource mode, with reduced motion or without
 // WebGL 2 the plain sky and shaded discs at their true places): the flight plan's while one flies, else the view picked
 // from the ready-made ones (js/vistas.js, Phase 14).
-const SP = { cv: $('#kSpace'), M: 0, F: 1, G: [0, 0], V: [0, 0], C: [0, 0], P0: [0, 0] };
+const SP = { cv: $('#kSpace'), M: 0, F: 1, G: [0, 0], V: [0, 0], C: [0, 0], GV: [1, 1], P0: [0, 0] };
 const FX = { clouds: true, relief: true, glint: true };
 const norm = v => { const l = Math.hypot(...v); return v.map(c => c / l); };
 // low-resource sky: plain points, the same every time
@@ -398,10 +398,11 @@ const pending = () => { const now = performance.now(); for (const e of TEXC.valu
 // motion cut.
 const VI = { pick: 'saturn', id: 'saturn', dur: 1200 };
 const VI_MIN_PX = 1.6; // px: the smallest radius a body of a view is drawn with (Io from a million km is 1.4 px)
-// the focal length (CSS px) through view id's lens
-function viF(id) { const fw = vistaLens(id); return fw ? (LY.glass.x1 - LY.glass.x0) * deskCam().s / 2 / Math.tan(fw / 2 * deg) : SP.F; }
-// the glass's half-angles at the desk view through that lens
-function viView(id) { const g = LY.glass, d = deskCam(), F = viF(id); return { hf: Math.atan((g.x1 - g.x0) * d.s / 2 / F), vf: Math.atan((g.y1 - g.y0) * d.s / 2 / F) }; }
+// the focal length (CSS px) through view id's lens: a telephoto lens spans the part of the glass the desk view shows
+// (all of it on a wide screen, its right part by the cat on a portrait one: SP.GV), so a far body keeps its share there
+function viF(id) { const fw = vistaLens(id); return fw ? SP.GV[0] / 2 / Math.tan(fw / 2 * deg) : SP.F; }
+// the shown glass's half-angles at the desk view through that lens
+function viView(id) { const F = viF(id); return { hf: Math.atan(SP.GV[0] / 2 / F), vf: Math.atan(SP.GV[1] / 2 / F) }; }
 // the view now, in the flight's shape (fvState)
 function viState(now, id = VI.id) {
   const v = vistaAt(id, now + (DBG ? DBG.toff * 1000 : 0), viView(id)); if (!v) return null;
@@ -1353,7 +1354,7 @@ function layout() {
   // the view's centre (where the camera looks): the middle of the part of the glass the desk view shows (a portrait
   // screen shows only its right part, by the cat); SP.V its offset from the glass's centre (CSS px at the desk view)
   { const g = LY.glass, gc = glassC(), x0 = Math.max(g.x0, d.x), x1 = Math.min(g.x1, d.x + VW / d.s), y0 = Math.max(g.y0, d.y), y1 = Math.min(g.y1, d.y + VH / d.s);
-    SP.V = [((x0 + x1) / 2 - gc[0]) * d.s, ((y0 + y1) / 2 - gc[1]) * d.s]; SP.C = [SP.G[0] + SP.V[0], SP.G[1] + SP.V[1]]; }
+    SP.V = [((x0 + x1) / 2 - gc[0]) * d.s, ((y0 + y1) / 2 - gc[1]) * d.s]; SP.C = [SP.G[0] + SP.V[0], SP.G[1] + SP.V[1]]; SP.GV = [(x1 - x0) * d.s, (y1 - y0) * d.s]; }
   SP.F = Math.max(VW, VH) / 2 / Math.tan(50 * deg); fvSize();
   cancelAnimationFrame(ANIM); ANIM = 0; mvEnd(); stageWC(''); tierSwapNow();
   apply(cam); wantTier(needTier(cam.s)); sizeLife(); lifeNow();

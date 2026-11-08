@@ -135,21 +135,20 @@ const VISTAS = {
       const l = c.tau * 0.04 * VS_D2R + 3.6, f = vsAdd(VS_GAL.X.map(v => v * Math.cos(l)), VS_GAL.Y, Math.sin(l));
       return { y: [0, 0, 0], cam: vsCam(f, VS_GAL.Z, 28 * VS_D2R) };
     } },
-  // Earth and Moon (the simulator's landing view): the Moon near and the Earth behind it, true sizes. Candidate
-  // framings (a, b, c) until one is picked:
-  //   a: 20 000 km behind the Moon, a little aside, the glass between the two;
-  //   b: about the Earth–Moon L2 point (61 000 km beyond the Moon), a slow halo-like circle about the line, telephoto 20°;
-  //   c: 8 000 km from the Moon's centre, the Earth just off its limb.
-  earth: { keys: ['sun', 'earth', 'moon'], rate: 1, look: 'moon', pick: 'b',
-    get fovW() { return this.pick === 'b' ? 20 : 0; },
+  // Earth and Moon (the simulator's landing view): close to the Moon on its far side, the Earth just past its limb, true
+  // sizes through a 42° lens (the Earth's 1.80–2.05° over the month then 4.3–4.9 % of the glass's width, the Moon filling
+  // much of it). The
+  // eye pick × 1000 km from the Moon's centre (12: the Moon about 40 % of the width; 15: about a third), the Earth a
+  // separation sep from the Moon's centre (deg), swaying slowly; the camera between the two, the Earth–Moon line level.
+  earth: { keys: ['sun', 'earth', 'moon'], rate: 1, look: 'moon', pick: 12, fovW: 42, sep: { 12: 14, 15: 12.5 },
     at(B, c) {
       const M = B.at('moon'), E = B.at('earth'), e = vsN(vsSub(E.p, M.p)), z = vsN(vsSub([0, 0, 1], e.map(v => v * e[2]))), w = vsX(e, z);
-      let eye, k;
-      if (this.pick === 'a') { eye = vsAdd(M.p, vsN(vsAdd(e.map(v => -v), vsAdd(w.map(v => v * 0.15), z, 0.05))), 2e7); k = 0.5; }
-      else if (this.pick === 'c') { eye = vsAdd(M.p, vsN(vsAdd(e.map(v => -v), vsAdd(w.map(v => v * 0.33), z, 0.06))), 8e6); k = 0.62; }
-      else { const ph = c.tau / 1200 * 2 * Math.PI, o = vsAdd(w.map(v => v * Math.cos(ph) * 0.34), z, Math.sin(ph) * 0.12); eye = vsAdd(M.p, vsAdd(e.map(v => -v), o), 6.1e7); k = 0.5; }
-      const dm = vsN(vsSub(M.p, eye)), de = vsN(vsSub(E.p, eye));
-      return { y: eye, cam: vsCam(vsSlerp(dm, de, k), [0, 0, 1]) };
+      const sw = c.tau / 1500 * 2 * Math.PI, D = this.pick * 1e6, a = (this.sep[this.pick] + 0.8 * Math.sin(sw)) * VS_D2R;
+      const eye = vsAdd(M.p, vsN(vsAdd(vsAdd(e.map(v => -v * Math.cos(a)), w, Math.sin(a)), z, 0.06 + 0.02 * Math.sin(0.7 * sw))), D);
+      const dm = vsN(vsSub(M.p, eye)), de = vsN(vsSub(E.p, eye)), th = Math.acos(Math.min(1, vsDot(dm, de)));
+      // aim at the middle of the pair's extent: from the Moon's far limb to the Earth's
+      const rM = Math.asin(VSX.BODIES.moon.radius * 1e3 / Math.hypot(...vsSub(M.p, eye))), rE = Math.asin(VSX.BODIES.earth.radius * 1e3 / Math.hypot(...vsSub(E.p, eye)));
+      return { y: eye, cam: vsCam(vsSlerp(dm, de, (th + rE - rM) / 2 / th), [0, 0, 1]) };
     } },
 };
 const VISTA_IDS = ['saturn', 'jupiter', 'earthrise', 'mars', 'milky', 'earth'];

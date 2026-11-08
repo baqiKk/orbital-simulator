@@ -1054,6 +1054,18 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   // the Milky Way: no body, the Sun behind the eye, the gaze on the galactic equator
   const vm = VS.vistaAt('milky', ms0, view);
   assert.ok(vm.list.length === 0 && dot(nrm(sub(vm.sunP, vm.y)), vm.cam.f) < -0.99 && Math.abs(dot(vm.cam.f, VS.VS_GAL.Z)) < 1e-9, 'Milky Way: no body, no Sun, along the galactic equator');
+  // Earth and Moon: the eye 12 000 (or 15 000) km from the Moon, the Earth 4–5 % of the 42° glass and clear of the Moon's
+  // limb, the Moon a third of the glass or more
+  for (const pk of [12, 15]) {
+    VS.VISTAS.earth.pick = pk;
+    const v = VS.vistaAt('earth', ms0, view), Mo = at(v, 'moon').p, Ea = at(v, 'earth').p, dM = Math.hypot(...sub(Mo, v.y)), dE = Math.hypot(...sub(Ea, v.y));
+    const wM = 2 * Math.asin(BODIES.moon.radius * 1e3 / dM) / D2R, wE = 2 * Math.asin(BODIES.earth.radius * 1e3 / dE) / D2R, sp = Math.acos(dot(nrm(sub(Mo, v.y)), nrm(sub(Ea, v.y)))) / D2R;
+    assert.ok(Math.abs(dM / 1e6 - pk) < 0.01 && VS.vistaLens('earth') === 42, 'Earth–Moon: ' + pk + ' 000 km from the Moon, a 42° lens');
+    assert.ok(wE / 42 >= 0.04 && wE / 42 <= 0.05, `Earth–Moon: the Earth ${(100 * wE / 42).toFixed(1)} % of the glass`);
+    assert.ok(wM / 42 >= 0.3 && sp > (wM + wE) / 2 + 2, 'Earth–Moon: the Moon large, the Earth past its limb');
+    for (const d of [Mo, Ea]) assert.ok(Math.abs(Math.atan(dot(nrm(sub(d, v.y)), v.cam.r) / dot(nrm(sub(d, v.y)), v.cam.f))) / D2R + (d === Mo ? wM : wE) / 2 < 21, 'Earth–Moon: both inside the glass');
+  }
+  VS.VISTAS.earth.pick = 12;
   // live clocks run from now at their rate; loops wrap
   const c1 = VS.vistaClock('jupiter', ms0 + 10000, view), c2 = VS.vistaClock('jupiter', ms0 + 20000, view);
   assert.ok(Math.abs(c2.T - c1.T - 1200) < 1e-6, 'Jupiter: 120× real time');

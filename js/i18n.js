@@ -527,7 +527,7 @@ const I18N = {
     'kab.vista.earthrise.d': 'Apollo 8, 24 Aralık 1968: Ay\'ın 110 km üstünden, Dünya ufuktan gerçek hızla yükselir (telefoto).',
     'kab.vista.mars.d': 'Phobos\'la birlikte giden kameradan: Phobos Mars\'ın gündüz yüzünün önünden geçer, gerçek hızla.',
     'kab.vista.milky.d': 'Gezegen yok: bakış galaktik ekvator boyunca yavaşça kayar.',
-    'kab.vista.earth.d': 'Ay yakında, Dünya arkada; bugünkü konumlar ve evreler, gerçek boyutlar.',
+    'kab.vista.earth.d': 'Ay\'ın 12 000 km yakınından, Dünya Ay\'ın kenarının ötesinde; bugünkü konumlar ve evreler, gerçek boyutlar, dar açı.',
     'kab.vista.flight': 'Uçuş planı çalışırken cam uçuşu gösterir; manzara plan bitince döner.',
     'kab.saver.start': 'Ekran koruyucu',
     'kab.saver.auto': 'Kendiliğinden',
