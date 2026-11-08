@@ -690,6 +690,8 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/saverClock\(v\)/.test(cab) && /function poEnded\(e\) \{[^]*?sndChime\(/.test(cab), 'saver: the pomodoro in a corner, its bell as ever');
   assert.ok(/if \(LOWQ && FV\.vista\) \{ cancelAnimationFrame\(FV\.raf\); FV\.raf = 0; FV\.timer = setTimeout\(fvKick, 60000\); return; \}/.test(cab), 'low-resource mode: a view is a still picture');
   assert.ok(/LOWQ \|\| DEV\.phone \? 32 : 0/.test(cab), 'phones: at most 30 frames a second');
+  assert.ok(/function viF\(id\) \{ const fw = vistaLens\(id\); return fw \? SP\.GV\[0\] \/ 2 \/ Math\.tan/.test(cab) && /SP\.GV = \[\(x1 - x0\) \* d\.s, \(y1 - y0\) \* d\.s\]/.test(cab), 'a telephoto lens spans the glass the desk view shows');
+  assert.ok(V.VISTAS.earth.pick === 12 && V.vistaLens('earth') === 42, 'Earth–Moon: 12 000 km, a 42° lens by default');
   assert.ok(/if \(FV\.sig && sig !== FV\.sig && !still\(\)\)/.test(cab) && /xfSnap\(pv, wrap \? 2500 : VI\.dur\)/.test(cab), 'cross-fade, never in low-resource mode or with reduced motion');
   const { BODIES } = require('../js/bodies.js');
   assert.deepStrictEqual(BODIES.phobos.shape, [13.0, 11.4, 9.1], 'Phobos: PCK triaxial radii');
