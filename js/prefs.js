@@ -145,16 +145,17 @@ function cabCrop(vw, vh, W = 7136, H = 3528) {
   return { s, x: Math.min(W - w, Math.max(0, fx - w / 2)), y: 0.15 * (H - h) };
 }
 // Window view: close to the glass, not into it. The window's frame and the sill with the cat stay in the picture
-// (CAB_WIN, art px: the frame's outer edges, from just above it down to the cat's lower back at the screen's bottom):
+// (CAB_WIN, art px: the frame's outer edges, from just above it down to the sill's top just under the cat's paws at the
+// screen's bottom; the sill's front face and below stay out, the tail's hanging tip with them):
 // that box fits the screen, and a narrow screen comes closer, the glass at least 66 % of the height (CAB_WIN_GLASS),
 // sliding sideways so the cat's right edge (CAB_CAT_X) stays in; never wider than the art. The glass fills most of the view.
-// Portrait: the whole glass from just above it down to the tail's tip (CAB_TAIL_Y), all of it over the bottom bar (bot:
-// screen px the bar takes at the bottom), so the cat's back and tail are not under the buttons.
-const CAB_WIN = [1740, 170, 5490, 2380], CAB_WIN_GLASS = 0.66, CAB_CAT_X = 4740, CAB_TAIL_Y = 2610;
+// Portrait: the glass's full height from just above it down to the same line under the paws (CAB_PAWS_Y), all of it over
+// the bottom bar (bot: screen px the bar takes at the bottom), so the cat is not under the buttons.
+const CAB_WIN = [1740, 170, 5490, 2335], CAB_WIN_GLASS = 0.66, CAB_CAT_X = 4740, CAB_PAWS_Y = 2335;
 function cabGlassCam(vw, vh, g, W = 7136, H = 3528, bot = 0) {
   if (vw < vh) {
-    const [x0, y0, x1] = CAB_WIN, s = Math.max((vh - bot) / (CAB_TAIL_Y - y0), vw / W), w = vw / s, h = vh / s, cx = Math.max((x0 + x1) / 2, CAB_CAT_X - w / 2);
-    return { s, x: Math.min(W - w, Math.max(0, cx - w / 2)), y: Math.min(H - h, Math.max(0, CAB_TAIL_Y - (vh - bot) / s)) };
+    const [x0, y0, x1] = CAB_WIN, s = Math.max((vh - bot) / (CAB_PAWS_Y - y0), vw / W), w = vw / s, h = vh / s, cx = Math.max((x0 + x1) / 2, CAB_CAT_X - w / 2);
+    return { s, x: Math.min(W - w, Math.max(0, cx - w / 2)), y: Math.min(H - h, Math.max(0, CAB_PAWS_Y - (vh - bot) / s)) };
   }
   const [x0, y0, x1, y1] = CAB_WIN, s = Math.max(Math.min(vw / (x1 - x0), vh / (y1 - y0)), CAB_WIN_GLASS * vh / (g.y1 - g.y0), vw / W, vh / H), w = vw / s, h = vh / s;
   const cx = w < x1 - x0 ? Math.max((x0 + x1) / 2, CAB_CAT_X - w / 2) : (x0 + x1) / 2;
@@ -261,4 +262,4 @@ function parseSimSnap(raw, now) {
   return o;
 }
 
-if (typeof module !== 'undefined') module.exports = { PREF_OLD, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_TAIL_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { PREF_OLD, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

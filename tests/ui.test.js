@@ -394,7 +394,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     assert.ok(wc.s >= c.s - 1e-9 && wc.x >= -1e-6 && wc.y >= -1e-6 && wc.x + ww <= W + 1e-6 && wc.y + wh <= H + 1e-6, `window view ${vw}×${vh}: closer, inside the art`);
     assert.ok(wc.x <= cat.x && wc.x + ww >= cat.x + cat.w && wc.y + wh >= 2300, `window view ${vw}×${vh}: the cat on the sill`);
     assert.ok((Math.min(g.y1, wc.y + wh) - Math.max(g.y0, wc.y)) * wc.s >= 0.59 * vh, `window view ${vw}×${vh}: the glass fills the height`);
-    if (vw < vh) { const wb = P.cabGlassCam(vw, vh, g, W, H, 56); assert.ok((P.CAB_TAIL_Y - wb.y) * wb.s <= vh - 56 + 1e-6 && wb.y <= P.CAB_WIN[1] + 1e-6, `window view ${vw}×${vh}: the tail above the bottom bar, the glass whole`); }
+    if (vw < vh) { const wb = P.cabGlassCam(vw, vh, g, W, H, 56); assert.ok((P.CAB_PAWS_Y - wb.y) * wb.s <= vh - 56 + 1e-6 && wb.y <= P.CAB_WIN[1] + 1e-6, `window view ${vw}×${vh}: the paws just above the bottom bar, the glass whole`); }
     if (a >= 1.6 && a <= 2.4) assert.ok(wc.x <= P.CAB_WIN[0] && wc.x + ww >= P.CAB_WIN[2] && wc.y <= P.CAB_WIN[1] + 1e-6, `window view ${vw}×${vh}: the whole frame`);
   }
 }
