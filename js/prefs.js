@@ -1,7 +1,7 @@
 // Persisted UI preferences: view mode and window layout.
 // DOM-free: the storage object is passed in (localStorage, sessionStorage, a stub or null), so Node tests can run it.
 // Every storage access is wrapped: private windows, blocked site data and quota errors must never break the page.
-const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify', cabSaver: 'orbsim.cab.saver.v1', cabPanHint: 'orbsim.cab.panHint', cabBoot: 'orbsim.cab.boot', simBoot: 'orbsim.boot', uiExpert: 'orbsim.ui.expert' };
+const PREF_KEYS = { mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify', cabSaver: 'orbsim.cab.saver.v1', cabPanHint: 'orbsim.cab.panHint', cabBoot: 'orbsim.cab.boot', simBoot: 'orbsim.boot', uiExpert: 'orbsim.ui.expert', start: 'orbsim.start' };
 const VIEW_MODES = ['low', 'normal', '3d'];
 // placement order: overview's default spot sits under Results, so it comes after it
 const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'gloss', 'model', 'credits'];
@@ -40,6 +40,13 @@ function skyGainOf(v) { const x = v == null || v === '' ? NaN : +v; return Numbe
 function startupMode(store) {
   const m = readPref(store, PREF_KEYS.mode);
   return VIEW_MODES.includes(m) ? { mode: m, auto: false } : { mode: 'normal', auto: true };
+}
+// The main page's start (what the viewer chose on the start screen; the cabin is not remembered): 'scene', 'design' or
+// 'mission:<scenario id>' (one of ids); anything else null (the start screen then)
+function parseStart(raw, ids) {
+  if (raw === 'scene' || raw === 'design') return raw;
+  if (typeof raw === 'string' && raw.startsWith('mission:') && ids.includes(raw.slice(8))) return raw;
+  return null;
 }
 // Nothing saved: the mode chosen for the device, never asked. Light ('low') when the last start died (crashed), data
 // saving is on, or the device says it is small (memory ≤ 2 GB or ≤ 2 cores; iOS Safari does not tell either reliably:
@@ -276,4 +283,4 @@ function parseSimSnap(raw, now) {
   return o;
 }
 
-if (typeof module !== 'undefined') module.exports = { PREF_OLD, autoMode, autoModeFrames, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { PREF_OLD, autoMode, autoModeFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

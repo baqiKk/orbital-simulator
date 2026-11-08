@@ -465,7 +465,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // indexed, in the sitemap, with its static title, description and link preview.
 {
   assert.ok(/<a class="rail-btn rail-cabin" href="kabin\.html" id="railCabin"[^>]*>[\s\S]*?<span class="rail-beta" data-i18n="ui\.betaTag"><\/span><\/a>/.test(html), 'rail: cabin link with a beta badge');
-  assert.ok(/<a class="btn sm" href="kabin\.html" id="wcCabin" data-i18n="wc\.cabin"><\/a>/.test(html), 'welcome card: go to the cabin');
+  assert.ok(/<a class="start-card" href="kabin\.html" id="wcCabin" data-go="cabin">/.test(html), 'start screen: focus in the cabin');
   assert.ok(/'kabin\.html\?manzara=' \+ SCENE\.kind/.test(app) && /get\('manzara'\)/.test(read('js/cabin.js')), 'the view goes along');
   const now = 1e12, ok = { at: now - 1000, scene: '', map: false, S: { kind: 'transfer', bodies: [], M: {} } };
   assert.deepStrictEqual(P.parseSimSnap(JSON.stringify(ok), now), ok, 'a fresh snapshot is read');
@@ -827,5 +827,19 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const app = read('js/app.js'), page = read('index.html');
   assert.ok(page.includes('id="modeChip"') && page.includes('id="modeBack"') && ['chip.scene', 'chip.free', 'chip.backSaturn', 'chip.backEarth', 'chip.mission', 'chip.design', 'chip.designMan', 'chip.map'].every(has), 'mode title and its texts');
   assert.ok(app.includes("if (SCENE.free) { t = _('chip.free'); back = SCENE.kind === 'earth' ? 'chip.backEarth' : 'chip.backSaturn'; }") && app.includes("$('#modeBack').addEventListener('click', () => { if (SCENE.on) { sceneSet(SCENE.kind); needFit = true; } });"), 'moved in the scene: a way back');
+}
+// 27) The start screen: four choices (the scene, a mission: the Moon or Mars, one's own design, the cabin), 2 × 2 on
+// phones; remembered (not the cabin); Esc or a click outside is the scene; the logo opens it again
+{
+  const app = read('js/app.js'), page = read('index.html'), css = read('css/style.css');
+  const ids = ['em_free', 'r_e_mars'];
+  assert.strictEqual(P.parseStart('scene', ids), 'scene'); assert.strictEqual(P.parseStart('design', ids), 'design');
+  assert.strictEqual(P.parseStart('mission:r_e_mars', ids), 'mission:r_e_mars'); assert.strictEqual(P.parseStart('mission:nope', ids), null); assert.strictEqual(P.parseStart('cabin', ids), null); assert.strictEqual(P.parseStart(null, ids), null);
+  for (const g of ['scene', 'mission', 'design', 'cabin']) assert.ok(page.includes('data-go="' + g + '"'), 'card ' + g);
+  for (const sc of ['em_free', 'r_e_mars']) assert.ok(page.includes('data-sc="' + sc + '"') && app.includes("{ id: '" + sc + "'"), 'mission ' + sc);
+  assert.ok(['start.title', 'start.scene', 'start.mission', 'start.design', 'start.cabin', 'start.foot', 'start.reopen'].every(has), 'start texts');
+  assert.ok(app.includes("if (go === 'cabin') { writePref(LS, PREF_KEYS.start, 'scene'); return; }") && app.includes("$('#startBtn').addEventListener('click', startOpen);") && app.includes("if (e.key === 'Escape' && !$('#start').hidden) { e.stopPropagation(); startClose(); startScene(); }"), 'remembered, not the cabin; Esc: the scene; the logo opens it');
+  assert.ok(/@media \(max-width:560px\)\{\n  \.start\{[^}]*\}\n  \.start-in\{[^}]*\}\n  \.start-cards\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/.test(css), 'phones: 2 × 2');
+  assert.ok(!page.includes('id="welcome"'), 'the old welcome card is gone');
 }
 console.log('OK — all UI tests passed');

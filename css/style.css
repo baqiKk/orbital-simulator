@@ -316,27 +316,39 @@ details.adv>summary:hover{color:var(--ink)}
 .apsis td{font-family:var(--f-mono);color:var(--ink)}
 .apsis td:first-child{font-family:var(--f-body);color:var(--dim)}
 
-/* ---------- opening scene: welcome card (the mission's readout and timeline wait) ---------- */
-.welcome{position:relative;align-self:center;width:min(440px,100%);margin-bottom:6px;padding:12px 40px 12px 14px;display:flex;flex-direction:column;gap:10px}
-.welcome p{margin:0;font-size:13px;line-height:1.45;color:var(--ink)}
-.wc-act{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.wc-x{position:absolute;top:6px;right:6px}
+/* ---------- opening scene (the mission's readout and timeline wait) ---------- */
 html[data-scene] #readout,html[data-scene] #timeline,.win.scene-hide{display:none}
 
-/* ---------- first-run dialog & performance tip ---------- */
-.ask{max-width:min(440px,calc(100vw - 32px));padding:18px 18px 16px;background:var(--panel-lo);color:var(--ink);border:1px solid var(--line2);box-shadow:var(--shadow)}
-.ask::backdrop{background:rgba(2,3,5,.6)}
-.ask h2{margin:0 0 8px;font:600 15px/1.25 var(--f-disp);letter-spacing:.03em;color:var(--cyan)}
-.ask p{margin:0 0 16px;color:var(--dim);font-size:13px}
-.ask-act{display:flex;gap:8px;flex-wrap:wrap}
-.ask-act .btn{flex:1 1 auto;padding-block:11px}
+/* ---------- performance tip ---------- */
 .toast{position:fixed;z-index:40;left:calc(var(--rail) + 12px);bottom:calc(96px + env(safe-area-inset-bottom,0px));max-width:min(320px,calc(100vw - var(--rail) - 24px));padding:10px 12px;display:flex;flex-direction:column;gap:9px;background:var(--panel-lo);border:1px solid var(--line2);border-left:2px solid var(--warn);box-shadow:var(--shadow)}
 .toast p{margin:0;font-size:12.5px;color:var(--ink)}
 .toast-act{display:flex;gap:6px}
 
 /* ---------- low-resource mode: no blur, shadows, gradients or transitions ---------- */
 html[data-q=low] .glass,html[data-q=low] .win{backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;background:var(--panel-lo)}
-html[data-q=low] .ask,html[data-q=low] .toast{box-shadow:none}
+html[data-q=low] .toast{box-shadow:none}
+/* the start screen (js/app.js START): four cards, 2 × 2 on phones without scrolling */
+.start{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:color-mix(in srgb,var(--void) 62%,transparent)}
+.start-in{width:min(860px,100%);padding:22px 22px 16px;display:flex;flex-direction:column;gap:16px}
+.start-in h2{margin:0;font:600 18px/1.2 var(--f-disp);letter-spacing:.04em;color:var(--ink)}
+.start-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.start-cards[hidden]{display:none}
+.start-card{display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:left;padding:14px 14px 16px;min-height:120px;background:var(--panel);border:1px solid var(--line2);color:var(--dim);text-decoration:none;cursor:pointer;font:400 12.5px/1.4 var(--f-body)}
+.start-card b{font:600 14px/1.2 var(--f-disp);letter-spacing:.03em;color:var(--ink)}
+.start-card:hover,.start-card:focus-visible{border-color:var(--accent);color:var(--ink);background:var(--raise)}
+#startMis{grid-template-columns:repeat(2,minmax(0,1fr))}
+.start-back{grid-column:1/-1;justify-self:start}
+.start-foot{margin:0;font-size:11.5px;color:var(--faint)}
+button.rail-mark{background:none;border:0;border-bottom:1px solid var(--line);padding:0;width:100%;cursor:pointer}
+button.rail-mark:hover{color:var(--accent)}
+.chip-scene button{padding:4px 8px;font-size:10.5px}
+@media (max-width:560px){
+  .start{padding:10px;align-items:center}
+  .start-in{padding:16px 14px 12px;gap:12px}
+  .start-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .start-card{min-height:0;padding:12px 11px 13px;font-size:12px}
+  .start-card b{font-size:13.5px}
+}
 /* where the viewer is (js/app.js modeChip): a small title at the top middle; in the scene, once the view was moved, a
    way back to it */
 .mode-chip{position:absolute;z-index:6;top:12px;left:50%;transform:translateX(-50%);max-width:calc(100% - 560px);min-width:0;padding:6px 12px;display:flex;gap:10px;align-items:center;font:500 11.5px/1.2 var(--f-disp);letter-spacing:.04em;color:var(--ink);white-space:nowrap}

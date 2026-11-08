@@ -1135,7 +1135,7 @@ function measureFree() {
   const sr = stage.getBoundingClientRect(), gap = 12;
   const rel = el => { const r = el.getBoundingClientRect(); return { x0: r.left - sr.left, x1: r.right - sr.left, y0: r.top - sr.top, y1: r.bottom - sr.top }; };
   const shown = el => !el.hidden && el.getClientRects().length > 0;
-  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline'), $('#caption'), $('#welcome')].filter(shown).map(rel);
+  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline'), $('#caption'), $('#modeChip')].filter(shown).map(rel);
   const wins = floating() ? [...document.querySelectorAll('.win:not([hidden])')].filter(shown).map(rel) : [];
   const rects = freeRects(W, H, [...hud, ...wins], gap);
   // too little room left between the windows: let them overlap the plot instead (HUD still counts)
@@ -2261,7 +2261,6 @@ function sceneStart() {
   skyHiAt = performance.now() + 5000;
   S.playing = false; setPlayIcon();
   setMap(true); sceneAside();
-  $('#welcome').hidden = false;
   sceneSet('saturn');
 }
 // toMission: back to the mission view, playing as a freshly loaded one does
@@ -2269,7 +2268,7 @@ function sceneEnd(toMission) {
   if (!SCENE.on) return;
   SCENE.on = false; delete document.documentElement.dataset.scene;
   for (const id of SCENE.hide) winEl(id).classList.remove('scene-hide');
-  SCENE.hide.clear(); $('#welcome').hidden = true; INS = null; MAP.needFit = true;
+  SCENE.hide.clear(); INS = null; MAP.needFit = true;
   tlRoom(); clampWins(); // the timeline is back: windows keep above it again
   if (toMission) { setMap(false); needFit = true; if (!reduceMotion) { S.playing = true; setPlayIcon(); } }
 }
@@ -2281,11 +2280,12 @@ function sceneTouch() { FLY.on = false; if (SCENE.on) SCENE.free = true; }
 // which aims it again), "Görev · <scenario>", "Tasarım · A → B" (a setup of one's own), the solar system map
 function modeChip() {
   let t, back = '';
-  if (SCENE.on) { if (SCENE.free) { t = _('chip.free'); back = SCENE.kind === 'earth' ? 'chip.backEarth' : 'chip.backSaturn'; } else t = _('chip.scene', { name: _(SCENE.kind === 'earth' ? 'wc.earth' : 'wc.saturn') }); }
+  if (SCENE.on) { if (SCENE.free) { t = _('chip.free'); back = SCENE.kind === 'earth' ? 'chip.backEarth' : 'chip.backSaturn'; } else t = _('chip.sceneShort'); }
   else if (MAP.on) t = _('chip.map');
-  else if (S.scenario) t = _('chip.mission', { name: _('sc.' + S.scenario + '.name') });
+  else if (S.scenario && APP.mode !== 'design') t = _('chip.mission', { name: _('sc.' + S.scenario + '.name') });
   else { const a = S.bodies[0] ? S.bodies[0].name : '', b = S.bodies[1] ? S.bodies[1].name : ''; t = S.kind === 'man' ? _('chip.designMan', { a }) : _('chip.design', { a, b }); }
-  const key = t + '|' + back; if (key === modeChip.k) return; modeChip.k = key;
+  const sc = SCENE.on && !SCENE.free; // the scene's own switch (Saturn / Earth–Moon)
+  const key = t + '|' + back + '|' + sc; if (key === modeChip.k) return; modeChip.k = key; $('#wcScene').hidden = !sc;
   $('#modeText').textContent = t; const bb = $('#modeBack'); bb.hidden = !back; if (back) bb.textContent = _(back);
   INS = null;
 }
@@ -2342,12 +2342,34 @@ function sceneAim3(pos, c) {
   SCENE.k3 = clamp(BIG_PX / (mapSys.R[MAPK.indexOf('earth')] * fpx / Math.hypot(c.dist, L / 2)), 1, BIG_K);
 }
 $('#wcScene').addEventListener('click', e => { const b = e.target.closest('button'); if (b && SCENE.on) sceneSet(b.dataset.v); });
-$('#wcX').addEventListener('click', () => { $('#welcome').hidden = true; INS = null; });
-$('#wcPick').addEventListener('click', () => {
-  sceneUnhide('mission'); setWin('mission', { open: true, collapsed: false });
-  const s = $('#scenario'); s.focus();
-  try { s.showPicker(); } catch (e) { /* not supported: the list has focus */ }
+
+// The start screen ("Ne yapmak istersin?"): on the first visit, again from the logo. Watch the view (the scene), go on a
+// mission (the Moon or Mars, a ready scenario), design one's own transfer (the whole simulator: the mission and results
+// windows), focus in the cabin. The choice is remembered (PREF_KEYS.start, prefs.js parseStart) and the next visit starts
+// there; the cabin is not (it would keep sending the viewer away): it counts as the scene. Esc or a click outside: the scene.
+const APP = { mode: '' }; // 'scene' | 'mission' | 'design': what the viewer chose (the mode title follows it)
+function startOpen() { $('#start').hidden = false; $('#startCards').hidden = false; $('#startMis').hidden = true; $('#startCards .start-card').focus(); }
+function startClose() { $('#start').hidden = true; }
+function startScene() { APP.mode = 'scene'; if (!SCENE.on) sceneStart(); }
+function startDesign() {
+  APP.mode = 'design';
+  if (SCENE.on) sceneEnd(true);
+  for (const id of ['mission', 'results']) setWin(id, { open: true, collapsed: false });
+}
+function startMission(id) { APP.mode = 'mission'; writePref(LS, PREF_KEYS.start, 'mission:' + id); loadScenario(id); startClose(); }
+$('#startCards').addEventListener('click', e => {
+  const c = e.target.closest('.start-card'); if (!c) return;
+  const go = c.dataset.go;
+  if (go === 'mission') { $('#startCards').hidden = true; $('#startMis').hidden = false; $('#startMis .start-card').focus(); return; }
+  if (go === 'cabin') { writePref(LS, PREF_KEYS.start, 'scene'); return; } // the link (toCabin) goes on
+  writePref(LS, PREF_KEYS.start, go); startClose();
+  if (go === 'design') startDesign(); else startScene();
 });
+$('#startMis').addEventListener('click', e => { const c = e.target.closest('[data-sc]'); if (c) startMission(c.dataset.sc); });
+$('#startBack').addEventListener('click', () => { $('#startMis').hidden = true; $('#startCards').hidden = false; $('#startCards .start-card').focus(); });
+$('#start').addEventListener('pointerdown', e => { if (e.target === $('#start')) { startClose(); startScene(); } });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#start').hidden) { e.stopPropagation(); startClose(); startScene(); } }, true);
+$('#startBtn').addEventListener('click', startOpen);
 
 // Logarithmic scale: radial distance from the Sun r -> AU·ln(1 + r/r0); directions are kept.
 const LOG_R0 = 0.05 * AU;
@@ -3371,7 +3393,7 @@ $('#perfX').addEventListener('click', () => { $('#perfTip').hidden = true; });
 
 // ===================== Init =====================
 // ===================== The cabin (kabin.html) =====================
-// The rail's cabin button and the welcome card's "go to the cabin" take the window's view along (the opening scene's
+// The rail's cabin button and the start screen's cabin card take the window's view along (the opening scene's
 // Saturn / Earth–Moon) and leave the simulator's state for the way back. Back through the browser's back-forward cache
 // the page simply carries on; reloaded, it restores this snapshot (session only, read once).
 const SNAP_KEYS = ['kind', 'scenario', 'model', 'bodies', 'M', 'frame', 'follow', 'soi', 'tracks', 'focus', 'speed', 'rate', 'playing', 'u', 'ext', 'loop'];
@@ -3421,6 +3443,16 @@ syncMapUI();
 setSeg('#pcMetric', PC.metric);
 for (const id of WIN_IDS) applyWin(id);
 if (snapOk) { if (SNAP.map) setMap(true); } // back from the cabin: the mission as it was left
-else { sceneStart(); if (SNAP && SNAP.scene) sceneSet(SNAP.scene); }
+else {
+  sceneStart(); if (SNAP && SNAP.scene) sceneSet(SNAP.scene);
+  // where the viewer chose to start (the start screen on the first visit; not when coming back from the cabin or to the
+  // Sources)
+  const st = parseStart(readPref(LS, PREF_KEYS.start), SCENARIOS.map(s => s.id));
+  if (SNAP && SNAP.scene || location.hash === '#kaynakca') APP.mode = 'scene';
+  else if (!st) startOpen();
+  else if (st === 'design') startDesign();
+  else if (st === 'scene') APP.mode = 'scene';
+  else { APP.mode = 'mission'; loadScenario(st.slice(8)); }
+}
 if (location.hash === '#kaynakca') setWin('credits', { open: true, collapsed: false }); // the cabin's sound panel links here
 requestAnimationFrame(t => { last = t; draw(t); });
