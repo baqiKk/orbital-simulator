@@ -2744,6 +2744,7 @@ function draw(now) {
   // frame cap (low-resource mode); the small slack keeps 60 Hz displays at an even 30 fps
   if (Q.fpsCap && now - last < 1000 / Q.fpsCap - 4) { requestAnimationFrame(draw); return; }
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  autoFrame(now, dt);
   // adaptive quality (normal and 3D modes): if frames stay slow, the ladder (FX) turns effects off one step at a time,
   // then drops glow, renders at 1x pixel ratio and suggests a lighter mode
   if (MODE !== 'low' && !lowQ) {
@@ -3270,27 +3271,38 @@ $('#viewMode').addEventListener('click', e => {
   setMode(b.dataset.v, true);
 });
 
-// First visit: start in normal mode and ask once; either answer is remembered.
-let perfTipPending = false, perfTipShown = false;
-function askMode() {
-  const d = $('#askDlg');
-  const done = m => {
-    setMode(m, true);
-    if (d.open) d.close();
-    if (SCENE.wait) sceneStart();
-    if (perfTipPending && m === 'normal') showPerfTip();
-  };
-  $('#askLow').addEventListener('click', () => done('low'));
-  $('#askNormal').addEventListener('click', () => done('normal'));
-  d.addEventListener('cancel', e => { e.preventDefault(); done('normal'); });
-  if (typeof d.showModal === 'function') d.showModal(); else d.setAttribute('open', '');
-  $('#askNormal').focus();
+// No saved mode: never asked. The device decides (prefs.js autoMode: a start that died, data saving, a small device;
+// iOS only by frames), then the first seconds' frames (AUTO, autoModeFrames: a light mode when the median frame is
+// over 40 ms). The automatic choice is not saved; a mode the viewer picks is. Going light says so in a small note
+// that closes by itself ("Hafif mod açıldı · Değiştir").
+// The safety net (as the cabin's): a mark in sessionStorage while the page starts (gone after 20 s or on pagehide);
+// found at the start, the last one died (a tab killed for its memory and loaded again), so this one runs light.
+const CRASHED = readPref(SS, PREF_KEYS.simBoot) != null;
+const bootMark = () => { writePref(SS, PREF_KEYS.simBoot, String(Date.now())); setTimeout(() => clearPref(SS, PREF_KEYS.simBoot), 20000); };
+bootMark();
+addEventListener('pagehide', () => clearPref(SS, PREF_KEYS.simBoot));
+addEventListener('pageshow', e => { if (e.persisted) bootMark(); });
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+const AUTO = { on: false, t0: 0, dts: [] };
+function liteTip(key) {
+  $('#liteText').textContent = _(key); $('#liteTip').hidden = false;
+  clearTimeout(liteTip.t); liteTip.t = setTimeout(() => { $('#liteTip').hidden = true; }, 12000);
+}
+$('#liteGo').addEventListener('click', () => { $('#liteTip').hidden = true; setMode('normal', true); });
+$('#liteX').addEventListener('click', () => { $('#liteTip').hidden = true; });
+// a frame's time while the first seconds are measured (from half a second in: the first frames load things)
+function autoFrame(now, dt) {
+  if (!AUTO.on) return;
+  if (!AUTO.t0) AUTO.t0 = now;
+  if (now - AUTO.t0 > 500) AUTO.dts.push(dt);
+  if (now - AUTO.t0 < 3500) return;
+  AUTO.on = false;
+  if (autoModeFrames(AUTO.dts) === 'low' && MODE !== 'low') { setMode('low', false); liteTip('lite.text'); }
 }
 
 // Non-modal suggestion when adaptive quality kicks in; at most once per session.
+let perfTipShown = false;
 function showPerfTip() {
-  if ($('#askDlg').open) { perfTipPending = true; return; }
-  perfTipPending = false;
   if (MODE === 'low' || perfTipShown || readPref(SS, PREF_KEYS.perfTip)) return;
   perfTipShown = true; writePref(SS, PREF_KEYS.perfTip, '1');
   $('#perfText').textContent = _(MODE === '3d' ? 'perf.text3d' : 'perf.text');
@@ -3332,7 +3344,11 @@ $('#scenario').innerHTML = `<option value="" hidden>${esc(_('sc.custom.name'))}<
 $('#scenario').addEventListener('change', e => { if (e.target.value) loadScenario(e.target.value); });
 $('#dateWarn').textContent = _('err.dateRange', { from: EPHEM_YEARS[0], to: EPHEM_YEARS[1] });
 const start = startupMode(LS);
-SCENE.wait = start.ask; // nothing is drawn or fetched before the first-run answer
+if (start.auto) {
+  const conn = navigator.connection, m = autoMode({ crashed: CRASHED, saveData: !!(conn && conn.saveData), ios: IOS, mem: navigator.deviceMemory, cores: navigator.hardwareConcurrency });
+  start.mode = m;
+  if (m === 'low') liteTip(CRASHED ? 'lite.crash' : 'lite.text'); else AUTO.on = true;
+} else if (CRASHED && start.mode !== 'low') { start.mode = 'low'; liteTip('lite.crash'); } // a saved mode, but the last start died: light this once
 bind3d();
 setMode(start.mode === '3d' ? 'normal' : start.mode, false);
 if (start.mode === '3d') setMode('3d', false); // normal 2D until Three.js has loaded
@@ -3345,8 +3361,7 @@ setPlayIcon();
 syncMapUI();
 setSeg('#pcMetric', PC.metric);
 for (const id of WIN_IDS) applyWin(id);
-if (start.ask) { sceneAside(); askMode(); }
-else if (snapOk) { if (SNAP.map) setMap(true); } // back from the cabin: the mission as it was left
+if (snapOk) { if (SNAP.map) setMap(true); } // back from the cabin: the mission as it was left
 else { sceneStart(); if (SNAP && SNAP.scene) sceneSet(SNAP.scene); }
 if (location.hash === '#kaynakca') setWin('credits', { open: true, collapsed: false }); // the cabin's sound panel links here
 requestAnimationFrame(t => { last = t; draw(t); });

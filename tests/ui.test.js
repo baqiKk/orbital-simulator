@@ -42,22 +42,22 @@ for (const [k, b] of Object.entries(BODIES)) assert.ok(!('name' in b), `bodies.j
 assert.ok(html.includes(`<title>${DICT['meta.title']}</title>`), '<title> matches meta.title');
 assert.ok(html.includes(`content="${DICT['meta.description']}"`), 'meta description matches meta.description');
 
-// 4) Startup mode: saved choice wins; nothing valid saved -> normal + ask; broken storage never throws
+// 4) Startup mode: saved choice wins; nothing valid saved -> chosen for the device (auto); broken storage never throws
 const store = v => ({ getItem: () => v, setItem() {}, removeItem() {} });
 const broken = { getItem() { throw new Error('denied'); }, setItem() { throw new Error('quota'); }, removeItem() { throw new Error('denied'); } };
-assert.deepStrictEqual(P.startupMode(store('low')), { mode: 'low', ask: false });
-assert.deepStrictEqual(P.startupMode(store('normal')), { mode: 'normal', ask: false });
-assert.deepStrictEqual(P.startupMode(store(null)), { mode: 'normal', ask: true });
-assert.deepStrictEqual(P.startupMode(store('3d')), { mode: '3d', ask: false });
-assert.deepStrictEqual(P.startupMode(store('vr')), { mode: 'normal', ask: true }, 'unknown modes fall back');
-assert.deepStrictEqual(P.startupMode(broken), { mode: 'normal', ask: true });
-assert.deepStrictEqual(P.startupMode(null), { mode: 'normal', ask: true });
+assert.deepStrictEqual(P.startupMode(store('low')), { mode: 'low', auto: false });
+assert.deepStrictEqual(P.startupMode(store('normal')), { mode: 'normal', auto: false });
+assert.deepStrictEqual(P.startupMode(store(null)), { mode: 'normal', auto: true });
+assert.deepStrictEqual(P.startupMode(store('3d')), { mode: '3d', auto: false });
+assert.deepStrictEqual(P.startupMode(store('vr')), { mode: 'normal', auto: true }, 'unknown modes fall back');
+assert.deepStrictEqual(P.startupMode(broken), { mode: 'normal', auto: true });
+assert.deepStrictEqual(P.startupMode(null), { mode: 'normal', auto: true });
 assert.strictEqual(P.writePref(broken, P.PREF_KEYS.mode, 'low'), false);
 assert.doesNotThrow(() => P.clearPref(broken, P.PREF_KEYS.wins));
 { // round trip through a working store
   const m = new Map(), s = { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) };
   assert.ok(P.writePref(s, P.PREF_KEYS.mode, 'low'));
-  assert.deepStrictEqual(P.startupMode(s), { mode: 'low', ask: false });
+  assert.deepStrictEqual(P.startupMode(s), { mode: 'low', auto: false });
 }
 
 // 5) Window layout parsing: defaults are mission + results open; corrupt/partial data falls back per field
@@ -776,6 +776,26 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/const CRASHED = readPref\(SS, PREF_KEYS\.cabBoot\) != null;/.test(cab) && /const LOWQ = CRASHED \|\| /.test(cab) && /addEventListener\('pagehide', \(\) => clearPref\(SS, PREF_KEYS\.cabBoot\)\)/.test(cab) && /clearPref\(SS, PREF_KEYS\.cabBoot\), 20000\)/.test(cab), 'safety net: a start that died → low-resource mode');
   assert.ok(has('kab.safeMode') && /id="kSafe"/.test(page) && /if \(CRASHED\) \{ const n = \$\('#kSafe'\)/.test(cab), 'safety net: its note');
   assert.ok(/function memDump\(\)/.test(cab) && /    memLine\(\),/.test(cab), 'debug: the decoded memory');
+}
+
+// 23) The main page's mode without asking: no first-run question; nothing saved, the device decides (a start that died,
+// data saving, a small device — not on iOS, which does not tell), then the first seconds' frames; the choice is not
+// saved; going light says so in a small note with "change"; the safety net as the cabin's
+{
+  const app = read('js/app.js'), page = read('index.html');
+  assert.ok(!/askDlg|askMode/.test(app + page) && !has('ask.title'), 'no first-run question');
+  assert.strictEqual(P.autoMode({ ios: false, mem: 8, cores: 8 }), 'normal');
+  assert.strictEqual(P.autoMode({ ios: false, mem: 2, cores: 8 }), 'low', 'small memory');
+  assert.strictEqual(P.autoMode({ ios: false, mem: undefined, cores: 2 }), 'low', 'two cores');
+  assert.strictEqual(P.autoMode({ ios: true, mem: 2, cores: 2 }), 'normal', 'iOS: memory and cores are not trusted');
+  assert.strictEqual(P.autoMode({ ios: true, crashed: true }), 'low', 'a start that died');
+  assert.strictEqual(P.autoMode({ ios: false, mem: 8, cores: 8, saveData: true }), 'low', 'data saving');
+  assert.strictEqual(P.autoModeFrames(Array(30).fill(1 / 60)), 'normal');
+  assert.strictEqual(P.autoModeFrames([...Array(20).fill(0.05), ...Array(10).fill(1 / 60)]), 'low', 'slow frames');
+  assert.strictEqual(P.autoModeFrames(Array(5).fill(0.1)), null, 'too few frames');
+  assert.ok(/if \(start\.auto\) \{/.test(app) && /autoMode\(\{ crashed: CRASHED, saveData: /.test(app) && /if \(autoModeFrames\(AUTO\.dts\) === 'low' && MODE !== 'low'\) \{ setMode\('low', false\); liteTip\('lite\.text'\); \}/.test(app), 'the device, then the frames; not saved');
+  assert.ok(/const CRASHED = readPref\(SS, PREF_KEYS\.simBoot\) != null;/.test(app) && /addEventListener\('pagehide', \(\) => clearPref\(SS, PREF_KEYS\.simBoot\)\)/.test(app) && /clearPref\(SS, PREF_KEYS\.simBoot\), 20000\)/.test(app), 'safety net on the main page');
+  assert.ok(/id="liteTip"/.test(page) && has('lite.text') && has('lite.crash') && has('lite.change') && /\$\('#liteGo'\)\.addEventListener\('click', \(\) => \{ \$\('#liteTip'\)\.hidden = true; setMode\('normal', true\); \}\);/.test(app), 'the light note and its "change"');
 }
 
 console.log('OK — all UI tests passed');

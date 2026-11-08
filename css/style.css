@@ -337,6 +337,11 @@ html[data-scene] #readout,html[data-scene] #timeline,.win.scene-hide{display:non
 /* ---------- low-resource mode: no blur, shadows, gradients or transitions ---------- */
 html[data-q=low] .glass,html[data-q=low] .win{backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;background:var(--panel-lo)}
 html[data-q=low] .ask,html[data-q=low] .toast{box-shadow:none}
+/* the light mode's note (chosen for the device): one line, a link to change it, closes by itself */
+.toast.lite{flex-direction:row;align-items:center;gap:8px;border-left-color:var(--accent);padding:8px 8px 8px 12px}
+.toast.lite p{font-size:12px}
+.link{background:none;border:0;padding:0;color:var(--accent);font:inherit;text-decoration:underline;cursor:pointer}
+.lite-x{flex:none}
 html[data-q=low] *,html[data-q=low] *::before,html[data-q=low] *::after{transition:none!important;animation:none!important}
 
 /* ---------- narrow screens: rail turns into a tab bar under the plot, windows stack ---------- */

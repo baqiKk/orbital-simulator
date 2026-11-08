@@ -387,14 +387,10 @@
   </div>
 </div>
 
-<dialog class="ask" id="askDlg" aria-labelledby="askT" aria-describedby="askB">
-  <h2 id="askT" data-i18n="ask.title"></h2>
-  <p id="askB" data-i18n="ask.body"></p>
-  <div class="ask-act">
-    <button class="btn" type="button" id="askLow" data-i18n="ask.low"></button>
-    <button class="btn primary" type="button" id="askNormal" data-i18n="ask.normal"></button>
-  </div>
-</dialog>
+<div class="toast lite" id="liteTip" role="status" hidden>
+  <p><span id="liteText"></span> <button class="link" type="button" id="liteGo" data-i18n="lite.change"></button></p>
+  <button type="button" class="ibtn x lite-x" id="liteX" data-i18n-aria-label="perf.close" data-i18n-title="perf.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button>
+</div>
 
 <div class="toast" id="perfTip" role="status" hidden>
   <p id="perfText" data-i18n="perf.text"></p>

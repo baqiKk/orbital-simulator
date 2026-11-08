@@ -130,10 +130,9 @@ const I18N = {
     'mode.noGL': '3B görünüm için WebGL 2 gerekiyor; bu tarayıcıda yok',
     'mode.fail': '3B görünüm yüklenemedi. Bağlantını kontrol edip sayfayı yenile.',
     'mode.failTip': '3B görünüm yüklenemedi; sayfayı yenileyip yeniden dene',
-    'ask.title': 'Düşük kaynak moduna geçmek ister misin?',
-    'ask.body': 'Düşük kaynak modu yıldız arka planını ve ışıma efektlerini kapatır, kare hızını 30 fps ile sınırlar. Zayıf cihazlarda ve pilde daha akıcı çalışır. Seçimini sonra sağ üstteki mod seçiciden değiştirebilirsin.',
-    'ask.low': 'Düşük kaynak moduna geç',
-    'ask.normal': 'Normal modda devam et',
+    'lite.text': 'Hafif mod açıldı.',
+    'lite.crash': 'Cihazın belleği için hafif mod açıldı.',
+    'lite.change': 'Değiştir',
     'perf.text': 'Performans düşük görünüyor. Düşük kaynak moduna geç?',
     'perf.text3d': '3B görünüm bu cihazda yavaş çalışıyor. Normal 2B moduna geç?',
 
