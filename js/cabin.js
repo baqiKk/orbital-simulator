@@ -55,19 +55,27 @@ if (DEV.phone || DEV.ios) TEXOPT.keepBase = false; // planet base images go when
 // even when it is the same) and counts what it allocated: CVS.area (px allocated so far), CVS.n (resizes), CVS.by (per
 // canvas); ?debug=1 shows them. iOS Safari gives canvas memory back late, so churn adds up to its limit ("Total canvas
 // memory use exceeds the maximum limit").
-const CVS = { area: 0, n: 0, by: {} };
+// Also counted: layout(), sizeLife() and image decodes (layout, life, decode), and, in CVS.dur, whatever of these or a
+// resize happens while the room pans (PHASE: drag, fling, rubber, home): there should be none.
+// place: a phone's height-only change (Safari's toolbar), placed again without a layout (relayout)
+const CVS = { area: 0, n: 0, by: {}, layout: 0, place: 0, life: 0, decode: 0, dur: { resize: 0, layout: 0, place: 0, life: 0, decode: 0 } };
+let PHASE = '';
+function cvCount(k) { CVS[k]++; if (PHASE) CVS.dur[k]++; }
 function cvSize(cv, w, h) {
   w = Math.max(0, Math.round(w)); h = Math.max(0, Math.round(h));
   if (cv.width === w && cv.height === h) return false;
   cv.width = w; cv.height = h; cvNote(cv);
   return true;
 }
-function cvNote(cv) { CVS.n++; CVS.area += cv.width * cv.height; const k = cv.id || cv.className || 'offscreen'; CVS.by[k] = (CVS.by[k] || 0) + 1; }
+function cvNote(cv) { CVS.n++; if (PHASE) CVS.dur.resize++; CVS.area += cv.width * cv.height; const k = cv.id || cv.className || 'offscreen'; CVS.by[k] = (CVS.by[k] || 0) + 1; }
 // Phones and iOS keep the screen-sized canvases used now and then (the camera move's two, the cross-fade) once sized,
 // hidden at rest, sized again only when the screen turns or resizes. Freeing them at rest (0 × 0) holds less while
 // idle (≈ 6 MB at 390 × 844 × 1.5²), but each move would allocate them anew, and as iOS returns canvas memory late,
 // repeated moves pile up several sets; kept, the cost is that one set, known and bounded (cabMemEstimate counts it).
 const KEEP_CV = DEV.phone || DEV.ios;
+// Phones: the screen's height changes as Safari's toolbar shows and hides; the canvases tied to it (the sky box, the
+// move canvases, the fish and the steam) only grow for one screen width (STB) and are sized afresh when it turns.
+const STB = { w: 0, h: 0, bw: 0, bh: 0 };
 const TEX_CAP = Math.min(DEV.phone ? 2048 : 4096, GPU.max || Infinity, DBG && DBG.cap || Infinity);
 const deg = Math.PI / 180;
 
@@ -187,12 +195,14 @@ function wantTier(T) {
     for (const id of ['#kNight', '#kShine']) $(id).style.setProperty('--room', `url("${new URL(`img/cabin/${T}/room.webp`, location.href)}")`);
     document.body.classList.add('k-ready');
   };
+  for (const f of fresh) cvCount('decode');
   Promise.all(fresh.map(([, im]) => im.decode().catch(() => {}))).then(() => { DEC[T] = Object.fromEntries(fresh); if (ANIM) TIER_SWAP = swap; else swap(); });
 }
 let MV_LOADING = false;
 function mvPreload() {
   if (MV_LOADING) return; MV_LOADING = true;
   const set = LAYERS.map(n => [n, layerImg(n, MV_CAP)]);
+  for (const s of set) cvCount('decode');
   Promise.all(set.map(([, im]) => im.decode())).then(() => { if (ART_T > MV_CAP) DEC[MV_CAP] = Object.fromEntries(set); }).catch(() => {}).finally(() => { MV_LOADING = false; });
 }
 const tierSwapNow = () => { const f = TIER_SWAP; TIER_SWAP = null; if (f) f(); };
@@ -335,7 +345,12 @@ function initLife() {
   ST.puffs = Array.from({ length: 22 }, () => ({ age: 1, life: 0 }));
 }
 function sizeLife() {
-  for (const cv of [AQ.cv, ST.cv]) { const k = CAM.s * DPR; cvSize(cv, Math.max(1, Math.round(parseFloat(cv.style.width) * k)), Math.max(1, Math.round(parseFloat(cv.style.height) * k))); }
+  cvCount('life');
+  for (const cv of [AQ.cv, ST.cv]) {
+    const k = CAM.s * DPR, grow = KEEP_CV && cv.dataset.vw === String(VW); cv.dataset.vw = VW; // phones: only grow for one width (STB); their drawing scales to the size
+    let w = Math.max(1, Math.round(parseFloat(cv.style.width) * k)), h = Math.max(1, Math.round(parseFloat(cv.style.height) * k)); if (grow) { w = Math.max(w, cv.width); h = Math.max(h, cv.height); }
+    cvSize(cv, w, h);
+  }
 }
 function drawFish(g, f, t) {
   const L = f.len, H = L * 0.46, wag = Math.sin(t * 7 + f.ph) * 0.18;
@@ -406,8 +421,9 @@ const SP = { cv: $('#kSpace'), F: 1, G: [0, 0], V: [0, 0], C: [0, 0], GV: [1, 1]
 const FX = { clouds: true, relief: true, glint: true };
 const norm = v => { const l = Math.hypot(...v); return v.map(c => c / l); };
 // low-resource sky: plain points, the same every time
+const PLAIN = { cv: null }; // one canvas for the page, redrawn (a layout must not allocate a new one)
 function plainSky() {
-  const out = document.createElement('canvas'); cvSize(out, SP.cv.width, SP.cv.height);
+  const out = PLAIN.cv || (PLAIN.cv = document.createElement('canvas')); cvSize(out, SP.cv.width, SP.cv.height);
   const g = out.getContext('2d'); g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--void'); g.fillRect(0, 0, out.width, out.height);
   let s = 7; const r = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   const n = Math.round(out.width * out.height / 9000);
@@ -664,7 +680,9 @@ function fvSize() {
   const cw = SP.box.w, ch = SP.box.h;
   FV.plain = null; FV.cam = null; FV.prev = null;
   if (FV.V3) cvSize(SP.cv, 0, 0); // the 2D canvas is not drawn while the 3D one is: its memory goes
-  if (FV.V3) { const w0 = FV.cv.width, h0 = FV.cv.height; FV.V3.size(cw, ch, DPR); if (FV.cv.width !== w0 || FV.cv.height !== h0) cvNote(FV.cv); }
+  // only on a change: three.js writes the canvas size even when it is the same, and that reallocates the WebGL buffer
+  const key = cw + 'x' + ch + '@' + DPR;
+  if (FV.V3 && FV.sz !== key) { FV.sz = key; const w0 = FV.cv.width, h0 = FV.cv.height; FV.V3.size(cw, ch, DPR); if (FV.cv.width !== w0 || FV.cv.height !== h0) cvNote(FV.cv); }
 }
 function fvStart() {
   fvShineRun(); ltRun();
@@ -759,7 +777,8 @@ function mvBegin() {
   if (!MV.whisk) { MV.whisk = [...$('#kWhisk').querySelectorAll('path')].map(p => new Path2D(p.getAttribute('d'))); MV.lamp = rgbOf('var(--cab-lamp)'); MV.cream = rgbOf('var(--cab-cream)'); }
   MV.shine = rgbOf(getComputedStyle($('#kShine')).getPropertyValue('--fv-col').trim() || 'var(--cab-screen)');
   MV.set = set; MV.on = true;
-  for (const cv of [MV.A, MV.B]) { cvSize(cv, VW * DPR, VH * DPR); Object.assign(cv.style, { width: VW + 'px', height: VH + 'px' }); cv.hidden = false; }
+  const mh = KEEP_CV ? Math.max(VH, STB.h) : VH; // phones: the tallest height seen at this width (STB), drawn from the top
+  for (const cv of [MV.A, MV.B]) { cvSize(cv, VW * DPR, mh * DPR); Object.assign(cv.style, { width: VW + 'px', height: mh + 'px' }); cv.hidden = false; }
   drawMove(CAM); $('#kRoot').classList.add('k-moving'); // drawn first, then the DOM layers go, in the same frame
   dbgHand('in', MV.drawn > 0);
   return true;
@@ -1396,14 +1415,19 @@ function setLamp(on, save = true) {
 }
 
 // ---------- layout ----------
-function layout() {
+// light (phones, the height alone changed: Safari's toolbar): placed again, nothing more; the canvases tied to the height
+// only grow (STB), the art tier and the fish and steam canvases stay, no camera move is interrupted beyond the pan
+function layout(light = false) {
+  cvCount(light ? 'place' : 'layout');
   VW = innerWidth; VH = innerHeight; DPR = cabDpr(DEV, devicePixelRatio);
   if (!VW || !VH) return; // a hidden frame: wait for its resize
+  if (KEEP_CV) { if (STB.w !== VW) Object.assign(STB, { w: VW, h: 0, bw: 0, bh: 0 }); STB.h = Math.max(STB.h, VH); }
   const d = deskCam(), w = winCam(), cam = view === 'desk' ? d : w;
   // the sky canvas covers the screen for every camera between the two views and the whole glass at the desk scale
   // (a panned room, prefs.js cabSkyBox)
   const pr = DEV.phone ? cabPanRange(d, VW, LY.size[0]).map((v, i) => v * d.s + (i ? CAB_PAN.rubber : -CAB_PAN.rubber)) : null; // phones: the glass shown over the pan range
   const pd = gScreen(d), pw = gScreen(w), bx = cabSkyBox(VW, VH, pd, pw, (LY.glass.x1 - LY.glass.x0) * d.s, (LY.glass.y1 - LY.glass.y0) * d.s, 40, pr, pr && [(LY.glass.x1 - LY.glass.x0) * w.s, (LY.glass.y1 - LY.glass.y0) * w.s]);
+  if (KEEP_CV) { bx.w = STB.bw = Math.max(STB.bw, bx.w); bx.h = STB.bh = Math.max(STB.bh, bx.h); } // grown to the right and down: what it must cover stays inside
   if (!FV.V3) cvSize(SP.cv, bx.w * DPR, bx.h * DPR); // (the 3D glass: fvSize sizes its own, this one stays 0 × 0)
   Object.assign(SP.cv.style, { left: bx.l + 'px', top: bx.t + 'px', width: bx.w + 'px', height: bx.h + 'px' });
   SP.box = bx; SP.P0 = pd; SP.G = bx.g; // the glass's centre on screen and in canvas px at the desk view
@@ -1412,6 +1436,7 @@ function layout() {
   { const g = LY.glass, gc = glassC(), x0 = Math.max(g.x0, d.x), x1 = Math.min(g.x1, d.x + VW / d.s), y0 = Math.max(g.y0, d.y), y1 = Math.min(g.y1, d.y + VH / d.s);
     SP.V = [((x0 + x1) / 2 - gc[0]) * d.s, ((y0 + y1) / 2 - gc[1]) * d.s]; SP.C = [SP.G[0] + SP.V[0], SP.G[1] + SP.V[1]]; SP.GV = [(x1 - x0) * d.s, (y1 - y0) * d.s]; }
   SP.F = Math.max(VW, VH) / 2 / Math.tan(50 * deg); fvSize();
+  if (light && !ANIM) { panStop(); PAN.x = 0; apply(cam); FV.cam = null; fvKick(); return; }
   panStop(); PAN.x = 0; cancelAnimationFrame(ANIM); ANIM = 0; mvEnd(); stageWC(''); tierSwapNow();
   apply(cam); wantTier(needTier(cam.s)); sizeLife(); lifeNow();
   fvKick();
@@ -1428,7 +1453,7 @@ function layout() {
 // the light filters and the tier swaps meanwhile (-1: a pan with no frame pending). Reduced motion and low-resource
 // mode (the safety net's too): it pans, without glide and without animated return. PAN.x: the offset (art px) from the
 // crop, PAN.show: what is shown.
-const PAN = { x: 0, show: 0, drag: null, v: 0, raf: 0, timer: 0, eat: false, anim: null };
+const PAN = { x: 0, show: 0, drag: null, v: 0, raf: 0, timer: 0, eat: false, anim: null, relayout: false, last: { a: '', v: 0, t: 0 } };
 const ROOT = $('#kRoot');
 const panRange = () => cabPanRange(deskCam(), VW, LY.size[0]);
 const panAble = () => !!LY && view === 'desk' && (panRange()[1] - panRange()[0]) * deskCam().s > 8 && !(typeof SV !== 'undefined' && SV.on);
@@ -1438,6 +1463,8 @@ function panShow(x) {
   apply(deskAt(PAN.show), true);
 }
 function panBegin() { hideTip(); if (!ANIM) ANIM = -1; }
+// the pan's phase now (drag, fling, rubber, home; '' at rest): counted (CVS.dur)
+function panPhase(p, v) { if (p === PHASE) return; PHASE = p; if (p) PAN.last = { a: p, v: +(v || 0).toFixed(2), t: Date.now() }; }
 // the shown offset on a whole screen pixel, inside the art
 function panPixel(x) {
   const d = deskCam(), [lo, hi] = panRange(); x = Math.min(hi, Math.max(lo, x));
@@ -1448,12 +1475,14 @@ function panPixel(x) {
 function panEnd() {
   cancelAnimationFrame(PAN.raf); PAN.raf = 0; PAN.anim = null;
   if (ANIM === -1) ANIM = 0;
+  panPhase('');
   PAN.x = PAN.show = panPixel(PAN.show); apply(deskAt(PAN.show));
-  tierSwapNow(); sizeLife(); lifeNow(); FV.cam = null; fvKick();
+  tierSwapNow(); lifeNow(); FV.cam = null; fvKick(); // (no sizeLife: a pan keeps the scale)
+  if (PAN.relayout) { PAN.relayout = false; relayout(); }
   clearTimeout(PAN.timer); if (Math.abs(PAN.x) > 0.5) PAN.timer = setTimeout(() => { if (!PAN.drag) panHome(); }, CAB_PAN.idle);
 }
 // stop whatever moves (a drag, a glide, a return) where it is, without settling
-function panStop() { cancelAnimationFrame(PAN.raf); PAN.raf = 0; PAN.anim = null; PAN.drag = null; clearTimeout(PAN.timer); if (ANIM === -1) ANIM = 0; }
+function panStop() { cancelAnimationFrame(PAN.raf); PAN.raf = 0; PAN.anim = null; PAN.drag = null; clearTimeout(PAN.timer); if (ANIM === -1) ANIM = 0; PHASE = ''; }
 // a frame of the glide or the return (an animation: PAN.anim(dt) returns false when done)
 function panRun() {
   let last = performance.now();
@@ -1468,8 +1497,10 @@ function panRun() {
 function panFling() {
   const [lo, hi] = panRange();
   if (still()) { PAN.x = Math.min(hi, Math.max(lo, PAN.x)); panShow(PAN.x); panEnd(); return; }
+  panPhase('fling', PAN.v * deskCam().s);
   PAN.anim = dt => {
     const out = PAN.x > hi ? hi : PAN.x < lo ? lo : null;
+    if (out != null) panPhase('rubber', PAN.v * deskCam().s);
     if (out == null) { PAN.v *= Math.exp(-dt / CAB_PAN.tau); PAN.x += PAN.v * dt; }
     else { PAN.v *= Math.exp(-dt / 40); PAN.x += PAN.v * dt; PAN.x += (out - PAN.x) * (1 - Math.exp(-dt / 110)); }
     const settled = Math.abs(PAN.v) * deskCam().s < 0.01 && PAN.x >= lo - 0.5 / deskCam().s && PAN.x <= hi + 0.5 / deskCam().s;
@@ -1484,7 +1515,7 @@ function panHome() {
   panStop();
   if (view !== 'desk' || ANIM) { PAN.x = PAN.show = 0; return; }
   if (still()) { PAN.x = 0; panBegin(); panShow(0); panEnd(); return; }
-  const x0 = PAN.show; let t = 0; PAN.x = x0;
+  const x0 = PAN.show; let t = 0; PAN.x = x0; panPhase('home');
   PAN.anim = dt => { t = Math.min(1, t + dt / CAB_PAN.back); const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; PAN.x = x0 * (1 - e); return t < 1; };
   panBegin(); panRun();
 }
@@ -1501,10 +1532,10 @@ addEventListener('pointermove', e => {
     if (Math.abs(dy) > CAB_PAN.tap && Math.abs(dy) > Math.abs(dx)) { PAN.drag = null; return; }
     if (Math.abs(dx) <= CAB_PAN.tap) return;
     d.on = true; try { ROOT.setPointerCapture(d.id); } catch (err) { /* gone */ }
-    panBegin(); panHintHide();
+    panBegin(); panHintHide(); panPhase('drag');
   }
   const s = deskCam().s, dt = Math.max(1, e.timeStamp - d.lt), v = -(e.clientX - d.lx) / s / dt;
-  PAN.v = PAN.v * 0.6 + v * 0.4; d.lx = e.clientX; d.lt = e.timeStamp;
+  PAN.v = PAN.v * 0.6 + v * 0.4; d.lx = e.clientX; d.lt = e.timeStamp; PAN.last.v = +(PAN.v * s).toFixed(2);
   PAN.x = d.p0 - dx / s;
   if (!PAN.raf) PAN.raf = requestAnimationFrame(() => { PAN.raf = 0; if (PAN.drag) panShow(PAN.x); });
 });
@@ -1515,6 +1546,8 @@ for (const t of ['pointerup', 'pointercancel']) addEventListener(t, e => {
   PAN.eat = true; setTimeout(() => { PAN.eat = false; }, 400);
   cancelAnimationFrame(PAN.raf); PAN.raf = 0; panFling();
 });
+// a horizontal pan is ours: the browser neither scrolls nor bounces the page under it (touch-action none on the room, CSS)
+ROOT.addEventListener('touchmove', e => { if (PAN.drag && PAN.drag.on) e.preventDefault(); }, { passive: false });
 ROOT.addEventListener('click', e => { if (PAN.eat) { PAN.eat = false; e.stopPropagation(); e.preventDefault(); } }, true);
 // the hint, once on a touch screen that can pan (prefs: PREF_KEYS.cabPanHint)
 function panHint() {
@@ -1696,7 +1729,9 @@ $('#kVistaX').addEventListener('click', () => viMenu(false));
 $('#kSaverGo').addEventListener('click', () => saverStart(true));
 document.addEventListener('pointerdown', e => { const m = $('#kVistaMenu'); if (!m.hidden && !m.contains(e.target) && !$('#kVista').contains(e.target)) viMenu(false); });
 let rsz = 0;
-addEventListener('resize', () => { clearTimeout(rsz); rsz = setTimeout(() => { if (LY) layout(); }, 150); });
+addEventListener('resize', () => { clearTimeout(rsz); rsz = setTimeout(relayout, 150); });
+// a new screen size: laid out again, not while the room pans (at its rest), not when the size is the same
+function relayout() { if (!LY) return; if (PHASE) { PAN.relayout = true; return; } if (innerWidth === VW && innerHeight === VH) return; layout(KEEP_CV && innerWidth === VW && DPR === cabDpr(DEV, devicePixelRatio)); }
 document.addEventListener('visibilitychange', () => {
   document.documentElement.classList.toggle('paused', document.hidden);
   if (!document.hidden && LY) { loopStart(); lapTick(); poDo(pomoAdvance); FV.cam = null; fvKick(); }

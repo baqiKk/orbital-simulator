@@ -652,7 +652,9 @@ html[data-q=low] #kSun{display:none}
 .k-saverclock.brk{color:var(--cab-screen)}
 .k-saverclock.held{animation:kBlink 2s steps(1) infinite}
 /* panning the room with a finger (js/cabin.js PAN): the browser keeps vertical gestures and pinch; the one-time hint */
-.k-root{touch-action:pan-y pinch-zoom}
+/* the room's horizontal pan is ours (js/cabin.js PAN): no browser pan, bounce or back swipe under it; the panels are outside the room */
+.k-root{touch-action:none}
+html:has(>body.k-page),.k-page{overscroll-behavior:none}
 .k-panhint{position:fixed;z-index:6;left:50%;bottom:calc(max(12px,env(safe-area-inset-bottom,0px)) + 120px);transform:translateX(-50%);pointer-events:none;
   font:500 13px/1 var(--f-disp);letter-spacing:.18em;color:var(--ink);opacity:0;transition:opacity .6s;padding:7px 14px;background:color-mix(in srgb,var(--void) 55%,transparent)}
 .k-panhint.on{opacity:.55}

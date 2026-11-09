@@ -757,7 +757,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/PAN\.timer = setTimeout\(\(\) => \{ if \(!PAN\.drag\) panHome\(\); \}, CAB_PAN\.idle\)/.test(cab) && /function poEnded\(e\) \{\n  panHome\(\);/.test(cab) && /panStop\(\); PAN\.x = 0; \/\/ a panned room goes back/.test(cab), 'pan: back to the focus when idle, at a pomodoro\'s end, via the glass');
   assert.ok(/\$\('#hLamp'\)\.addEventListener\('click'/.test(cab) && /id="kLamp"/.test(page), 'the lamp clickable in the picture and in the bar');
   assert.ok(/readPref\(LS, PREF_KEYS\.cabPanHint\) === '1'/.test(cab) && /writePref\(LS, PREF_KEYS\.cabPanHint, '1'\)/.test(cab) && /matchMedia\('\(pointer: coarse\)'\)/.test(cab) && has('kab.panHint') && /id="kPanHint"/.test(page), 'pan hint: once, on touch screens');
-  assert.ok(/\.k-root\{touch-action:pan-y pinch-zoom\}/.test(css), 'the browser keeps vertical gestures and pinch');
+  assert.ok(css.includes('.k-root{touch-action:none}'), 'the room\'s pan is ours: no browser gesture under it (the panels are outside the room)');
 }
 
 // 22) Cabin memory (iOS Safari kills a tab over its memory and reloads it): canvases at most 2× the CSS size (1.5× on
@@ -890,5 +890,21 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   for (const rule of css.split('}')) if (/text-transform:uppercase/.test(rule) && /overflow:hidden/.test(rule) && /\/1[ ;]/.test(rule)) assert.ok(/padding:3px 0/.test(rule) || /padding:\s*3px/.test(rule), 'dots cut: ' + rule.trim().slice(0, 50));
   assert.ok(app.includes("for (const id of ['mission', 'results', 'overview']) if (WINS[id].open) { SCENE.hide.add(id);"), 'scene: the overview aside');
   assert.ok(css.includes('.vw-btn{display:inline-flex;align-items:center;gap:7px}'), 'view button: icon and text apart');
+}
+// 31) Cabin pans on iPhone, fast ones too: the glide, the stretch, the spring back and the return only translate (no
+// canvas, no layout, no sizeLife, no decode: counted in CVS.dur); a resize waits for the pan's rest, the same size does
+// nothing, phones' canvases only grow for one width (Safari's toolbar); the browser does not pan, bounce or go back
+// under the room
+{
+  const cab = read('js/cabin.js'), page = read('kabin.html'), css = read('css/style.css');
+  const pan = cab.slice(cab.indexOf('const PAN = {'), cab.indexOf('// the hint, once on a touch screen'));
+  assert.ok(!/layout\(\)|sizeLife\(|mvBegin|drawMove|cvSize\(|decode\(/.test(pan.replace('relayout()', '')), 'pan, glide, stretch, return: no layout, sizeLife, canvas or decode');
+  assert.ok(cab.includes("panPhase('fling', PAN.v * deskCam().s);") && cab.includes("if (out != null) panPhase('rubber'") && cab.includes("panPhase('home');") && cab.includes("panPhase('drag');") && cab.includes('function cvCount(k) { CVS[k]++; if (PHASE) CVS.dur[k]++; }'), 'pan phases counted');
+  assert.ok(cab.includes("cvCount(light ? 'place' : 'layout');") && cab.includes("cvCount('life');") && cab.includes("cvCount('decode');"), 'layout, sizeLife and decodes counted');
+  assert.ok(cab.includes('if (PHASE) { PAN.relayout = true; return; } if (innerWidth === VW && innerHeight === VH) return; layout(KEEP_CV && innerWidth === VW') && cab.includes('if (PAN.relayout) { PAN.relayout = false; relayout(); }'), 'a resize waits for the rest; the same size does nothing; phones: the height alone only places again');
+  assert.ok(cab.includes("if (light && !ANIM) { panStop(); PAN.x = 0; apply(cam); FV.cam = null; fvKick(); return; }") && cab.includes("cvCount(light ? 'place' : 'layout');"), 'height only: placed, no tier, no sizeLife, no realloc');
+  assert.ok(cab.includes("if (FV.V3 && FV.sz !== key)") && cab.includes('const out = PLAIN.cv || (PLAIN.cv = document.createElement'), 'the 3D glass sized only on a change; one low-resource sky canvas');
+  assert.ok(cab.includes('bx.w = STB.bw = Math.max(STB.bw, bx.w)') && cab.includes('const mh = KEEP_CV ? Math.max(VH, STB.h) : VH;') && cab.includes("grow = KEEP_CV && cv.dataset.vw === String(VW)"), 'phones: canvases only grow for one width');
+  assert.ok(css.includes('.k-root{touch-action:none}') && css.includes('html:has(>body.k-page),.k-page{overscroll-behavior:none}') && cab.includes("ROOT.addEventListener('touchmove', e => { if (PAN.drag && PAN.drag.on) e.preventDefault(); }, { passive: false });"), 'no browser pan, bounce or back swipe');
 }
 console.log('OK — all UI tests passed');

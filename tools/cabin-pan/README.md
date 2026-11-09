@@ -1,8 +1,9 @@
 # Kabinde kaydırma bellek denemesi (tools/cabin-pan)
 
-`pan50.js`, kabini WebKit'te iPhone 13 öykünmesiyle açar ve odayı N kez ileri geri kaydırır. Kaydırma, sayfanın okuduğu biçimde yapay dokunma işaretçisi olaylarıyla yapılır. Ardından iki kez cama gidip masaya döner. `?debug=1` ile açılan sayfanın `CVS` sayacını (`js/cabin.js`: o ana kadar ayrılmış toplam tuval alanı, yeniden boyutlandırma sayısı, tuval başına sayı) okur ve şunları denetler:
+`pan50.js`, kabini WebKit'te iPhone 13 öykünmesiyle açar ve odayı sayfanın okuduğu biçimde yapay dokunma işaretçisi olaylarıyla kaydırır: N yavaş sürükleme, hızlı fırlatmalar (40 ms'de 300 px), kenara çarpan fırlatmalar (esneme ve geri yaylanma), birbirinin atalet kaymasını yakalayan art arda N hızlı fırlatma. Bunların arasında görünüm yüksekliğini indirip kaldırır; Safari'nin araç çubuğu böyle davranır, testte bu hem kaydırma sırasında hem dururken yapılır. Ardından telefonu döndürür ve iki kez cama gidip masaya döner. `?debug=1` ile açılan sayfanın `CVS` sayaçlarını okur (`js/cabin.js`: o ana kadar ayrılmış toplam tuval alanı, yeniden boyutlandırma, `layout`, `place`, `sizeLife`, çözme ve kaydırma evrelerinde olanlar `dur`) ve şunları denetler:
 
-- Kaydırmalar boyunca hiçbir tuval ayrılmıyor ya da yeniden boyutlanmıyor; toplam alan ve sayaç aynı kalıyor.
+- Kaydırma adımlarında hiçbir tuval ayrılmıyor ya da yeniden boyutlanmıyor; `layout`, `sizeLife` ve görsel çözme yok.
+- Yükseklik değişimi (genişlik aynı) yalnızca yeniden konumlandırıyor (`place`): `layout` yok, tuval boyutlandırma yok. Tam `layout` yalnızca döndürmede.
 - Sürüklerken sahne `translate3d` ile kayıyor.
 - Bırakınca dönüşüm 2B ve tam pikselde, kaydırma aralığın içinde.
 - Geçiş tuvalleri (`kMoveA`, `kMoveB`) telefonda bir kez ayrılıyor; ikinci gidiş-dönüşte sayıları artmıyor.
