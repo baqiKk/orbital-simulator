@@ -15,15 +15,21 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)');
 // the simulator's saved low-resource mode (or ?q=low): no animation, no textures, a plain sky
 const LS = (() => { try { return window.localStorage; } catch (e) { return null; } })();
 // The safety net: iOS Safari kills a tab that runs out of memory and loads it again, which can loop. A mark in
-// sessionStorage while the page starts (gone after 20 s, or when the page is left normally: pagehide); found at the
-// start, the last start died, so this one runs in low-resource mode and says so (#kSafe).
+// sessionStorage for as long as the page is open (gone when it is left normally: pagehide); found at the start, the
+// last visit died, at any moment (a pan, minutes in), unless the black box (BOX, below) says the page was hidden then:
+// iOS also discards hidden tabs, which is no crash. This start then runs in low-resource mode, this once (the viewer's
+// quality choice is kept), and says so (#kSafe, with the black box's record to copy).
 const SS = (() => { try { return window.sessionStorage; } catch (e) { return null; } })();
-const CRASHED = readPref(SS, PREF_KEYS.cabBoot) != null;
-const bootMark = () => { writePref(SS, PREF_KEYS.cabBoot, String(Date.now())); setTimeout(() => clearPref(SS, PREF_KEYS.cabBoot), 20000); };
+const BOX0 = (() => { try { const o = JSON.parse(readPref(LS, PREF_KEYS.cabBox)); return o && typeof o === 'object' ? o : null; } catch (e) { return null; } })();
+const CRASHED = readPref(SS, PREF_KEYS.cabBoot) != null && !(BOX0 && BOX0.vis === false);
+const bootMark = () => writePref(SS, PREF_KEYS.cabBoot, String(Date.now()));
 bootMark();
 addEventListener('pagehide', () => clearPref(SS, PREF_KEYS.cabBoot));
 addEventListener('pageshow', e => { if (e.persisted) bootMark(); });
-const LOWQ = CRASHED || startupMode(LS).mode === 'low' || /[?&]q=low\b/.test(location.search);
+// The quality: the viewer's choice in the cabin (⋯ menu on phones, PREF_KEYS.cabQ: low / normal), else the simulator's
+// saved mode; ?q=low; a crash before makes this start low, without saving it
+const CAB_Q = readPref(LS, PREF_KEYS.cabQ);
+const LOWQ = CRASHED || /[?&]q=low\b/.test(location.search) || (CAB_Q === 'low' || CAB_Q === 'normal' ? CAB_Q === 'low' : startupMode(LS).mode === 'low');
 if (LOWQ) document.documentElement.dataset.q = 'low';
 const still = () => LOWQ || RM.matches;
 const DEV = { phone: matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600,
@@ -1406,6 +1412,45 @@ function petClear() {
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) { PET.over = false; if (PET.purr) { PET.purr = 0; sndPurr(AUD.set, 0); } } });
 
+// ---------- the black box (a crash on a real device) ----------
+// Every ~500 ms while the page is visible, at each pan phase and when it hides, the cabin's last state goes to
+// localStorage (PREF_KEYS.cabBox): canvas memory allocated so far and the counters (CVS), the last action (drag, fling,
+// rubber, home), its speed (screen px/ms) and time, the decoded memory now, the screen; vis false once hidden. After a
+// crash the note offers the record to copy (no ?debug=1 needed), to send.
+function boxWrite() {
+  if (!LY) return;
+  try {
+    const m = memDump();
+    writePref(LS, PREF_KEYS.cabBox, JSON.stringify({ t: Date.now(), vis: !document.hidden, act: PAN.last.a, v: PAN.last.v, at: PAN.last.t, phase: PHASE, x: Math.round(PAN.x), view, low: LOWQ,
+      cvMB: +(CVS.area * 4 / 1048576).toFixed(1), resizes: CVS.n, layout: CVS.layout, life: CVS.life, decode: CVS.decode, dur: CVS.dur, memMB: Math.round(m.total), tier: ART_T, vw: VW, vh: VH, dpr: DPR, ua: navigator.userAgent.slice(0, 160) }));
+  } catch (e) { /* storage full or gone */ }
+}
+// copy text (the clipboard, else a selected text area); the link says so
+function copyText(txt, b) {
+  const done = () => { b.textContent = _('kab.crashCopied'); };
+  const old = () => { const t = el('textarea', { readonly: '' }, document.body); t.value = txt; t.select(); try { document.execCommand('copy'); done(); } catch (e) { /* none */ } t.remove(); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, old); else old();
+}
+// the note after a crash: this start is light, the viewer's choice stays (the next start follows it); back to normal;
+// the black box's last record to copy
+function safeNote() {
+  const n = $('#kSafe'); n.textContent = '';
+  el('span', {}, n).textContent = _('kab.safeMode', { q: _(CAB_Q === 'low' ? 'kab.q.lowL' : 'kab.q.normalL') });
+  const link = (key, f) => { const b = el('button', { type: 'button', class: 'link' }, n); b.textContent = _(key); b.addEventListener('click', () => f(b)); return b; };
+  link('kab.safeNormal', () => { writePref(LS, PREF_KEYS.cabQ, 'normal'); location.reload(); });
+  if (BOX0) link('kab.crashInfo', b => copyText(JSON.stringify(BOX0, null, 1), b));
+  const x = el('button', { type: 'button', class: 'k-x', 'aria-label': _('kab.audio.close') }, n); x.textContent = '×'; x.addEventListener('click', () => { n.hidden = true; });
+  n.hidden = false;
+}
+// the quality switch (⋯ on phones): saved; a change loads the page again (the mode is fixed at the start)
+function qualUi() { for (const b of document.querySelectorAll('#kQual button')) b.setAttribute('aria-pressed', String((b.dataset.q === 'low') === LOWQ)); }
+$('#kQual').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  writePref(LS, PREF_KEYS.cabQ, b.dataset.q);
+  if ((b.dataset.q === 'low') !== LOWQ) location.reload();
+});
+qualUi();
+
 // ---------- the lamp ----------
 function setLamp(on, save = true) {
   $('#kRoot').classList.toggle('lamp-off', !on);
@@ -1463,8 +1508,8 @@ function panShow(x) {
   apply(deskAt(PAN.show), true);
 }
 function panBegin() { hideTip(); if (!ANIM) ANIM = -1; }
-// the pan's phase now (drag, fling, rubber, home; '' at rest): counted (CVS.dur)
-function panPhase(p, v) { if (p === PHASE) return; PHASE = p; if (p) PAN.last = { a: p, v: +(v || 0).toFixed(2), t: Date.now() }; }
+// the pan's phase now (drag, fling, rubber, home; '' at rest): counted (CVS.dur) and written to the black box
+function panPhase(p, v) { if (p === PHASE) return; PHASE = p; if (p) { PAN.last = { a: p, v: +(v || 0).toFixed(2), t: Date.now() }; boxWrite(); } }
 // the shown offset on a whole screen pixel, inside the art
 function panPixel(x) {
   const d = deskCam(), [lo, hi] = panRange(); x = Math.min(hi, Math.max(lo, x));
@@ -1689,7 +1734,8 @@ fetch('img/cabin/layout.json').then(r => r.json()).then(ly => {
   poDo(pomoAdvance); setInterval(() => { poDo(pomoAdvance); saverTick(); }, 1000);
   lapTick(); setInterval(() => { if (!document.hidden) lapTick(); }, 2000);
   setTimeout(panHint, 1800);
-  if (CRASHED) { const n = $('#kSafe'); n.hidden = false; setTimeout(() => { n.hidden = true; }, 9000); }
+  if (CRASHED) safeNote();
+  setInterval(() => { if (!document.hidden) boxWrite(); }, 500);
   loopStart();
 });
 $('#kGo').addEventListener('click', () => go(view === 'desk' ? 'window' : 'desk'));
@@ -1733,6 +1779,7 @@ addEventListener('resize', () => { clearTimeout(rsz); rsz = setTimeout(relayout,
 // a new screen size: laid out again, not while the room pans (at its rest), not when the size is the same
 function relayout() { if (!LY) return; if (PHASE) { PAN.relayout = true; return; } if (innerWidth === VW && innerHeight === VH) return; layout(KEEP_CV && innerWidth === VW && DPR === cabDpr(DEV, devicePixelRatio)); }
 document.addEventListener('visibilitychange', () => {
+  boxWrite(); // hidden: vis false (a discarded hidden tab is no crash)
   document.documentElement.classList.toggle('paused', document.hidden);
   if (!document.hidden && LY) { loopStart(); lapTick(); poDo(pomoAdvance); FV.cam = null; fvKick(); }
 });

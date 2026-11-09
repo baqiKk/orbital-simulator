@@ -556,6 +556,14 @@ html[data-q=low] #kSun{display:none}
 /* narrow screens at the glass: one compact row (the view and the go button); the view and lamp buttons fold
    into ⋯ (js/cabin.js .k-win, .k-more-open), opening as a small stack above the row */
 .k-more{display:none}
+/* the quality switch: phones, in ⋯ (at the desk and at the glass) */
+.k-qual{display:none;align-items:center}
+.k-qual>span{padding:0 8px;font:500 10.5px/1 var(--f-disp);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+@media (max-width:640px){
+  .k-hud.bot .k-more{display:inline-flex;padding:8px 12px}
+  .k-more-open .k-hud.bot{flex-wrap:wrap-reverse;padding:8px;background:var(--panel-lo);border:1px solid var(--line2)}
+  .k-more-open .k-hud.bot>#kQual{display:flex;flex-basis:100%;justify-content:center}
+}
 @media (max-width:640px){
   .k-win .k-hud.bot{flex-wrap:nowrap}
   .k-win .k-more{display:inline-flex;padding:8px 12px}
@@ -660,7 +668,10 @@ html:has(>body.k-page),.k-page{overscroll-behavior:none}
 .k-panhint.on{opacity:.55}
 /* the note after a start that died (js/cabin.js CRASHED) */
 .k-safe{position:fixed;z-index:7;left:50%;top:calc(max(12px,env(safe-area-inset-top,0px)) + 52px);transform:translateX(-50%);max-width:calc(100vw - 24px);
-  padding:7px 12px;background:var(--panel-lo);border:1px solid var(--line2);font:500 12px/1.3 var(--f-disp);color:var(--dim);pointer-events:none}
+  padding:7px 8px 7px 12px;background:var(--panel-lo);border:1px solid var(--line2);font:500 12px/1.3 var(--f-disp);color:var(--dim);display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;width:max-content}
+.k-safe[hidden]{display:none}
+.k-safe .link{font-size:12px}
+.k-safe .k-x{margin-left:auto}
 /* ?debug=1 overlay (temporary developer aid) */
 .k-debug{position:fixed;z-index:9;right:8px;bottom:56px;margin:0;padding:6px 8px;background:var(--panel-lo);border:1px solid var(--line2);font:400 10.5px/1.4 var(--f-mono);color:var(--ink);pointer-events:none;white-space:pre}
 html.paused .k-root *{animation-play-state:paused!important}

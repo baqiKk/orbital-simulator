@@ -72,7 +72,7 @@ const [url, N = '50', low = '0'] = process.argv.slice(2);
   const bad = pans.filter(([, v]) => v.resizes || v.areaMB || v.decode || v.dur || v.layout || v.life).map(([k]) => k);
   if (!(r['toolbar up and down ×5 at rest'].place > 0)) bad.push('the toolbar at rest did not place again');
   if (!(r['turn the phone and back'].layout >= 2)) bad.push('turning the phone did not lay out');
-  const ok = !bad.length && out.state.inRange && out.state.wholePx && out.state.live > 0 && !errs.length;
+  const ok = !bad.length && out.state.inRange && out.state.wholePx && out.state.live > 0 && out.box && out.box.act && !errs.length;
   console.log(ok ? `OK: no canvas allocated, no layout / sizeLife / decode during any pan (${pans.map(([k]) => k).join('; ')}; the toolbar at rest placed ${r['toolbar up and down ×5 at rest'].place}× with no layout and no resize; turning laid out ${r['turn the phone and back'].layout}×)` : `FAIL: ${bad.join('; ') || 'state, black box or page errors'}`);
   await b.close(); process.exit(ok ? 0 : 1);
 })().catch(e => { console.error(e); process.exit(1); });

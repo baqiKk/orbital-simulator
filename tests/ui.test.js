@@ -787,8 +787,8 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   { const body = cab.replace(/function cvSize[\s\S]*?\n\}\n/, ''); const bad = body.split('\n').filter(l => /(?<!style)\.(width|height)\s*=(?!=)/.test(l) && !/style\./.test(l.match(/(\S+)\.(width|height)\s*=(?!=)/)[1]));
     assert.deepStrictEqual(bad, [], 'canvas sizes only through cvSize'); }
   assert.ok(cab.includes('alloc: CVS.area * 4 / 1048576, resizes: CVS.n') && cab.includes('canvases allocated so far'), 'debug: canvas memory allocated so far and the resizes');
-  assert.ok(/const CRASHED = readPref\(SS, PREF_KEYS\.cabBoot\) != null;/.test(cab) && /const LOWQ = CRASHED \|\| /.test(cab) && /addEventListener\('pagehide', \(\) => clearPref\(SS, PREF_KEYS\.cabBoot\)\)/.test(cab) && /clearPref\(SS, PREF_KEYS\.cabBoot\), 20000\)/.test(cab), 'safety net: a start that died → low-resource mode');
-  assert.ok(has('kab.safeMode') && /id="kSafe"/.test(page) && /if \(CRASHED\) \{ const n = \$\('#kSafe'\)/.test(cab), 'safety net: its note');
+  assert.ok(cab.includes('const CRASHED = readPref(SS, PREF_KEYS.cabBoot) != null && !(BOX0 && BOX0.vis === false);') && /const LOWQ = CRASHED \|\| /.test(cab) && /addEventListener\('pagehide', \(\) => clearPref\(SS, PREF_KEYS\.cabBoot\)\)/.test(cab) && !/cabBoot\), 20000/.test(cab), 'safety net: a visit that died at any moment (the mark stays while open) → low-resource mode, unless it was hidden (a discarded tab)');
+  assert.ok(has('kab.safeMode') && /id="kSafe"/.test(page) && cab.includes('if (CRASHED) safeNote();') && cab.includes("writePref(LS, PREF_KEYS.cabQ, 'normal'); location.reload();") && !/writePref\(LS, PREF_KEYS\.cabQ, 'low'\)/.test(cab), 'safety net: its note, back to normal; the crash never saves low');
   assert.ok(/function memDump\(\)/.test(cab) && /    memLine\(\),/.test(cab), 'debug: the decoded memory');
 }
 
@@ -894,7 +894,8 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // 31) Cabin pans on iPhone, fast ones too: the glide, the stretch, the spring back and the return only translate (no
 // canvas, no layout, no sizeLife, no decode: counted in CVS.dur); a resize waits for the pan's rest, the same size does
 // nothing, phones' canvases only grow for one width (Safari's toolbar); the browser does not pan, bounce or go back
-// under the room
+// under the room; the black box every 500 ms with the last action; the crash note with the record to copy; the quality
+// switch in ⋯, saved; a crash makes one start light without saving it
 {
   const cab = read('js/cabin.js'), page = read('kabin.html'), css = read('css/style.css');
   const pan = cab.slice(cab.indexOf('const PAN = {'), cab.indexOf('// the hint, once on a touch screen'));
@@ -906,5 +907,9 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(cab.includes("if (FV.V3 && FV.sz !== key)") && cab.includes('const out = PLAIN.cv || (PLAIN.cv = document.createElement'), 'the 3D glass sized only on a change; one low-resource sky canvas');
   assert.ok(cab.includes('bx.w = STB.bw = Math.max(STB.bw, bx.w)') && cab.includes('const mh = KEEP_CV ? Math.max(VH, STB.h) : VH;') && cab.includes("grow = KEEP_CV && cv.dataset.vw === String(VW)"), 'phones: canvases only grow for one width');
   assert.ok(css.includes('.k-root{touch-action:none}') && css.includes('html:has(>body.k-page),.k-page{overscroll-behavior:none}') && cab.includes("ROOT.addEventListener('touchmove', e => { if (PAN.drag && PAN.drag.on) e.preventDefault(); }, { passive: false });"), 'no browser pan, bounce or back swipe');
+  assert.ok(P.PREF_KEYS.cabBox && cab.includes('setInterval(() => { if (!document.hidden) boxWrite(); }, 500);') && cab.includes("boxWrite(); // hidden: vis false") && /act: PAN\.last\.a, v: PAN\.last\.v, at: PAN\.last\.t/.test(cab), 'black box: every 500 ms, the last action, its speed and time');
+  assert.ok(has('kab.crashInfo') && has('kab.crashCopied') && has('kab.safeNormal') && cab.includes("if (BOX0) link('kab.crashInfo'"), 'crash note: the record to copy, back to normal');
+  assert.ok(P.PREF_KEYS.cabQ && page.includes('id="kQual"') && ['kab.q.label', 'kab.q.low', 'kab.q.normal', 'kab.q.note'].every(has) && cab.includes('writePref(LS, PREF_KEYS.cabQ, b.dataset.q);') && css.includes('.k-more-open .k-hud.bot>#kQual{display:flex'), 'quality switch in ⋯, saved');
+  assert.ok(/\{q\}/.test(DICT['kab.safeMode']), 'the note says the choice stays');
 }
 console.log('OK — all UI tests passed');

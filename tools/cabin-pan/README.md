@@ -4,6 +4,7 @@
 
 - Kaydırma adımlarında hiçbir tuval ayrılmıyor ya da yeniden boyutlanmıyor; `layout`, `sizeLife` ve görsel çözme yok.
 - Yükseklik değişimi (genişlik aynı) yalnızca yeniden konumlandırıyor (`place`): `layout` yok, tuval boyutlandırma yok. Tam `layout` yalnızca döndürmede.
+- Kara kutunun kaydı yazılmış, son eylem içinde.
 - Sürüklerken sahne `translate3d` ile kayıyor.
 - Bırakınca dönüşüm 2B ve tam pikselde, kaydırma aralığın içinde.
 - Geçiş tuvalleri (`kMoveA`, `kMoveB`) telefonda bir kez ayrılıyor; ikinci gidiş-dönüşte sayıları artmıyor.
