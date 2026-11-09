@@ -676,5 +676,6 @@ html:has(>body.k-page),.k-page{overscroll-behavior:none}
 .k-debug{position:fixed;z-index:9;right:8px;bottom:56px;margin:0;padding:6px 8px;background:var(--panel-lo);border:1px solid var(--line2);font:400 10.5px/1.4 var(--f-mono);color:var(--ink);pointer-events:none;white-space:pre}
 html.paused .k-root *{animation-play-state:paused!important}
 html[data-q=low] .k-root *{animation:none!important;transition:none!important}
+.k-nolife .k-cat,.k-nolife .k-cat *{animation:none!important} /* ?life=0 */
 html[data-q=low] #kGlowArt{filter:none}
 @media (prefers-reduced-motion:reduce){.k-root *{animation:none!important}}

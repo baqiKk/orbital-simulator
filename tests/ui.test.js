@@ -912,4 +912,16 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(P.PREF_KEYS.cabQ && page.includes('id="kQual"') && ['kab.q.label', 'kab.q.low', 'kab.q.normal', 'kab.q.note'].every(has) && cab.includes('writePref(LS, PREF_KEYS.cabQ, b.dataset.q);') && css.includes('.k-more-open .k-hud.bot>#kQual{display:flex'), 'quality switch in ⋯, saved');
   assert.ok(/\{q\}/.test(DICT['kab.safeMode']), 'the note says the choice stays');
 }
+// 32) Switches for finding a crash on a real device (alone or together) and the black box's sound, images, real dpr,
+// stage and layer estimate; the radio streams through <audio> (no decodeAudioData), generated buffers are counted
+{
+  const cab = read('js/cabin.js'), aud = read('js/cabin-audio.js'), css = read('css/style.css');
+  assert.ok(!/decodeAudioData/.test(aud) && aud.includes('ctx.createMediaElementSource(el)'), 'the radio streams through media elements');
+  assert.ok(aud.includes("const SND_OFF = /[?&]audio=0\\b/.test(location.search);") && aud.includes('  if (SND_OFF) return false;'), '?audio=0: no engine');
+  assert.ok(aud.includes('SND.buf.n++; SND.buf.bytes += n * 2 * 4;') && (aud.match(/sndFree\(/g) || []).length >= 3, 'generated buffers counted in and out');
+  assert.ok(cab.includes("const NOPAN = QS.pan === '0', PAN_LEFT = QS.pan === 'left', NOGLASS = QS.glass === '0', NOLIFE = QS.life === '0';") && cab.includes("CAB_TIERS.includes(+QS.tier) ? +QS.tier : Infinity"), 'switches: pan, glass, life, tier');
+  assert.ok(cab.includes('const panAble = () => !NOPAN &&') && cab.includes('if (NOGLASS || !LY ||') && cab.includes("if (NOLIFE) { for (const cv of [AQ.cv, ST.cv]) cvSize(cv, 0, 0); return; }") && css.includes('.k-nolife .k-cat,.k-nolife .k-cat *{animation:none!important}'), 'switches wired');
+  { const a = cab.slice(cab.indexOf('function apply(c, live = false)'), cab.indexOf('// the bottom bar')); assert.ok(/if \(PAN_LEFT\) \{[\s\S]*marginLeft = m;[\s\S]*return;\s*\}/.test(a) && !/translate3d/.test(a.slice(a.indexOf('if (PAN_LEFT)'), a.indexOf('return;'))), '?pan=left: margin-left, no 3D transform'); }
+  assert.ok(cab.includes("aud: typeof sndMem === 'function' ? sndMem() : null") && cab.includes('realDpr: devicePixelRatio, ...layerEst(), qs: QS') && cab.includes('imgMB: Math.round(m.img)'), 'black box: sound, images, real dpr, layer estimate, switches');
+}
 console.log('OK — all UI tests passed');

@@ -8,11 +8,21 @@
 //   noise: white / pink / brown noise from a generated, seamlessly looping buffer.
 // Everything starts on the first user gesture (browser rule) and keeps playing while the tab is hidden: fades are
 // scheduled on the audio clock, a track's end also arrives as a media event. Muted or silent: the context is suspended.
-const SND = { ctx: null, master: null, set: null, ext: 'mp3', started: false, layers: {}, onState: null, state: { track: null, trouble: 0 } };
+const SND = { ctx: null, master: null, set: null, ext: 'mp3', started: false, layers: {}, onState: null, state: { track: null, trouble: 0 }, buf: { n: 0, bytes: 0 } };
+// ?audio=0: no sound engine at all (for finding a crash on a real device)
+const SND_OFF = /[?&]audio=0\b/.test(location.search);
+// what the engine holds now (the cabin's black box): generated buffers held (count, bytes) and media elements with a
+// source (the radio and the space recordings stream through <audio>, nothing is decoded into a buffer)
+function sndMem() {
+  let els = 0; for (const l of Object.values(SND.layers)) if (l.deck) for (const E of l.deck.els) if (E.el.currentSrc && E.el.getAttribute('src')) els++;
+  return { on: !!SND.ctx, off: SND_OFF, bufs: SND.buf.n, bufMB: +(SND.buf.bytes / 1048576).toFixed(1), media: els };
+}
+const sndFree = b => { if (b) { SND.buf.n--; SND.buf.bytes -= b.length * b.numberOfChannels * 4; } };
 
 // false without Web Audio (the page stays silent, nothing else changes)
 function sndInit() {
   if (SND.ctx) return true;
+  if (SND_OFF) return false;
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
   try { SND.ctx = new AC(); } catch (e) { return false; }
   SND.master = SND.ctx.createGain(); SND.master.connect(SND.ctx.destination);
@@ -105,6 +115,7 @@ function noiseBuffer(type) {
     const d = buf.getChannelData(ch);
     for (let i = 0; i < n; i++) d[i] = i < F ? x[i] * (i / F) + x[n + i] * (1 - i / F) : x[i];
   }
+  SND.buf.n++; SND.buf.bytes += n * 2 * 4;
   return buf;
 }
 function humStart(out) {
@@ -115,11 +126,11 @@ function humStart(out) {
   ns.buffer = noiseBuffer('brown'); ns.loop = true; lp.type = 'lowpass'; lp.frequency.value = 160; ng.gain.value = 0.9;
   ns.connect(lp); lp.connect(ng); ng.connect(swell); ns.start(); nodes.push(ns, lp, ng);
   const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = 0.06; lg.gain.value = 0.18; lfo.connect(lg); lg.connect(swell.gain); lfo.start(); nodes.push(lfo, lg);
-  return () => { for (const nd of nodes) { try { nd.stop && nd.stop(); } catch (e) { /* stopped */ } nd.disconnect(); } swell.disconnect(); };
+  return () => { sndFree(ns.buffer); for (const nd of nodes) { try { nd.stop && nd.stop(); } catch (e) { /* stopped */ } nd.disconnect(); } swell.disconnect(); };
 }
 function noiseStart(out, type) {
   const s = SND.ctx.createBufferSource(); s.buffer = noiseBuffer(type); s.loop = true; s.connect(out); s.start();
-  return () => { try { s.stop(); } catch (e) { /* stopped */ } s.disconnect(); };
+  return () => { sndFree(s.buffer); try { s.stop(); } catch (e) { /* stopped */ } s.disconnect(); };
 }
 
 // ---------- settings -> graph ----------
@@ -230,6 +241,7 @@ function sndPurr(set, level) {
   clearTimeout(PURR.stopT);
   if (!level) PURR.stopT = setTimeout(() => {
     if (PURR.level) return;
+    sndFree(PURR.nodes[0].buffer);
     for (const nd of PURR.nodes) { try { nd.stop && nd.stop(); } catch (e) { /* stopped */ } nd.disconnect(); }
     PURR.g = PURR.nodes = null;
     if (!sndAny(SND.set) && c.state === 'running') c.suspend();

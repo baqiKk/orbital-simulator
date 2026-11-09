@@ -55,7 +55,13 @@ const DBG = (() => {
   return { toff: +q.get('t') || 0, em: q.get('em'), dom: q.get('move') === 'dom', sun: q.get('sun') !== '0', shine: q.get('shine') !== '0', cap: +q.get('cap') || 0, warm: q.has('warm') ? +q.get('warm') : 3, wc: q.get('wc') === '1', frames: [], draws: 0, cost: [], path: '-', hand: {}, glass: [], raf: [], light: '', el: null };
 })();
 if (DBG && VISTAS.earth.sep[DBG.em]) VISTAS.earth.pick = +DBG.em;
-const TMAX = Math.min(cabTierMax(DEV), GPU.max ? CAB_TIERS.filter(t => t <= GPU.max).pop() || CAB_TIERS[0] : Infinity);
+// Switches for finding a crash on a real device, alone or together: ?audio=0 no sound engine (cabin-audio.js), ?pan=0
+// no panning, ?pan=left the pan by margin-left (no 3D transform, no layer forced), ?glass=0 nothing drawn on the glass
+// (no sky, no view, no Three.js), ?life=0 no fish, steam or cat motion, ?tier=1600 (or another art tier) at most that
+// tier. The black box records which are on.
+const QS = (() => { const q = new URLSearchParams(location.search), o = {}; for (const k of ['audio', 'pan', 'glass', 'life', 'tier']) if (q.has(k)) o[k] = q.get(k); return o; })();
+const NOPAN = QS.pan === '0', PAN_LEFT = QS.pan === 'left', NOGLASS = QS.glass === '0', NOLIFE = QS.life === '0';
+const TMAX = Math.min(cabTierMax(DEV), GPU.max ? CAB_TIERS.filter(t => t <= GPU.max).pop() || CAB_TIERS[0] : Infinity, CAB_TIERS.includes(+QS.tier) ? +QS.tier : Infinity);
 if (DEV.phone || DEV.ios) TEXOPT.keepBase = false; // planet base images go when unused too (the saver's turn would gather them all)
 // Every canvas the page sizes goes through cvSize: it resizes only on a change (setting a size clears and reallocates
 // even when it is the same) and counts what it allocated: CVS.area (px allocated so far), CVS.n (resizes), CVS.by (per
@@ -352,6 +358,7 @@ function initLife() {
 }
 function sizeLife() {
   cvCount('life');
+  if (NOLIFE) { for (const cv of [AQ.cv, ST.cv]) cvSize(cv, 0, 0); return; } // ?life=0
   for (const cv of [AQ.cv, ST.cv]) {
     const k = CAM.s * DPR, grow = KEEP_CV && cv.dataset.vw === String(VW); cv.dataset.vw = VW; // phones: only grow for one width (STB); their drawing scales to the size
     let w = Math.max(1, Math.round(parseFloat(cv.style.width) * k)), h = Math.max(1, Math.round(parseFloat(cv.style.height) * k)); if (grow) { w = Math.max(w, cv.width); h = Math.max(h, cv.height); }
@@ -412,12 +419,12 @@ function loop(now) {
   if (dt >= 1 / 31) { LOOP.last = now; LOOP.t += dt; stepAqua(dt, LOOP.t); stepSteam(dt, LOOP.t); }
   LOOP.raf = requestAnimationFrame(loop);
 }
-function loopStart() { if (!LOOP.raf && !still() && !document.hidden) { LOOP.last = performance.now(); LOOP.raf = requestAnimationFrame(loop); } }
+function loopStart() { if (!LOOP.raf && !still() && !NOLIFE && !document.hidden) { LOOP.last = performance.now(); LOOP.raf = requestAnimationFrame(loop); } }
 function drawStill() { stepAqua(0, 0); ST.cv.getContext('2d').clearRect(0, 0, ST.cv.width, ST.cv.height); }
 // fish and steam drawn again as they are now (no time passes): after sizeLife, whose resize clears both canvases, so
 // they never show empty until the loop's next frame
 let LIFE_T = -1;
-function lifeNow() { if (still()) drawStill(); else { stepAqua(0, LOOP.t); stepSteam(0, LOOP.t); } LIFE_T = performance.now(); }
+function lifeNow() { if (NOLIFE) return; if (still()) drawStill(); else { stepAqua(0, LOOP.t); stepSteam(0, LOOP.t); } LIFE_T = performance.now(); }
 
 // ---------- the sky behind the glass ----------
 // The glass always shows a live view from the 3D renderer (below; in low-resource mode, with reduced motion or without
@@ -715,7 +722,7 @@ function fvStop() {
 // (after the room is in: its images come before the planets')
 // (a flight starting or ending redraws at once: a still view in low-resource mode would wait a minute)
 function fvSync() {
-  if (!LY || !document.body.classList.contains('k-ready')) return;
+  if (NOGLASS || !LY || !document.body.classList.contains('k-ready')) return; // ?glass=0: never
   const st = fvState(Date.now()), fl = !!(st && st.D);
   if (st && !FV.on) fvStart(); else if (!st && FV.on) fvStop(); else if (FV.on && fl !== FV.flight) fvKick();
   if (fl !== FV.flight) { FV.flight = fl; viUi(); }
@@ -1030,6 +1037,14 @@ const gScreen = c => { const g = glassC(); return [(g[0] - c.x) * c.s, (g[1] - c
 // rastered again); at rest a plain 2D transform again (no layer kept, no will-change)
 function apply(c, live = false) {
   CAM = c;
+  // ?pan=left: the stage stays at the pan's start (2D) and moves by margin-left, rounded (no 3D transform, no layer)
+  if (PAN_LEFT) {
+    const b = live && PAN.base ? PAN.base : c, m = live && PAN.base ? Math.round((b.x - c.x) * c.s) + 'px' : '';
+    const tf = `translate(${-b.x * b.s}px,${-b.y * b.s}px) scale(${b.s})`, p = gScreen(b), st = `translate(${p[0] - SP.P0[0]}px,${p[1] - SP.P0[1]}px)`;
+    for (const s of STAGES) { s.style.transform = tf; s.style.marginLeft = m; }
+    for (const cv of [SP.cv, FV.cv, XF.cv]) { cv.style.transform = st; cv.style.marginLeft = m; }
+    return;
+  }
   const tf = live ? `translate3d(${-c.x * c.s}px,${-c.y * c.s}px,0) scale(${c.s})` : `translate(${-c.x * c.s}px,${-c.y * c.s}px) scale(${c.s})`; for (const s of STAGES) s.style.transform = tf;
   const p = gScreen(c), dx = p[0] - SP.P0[0], dy = p[1] - SP.P0[1];
   SP.cv.style.transform = FV.cv.style.transform = XF.cv.style.transform = live ? `translate3d(${dx}px,${dy}px,0)` : `translate(${dx}px,${dy}px)`;
@@ -1093,7 +1108,7 @@ function memDump() {
   for (const [n, im] of Object.entries(IMG)) img('art ' + n, im, n === 'room' && !LOWQ ? 3 : 1);
   for (const [T, set] of Object.entries(DEC)) for (const [n, im] of Object.entries(set)) img(`art ${T} ${n}`, im);
   for (const [f, e] of TEXC) if (e.ok && e.img) img(f.replace(/^.*\//, ''), e.img, FV.V3 ? 7 / 3 : 1);
-  return { rows, total: rows.reduce((a, r) => a + r[1], 0), alloc: CVS.area * 4 / 1048576, resizes: CVS.n, by: { ...CVS.by } };
+  return { rows, total: rows.reduce((a, r) => a + r[1], 0), img: rows.filter(r => !/canvas|^k|offscreen/.test(r[0]) || /^art /.test(r[0])).reduce((a, r) => a + r[1], 0), alloc: CVS.area * 4 / 1048576, resizes: CVS.n, by: { ...CVS.by } };
 }
 function memLine() {
   const m = memDump(), top = [...m.rows].sort((a, b) => b[1] - a[1]).slice(0, 4).map(r => `${r[0]} ${r[1].toFixed(0)}`).join(', ');
@@ -1422,8 +1437,18 @@ function boxWrite() {
   try {
     const m = memDump();
     writePref(LS, PREF_KEYS.cabBox, JSON.stringify({ t: Date.now(), vis: !document.hidden, act: PAN.last.a, v: PAN.last.v, at: PAN.last.t, phase: PHASE, x: Math.round(PAN.x), view, low: LOWQ,
-      cvMB: +(CVS.area * 4 / 1048576).toFixed(1), resizes: CVS.n, layout: CVS.layout, life: CVS.life, decode: CVS.decode, dur: CVS.dur, memMB: Math.round(m.total), tier: ART_T, vw: VW, vh: VH, dpr: DPR, ua: navigator.userAgent.slice(0, 160) }));
+      cvMB: +(CVS.area * 4 / 1048576).toFixed(1), resizes: CVS.n, layout: CVS.layout, place: CVS.place, life: CVS.life, decode: CVS.decode, dur: CVS.dur, memMB: Math.round(m.total), imgMB: Math.round(m.img), tier: ART_T,
+      aud: typeof sndMem === 'function' ? sndMem() : null, vw: VW, vh: VH, dpr: DPR, realDpr: devicePixelRatio, ...layerEst(), qs: QS, ua: navigator.userAgent.slice(0, 160) }));
   } catch (e) { /* storage full or gone */ }
+}
+// The stage's size on screen (CSS px: the art × the camera's scale) and a guess at its composited layer when a pan
+// promotes it: that area × the screen's real devicePixelRatio² × 4 bytes (our canvas DPR cap does not reach layers), one
+// per stage element (#kStage, #kTop); WebKit tiles a large layer, so this is an upper bound
+function layerEst() {
+  if (!LY || !CAM) return {};
+  const w = Math.round(LY.size[0] * CAM.s), h = Math.round(LY.size[1] * CAM.s), r = devicePixelRatio || 1;
+  // layerArtMB: the same if the layer were rastered at the stage's own size (art px) × dpr², the transform's scale ignored
+  return { stageCss: [w, h], layerMB: Math.round(w * h * r * r * 4 / 1048576), layerArtMB: Math.round(LY.size[0] * LY.size[1] * r * r * 4 / 1048576), stages: STAGES.length };
 }
 // copy text (the clipboard, else a selected text area); the link says so
 function copyText(txt, b) {
@@ -1473,7 +1498,7 @@ function layout(light = false) {
   const pr = DEV.phone ? cabPanRange(d, VW, LY.size[0]).map((v, i) => v * d.s + (i ? CAB_PAN.rubber : -CAB_PAN.rubber)) : null; // phones: the glass shown over the pan range
   const pd = gScreen(d), pw = gScreen(w), bx = cabSkyBox(VW, VH, pd, pw, (LY.glass.x1 - LY.glass.x0) * d.s, (LY.glass.y1 - LY.glass.y0) * d.s, 40, pr, pr && [(LY.glass.x1 - LY.glass.x0) * w.s, (LY.glass.y1 - LY.glass.y0) * w.s]);
   if (KEEP_CV) { bx.w = STB.bw = Math.max(STB.bw, bx.w); bx.h = STB.bh = Math.max(STB.bh, bx.h); } // grown to the right and down: what it must cover stays inside
-  if (!FV.V3) cvSize(SP.cv, bx.w * DPR, bx.h * DPR); // (the 3D glass: fvSize sizes its own, this one stays 0 × 0)
+  if (!FV.V3) cvSize(SP.cv, NOGLASS ? 0 : bx.w * DPR, NOGLASS ? 0 : bx.h * DPR); // (the 3D glass: fvSize sizes its own, this one stays 0 × 0)
   Object.assign(SP.cv.style, { left: bx.l + 'px', top: bx.t + 'px', width: bx.w + 'px', height: bx.h + 'px' });
   SP.box = bx; SP.P0 = pd; SP.G = bx.g; // the glass's centre on screen and in canvas px at the desk view
   // the view's centre (where the camera looks): the middle of the part of the glass the desk view shows (a portrait
@@ -1501,13 +1526,13 @@ function layout(light = false) {
 const PAN = { x: 0, show: 0, drag: null, v: 0, raf: 0, timer: 0, eat: false, anim: null, relayout: false, last: { a: '', v: 0, t: 0 } };
 const ROOT = $('#kRoot');
 const panRange = () => cabPanRange(deskCam(), VW, LY.size[0]);
-const panAble = () => !!LY && view === 'desk' && (panRange()[1] - panRange()[0]) * deskCam().s > 8 && !(typeof SV !== 'undefined' && SV.on);
+const panAble = () => !NOPAN && !!LY && view === 'desk' && (panRange()[1] - panRange()[0]) * deskCam().s > 8 && !(typeof SV !== 'undefined' && SV.on);
 const deskAt = x => { const d = deskCam(); return { s: d.s, x: d.x + x, y: d.y }; };
 function panShow(x) {
   const [lo, hi] = panRange(); PAN.show = cabRubber(x, lo, hi, CAB_PAN.rubber / deskCam().s);
   apply(deskAt(PAN.show), true);
 }
-function panBegin() { hideTip(); if (!ANIM) ANIM = -1; }
+function panBegin() { hideTip(); if (!ANIM) ANIM = -1; PAN.base = PAN.base || CAM; }
 // the pan's phase now (drag, fling, rubber, home; '' at rest): counted (CVS.dur) and written to the black box
 function panPhase(p, v) { if (p === PHASE) return; PHASE = p; if (p) { PAN.last = { a: p, v: +(v || 0).toFixed(2), t: Date.now() }; boxWrite(); } }
 // the shown offset on a whole screen pixel, inside the art
@@ -1520,7 +1545,7 @@ function panPixel(x) {
 function panEnd() {
   cancelAnimationFrame(PAN.raf); PAN.raf = 0; PAN.anim = null;
   if (ANIM === -1) ANIM = 0;
-  panPhase('');
+  panPhase(''); PAN.base = null;
   PAN.x = PAN.show = panPixel(PAN.show); apply(deskAt(PAN.show));
   tierSwapNow(); lifeNow(); FV.cam = null; fvKick(); // (no sizeLife: a pan keeps the scale)
   if (PAN.relayout) { PAN.relayout = false; relayout(); }
@@ -1528,6 +1553,7 @@ function panEnd() {
 }
 // stop whatever moves (a drag, a glide, a return) where it is, without settling
 function panStop() { cancelAnimationFrame(PAN.raf); PAN.raf = 0; PAN.anim = null; PAN.drag = null; clearTimeout(PAN.timer); if (ANIM === -1) ANIM = 0; PHASE = ''; }
+// (a glide caught by a new touch keeps PAN.base: the stage is still at that pan's start)
 // a frame of the glide or the return (an animation: PAN.anim(dt) returns false when done)
 function panRun() {
   let last = performance.now();
@@ -1628,7 +1654,8 @@ function buildHits() {
   }
   $('#hGlass').addEventListener('click', () => go(view === 'desk' ? 'window' : 'desk'));
   $('#hLamp').addEventListener('click', () => setLamp($('#kRoot').classList.contains('lamp-off')));
-  petInit($('#hCat'));
+  if (!NOLIFE) petInit($('#hCat'));
+  if (NOLIFE) $('#kRoot').classList.add('k-nolife');
   for (const id of ['hBook', 'hTea']) $('#' + id).addEventListener('click', e => showTip(e.currentTarget));
   $('#hClock').addEventListener('click', () => poPanel());
   $('#hPhones').addEventListener('click', () => audPanel());
