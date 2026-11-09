@@ -59,8 +59,15 @@ if (DBG && VISTAS.earth.sep[DBG.em]) VISTAS.earth.pick = +DBG.em;
 // no panning, ?pan=left the pan by margin-left (no 3D transform, no layer forced), ?glass=0 nothing drawn on the glass
 // (no sky, no view, no Three.js), ?life=0 no fish, steam or cat motion, ?tier=1600 (or another art tier) at most that
 // tier. The black box records which are on.
-const QS = (() => { const q = new URLSearchParams(location.search), o = {}; for (const k of ['audio', 'pan', 'glass', 'life', 'tier', 'stage']) if (q.has(k)) o[k] = q.get(k); return o; })();
-const NOPAN = QS.pan === '0', PAN_LEFT = QS.pan === 'left', NOGLASS = QS.glass === '0', NOLIFE = QS.life === '0';
+const QS = (() => { const q = new URLSearchParams(location.search), o = {}; for (const k of ['audio', 'pan', 'glass', 'life', 'tier', 'stage', 'mask', 'paper', 'cat', 'top', 'cv', 'glow', 'bare']) if (q.has(k)) o[k] = q.get(k); return o; })();
+// What stands on the stage at rest, each removable (display none: no layer, no paint): ?mask=0 the two art-sized masked
+// layers (lamp-off shade, light through the glass), ?paper=0 posters and card (its matrix3d), ?cat=0, ?top=0 the second
+// stage (clock, laptop, hit areas), ?cv=0 the canvases (aquarium, steam, shade, light from outside), ?glow=0 the lamp's
+// glow on the glass. ?bare=1: all of them and every switch above off, only the room image left.
+const BARE = QS.bare === '1';
+const NOPAN = BARE || QS.pan === '0', PAN_LEFT = QS.pan === 'left', NOGLASS = BARE || QS.glass === '0', NOLIFE = BARE || QS.life === '0';
+const HIDE = { mask: '#kNight,#kShine', paper: '#kPaper', cat: '#kCat,#hCat', top: '#kTop', cv: '#kAqua,#kSteam,#kNight,#kSun', glow: '#kGlow' };
+{ const sel = Object.entries(HIDE).filter(([k]) => BARE || QS[k] === '0').map(([, s]) => s); if (sel.length) document.head.append(Object.assign(document.createElement('style'), { textContent: sel.join(',') + '{display:none!important}' })); }
 const TMAX = Math.min(cabTierMax(DEV), GPU.max ? CAB_TIERS.filter(t => t <= GPU.max).pop() || CAB_TIERS[0] : Infinity, CAB_TIERS.includes(+QS.tier) ? +QS.tier : Infinity);
 if (DEV.phone || DEV.ios) TEXOPT.keepBase = false; // planet base images go when unused too (the saver's turn would gather them all)
 // Every canvas the page sizes goes through cvSize: it resizes only on a change (setting a size clears and reallocates
@@ -1035,12 +1042,12 @@ const glassC = () => [(LY.glass.x0 + LY.glass.x1) / 2, (LY.glass.y0 + LY.glass.y
 const gScreen = c => { const g = glassC(); return [(g[0] - c.x) * c.s, (g[1] - c.y) * c.s]; };
 // live: a pan under way: the same scale, the translation as translate3d (the compositor moves the layers, nothing is
 // rastered again); at rest a plain 2D transform again (no layer kept, no will-change)
-// The stage on phones and iOS is zoomed (CSS zoom), not scaled down. Inside it there are always composited layers (the
+// ?stage=zoom: the stage zoomed (CSS zoom), not scaled down. Inside it there are always composited layers (the
 // canvases, the card's matrix3d), and WebKit then composites the transformed stage too; scaled down from its art size
 // (7136 × 3528) its backing store can be sized from that box at the real dpr² (~860 MB at dpr 3): an iPhone crashed at
 // rest with everything else off. Zoomed, the stage's box and every layer in it are screen-sized; its own lengths
 // (translate, margin) are zoomed too, so they are given in art px. ?stage=zoom / ?stage=scale pick either anywhere.
-const STAGE_ZOOM = QS.stage === 'zoom' || (QS.stage !== 'scale' && KEEP_CV);
+const STAGE_ZOOM = QS.stage === 'zoom'; // tried as the phones' default: an iPhone crashed at once with it, so only on request
 let STAGE_Z = 0;
 const stageZoom = s => { if (STAGE_ZOOM && s !== STAGE_Z) { STAGE_Z = s; for (const e of STAGES) e.style.zoom = s; } };
 // the stage's transform for camera c (live: translate3d); zoomed: in art px (the zoom scales them), no scale()
