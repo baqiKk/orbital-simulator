@@ -59,15 +59,17 @@ if (DBG && VISTAS.earth.sep[DBG.em]) VISTAS.earth.pick = +DBG.em;
 // no panning, ?pan=left the pan by margin-left (no 3D transform, no layer forced), ?glass=0 nothing drawn on the glass
 // (no sky, no view, no Three.js), ?life=0 no fish, steam or cat motion, ?tier=1600 (or another art tier) at most that
 // tier. The black box records which are on.
-const QS = (() => { const q = new URLSearchParams(location.search), o = {}; for (const k of ['audio', 'pan', 'glass', 'life', 'tier', 'stage', 'mask', 'paper', 'cat', 'top', 'cv', 'glow', 'bare']) if (q.has(k)) o[k] = q.get(k); return o; })();
+const QS = (() => { const q = new URLSearchParams(location.search), o = {}; for (const k of ['audio', 'pan', 'glass', 'life', 'tier', 'stage', 'mask', 'paper', 'cat', 'top', 'cv', 'glow', 'bare', 'keep']) if (q.has(k)) o[k] = q.get(k); return o; })();
 // What stands on the stage at rest, each removable (display none: no layer, no paint): ?mask=0 the two art-sized masked
 // layers (lamp-off shade, light through the glass), ?paper=0 posters and card (its matrix3d), ?cat=0, ?top=0 the second
 // stage (clock, laptop, hit areas), ?cv=0 the canvases (aquarium, steam, shade, light from outside), ?glow=0 the lamp's
-// glow on the glass. ?bare=1: all of them and every switch above off, only the room image left.
-const BARE = QS.bare === '1';
-const NOPAN = BARE || QS.pan === '0', PAN_LEFT = QS.pan === 'left', NOGLASS = BARE || QS.glass === '0', NOLIFE = BARE || QS.life === '0';
+// glow on the glass. ?bare=1: all of them and every switch above off, only the room image left; &keep=paper,pan,…
+// keeps the parts and switches named (one at a time on the phone: which part alone brings the crash back)
+const KEEP = new Set((QS.keep || '').split(',')), BARE = QS.bare === '1', OFF = k => (BARE && !KEEP.has(k)) || QS[k] === '0';
+const NOPAN = OFF('pan'), PAN_LEFT = QS.pan === 'left', NOGLASS = OFF('glass'), NOLIFE = OFF('life');
 const HIDE = { mask: '#kNight,#kShine', paper: '#kPaper', cat: '#kCat,#hCat', top: '#kTop', cv: '#kAqua,#kSteam,#kNight,#kSun', glow: '#kGlow' };
-{ const sel = Object.entries(HIDE).filter(([k]) => BARE || QS[k] === '0').map(([, s]) => s); if (sel.length) document.head.append(Object.assign(document.createElement('style'), { textContent: sel.join(',') + '{display:none!important}' })); }
+{ const keep = new Set(Object.entries(HIDE).filter(([k]) => !OFF(k)).flatMap(([, s]) => s.split(','))); // an element a kept part shows stays
+  const sel = [...new Set(Object.entries(HIDE).filter(([k]) => OFF(k)).flatMap(([, s]) => s.split(',')))].filter(e => !keep.has(e)); if (sel.length) document.head.append(Object.assign(document.createElement('style'), { textContent: sel.join(',') + '{display:none!important}' })); }
 const TMAX = Math.min(cabTierMax(DEV), GPU.max ? CAB_TIERS.filter(t => t <= GPU.max).pop() || CAB_TIERS[0] : Infinity, CAB_TIERS.includes(+QS.tier) ? +QS.tier : Infinity);
 if (DEV.phone || DEV.ios) TEXOPT.keepBase = false; // planet base images go when unused too (the saver's turn would gather them all)
 // Every canvas the page sizes goes through cvSize: it resizes only on a change (setting a size clears and reallocates

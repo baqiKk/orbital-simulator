@@ -10,7 +10,7 @@
 // scheduled on the audio clock, a track's end also arrives as a media event. Muted or silent: the context is suspended.
 const SND = { ctx: null, master: null, set: null, ext: 'mp3', started: false, layers: {}, onState: null, state: { track: null, trouble: 0 }, buf: { n: 0, bytes: 0 } };
 // ?audio=0: no sound engine at all (for finding a crash on a real device)
-const SND_OFF = /[?&](audio=0|bare=1)\b/.test(location.search);
+const SND_OFF = (q => q.get('audio') === '0' || (q.get('bare') === '1' && !(q.get('keep') || '').split(',').includes('audio')))(new URLSearchParams(location.search));
 // what the engine holds now (the cabin's black box): generated buffers held (count, bytes) and media elements with a
 // source (the radio and the space recordings stream through <audio>, nothing is decoded into a buffer)
 function sndMem() {

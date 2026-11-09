@@ -917,9 +917,9 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 {
   const cab = read('js/cabin.js'), aud = read('js/cabin-audio.js'), css = read('css/style.css');
   assert.ok(!/decodeAudioData/.test(aud) && aud.includes('ctx.createMediaElementSource(el)'), 'the radio streams through media elements');
-  assert.ok(aud.includes("const SND_OFF = /[?&](audio=0|bare=1)\\b/.test(location.search);") && aud.includes('  if (SND_OFF) return false;'), '?audio=0: no engine');
+  assert.ok(aud.includes("const SND_OFF = (q => q.get('audio') === '0' || (q.get('bare') === '1' && !(q.get('keep') || '').split(',').includes('audio')))") &&aud.includes('  if (SND_OFF) return false;'), '?audio=0: no engine');
   assert.ok(aud.includes('SND.buf.n++; SND.buf.bytes += n * 2 * 4;') && (aud.match(/sndFree\(/g) || []).length >= 3, 'generated buffers counted in and out');
-  assert.ok(cab.includes("const NOPAN = BARE || QS.pan === '0', PAN_LEFT = QS.pan === 'left', NOGLASS = BARE || QS.glass === '0', NOLIFE = BARE || QS.life === '0';") &&cab.includes("CAB_TIERS.includes(+QS.tier) ? +QS.tier : Infinity"), 'switches: pan, glass, life, tier');
+  assert.ok(cab.includes("const NOPAN = OFF('pan'), PAN_LEFT = QS.pan === 'left', NOGLASS = OFF('glass'), NOLIFE = OFF('life');") &&cab.includes("CAB_TIERS.includes(+QS.tier) ? +QS.tier : Infinity"), 'switches: pan, glass, life, tier');
   assert.ok(cab.includes('const panAble = () => !NOPAN &&') && cab.includes('if (NOGLASS || !LY ||') && cab.includes("if (NOLIFE) { for (const cv of [AQ.cv, ST.cv]) cvSize(cv, 0, 0); return; }") && css.includes('.k-nolife .k-cat,.k-nolife .k-cat *{animation:none!important}'), 'switches wired');
   { const a = cab.slice(cab.indexOf('function apply(c, live = false)'), cab.indexOf('// the bottom bar')); assert.ok(/if \(PAN_LEFT\) \{[\s\S]*marginLeft = m;[\s\S]*return;\s*\}/.test(a) && !/translate3d/.test(a.slice(a.indexOf('if (PAN_LEFT)'), a.indexOf('return;'))), '?pan=left: margin-left, no 3D transform'); }
   assert.ok(cab.includes("aud: typeof sndMem === 'function' ? sndMem() : null") && cab.includes('realDpr: devicePixelRatio, ...layerEst(), qs: QS') && cab.includes('imgMB: Math.round(m.img)'), 'black box: sound, images, real dpr, layer estimate, switches');
@@ -929,8 +929,8 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // the tip's place from the art box, not from getBoundingClientRect (unzoomed in WebKit)
 {
   const cab = read('js/cabin.js');
-  assert.ok(cab.includes("const STAGE_ZOOM = QS.stage === 'zoom';") && cab.includes("'stage', 'mask', 'paper', 'cat', 'top', 'cv', 'glow', 'bare']"), 'zoom only on request; the parts at rest removable');
-  assert.ok(cab.includes("const BARE = QS.bare === '1';") && cab.includes("textContent: sel.join(',') + '{display:none!important}'") && read('js/cabin-audio.js').includes('(audio=0|bare=1)'), '?bare=1: only the room image');
+  assert.ok(cab.includes("const STAGE_ZOOM = QS.stage === 'zoom';") && cab.includes("'stage', 'mask', 'paper', 'cat', 'top', 'cv', 'glow', 'bare', 'keep']"), 'zoom only on request; the parts at rest removable');
+  assert.ok(cab.includes("BARE = QS.bare === '1', OFF = k => (BARE && !KEEP.has(k)) || QS[k] === '0';") && cab.includes("textContent: sel.join(',') + '{display:none!important}'") && read('js/cabin-audio.js').includes("q.get('bare') === '1'"), '?bare=1: only the room image; keep= brings parts back one at a time');
   assert.ok(cab.includes('const stageTf = (c, live) => STAGE_ZOOM ? (live ? `translate3d(${-c.x}px,${-c.y}px,0)` : `translate(${-c.x}px,${-c.y}px)`)') && cab.includes('for (const e of STAGES) e.style.zoom = s;'), 'zoomed: translate in art px, no scale()');
   assert.ok(cab.includes('(STAGE_ZOOM ? mp / b.s : mp)'), '?pan=left under zoom: the margin in art px');
   { const st = cab.slice(cab.indexOf('function showTip(b)'), cab.indexOf('function hideTip()')); assert.ok(!st.includes('.getBoundingClientRect()') && st.includes('HITS[b.id]'), 'the tip placed from the art box'); }
