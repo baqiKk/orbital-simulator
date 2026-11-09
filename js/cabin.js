@@ -59,7 +59,7 @@ if (DBG && VISTAS.earth.sep[DBG.em]) VISTAS.earth.pick = +DBG.em;
 // no panning, ?pan=left the pan by margin-left (no 3D transform, no layer forced), ?glass=0 nothing drawn on the glass
 // (no sky, no view, no Three.js), ?life=0 no fish, steam or cat motion, ?tier=1600 (or another art tier) at most that
 // tier. The black box records which are on.
-const QS = (() => { const q = new URLSearchParams(location.search), o = {}; for (const k of ['audio', 'pan', 'glass', 'life', 'tier']) if (q.has(k)) o[k] = q.get(k); return o; })();
+const QS = (() => { const q = new URLSearchParams(location.search), o = {}; for (const k of ['audio', 'pan', 'glass', 'life', 'tier', 'stage']) if (q.has(k)) o[k] = q.get(k); return o; })();
 const NOPAN = QS.pan === '0', PAN_LEFT = QS.pan === 'left', NOGLASS = QS.glass === '0', NOLIFE = QS.life === '0';
 const TMAX = Math.min(cabTierMax(DEV), GPU.max ? CAB_TIERS.filter(t => t <= GPU.max).pop() || CAB_TIERS[0] : Infinity, CAB_TIERS.includes(+QS.tier) ? +QS.tier : Infinity);
 if (DEV.phone || DEV.ios) TEXOPT.keepBase = false; // planet base images go when unused too (the saver's turn would gather them all)
@@ -1035,17 +1035,30 @@ const glassC = () => [(LY.glass.x0 + LY.glass.x1) / 2, (LY.glass.y0 + LY.glass.y
 const gScreen = c => { const g = glassC(); return [(g[0] - c.x) * c.s, (g[1] - c.y) * c.s]; };
 // live: a pan under way: the same scale, the translation as translate3d (the compositor moves the layers, nothing is
 // rastered again); at rest a plain 2D transform again (no layer kept, no will-change)
+// The stage on phones and iOS is zoomed (CSS zoom), not scaled down. Inside it there are always composited layers (the
+// canvases, the card's matrix3d), and WebKit then composites the transformed stage too; scaled down from its art size
+// (7136 × 3528) its backing store can be sized from that box at the real dpr² (~860 MB at dpr 3): an iPhone crashed at
+// rest with everything else off. Zoomed, the stage's box and every layer in it are screen-sized; its own lengths
+// (translate, margin) are zoomed too, so they are given in art px. ?stage=zoom / ?stage=scale pick either anywhere.
+const STAGE_ZOOM = QS.stage === 'zoom' || (QS.stage !== 'scale' && KEEP_CV);
+let STAGE_Z = 0;
+const stageZoom = s => { if (STAGE_ZOOM && s !== STAGE_Z) { STAGE_Z = s; for (const e of STAGES) e.style.zoom = s; } };
+// the stage's transform for camera c (live: translate3d); zoomed: in art px (the zoom scales them), no scale()
+const stageTf = (c, live) => STAGE_ZOOM ? (live ? `translate3d(${-c.x}px,${-c.y}px,0)` : `translate(${-c.x}px,${-c.y}px)`)
+  : live ? `translate3d(${-c.x * c.s}px,${-c.y * c.s}px,0) scale(${c.s})` : `translate(${-c.x * c.s}px,${-c.y * c.s}px) scale(${c.s})`;
 function apply(c, live = false) {
   CAM = c;
   // ?pan=left: the stage stays at the pan's start (2D) and moves by margin-left, rounded (no 3D transform, no layer)
   if (PAN_LEFT) {
-    const b = live && PAN.base ? PAN.base : c, m = live && PAN.base ? Math.round((b.x - c.x) * c.s) + 'px' : '';
-    const tf = `translate(${-b.x * b.s}px,${-b.y * b.s}px) scale(${b.s})`, p = gScreen(b), st = `translate(${p[0] - SP.P0[0]}px,${p[1] - SP.P0[1]}px)`;
-    for (const s of STAGES) { s.style.transform = tf; s.style.marginLeft = m; }
+    const b = live && PAN.base ? PAN.base : c, mp = live && PAN.base ? Math.round((b.x - c.x) * c.s) : 0, m = mp ? mp + 'px' : '';
+    const p = gScreen(b), st = `translate(${p[0] - SP.P0[0]}px,${p[1] - SP.P0[1]}px)`;
+    stageZoom(b.s);
+    for (const s of STAGES) { s.style.transform = stageTf(b, false); s.style.marginLeft = mp ? (STAGE_ZOOM ? mp / b.s : mp) + 'px' : ''; }
     for (const cv of [SP.cv, FV.cv, XF.cv]) { cv.style.transform = st; cv.style.marginLeft = m; }
     return;
   }
-  const tf = live ? `translate3d(${-c.x * c.s}px,${-c.y * c.s}px,0) scale(${c.s})` : `translate(${-c.x * c.s}px,${-c.y * c.s}px) scale(${c.s})`; for (const s of STAGES) s.style.transform = tf;
+  stageZoom(c.s);
+  const tf = stageTf(c, live); for (const s of STAGES) s.style.transform = tf;
   const p = gScreen(c), dx = p[0] - SP.P0[0], dy = p[1] - SP.P0[1];
   SP.cv.style.transform = FV.cv.style.transform = XF.cv.style.transform = live ? `translate3d(${dx}px,${dy}px,0)` : `translate(${dx}px,${dy}px)`;
 }
@@ -1448,7 +1461,7 @@ function layerEst() {
   if (!LY || !CAM) return {};
   const w = Math.round(LY.size[0] * CAM.s), h = Math.round(LY.size[1] * CAM.s), r = devicePixelRatio || 1;
   // layerArtMB: the same if the layer were rastered at the stage's own size (art px) × dpr², the transform's scale ignored
-  return { stageCss: [w, h], layerMB: Math.round(w * h * r * r * 4 / 1048576), layerArtMB: Math.round(LY.size[0] * LY.size[1] * r * r * 4 / 1048576), stages: STAGES.length };
+  return { stageCss: [w, h], layerMB: Math.round(w * h * r * r * 4 / 1048576), layerArtMB: Math.round(LY.size[0] * LY.size[1] * r * r * 4 / 1048576), stages: STAGES.length, stageZoom: STAGE_ZOOM, cssZoom: STAGE_Z };
 }
 // copy text (the clipboard, else a selected text area); the link says so
 function copyText(txt, b) {
@@ -1634,7 +1647,9 @@ const tip = $('#kTip');
 function showTip(b) {
   if (b.inert || ANIM) return;
   tip.textContent = _(b.dataset.tip); tip.hidden = false;
-  const r = b.getBoundingClientRect(), w = tip.offsetWidth;
+  // the hit area's box on screen from its art box and the camera (getBoundingClientRect under the stage's CSS zoom is
+  // unzoomed in WebKit and zoomed elsewhere)
+  const [ax, ay, aw, ah] = HITS[b.id], r = { left: (ax - CAM.x) * CAM.s, top: (ay - CAM.y) * CAM.s, width: aw * CAM.s, height: ah * CAM.s }, w = tip.offsetWidth;
   tip.style.left = Math.min(VW - w / 2 - 8, Math.max(w / 2 + 8, r.left + r.width / 2)) + 'px';
   tip.style.top = Math.max(tip.offsetHeight + 8, r.top + Math.min(r.height * 0.25, 60)) + 'px';
 }

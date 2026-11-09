@@ -752,7 +752,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/if \(Math\.abs\(dx\) <= CAB_PAN\.tap\) return;/.test(cab) && /ROOT\.addEventListener\('click', e => \{ if \(PAN\.eat\)/.test(cab), 'pan: a tap stays a tap, the click after a drag is swallowed');
   { const pb = cab.slice(cab.indexOf('function panBegin()'), cab.indexOf('// stop whatever moves')), ps = cab.slice(cab.indexOf('function panShow(x)'), cab.indexOf('function panBegin()'));
     assert.ok(!/mvBegin|drawMove|mvEnd|cvSize/.test(pb + ps) && ps.includes('apply(deskAt(PAN.show), true);'), 'pan: no canvas drawn or sized, the DOM stage translated');
-    assert.ok(cab.includes("const tf = live ? `translate3d(") && cab.includes('PAN.x = PAN.show = panPixel(PAN.show); apply(deskAt(PAN.show));'), 'pan: translate3d while it moves, at rest on a whole pixel as a 2D transform'); }
+    assert.ok(cab.includes(": live ? `translate3d(${-c.x * c.s}px") && cab.includes("(live ? `translate3d(${-c.x}px") && cab.includes('PAN.x = PAN.show = panPixel(PAN.show); apply(deskAt(PAN.show));'), 'pan: translate3d while it moves, at rest on a whole pixel as a 2D transform'); }
   assert.ok(/if \(still\(\)\) \{ PAN\.x = Math\.min\(hi, Math\.max\(lo, PAN\.x\)\); panShow\(PAN\.x\); panEnd\(\); return; \}/.test(cab) && /if \(still\(\)\) \{ PAN\.x = 0; panBegin\(\); panShow\(0\); panEnd\(\); return; \}/.test(cab), 'pan: no glide, no animated return in reduced motion and low mode');
   assert.ok(/PAN\.timer = setTimeout\(\(\) => \{ if \(!PAN\.drag\) panHome\(\); \}, CAB_PAN\.idle\)/.test(cab) && /function poEnded\(e\) \{\n  panHome\(\);/.test(cab) && /panStop\(\); PAN\.x = 0; \/\/ a panned room goes back/.test(cab), 'pan: back to the focus when idle, at a pomodoro\'s end, via the glass');
   assert.ok(/\$\('#hLamp'\)\.addEventListener\('click'/.test(cab) && /id="kLamp"/.test(page), 'the lamp clickable in the picture and in the bar');
@@ -923,5 +923,15 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(cab.includes('const panAble = () => !NOPAN &&') && cab.includes('if (NOGLASS || !LY ||') && cab.includes("if (NOLIFE) { for (const cv of [AQ.cv, ST.cv]) cvSize(cv, 0, 0); return; }") && css.includes('.k-nolife .k-cat,.k-nolife .k-cat *{animation:none!important}'), 'switches wired');
   { const a = cab.slice(cab.indexOf('function apply(c, live = false)'), cab.indexOf('// the bottom bar')); assert.ok(/if \(PAN_LEFT\) \{[\s\S]*marginLeft = m;[\s\S]*return;\s*\}/.test(a) && !/translate3d/.test(a.slice(a.indexOf('if (PAN_LEFT)'), a.indexOf('return;'))), '?pan=left: margin-left, no 3D transform'); }
   assert.ok(cab.includes("aud: typeof sndMem === 'function' ? sndMem() : null") && cab.includes('realDpr: devicePixelRatio, ...layerEst(), qs: QS') && cab.includes('imgMB: Math.round(m.img)'), 'black box: sound, images, real dpr, layer estimate, switches');
+}
+// 33) Phones and iOS: the stage zoomed (CSS zoom), not scaled down from its art size (a composited, scaled-down stage
+// can be backed at its art size × the real dpr²: an iPhone crashed at rest); its own lengths in art px; ?stage=scale /
+// zoom choose; the tip's place from the art box, not from getBoundingClientRect (unzoomed in WebKit)
+{
+  const cab = read('js/cabin.js');
+  assert.ok(cab.includes("const STAGE_ZOOM = QS.stage === 'zoom' || (QS.stage !== 'scale' && KEEP_CV);") && cab.includes("for (const k of ['audio', 'pan', 'glass', 'life', 'tier', 'stage'])"), 'zoomed on phones, switchable');
+  assert.ok(cab.includes('const stageTf = (c, live) => STAGE_ZOOM ? (live ? `translate3d(${-c.x}px,${-c.y}px,0)` : `translate(${-c.x}px,${-c.y}px)`)') && cab.includes('for (const e of STAGES) e.style.zoom = s;'), 'zoomed: translate in art px, no scale()');
+  assert.ok(cab.includes('(STAGE_ZOOM ? mp / b.s : mp)'), '?pan=left under zoom: the margin in art px');
+  { const st = cab.slice(cab.indexOf('function showTip(b)'), cab.indexOf('function hideTip()')); assert.ok(!st.includes('.getBoundingClientRect()') && st.includes('HITS[b.id]'), 'the tip placed from the art box'); }
 }
 console.log('OK — all UI tests passed');

@@ -51,7 +51,7 @@ const [url, N = '50', low = '0'] = process.argv.slice(2);
   await step(`${n} fast flings in a row`, async () => { for (let i = 0; i < n; i++) await run('fling', W * 0.5, i % 2 ? 300 : -300, 40, 0); });
   // where the last pan came to rest: inside the range, on a whole pixel, a 2D transform
   out.state = await p.evaluate(() => { const [lo, hi] = panRange(), tf = document.getElementById('kStage').style.transform, px = Number((tf.match(/translate\(([-\d.]+)px/) || [])[1]);
-    return { inRange: PAN.x >= lo - 1e-6 && PAN.x <= hi + 1e-6, wholePx: Number.isFinite(px) && Math.abs(px - Math.round(px)) < 1e-6, tf, live: T.live, phases: [...T.phases], low: LOWQ, crashed: CRASHED, mv: [MV.A.width, MV.A.height] }; });
+    return { inRange: PAN.x >= lo - 1e-6 && PAN.x <= hi + 1e-6, wholePx: Number.isFinite(px) && (z => Math.abs(px * z - Math.round(px * z)) < 1e-4)(STAGE_ZOOM ? STAGE_Z : 1), zoom: document.getElementById('kStage').style.zoom, tf, live: T.live, phases: [...T.phases], low: LOWQ, crashed: CRASHED, mv: [MV.A.width, MV.A.height] }; });
   // Safari's toolbar: the viewport's height down and up (the width the same), also mid-fling; the first cycle may grow
   // the canvases once, after that a height change only places again: no layout, no sizeLife, no resize
   const tool = async () => { for (const h of [dev.viewport.height - 80, dev.viewport.height]) { run('fling', W * 0.5, 300, 40, 40); await p.setViewportSize({ width: W, height: h }); await p.waitForTimeout(500); } };
