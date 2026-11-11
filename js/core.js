@@ -1924,6 +1924,72 @@ function burnFor(c, o0, fin, opt) {
   return out;
 }
 
+// The automatic method (Phase 16c): the plan of least Δv from o0 to o1. Hohmann and bi-elliptic, each with the plane
+// change combined or apart; the bi-elliptic apoapsis rb searched (log scale) up to rbMax (the app: half the body's sphere
+// of influence). The bi-elliptic plan wins only when it saves at least AUTO_GAIN of the Δv: it takes much longer (days
+// instead of hours) and beats Hohmann only past a radius ratio of ≈ 11.9 (or with a large plane change).
+// Returns { plan, type, plane, rb, hoh: { dv, tof, plane }, bi: { dv, tof, rb, plane } | null } or { error }.
+const AUTO_GAIN = 0.02;
+function maneuverAuto(mu, R, o0, o1, opt, rbMax) {
+  const k = opt.k || 1, kNode = opt.kNode;
+  let hoh = null;
+  for (const plane of ['comb', 'sep']) {
+    const p = maneuverPlan(mu, R, o0, o1, { type: 'hohmann', plane, k, kNode });
+    if (!p.error && (!hoh || p.dv < hoh.plan.dv - 1e-9)) hoh = { plan: p, plane };
+  }
+  let bi = null;
+  const lo = Math.max(o0.ra, o1.ra) * (1 + 1e-6);
+  if (rbMax > lo * 1.001) for (const plane of ['comb', 'sep']) {
+    const f = x => { const p = maneuverPlan(mu, R, o0, o1, { type: 'bielliptic', rb: Math.exp(x), plane, k, kNode }); return p.error ? Infinity : p.dv; };
+    const m = min1d(f, Math.log(lo * 1.001), Math.log(rbMax), 48);
+    if (!Number.isFinite(m.f)) continue;
+    const rb = Math.exp(m.x), p = maneuverPlan(mu, R, o0, o1, { type: 'bielliptic', rb, plane, k, kNode });
+    if (!p.error && (!bi || p.dv < bi.plan.dv - 1e-9)) bi = { plan: p, plane, rb };
+  }
+  if (!hoh && !bi) return maneuverPlan(mu, R, o0, o1, { type: 'hohmann', plane: 'comb', k, kNode }); // its error
+  const useBi = bi && (!hoh || bi.plan.dv <= (1 - AUTO_GAIN) * hoh.plan.dv);
+  const w = useBi ? bi : hoh;
+  return { plan: w.plan, type: useBi ? 'bielliptic' : 'hohmann', plane: w.plane, rb: useBi ? bi.rb : null,
+    hoh: hoh && { dv: hoh.plan.dv, tof: hoh.plan.tof, plane: hoh.plane }, bi: bi && { dv: bi.plan.dv, tof: bi.plan.tof, rb: bi.rb, plane: bi.plane } };
+}
+
+// A free impulsive burn (Phase 16c; the free burn of Phase 7): Δv = [prograde, radial, normal] in m/s at a point of orbit
+// o0. Prograde along v, normal along h = r × v, radial = v̂ × ĥ (outward, square to v in the orbit's plane): an
+// orthonormal triad, so |Δv| = √(p² + r² + n²). opt.at: 0 the periapsis of o0 (on the line of nodes ℓ, as in the
+// maneuvers), 1 its apoapsis; or opt.tp: seconds after the periapsis. A quarter turn of coast before, the burn, then
+// the new orbit for opt.tail of its periods (default 1, at most 20 of o0's; 2 of o0's when it escapes). Two-body + J2.
+// Returns a flight like burnFor's: samples (ecliptic axes), events, burns[0] (t, dv, el), done (the orbit after), before
+// (the elements before), vBefore / vAfter (speeds at the burn), end, tEnd.
+function freeBurn(c, o0, opt) {
+  const mu = c.mu, F = flight(c, { F: 0, isp: 1, m0: 1, md: 0 }, { tol: opt.tol || 1e-10, maxSteps: opt.maxSteps }), out = F.out, y = F.y, rot = c.rot, O0 = c.O0 || 0;
+  const a0 = (o0.rp + o0.ra) / 2, e0 = (o0.ra - o0.rp) / (o0.ra + o0.rp), n0 = Math.sqrt(mu / (a0 * a0 * a0)), P0 = 2 * Math.PI / n0;
+  const Mb = opt.tp != null ? n0 * opt.tp : opt.at ? Math.PI : 0, lead = 0.25 * P0;
+  const nuOf = M => { const E = keplerE(M, e0); return 2 * Math.atan2(Math.sqrt(1 + e0) * Math.sin(E / 2), Math.sqrt(1 - e0) * Math.cos(E / 2)); };
+  const ecl = u => rot ? [0, 1, 2].map(j => rot[3 * j] * u[0] + rot[3 * j + 1] * u[1] + rot[3 * j + 2] * u[2]) : u.slice();
+  y.set([...orbitPoint(mu, o0, O0, nuOf(Mb - n0 * lead)), 1, 0]);
+  F.h = P0 / 400;
+  const h0 = [y[1] * y[5] - y[2] * y[4], y[2] * y[3] - y[0] * y[5], y[0] * y[4] - y[1] * y[3]], hl0 = Math.hypot(...h0);
+  out.normal = ecl(h0.map(q => q / hl0));
+  F.push();
+  if (F.seg(lead, { rec: true }) !== 'end') return out;
+  const r = [y[0], y[1], y[2]], v = [y[3], y[4], y[5]], vn = Math.hypot(...v);
+  const h = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]], hn = Math.hypot(...h);
+  const vh = v.map(q => q / vn), nh = h.map(q => q / hn), rh = [vh[1] * nh[2] - vh[2] * nh[1], vh[2] * nh[0] - vh[0] * nh[2], vh[0] * nh[1] - vh[1] * nh[0]];
+  const d = opt.dv || [0, 0, 0], dvv = [0, 1, 2].map(j => d[0] * vh[j] + d[1] * rh[j] + d[2] * nh[j]), dv = Math.hypot(d[0], d[1], d[2]);
+  const before = rv2el(mu, r, v), nv = [0, 1, 2].map(j => v[j] + dvv[j]);
+  y[3] = nv[0]; y[4] = nv[1]; y[5] = nv[2];
+  const el = rv2el(mu, r, nv);
+  out.burns.push({ node: 0, piece: 1, pieces: 1, t: F.t, dv, el, side: opt.at ? 1 : 0, comp: d.slice() });
+  out.events.push({ type: 'burn', t: F.t, dv, body: 0, label: 'ev.mvBurn', node: 0, piece: 1, pieces: 1, di: el.i - before.i });
+  F.push();
+  const P1 = el.e < 1 && el.a > 0 ? 2 * Math.PI * Math.sqrt(el.a ** 3 / mu) : Infinity;
+  F.seg(F.t + (P1 < Infinity ? Math.min((opt.tail || 1) * P1, 20 * P0) : 2 * P0), { rec: true });
+  out.tEnd = F.t; out.end = Array.from(y.subarray(0, 6));
+  out.done = el; out.before = before; out.vBefore = vn; out.vAfter = Math.hypot(...nv);
+  out.tFirst = out.tLast = out.burns[0].t;
+  return out;
+}
+
 // Worker entry for the finite-thrust maneuvers: job { c, o0, o1, opt, fin, cap, lim }. The spiral; the single firing
 // (opt.type 'burn'); or the plan flown with the engine — split by the vehicle planner when lim (tMax, nMax, wait) limits
 // it, else with the chosen k, and when a burn sweeps more than 60° of its orbit, the same flight with k = 1, 2 and 4
@@ -1956,5 +2022,5 @@ if (typeof module !== 'undefined') module.exports = {
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed, SOLVE_KM, missionMiss, solveMission,
   G0, visViva, burnDv, propMass, dvAvail, planeSplit, maneuverPlan, mvOrbits, rv2el, j2Rates, keplerStep, equatorFrame, orbitPoint, maneuverSim,
-  mvImpulse, maneuverFlight, spiralEstimate, spiralFlight, maneuverRun, conicPoints, domBody, splitPlan, burnFor, KMAX,
+  mvImpulse, maneuverFlight, spiralEstimate, spiralFlight, maneuverRun, conicPoints, domBody, splitPlan, burnFor, KMAX, AUTO_GAIN, maneuverAuto, freeBurn,
 };

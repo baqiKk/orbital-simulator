@@ -1173,3 +1173,73 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   assert.ok(n.live && Math.abs(C.clockAt(n, ms + 20000) - C.utcToDays(ms + 20000) * C.DAY) < 1e-6, 'back to now');
   console.log('live clock ok');
 }
+
+// ===== Phase 16c: the free burn and the automatic method =====
+{
+  const d = BODIES.earth, mu = d.gm * 1e9, R = d.radius * 1e3, Re = d.j2[1] * 1e3, D2R = Math.PI / 180;
+  const c = { mu, R, J2: 0, Re, rot: null, O0: 0 };
+  const circ = (h, i = 0) => ({ rp: Re + h, ra: Re + h, i: i * D2R });
+  const rOf = (v, a) => 2 / (v * v / mu + 1 / a); // vis-viva solved for r
+  // no Δv: the orbit stays
+  {
+    const s = C.freeBurn(c, circ(600e3), { at: 0, dv: [0, 0, 0] });
+    assert.ok(Math.abs(s.done.a - s.before.a) < 1e-6 && s.done.e < 1e-6 && Math.abs(s.done.a - (Re + 600e3)) < 1, 'free burn: no Δv, no change');
+  }
+  // prograde at the periapsis: the far apsis from vis-viva
+  {
+    const dv = 100, s = C.freeBurn(c, circ(600e3), { at: 0, dv: [dv, 0, 0] }), r = rOf(s.vBefore, s.before.a);
+    const a1 = 1 / (2 / r - (s.vBefore + dv) ** 2 / mu);
+    assert.ok(Math.abs(s.done.ra - (2 * a1 - r)) < 1 && Math.abs(s.done.rp - r) < 1 && Math.abs(s.vAfter - s.vBefore - dv) < 1e-9, 'free burn: prograde → vis-viva');
+    // the flight after it keeps that orbit (two-body)
+    const e = C.rv2el(mu, s.end.slice(0, 3), s.end.slice(3, 6));
+    assert.ok(Math.abs(e.a - s.done.a) < 1 && Math.abs(e.e - s.done.e) < 1e-7, 'free burn: the coast after it flies the new orbit');
+  }
+  // a pure normal Δv: the speed grows to √(v² + Δv²), the plane turns by atan(Δv / v)
+  {
+    const dv = 500, s = C.freeBurn(c, circ(600e3), { at: 0, dv: [0, 0, dv] }), v = s.vBefore;
+    assert.ok(Math.abs(s.vAfter - Math.hypot(v, dv)) < 1e-9, 'pure normal Δv: speed √(v² + Δv²)');
+    assert.ok(Math.abs(s.done.i - Math.atan(dv / v)) < 1e-9, `pure normal Δv: inclination atan(Δv/v) = ${(Math.atan(dv / v) / D2R).toFixed(4)}°`);
+    assert.ok(s.done.e > 0 && s.done.a > s.before.a, 'pure normal Δv: more energy, no longer circular');
+  }
+  // a plane change that keeps the speed (prograde share v(cos θ − 1), normal v·sin θ): turns by θ for 2v·sin(θ/2)
+  {
+    const th = 10 * D2R, s0 = C.freeBurn(c, circ(600e3), { at: 0, dv: [0, 0, 0] }), v = s0.vBefore;
+    const s = C.freeBurn(c, circ(600e3), { at: 0, dv: [v * (Math.cos(th) - 1), 0, v * Math.sin(th)] });
+    assert.ok(Math.abs(s.vAfter - v) < 1e-6 && Math.abs(s.done.i - th) < 1e-9 && Math.abs(s.burns[0].dv - 2 * v * Math.sin(th / 2)) < 1e-6 && s.done.e < 1e-6,
+      'speed kept: the plane turns by θ for 2v·sin(θ/2), the orbit stays circular');
+  }
+  // radial out at the point of a circle: energy + Δv²/2, the apsis line turns away from the burn point
+  {
+    const dv = 200, s = C.freeBurn(c, circ(600e3), { at: 0, dv: [0, dv, 0] }), r = rOf(s.vBefore, s.before.a);
+    assert.ok(Math.abs(s.done.a - 1 / (2 / r - (s.vBefore ** 2 + dv * dv) / mu)) < 1 && s.done.rp < r && s.done.ra > r && Math.abs(s.done.i) < 1e-12, 'radial Δv: a from the energy, the burn point between the apsides');
+  }
+  // at the apoapsis of an ellipse = tp half a period after the periapsis; an escape
+  {
+    const o = { rp: Re + 300e3, ra: Re + 35786e3, i: 0 }, a = (o.rp + o.ra) / 2, P = 2 * Math.PI * Math.sqrt(a ** 3 / mu);
+    const s1 = C.freeBurn(c, o, { at: 1, dv: [1500, 0, 0] }), s2 = C.freeBurn(c, o, { tp: P / 2, dv: [1500, 0, 0] });
+    assert.ok(Math.abs(rOf(s1.vBefore, s1.before.a) - o.ra) < 1 && Math.abs(s1.done.rp - s2.done.rp) < 1 && Math.abs(s1.done.ra - s2.done.ra) < 1, 'at the apoapsis = half a period after the periapsis');
+    const esc = C.freeBurn(c, circ(300e3), { at: 0, dv: [3300, 0, 0] });
+    assert.ok(esc.done.e > 1 && esc.ok && esc.impact < 0, 'a large prograde Δv escapes');
+  }
+  // The automatic method: Hohmann unless the bi-elliptic transfer saves ≥ 2 % (rb ≤ half the sphere of influence)
+  const soi = d.orb.jpl[0][0] * C.AU * Math.pow(d.gm / BODIES.sun.gm, 0.4), rbMax = soi / 2;
+  {
+    const r = C.maneuverAuto(mu, R, circ(600e3), circ(1300e3), { k: 1 }, rbMax);
+    assert.ok(r.type === 'hohmann' && r.plan.burns.length === 2 && Math.abs(r.plan.dv - r.hoh.dv) < 1e-9, 'auto: 600 → 1300 km is a Hohmann transfer');
+  }
+  {
+    const r = C.maneuverAuto(mu, R, circ(300e3), circ(150000e3), { k: 1 }, rbMax);
+    assert.ok(r.type === 'bielliptic' && r.bi.dv <= (1 - C.AUTO_GAIN) * r.hoh.dv && r.rb <= rbMax * (1 + 1e-9) && r.plan.burns.length === 3,
+      `auto: LEO → 150 000 km is bi-elliptic (saves ${(100 * (1 - r.bi.dv / r.hoh.dv)).toFixed(1)} %)`);
+    assert.ok(r.bi.tof > 5 * r.hoh.tof, `auto: and it takes far longer (${(r.bi.tof / 86400).toFixed(1)} d vs ${(r.hoh.tof / 3600).toFixed(1)} h)`);
+  }
+  {
+    const r = C.maneuverAuto(mu, R, circ(300e3), circ(100000e3), { k: 1 }, rbMax);
+    assert.ok(r.type === 'hohmann' && r.bi && r.bi.dv < r.hoh.dv && r.bi.dv > (1 - C.AUTO_GAIN) * r.hoh.dv, 'auto: a saving under 2 % keeps Hohmann');
+  }
+  {
+    const r = C.maneuverAuto(mu, R, circ(300e3), { rp: R - 1e3, ra: R - 1e3, i: 0 }, { k: 1 }, rbMax);
+    assert.ok(r.error === 'err.mvSurface', 'auto: a target under the surface is refused');
+  }
+  console.log('free burn and automatic method ok');
+}
