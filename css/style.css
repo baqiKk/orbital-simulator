@@ -346,7 +346,7 @@ html[data-q=low] .toast{box-shadow:none}
 /* the guided mission's caption (js/app.js GUIDE): at the top under the mode title, above the windows; paused at an event, "Devam" */
 /* the design wizard (Phase 16c, js/wizard.js): the mission window's face in the plain layout; the expert layout shows
    the full form instead */
-html:not(.ui-expert) #w-mission .win-b>:not(.wiz):not(.status){display:none!important}
+html:not(.ui-expert) #w-mission .win-b>:not(.wiz){display:none!important}
 html.ui-expert #wiz{display:none}
 .wiz{display:flex;flex-direction:column;gap:10px}
 .wiz [hidden]{display:none!important}

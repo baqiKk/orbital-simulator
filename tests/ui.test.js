@@ -997,7 +997,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 {
   const C = require('../js/core.js'), wz = read('js/wizard.js'), css = read('css/style.css');
   assert.ok(/<script src="js\/app\.js"><\/script>\n<script src="js\/wizard\.js"><\/script>/.test(html), 'wizard.js after app.js');
-  assert.ok(css.includes('html:not(.ui-expert) #w-mission .win-b>:not(.wiz):not(.status){display:none!important}') && css.includes('html.ui-expert #wiz{display:none}'), 'plain: the wizard; expert: the full form');
+  assert.ok(css.includes('html:not(.ui-expert) #w-mission .win-b>:not(.wiz){display:none!important}') && css.includes('html.ui-expert #wiz{display:none}'), 'plain: the wizard; expert: the full form');
   for (const id of ['wiz', 'wzPick', 'wzForm', 'wzSteps', 'wzEx', 'wzRes', 'wzFoot', 'wzErr', 'wzGo', 'wzExpert']) assert.ok(html.includes('id="' + id + '"'), 'wizard element ' + id);
   for (const m of ['auto', 'hohmann', 'bielliptic']) assert.ok(has('wz.m.' + m) && has('wz.m.' + m + 'D'), 'method ' + m);
   for (const k of Object.keys(P.WIZ_EX)) assert.ok(has('wz.ex.' + k), 'example ' + k);
@@ -1012,5 +1012,12 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     const a = C.maneuverAuto(mu, R, o0, o1, { k: 1 }, soi(e.body) / 2);
     assert.ok(!a.error && a.type === 'hohmann' && a.plan.burns.length >= 1 && ra1 < soi(e.body), `example ${k}: flies (${a.plan.dv.toFixed(0)} m/s)`);
   }
+  // "Başka bir cisme git": its examples and texts; the cheapest window is searched only from the chosen date on, then the
+  // app's own solver runs; a free return only between a body and its own moon
+  const gex = (/const WZ_GEX = \{([\s\S]*?)\n\};/.exec(wz) || [])[1] || '';
+  const gk = [...gex.matchAll(/^\s*(\w+): \{/gm)].map(m => m[1]);
+  assert.ok(gk.length >= 3 && gk.every(k => has('wz.exg.' + k)), 'go: examples ' + gk.join(', '));
+  for (const m of ['capture', 'flyby', 'free']) assert.ok(has('wz.arr.' + m) && has('wz.arr.' + m + 'D'), 'arrival ' + m);
+  assert.ok(wz.includes('t1a = Math.max(r.d0, S.M.t0)') && wz.includes('await solve();') && wz.includes("if (!wzPair(v.dep, v.tgt)) return fail(2, '', _('wz.e.freePair'));"), 'go: from the date on, the solver, free return only about a moon');
 }
 console.log('OK — all UI tests passed');

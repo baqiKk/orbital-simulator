@@ -4,12 +4,29 @@
 // a warning in plain words next to an always visible "Görevi başlat", which computes and plays; then a result card
 // ("Değiştir" goes back to the form). The wizard writes the same state the full form edits (S.M, the bodies) and runs
 // the same rebuild, so the expert layout shows what it set. Classic script after app.js (its globals).
-const WZ = { path: '', step: 0, res: false, auto: null, raf: 0 };
+const WZ = { path: '', step: 0, res: false, auto: null, raf: 0, go: null };
+const wzToday = () => new Date().toISOString().slice(0, 10);
 const WZ_DEF = { body: 'earth', c0: 'circ', h0: '600', p0: '250', a0: '35786', i0: '0', c1: 'circ', h1: '1300', p1: '600', a1: '1300', i1: '0',
-  meth: 'auto', plane: 'comb', rb: '100000', thr: 'imp', F: '400', isp: '', m0: '', md: '', j2: false };
+  meth: 'auto', plane: 'comb', rb: '100000', thr: 'imp', F: '400', isp: '', m0: '', md: '', j2: false,
+  // "Başka bir cisme git": departure and its parking orbit, target, arrival (capture, flyby, free return), when
+  dep: 'earth', gh0: '185', tgt: 'mars', mode: 'capture', ghB: '300', ghRet: '60', when: 'cheap', date: wzToday() };
 const WZV = { ...WZ_DEF };
 const WZ_EX = WIZ_EX; // prefs.js (the tests fly each)
 const WZ_CHIPS = ['earth', 'moon', 'mars'];
+// "Başka bir cisme git": the usual bodies as chips, the rest in a list; examples
+const WZ_DEP = ['earth', 'moon', 'mars'], WZ_TGT = ['moon', 'mars', 'venus', 'jupiter'];
+const WZ_GO_KEYS = KEYS_REAL.filter(k => k !== 'sun' && BODIES[k].gm);
+const WZ_GEX = {
+  mars: { dep: 'earth', gh0: '185', tgt: 'mars', mode: 'capture', ghB: '300', when: 'cheap' },
+  moonFree: { dep: 'earth', gh0: '185', tgt: 'moon', mode: 'free', ghB: '250', ghRet: '60', when: 'date' },
+  moonOrbit: { dep: 'earth', gh0: '185', tgt: 'moon', mode: 'capture', ghB: '100', when: 'date' },
+  venus: { dep: 'earth', gh0: '185', tgt: 'venus', mode: 'flyby', ghB: '500', when: 'cheap' },
+};
+// a body and its own moon (either way): a free return makes sense, the porkchop does not (not siblings)
+const wzPair = (a, b) => BODIES[b].parent === a || BODIES[a].parent === b;
+const wzSib = (a, b) => !!BODIES[a].parent && BODIES[a].parent === BODIES[b].parent;
+const chipRow = (id, keys, cur, all) => `<div class="wz-chips" id="${id}">${keys.map(k => `<button type="button" data-v="${k}" aria-pressed="${cur === k}">${esc(_('body.' + k))}</button>`).join('')}`
+  + `<select data-for="${id.slice(3)}" aria-label="${esc(_('wz.other'))}"><option value="">${esc(_('wz.other'))}</option>${all.filter(k => !keys.includes(k)).map(k => `<option value="${k}"${cur === k ? ' selected' : ''}>${esc(_('body.' + k))}</option>`).join('')}</select></div>`;
 const wzEl = id => document.getElementById(id);
 // a number as typed (a comma or a point for decimals, spaces between thousands), nothing else after it
 const wzNum = v => { const s = String(v).replace(/\s/g, '').replace(',', '.'); return /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(s) ? +s : NaN; };
@@ -43,10 +60,8 @@ function orbitFields(n) { // n: 0 start, 1 target
 }
 function wzSteps() {
   if (WZ.path === 'orbit') {
-    const other = KEYS_MV.filter(k => !WZ_CHIPS.includes(k));
     return [
-      { t: 'wz.s.body', b: `<div class="wz-chips" id="wz-body">${WZ_CHIPS.map(k => `<button type="button" data-v="${k}" aria-pressed="${WZV.body === k}">${esc(_('body.' + k))}</button>`).join('')}`
-        + `<select id="wz-other" aria-label="${esc(_('wz.other'))}"><option value="">${esc(_('wz.other'))}</option>${other.map(k => `<option value="${k}"${WZV.body === k ? ' selected' : ''}>${esc(_('body.' + k))}</option>`).join('')}</select></div>` },
+      { t: 'wz.s.body', b: chipRow('wz-body', WZ_CHIPS, WZV.body, KEYS_MV) },
       { t: 'wz.s.start', b: orbitFields(0) },
       { t: 'wz.s.target', b: orbitFields(1) },
       { t: 'wz.s.method', b: seg2('wz-meth', [['auto', 'wz.m.auto'], ['hohmann', 'wz.m.hohmann'], ['bielliptic', 'wz.m.bielliptic']], WZV.meth) + `<p class="wz-d" id="wz-methD"></p>`
@@ -59,14 +74,26 @@ function wzSteps() {
         + `<label class="chk"><input type="checkbox" id="wz-j2"${WZV.j2 ? ' checked' : ''}><span>${esc(_('wz.j2'))}</span></label></div></details>` },
     ];
   }
+  if (WZ.path === 'go') {
+    const pnT = wzNames(WZV.tgt)[0], pnD = wzNames(WZV.dep)[0];
+    return [
+      { t: 'wz.s.dep', b: chipRow('wz-dep', WZ_DEP, WZV.dep, WZ_GO_KEYS) + `<div class="grid2">${fld('wz-gh0', _('wz.park'), WZV.gh0)}</div>` },
+      { t: 'wz.s.tgt', b: chipRow('wz-tgt', WZ_TGT, WZV.tgt, WZ_GO_KEYS) },
+      { t: 'wz.s.arr', b: seg2('wz-mode', [['capture', 'wz.arr.capture'], ['flyby', 'wz.arr.flyby'], ['free', 'wz.arr.free']], WZV.mode) + `<p class="wz-d" id="wz-modeD"></p>`
+        + `<div class="grid2">${fld('wz-ghB', _('wz.peri', { peri: pnT }), WZV.ghB)}${fld('wz-ghRet', _('wz.hRet', { peri: pnD }), WZV.ghRet)}</div>` },
+      { t: 'wz.s.when', b: seg2('wz-when', [['cheap', 'wz.when.cheap'], ['date', 'wz.when.date']], WZV.when) + `<p class="wz-d" id="wz-whenD"></p>`
+        + `<label class="field" id="wz-dateW"><span>${esc(_('wz.date'))}</span><input type="date" id="wz-date" value="${esc(WZV.date)}" min="${EPHEM_YEARS[0]}-01-01" max="${EPHEM_YEARS[1]}-12-31"></label>` },
+    ];
+  }
   return [];
 }
 function wzRender() {
   const st = wzSteps();
   wzEl('wzSteps').innerHTML = st.map((s, i) => `<section class="wz-step" data-i="${i}"><button type="button" class="wz-h" aria-expanded="false"><span class="wz-n">${i + 1}</span><span class="wz-t">${esc(_(s.t))}</span><span class="wz-sum"></span></button>`
     + `<div class="wz-b">${s.b}${i < st.length - 1 ? `<button type="button" class="btn sm wz-next">${esc(_('wz.next'))}</button>` : ''}</div></section>`).join('');
-  wzEl('wzEx').innerHTML = WZ.path === 'orbit' ? Object.keys(WZ_EX).map(k => `<button type="button" data-ex="${k}">${esc(_('wz.ex.' + k))}</button>`).join('') : '';
-  wzEl('wzEx').hidden = WZ.path !== 'orbit';
+  const ex = WZ.path === 'orbit' ? [WZ_EX, 'wz.ex.'] : WZ.path === 'go' ? [WZ_GEX, 'wz.exg.'] : null;
+  wzEl('wzEx').innerHTML = ex ? Object.keys(ex[0]).map(k => `<button type="button" data-ex="${k}">${esc(_(ex[1] + k))}</button>`).join('') : '';
+  wzEl('wzEx').hidden = !ex;
   wzOpen(WZ.step); wzSync();
 }
 function wzOpen(i) {
@@ -76,6 +103,7 @@ function wzOpen(i) {
 }
 // what depends on the values: shown fields, labels, summaries, the method's description
 function wzSync() {
+  if (WZ.path === 'go') { wzSyncGo(); return; }
   if (WZ.path !== 'orbit') return;
   const [pn, an] = wzNames(WZV.body);
   for (const n of [0, 1]) {
@@ -92,8 +120,18 @@ function wzSync() {
     ? _('wz.sumCirc', { h: WZV['h' + n], i: WZV['i' + n] }) : _('wz.sumEll', { p: WZV['p' + n], a: WZV['a' + n], i: WZV['i' + n] });
   sums[0].textContent = _('body.' + WZV.body); sums[1].textContent = orb(0); sums[2].textContent = orb(1);
   sums[3].textContent = _('wz.m.' + m) + (fin ? ' · ' + _('wz.thr.fin') : '');
-  for (const b of wzEl('wz-body').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === WZV.body));
-  wzEl('wz-other').value = WZ_CHIPS.includes(WZV.body) ? '' : WZV.body;
+}
+function wzSyncGo() {
+  const v = WZV, sib = wzSib(v.dep, v.tgt);
+  wzEl('wz-modeD').textContent = _('wz.arr.' + v.mode + 'D');
+  wzEl('wz-ghRetW').hidden = v.mode !== 'free';
+  // the cheapest window needs a porkchop: bodies about one parent (else: a date)
+  wzEl('wz-when').hidden = !sib; const when = sib ? v.when : 'date';
+  wzEl('wz-whenD').textContent = _(sib ? 'wz.when.' + when + 'D' : 'wz.when.dateOnly');
+  wzEl('wz-dateW').querySelector('span').textContent = _(when === 'cheap' ? 'wz.dateFrom' : 'wz.date');
+  const sums = wzEl('wzSteps').querySelectorAll('.wz-sum');
+  sums[0].textContent = _('wz.sumGo', { body: _('body.' + v.dep), h: v.gh0 }); sums[1].textContent = _('body.' + v.tgt);
+  sums[2].textContent = _('wz.arr.' + v.mode) + ' · ' + v.ghB + ' km'; sums[3].textContent = when === 'cheap' ? _('wz.when.cheap') : v.date;
 }
 // ----- checks: the first problem, in plain words, and the step it is in -----
 function wzOrbitVals() {
@@ -103,6 +141,7 @@ function wzOrbitVals() {
   return { k, d, Re, R, mu: d.gm * 1e9, hp0, ha0, hp1, ha1, i0: wzNum(v.i0), i1: wzNum(v.i1), e1: (ra1 - rp1) / (ra1 + rp1), soi: wzSoi(k) };
 }
 function wzCheck() {
+  if (WZ.path === 'go') return wzCheckGo();
   if (WZ.path !== 'orbit') return { err: '' };
   const v = WZV, o = wzOrbitVals(), [pn, an] = wzNames(o.k), name = _('body.' + o.k);
   const fail = (step, id, err) => ({ err, step, id });
@@ -139,6 +178,25 @@ function wzCheck() {
   if (p.error) return fail(2, '', _(p.error));
   return { err: '' };
 }
+function wzCheckGo() {
+  const v = WZV, fail = (step, id, err) => ({ err, step, id }), strip = s => s.replace(/ \(.*\)$/, '');
+  if (v.dep === v.tgt) return fail(1, '', _('wz.e.sameBody'));
+  const ch = missionChain(v.dep, v.tgt, q => BODIES[q].parent || null);
+  if (ch.error) return fail(1, '', _(ch.error, { ...ch.params, a: _('body.' + v.dep), b: _('body.' + v.tgt) }));
+  const h0 = wzNum(v.gh0), hB = wzNum(v.ghB), hRet = wzNum(v.ghRet);
+  if (!Number.isFinite(h0)) return fail(0, 'wz-gh0', _('wz.e.num', { f: strip(_('wz.park')) }));
+  if (!(h0 > 0)) return fail(0, 'wz-gh0', _('wz.e.belowStart'));
+  if (!Number.isFinite(hB)) return fail(2, 'wz-ghB', _('wz.e.num', { f: strip(_('wz.peri', { peri: wzNames(v.tgt)[0] })) }));
+  if (!(hB > 0)) return fail(2, 'wz-ghB', _('wz.e.below'));
+  if (v.mode === 'free') {
+    if (!wzPair(v.dep, v.tgt)) return fail(2, '', _('wz.e.freePair'));
+    if (!Number.isFinite(hRet)) return fail(2, 'wz-ghRet', _('wz.e.num', { f: strip(_('wz.hRet', { peri: wzNames(v.dep)[0] })) }));
+    if (!(hRet >= 0)) return fail(2, 'wz-ghRet', _('wz.e.neg', { f: strip(_('wz.hRet', { peri: wzNames(v.dep)[0] })) }));
+  }
+  const d = Date.parse(v.date + 'T00:00:00Z'), y = new Date(d).getUTCFullYear();
+  if (!Number.isFinite(d) || y < EPHEM_YEARS[0] || y > EPHEM_YEARS[1] - 1) return fail(3, 'wz-date', _('wz.e.date', { a: EPHEM_YEARS[0], b: EPHEM_YEARS[1] - 1 }));
+  return { err: '' };
+}
 function wzCheckShow() {
   const c = wzCheck(), st = wzEl('wzSteps');
   wzEl('wzErr').textContent = c.err; wzEl('wzGo').disabled = !!c.err;
@@ -152,6 +210,7 @@ wzEl('wzPick').addEventListener('click', e => { const c = e.target.closest('.wiz
 wzEl('wzBack').addEventListener('click', () => { WZ.path = ''; wzShow(); wzEl('wzPick').querySelector('.wiz-card').focus(); });
 wzEl('wzEx').addEventListener('click', e => {
   const b = e.target.closest('[data-ex]'); if (!b) return;
+  if (WZ.path === 'go') { Object.assign(WZV, WZ_GEX[b.dataset.ex], { date: wzToday() }); wzRender(); wzOpen(-1); wzCheckShow(); wzEl('wzGo').focus(); return; }
   Object.assign(WZV, { ...WZ_DEF, m0: WZV.m0, isp: WZV.isp, F: WZV.F, md: WZV.md, thr: WZV.thr, j2: WZV.j2 }, WZ_EX[b.dataset.ex]);
   wzRender(); wzOpen(-1); wzCheckShow(); wzEl('wzGo').focus();
 });
@@ -162,12 +221,12 @@ wzEl('wzSteps').addEventListener('click', e => {
   const g = b.parentElement.id.replace('wz-', '');
   WZV[g] = b.dataset.v;
   for (const x of b.parentElement.querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b));
-  if (g === 'body') wzRender();
+  if (g === 'body' || g === 'dep' || g === 'tgt') wzRender();
   wzSync(); wzCheckShow();
 });
 wzEl('wzSteps').addEventListener('input', e => {
   const t = e.target, f = t.id.replace('wz-', '');
-  if (t.id === 'wz-other') { if (t.value) { WZV.body = t.value; wzRender(); wzCheckShow(); } return; }
+  if (t.dataset.for) { if (t.value) { WZV[t.dataset.for] = t.value; wzRender(); wzCheckShow(); } return; }
   if (t.type === 'checkbox') WZV[f] = t.checked; else if (f in WZV) WZV[f] = t.value.trim();
   wzSync(); wzCheckShow();
 });
@@ -180,6 +239,7 @@ function wzGo() {
   const c = wzCheckShow();
   if (c.err) { if (c.step != null) wzOpen(c.step); const el = c.id && wzEl(c.id); if (el) el.focus(); return; }
   if (WZ.path === 'orbit') wzRunOrbit();
+  else if (WZ.path === 'go') wzRunGo();
 }
 // the maneuver state for the core (the full form's fields), the automatic method resolved here
 function wzRunOrbit() {
@@ -211,10 +271,100 @@ function wzRunOrbit() {
   WZ.res = true; wzShow(); wzResult();
 }
 
+// "Başka bir cisme git": the transfer state as the overview's pick builds it (the chain of bodies, the real model), then
+// either the cheapest window (bodies about one parent: a porkchop over the window after the date, its least-Δv cell
+// seeds the Lambert departure) or the Hohmann guess from the date, then the solver (app.js solve: judged by the
+// trajectory, the status says when it misses).
+async function wzRunGo() {
+  const v = WZV, a = v.dep, b = v.tgt, ch = missionChain(a, b, q => BODIES[q].parent || null);
+  if (ch.error) return;
+  const pair = ch.parent[1] === 0 || ch.parent[0] === 1, cheap = v.when === 'cheap' && wzSib(a, b);
+  const sc = SCENARIOS.find(s => s.id === 'em_free').M;
+  const base = S.kind === 'transfer' ? S.M : KSAVE.transfer ? KSAVE.transfer.M : sc;
+  if (S.kind !== 'transfer') saveKind();
+  if (MAP.on) setMap(false);
+  Object.assign(S, { kind: 'transfer', model: 'real', scenario: '', follow: 'free', frame: pair ? 'rot' : 'inertial' });
+  S.M = { ...sc, ...base, mode: v.mode, h0: wzNum(v.gh0), hB: wzNum(v.ghB), hRet: v.mode === 'free' ? wzNum(v.ghRet) : base.hRet || 60, side: 0, aero: false,
+    dep: 'burn', tof: 0, beta: 0, autoDur: true, t0: utcToDays(Date.parse(v.date + 'T00:00:00Z')) };
+  S.bodies = ch.keys.map(q => bodyFromPreset(q)); linkReal();
+  $('#scenario').value = ''; $('#scNote').textContent = _('sc.pick.note');
+  openRows.clear(); ovReveal(); MAP.needFit = true;
+  syncKind(); syncModel(); renderBodies(); syncMission(); renderFrameSeg();
+  APP.mode = 'design';
+  rebuild({ fit: true, resetU: true });
+  const run = WZ.go = { busy: true, phase: cheap ? 'pc' : 'solve', p: 0, err: '' };
+  WZ.res = true; wzShow(); wzResult();
+  if (!sys) { run.busy = false; run.err = $('#err').textContent; wzResult(); return; }
+  try {
+    if (cheap) {
+      const pc = await wzPorkchop(run);
+      if (WZ.go !== run) return; // superseded
+      const best = wzPcMin(pc), seed = best && lambertSeed(sys, best.t1 * DAY, best.tof * DAY, S.M);
+      if (seed) { Object.assign(S.M, { dep: 'asym', theta: seed.theta, beta: seed.beta, dv: seed.dv, t0: seed.t0, tof: seed.tof, autoDur: true }); syncMission(); rebuild({ resetU: true, fit: true }); }
+      else applyHohmann();
+    } else applyHohmann();
+    run.phase = 'solve'; wzResult();
+    if (solving) { $('#solve').click(); while (solving) await new Promise(r => setTimeout(r, 30)); }
+    if (WZ.go !== run) return;
+    await solve();
+  } catch (e) { run.err = String(e); }
+  if (WZ.go !== run) return;
+  run.busy = false; wzResult();
+}
+// the porkchop over the window after the date (app.js pcDefaults: ±0.2 synodic period about the next Hohmann
+// opportunity, 0.4–1.6 × its time of flight; never before the date: a window already open is searched from the date
+// on), the light grid; in a worker when there is one
+function wzPorkchop(run) {
+  const r = pcDefaults(), [nd, nt] = PC_GRID.low, w = Number.isFinite(r.syn) ? 0.4 * r.syn : r.d1 - r.d0, t1a = Math.max(r.d0, S.M.t0);
+  const g = { t1a, t1b: Math.min(Math.max(r.d1, t1a + 0.5 * w), EPH_T[1] - 1), fa: r.f0, fb: r.f1, nd, nt, tMin: EPH_T[0], tMax: EPH_T[1] };
+  return new Promise((res, rej) => {
+    let w = null;
+    try { w = makeWorker(); } catch (e) { w = null; }
+    if (!w) { try { res({ ...porkchop(buildSystem(sysList()), pcM(), g), g }); } catch (e) { rej(e); } return; }
+    w.onmessage = e => {
+      const d = e.data;
+      if (WZ.go !== run) { w.terminate(); return; }
+      if (d.p != null) { run.p = Math.round(100 * d.p / nt); wzResult(); } else { w.terminate(); d.done ? res({ ...d.done, g }) : rej(d.error); }
+    };
+    w.onerror = e => { w.terminate(); rej(e.message || 'worker'); };
+    w.postMessage({ list: sysList(), M: pcM(), pc: g });
+  });
+}
+function wzPcMin(pc) {
+  const g = pc.g; let at = -1, m = Infinity;
+  for (let i = 0; i < pc.dv.length; i++) if (pc.dv[i] > 0 && pc.dv[i] < m) { m = pc.dv[i]; at = i; }
+  if (at < 0) return null;
+  const i = at % g.nd, j = Math.floor(at / g.nd);
+  return { t1: g.t1a + (g.t1b - g.t1a) * i / (g.nd - 1), tof: g.fa + (g.fb - g.fa) * j / (g.nt - 1) };
+}
+function wzResultGo() {
+  const box = wzEl('wzRes'), v = WZV, run = WZ.go || { busy: false }, A = _('body.' + v.dep), B = _('body.' + v.tgt);
+  let html = `<div class="wr-h"><b>${esc(_('wz.r.goTitle', { a: A, b: B }))}</b><button type="button" class="btn sm" data-wr="edit">${esc(_('wz.r.edit'))}</button></div>`;
+  if (run.busy) html += `<p class="wr-note">${esc(run.phase === 'pc' ? _('wz.r.pc', { p: nf0.format(run.p || 0) }) : _('wz.r.solving'))}</p>`;
+  if (run.err) html += `<p class="wr-note">${esc(_('wz.r.fail', { e: run.err }))}</p>`;
+  const st = $('#status');
+  if (!run.busy && st.textContent) html += `<p class="${st.classList.contains('warn') ? 'wr-note' : 'wr-cmp'}">${esc(st.textContent)}</p>`;
+  if (simR && sys && S.kind === 'transfer' && S.bodies.length >= 2) {
+    const r = simR, M = S.M, dv2 = r.captured ? r.captured.dv : 0, [pnB] = apsNames(S.bodies[1].key), [pnA] = apsNames(S.bodies[0].key);
+    const tot = M.dv + (M.mode === 'capture' ? dv2 : 0), tArr = r.bPeri ? r.bPeri.t : 0;
+    html += `<div class="wr-big"><div><span>${esc(_(M.mode === 'capture' ? 'wz.r.total' : 'wz.r.depDv'))}</span><b>${esc(fmtSpeed(tot))}</b></div><div><span>${esc(_('wz.r.flight'))}</span><b>${esc(tArr ? fmtDur(tArr) : '—')}</b></div></div>`;
+    const rows = [[_('wz.r.dep'), fmtDate(dateAt(0))]];
+    if (r.bPeri) rows.push([_('wz.r.arr'), fmtDate(dateAt(r.bPeri.t))]);
+    rows.push([_('wz.r.depDv'), nf1.format(M.dv) + ' m/s']);
+    if (M.mode === 'capture') rows.push([_('wz.r.capDv'), r.captured ? nf1.format(dv2) + ' m/s' : '—']);
+    if (r.bPeri) rows.push([_('wz.r.peri', { peri: pnB }), nf0.format((r.bPeri.d - sys.R[1]) / 1e3) + ' km']);
+    if (M.mode === 'free') rows.push([_('wz.r.ret', { peri: pnA }), r.aRet ? nf0.format((r.aRet.d - sys.R[0]) / 1e3) + ' km' : '—']);
+    html += `<table class="wr-burns"><tbody>${rows.map(([l, x]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(x)}</td></tr>`).join('')}</tbody></table>`;
+  }
+  const pcB = wzSib(v.dep, v.tgt) ? `<button type="button" class="btn sm" data-wr="pc">${esc(_('wz.r.pcOpen'))}</button>` : '';
+  box.innerHTML = html + `<div class="wr-act"><button type="button" class="btn sm" data-wr="replay">${esc(_('wz.r.replay'))}</button><button type="button" class="btn sm" data-wr="more">${esc(_('wz.r.more'))}</button>${pcB}</div>`;
+}
+
 // ----- the result card -----
 const wzSpan = s => (s < 1 ? '—' : fmtDur(s));
 function wzResult() {
   if (!WZ.res) return;
+  if (WZ.path === 'go') { wzResultGo(); return; }
   const box = wzEl('wzRes'), v = WZV, o = wzOrbitVals(), name = _('body.' + o.k);
   const orb = n => (n ? o.hp1 === o.ha1 : o.hp0 === o.ha0) ? kmTxt(n ? o.hp1 : o.hp0) + ' km' : kmTxt(n ? o.hp1 : o.hp0) + ' × ' + kmTxt(n ? o.ha1 : o.ha0) + ' km';
   const head = `<div class="wr-h"><b>${esc(_('wz.r.title', { body: name, a: orb(0), b: orb(1) }))}</b><button type="button" class="btn sm" data-wr="edit">${esc(_('wz.r.edit'))}</button></div>`;
@@ -244,7 +394,7 @@ function wzResult() {
 // called by app.js updateResults (a finished worker job, a rebuild): the card follows, once per frame
 function wzAfterResults() {
   if (!WZ.res || WZ.raf) return;
-  WZ.raf = requestAnimationFrame(() => { WZ.raf = 0; if (WZ.path === 'orbit' && S.kind === 'man') wzResult(); });
+  WZ.raf = requestAnimationFrame(() => { WZ.raf = 0; if ((WZ.path === 'orbit' && S.kind === 'man') || (WZ.path === 'go' && S.kind === 'transfer')) wzResult(); });
 }
 wzEl('wzRes').addEventListener('click', e => {
   const tr = e.target.closest('tr.go');
@@ -254,5 +404,6 @@ wzEl('wzRes').addEventListener('click', e => {
   if (w === 'edit') { WZ.res = false; wzShow(); wzCheckShow(); wzEl('wzGo').focus(); }
   else if (w === 'replay' && C) { S.u = 0; S.ext = 0; slowJump(); S.playing = true; setPlayIcon(); }
   else if (w === 'more') setWin('results', { open: true, collapsed: false });
+  else if (w === 'pc') setWin('transfer', { open: true, collapsed: false });
 });
 wzShow();
