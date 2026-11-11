@@ -466,7 +466,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 {
   assert.ok(/<a class="rail-btn rail-cabin" href="kabin\.html" id="railCabin"[^>]*>[\s\S]*?<span class="rail-beta" data-i18n="ui\.betaTag"><\/span><\/a>/.test(html), 'rail: cabin link with a beta badge');
   assert.ok(/<a class="start-card" href="kabin\.html" id="wcCabin" data-go="cabin">/.test(html), 'start screen: focus in the cabin');
-  assert.ok(/'kabin\.html\?manzara=' \+ SCENE\.kind/.test(app) && /get\('manzara'\)/.test(read('js/cabin.js')), 'the view goes along');
+  assert.ok(app.includes("'kabin.html?manzara=' + (SCENE.kind === 'earth' ? 'earth' : 'saturn')") && /get\('manzara'\)/.test(read('js/cabin.js')), 'the view goes along (the tour as Saturn)');
   const now = 1e12, ok = { at: now - 1000, scene: '', map: false, S: { kind: 'transfer', bodies: [], M: {} } };
   assert.deepStrictEqual(P.parseSimSnap(JSON.stringify(ok), now), ok, 'a fresh snapshot is read');
   assert.strictEqual(P.parseSimSnap(JSON.stringify({ ...ok, at: now - P.SNAP_MAX_MS - 1 }), now), null, 'stale');
@@ -839,8 +839,8 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // 26) The mode title at the top middle: the scene (and its way back once moved), a mission, one's own design, the map
 {
   const app = read('js/app.js'), page = read('index.html');
-  assert.ok(page.includes('id="modeChip"') && page.includes('id="modeBack"') && ['chip.scene', 'chip.free', 'chip.backSaturn', 'chip.backEarth', 'chip.mission', 'chip.design', 'chip.designMan', 'chip.map'].every(has), 'mode title and its texts');
-  assert.ok(app.includes("if (SCENE.free) { t = _('chip.free'); back = SCENE.kind === 'earth' ? 'chip.backEarth' : 'chip.backSaturn'; }") && app.includes("$('#modeBack').addEventListener('click', () => { if (SCENE.on) { sceneSet(SCENE.kind); needFit = true; } });"), 'moved in the scene: a way back');
+  assert.ok(page.includes('id="modeChip"') && page.includes('id="modeBack"') && ['chip.scene', 'chip.free', 'chip.backSaturn', 'chip.backEarth', 'chip.replayTour', 'chip.mission', 'chip.design', 'chip.designMan', 'chip.map'].every(has), 'mode title and its texts');
+  assert.ok(app.includes("if (SCENE.free) { t = _('chip.free'); back = SCENE.kind === 'earth' ? 'chip.backEarth' : SCENE.kind === 'tour' ? 'chip.replayTour' : 'chip.backSaturn'; }") && app.includes("$('#modeBack').addEventListener('click', () => { if (SCENE.on) { sceneSet(SCENE.kind); needFit = true; } });"), 'moved in the scene: a way back');
 }
 // 27) The start screen: four choices (the scene, a mission: the Moon or Mars, one's own design, the cabin), 2 × 2 on
 // phones; remembered (not the cabin); Esc or a click outside is the scene; the logo opens it again
@@ -934,5 +934,51 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(cab.includes('const stageTf = (c, live) => STAGE_ZOOM ? (live ? `translate3d(${-c.x}px,${-c.y}px,0)` : `translate(${-c.x}px,${-c.y}px)`)') && cab.includes('for (const e of STAGES) e.style.zoom = s;'), 'zoomed: translate in art px, no scale()');
   assert.ok(cab.includes('(STAGE_ZOOM ? mp / b.s : mp)'), '?pan=left under zoom: the margin in art px');
   { const st = cab.slice(cab.indexOf('function showTip(b)'), cab.indexOf('function hideTip()')); assert.ok(!st.includes('.getBoundingClientRect()') && st.includes('HITS[b.id]'), 'the tip placed from the art box'); }
+}
+
+// 34) The opening tour (Phase 16b, prefs.js tourAt): Saturn → Jupiter → Mars → the Earth and the Moon → the Sun from the
+// day's positions, for several dates: each stop held at its body and width, a continuous way that moves evenly on screen
+// (van Wijk & Nuij: never more than a few % of the view's width per frame, the width never jumping), the view wide
+// enough on the long hops to hold both ends, the end at the Sun with the inner planets in view, looked at from above.
+{
+  const C = require('../js/core.js'), K = ['sun', 'earth', 'moon', 'mars', 'jupiter', 'saturn'];
+  const sy = C.buildSystem(K.map(k => { const d = BODIES[k]; return { name: k, mu: d.gm * 1e9, radius: d.radius * 1e3, parent: K.indexOf(d.parent), a: 0, orb: d.orb }; }));
+  const X = new Float64Array(3 * K.length), V = new Float64Array(3 * K.length);
+  assert.ok(Math.abs(P.OPEN_TOUR_S - 52) < 1e-9 && P.OPEN_TOUR.map(k => k.k).join() === 'saturn,jupiter,mars,earth,sun', 'tour: 52 s, its stops');
+  for (const iso of ['2026-11-12T12:00:00Z', '2027-06-01T00:00:00Z', '2030-02-15T00:00:00Z']) {
+    C.states(sy, C.utcToDays(Date.parse(iso)) * C.DAY, X, V);
+    const Pp = {}; K.forEach((k, i) => { Pp[k] = [0, 1, 2].map(c => X[3 * i + c] - X[c]); });
+    const D = P.tourDirs(Pp), dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    let t0 = 0, prev = null, shift = 0, dw = 0;
+    for (let i = 0; i < P.OPEN_TOUR.length; i++) {
+      const k = P.OPEN_TOUR[i];
+      if (i) {
+        // on the way, at its widest, both stops inside the view
+        const a = Pp[P.OPEN_TOUR[i - 1].k], b = Pp[k.k];
+        let best = Infinity;
+        for (let f = 0; f <= 1; f += 0.005) { const m = P.tourAt(t0 + k.move * f, Pp, D); best = Math.min(best, Math.max(dist(m.t, a), dist(m.t, b)) / m.w); }
+        assert.ok(best < 0.6, `${iso}: on the way to ${k.k} both ends in view (${best.toFixed(2)} of the width)`);
+        t0 += k.move;
+      }
+      const h = P.tourAt(t0 + (k.hold || 0) / 2, Pp, D);
+      assert.ok(dist(h.t, Pp[k.k]) < 1 && Math.abs(h.w / k.w - 1) < 1e-9 && h.stop === i, `${iso}: at ${k.k}`);
+      assert.ok(Math.abs(Math.hypot(...D[i]) - 1) < 1e-9 && D[i][2] < 0, `${iso}: ${k.k} seen from above the ecliptic`);
+      t0 += k.hold || 0;
+    }
+    for (let T = 0; T <= P.OPEN_TOUR_S + 2; T += 1 / 60) {
+      const c = P.tourAt(T, Pp, D);
+      if (prev) { shift = Math.max(shift, dist(c.t, prev.t) / Math.min(c.w, prev.w)); dw = Math.max(dw, Math.abs(Math.log(c.w / prev.w))); }
+      prev = c;
+    }
+    assert.ok(shift < 0.03 && dw < 0.06, `${iso}: even motion (largest step ${(100 * shift).toFixed(1)} % of the view, width ×${Math.exp(dw).toFixed(3)} per frame)`);
+    const end = P.tourAt(P.OPEN_TOUR_S + 30, Pp, D);
+    assert.ok(end.done && dist(end.t, Pp.sun) < 1 && dist(Pp.mars, Pp.sun) < 0.5 * end.w && dist(Pp.earth, Pp.sun) < 0.5 * end.w, `${iso}: ends at the Sun, Mars and the Earth in view`);
+  }
+  // a hop of no distance is a plain zoom; the app aims with it in 2D and 3D, the cabin hands the tour over as Saturn
+  const z = P.zoomPan(1, 100, 0);
+  assert.ok(Math.abs(z.at(z.S)[1] - 100) < 1e-9 && z.at(z.S / 2)[0] === 0, 'zoom only');
+  const app = read('js/app.js');
+  assert.ok(app.includes('tourAt(SCENE.tt, P, SCENE.tD)') && app.includes("sceneSet('tour')") && has('chip.replayTour') && has('wc.tour'), 'the scene opens on the tour, replayable');
+  assert.ok(P.parseSimSnap(JSON.stringify({ at: 1000, scene: 'tour', map: false, K: {}, S: { kind: 'transfer', bodies: [], M: {} } }), 1000) !== null, 'back from the cabin to the tour');
 }
 console.log('OK — all UI tests passed');

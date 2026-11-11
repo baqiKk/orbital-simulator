@@ -96,6 +96,7 @@ const I18N = {
     'chip.scene': 'Manzara · {name}',
     'chip.free': 'Serbest bakış',
     'chip.backSaturn': 'Satürn\'e dön',
+    'chip.replayTour': 'Satürn → Güneş turunu tekrar oynat',
     'chip.backEarth': 'Dünya–Ay\'a dön',
     'chip.mission': 'Görev · {name}',
     'chip.design': 'Tasarım · {a} → {b}',
@@ -465,6 +466,7 @@ const I18N = {
     'start.reopen': 'Başlangıç ekranı',
     'chip.sceneShort': 'Manzara',
     'wc.sceneAria': 'Manzara',
+    'wc.tour': 'Tur',
     'wc.saturn': 'Satürn',
     'wc.earth': 'Dünya–Ay',
     // ---- live mode (Phase 16a) ----
@@ -654,6 +656,7 @@ const I18N = {
     'scene.capSaturn': 'Satürn ve uyduları',
     'scene.capEarth': 'Dünya ve Ay',
     'scene.capFree': 'Güneş sistemi',
+    'scene.capTour': 'Gezegenler bugünkü yerlerinde',
     'scene.big': 'Boyutlar büyütülmüştür (×{k}); uzaklıklar gerçek',
     'ui.skyTip': 'Gökyüzü parlaklığı (Samanyolu ve yıldızlar)',
     'v3.gridEcl': 'Izgara: ekliptik düzlemi',

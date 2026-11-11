@@ -2337,17 +2337,18 @@ const mapTime = t => (SCENE.on ? SCENE.t : (S.model === 'real' ? S.M.t0 * DAY : 
 // changing the mission), the map button or the M key end it and everything runs as before. Moving the camera or
 // picking a body keeps the scene but stops the aim. The first-run mode question comes first: until it is answered
 // nothing is drawn or fetched (wait).
-const SCENE = { on: false, wait: false, kind: 'saturn', t: 0, dt: 0, age: 0, free: false, s0: 0, i3: false, k2: 1, k3: 1, hide: new Set() };
+const SCENE = { on: false, wait: false, kind: 'tour', tt: 0, tD: null, t: 0, dt: 0, age: 0, free: false, s0: 0, i3: false, k2: 1, k3: 1, hide: new Set() };
 // The map's clock (core.js clockAt; Phase 16a): live at first (the wall clock, 1 s/s), sped up from the live bar. The
 // scene (the opening tour, Saturn, the Earth and the Moon, the free look) runs on it; a mission and its map keep the
 // mission's own time.
 let MCLK = clockSet({}, Date.now(), { live: true });
 const LIVE = { since: Date.now(), key: '', sub: '', tipUntil: 0 };
 const sceneDrift = () => Q.glow && !lowQ && !reduceMotion;
-function sceneSet(kind) {
-  Object.assign(SCENE, { kind, free: false, s0: 0, i3: false, k3: 1 });
+// o.done: the tour at its last stop (back from the cabin; with reduced motion it always starts there)
+function sceneSet(kind, o = {}) {
+  Object.assign(SCENE, { kind, free: false, s0: 0, i3: false, k3: 1, tt: o.done || reduceMotion ? OPEN_TOUR_S : 0, tD: null });
   MAP.log = false; MAP.moons = true; $('#tMoons').checked = true; syncMapUI();
-  MAP.needFit = false; MAP.follow = MAPK.indexOf(kind === 'earth' ? 'earth' : 'saturn');
+  MAP.needFit = false; MAP.follow = kind === 'tour' ? null : MAPK.indexOf(kind === 'earth' ? 'earth' : 'saturn');
   setSeg('#wcScene', kind);
 }
 // the mission's readout, timeline and windows step aside (from the first-run question on)
@@ -2361,7 +2362,7 @@ function sceneStart(free) {
   skyHiAt = performance.now() + 5000;
   S.playing = false; setPlayIcon();
   setMap(true); sceneAside();
-  if (free) { SCENE.free = true; MAP.needFit = false; } else sceneSet('saturn');
+  if (free) { SCENE.free = true; MAP.needFit = false; } else sceneSet('tour');
   if (MCLK.live) liveTipOnce();
 }
 // toMission: back to the mission view, playing as a freshly loaded one does
@@ -2381,7 +2382,7 @@ function sceneTouch() { FLY.on = false; if (SCENE.on) SCENE.free = true; }
 // which aims it again), "Görev · <scenario>", "Tasarım · A → B" (a setup of one's own), the solar system map
 function modeChip() {
   let t, back = '';
-  if (SCENE.on) { if (SCENE.free) { t = _('chip.free'); back = SCENE.kind === 'earth' ? 'chip.backEarth' : 'chip.backSaturn'; } else t = _('chip.sceneShort'); }
+  if (SCENE.on) { if (SCENE.free) { t = _('chip.free'); back = SCENE.kind === 'earth' ? 'chip.backEarth' : SCENE.kind === 'tour' ? 'chip.replayTour' : 'chip.backSaturn'; } else { t = _('chip.sceneShort'); if (SCENE.kind === 'tour' && SCENE.tt >= OPEN_TOUR_S) back = 'chip.replayTour'; } }
   else if (MAP.on) t = _('chip.map');
   else if (S.scenario && APP.mode !== 'design') t = _('chip.mission', { name: _('sc.' + S.scenario + '.name') });
   else { const a = S.bodies[0] ? S.bodies[0].name : '', b = S.bodies[1] ? S.bodies[1].name : ''; t = S.kind === 'man' ? _('chip.designMan', { a }) : _('chip.design', { a, b }); }
@@ -2445,9 +2446,14 @@ $('#liveMap').addEventListener('click', () => { const keep = { ...cam }, f = MAP
 function liveTipOnce() { if (readPref(LS, PREF_KEYS.liveTip)) return; writePref(LS, PREF_KEYS.liveTip, '1'); LIVE.tipUntil = Date.now() + 10000; }
 // 2D: Saturn followed, the orbits out to Rhea's in view, breathing slowly; the Earth on one side, the Moon on the other
 function sceneAim2(pos) {
-  if (SCENE.free || MAP.follow == null) return;
+  if (SCENE.free || (MAP.follow == null && SCENE.kind !== 'tour')) return;
   const q = insets(), fw = W - q.l - q.r, fh = H - q.t - q.b, ox = (q.l - q.r) / 2, oy = (q.t - q.b) / 2;
-  if (SCENE.kind === 'earth') {
+  if (SCENE.kind === 'tour') { // the map seen from above: the place looked at and the width of the view
+    const P = tourPos(i => [pos[2 * i], pos[2 * i + 1], 0]); if (!SCENE.tD) SCENE.tD = tourDirs(P);
+    const v = tourAt(SCENE.tt, P, SCENE.tD);
+    cam.scale = 0.94 * Math.max(40, Math.min(fw, fh)) / v.w; cam.cx = v.t[0]; cam.cy = v.t[1];
+    SCENE.near = tourNear(v, P);
+  } else if (SCENE.kind === 'earth') {
     const e = MAPK.indexOf('earth'), m = MAPK.indexOf('moon'), dx = pos[2 * m] - pos[2 * e], dy = pos[2 * m + 1] - pos[2 * e + 1];
     cam.scale = Math.min(0.72 * fw / Math.max(Math.abs(dx), 1), 0.72 * fh / Math.max(Math.abs(dy), 1), 0.72 * Math.max(fw, fh) / Math.hypot(dx, dy));
     cam.cx = pos[2 * e] + dx / 2; cam.cy = pos[2 * e + 1] + dy / 2;
@@ -2461,17 +2467,38 @@ function sceneAim2(pos) {
 // The Earth and the Moon: when the Earth seen from the Moon shows a day and a night side (25–80 % lit), from beyond the
 // Moon along their line, a little above it (the Moon large in front, the Earth above it: an "Earthrise"); else (near
 // full or new moon) from the side, square to the Sun so both are half lit, the bodies enlarged by one common factor (k3)
+// Saturn's view (from the body towards the eye): 18° above its lit ring face, 50° off the Sun
+function saturnEye(pos) {
+  const v = i => [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], nrm = a => { const l = Math.hypot(...a) || 1; return a.map(x => x / l); };
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const i = MAPK.indexOf('saturn'), Ax = bodyAxes('saturn', SCENE.t, MP, MV, i, MPAR[i], new Array(9)), p = [Ax[2], Ax[5], Ax[8]], s = nrm(v(i).map(x => -x));
+  const sp = dot(s, p), h = nrm(s.map((x, k) => x - sp * p[k])), w = cross(p, h), a = 50 * D2R, el = 18 * D2R * (sp >= 0 ? 1 : -1);
+  return [0, 1, 2].map(k => Math.cos(el) * (Math.cos(a) * h[k] + Math.sin(a) * w[k]) + Math.sin(el) * p[k]);
+}
+// the tour's bodies from a position getter (map body index → [x, y, z])
+const TOUR_I = Object.fromEntries(OPEN_TOUR.map(k => [k.k, MAPK.indexOf(k.k)]));
+const tourPos = f => Object.fromEntries(OPEN_TOUR.map(k => [k.k, f(TOUR_I[k.k])]));
+// how near the tour is to the Earth (1 there; 0 once it is a view's width away or the view 20× wider than at the Earth):
+// the Earth and the Moon are enlarged by one common factor there, as in their own scene (the Earth would be a few pixels)
+const TOUR_WE = OPEN_TOUR.find(k => k.k === 'earth').w;
+const tourNear = (o, P) => clamp(1 - Math.hypot(o.t[0] - P.earth[0], o.t[1] - P.earth[1], o.t[2] - P.earth[2]) / o.w, 0, 1) * clamp(1 - Math.log(o.w / TOUR_WE) / Math.log(20), 0, 1);
 function sceneAim3(pos, c) {
-  if (SCENE.free || MAP.follow == null) return;
+  if (SCENE.free || (MAP.follow == null && SCENE.kind !== 'tour')) return;
   const v = i => [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], nrm = a => { const l = Math.hypot(...a) || 1; return a.map(x => x / l); };
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
   const look = d => { c.elev = Math.asin(clamp(d[2], -1, 1)); c.yaw = Math.atan2(d[0], -d[1]); };
+  if (SCENE.kind === 'tour') { // the place looked at, the width of the view there, the way the camera looks (turning slowly once arrived)
+    const P = tourPos(v); if (!SCENE.tD) SCENE.tD = tourDirs(P, { saturn: saturnEye(pos).map(x => -x) });
+    const o = tourAt(SCENE.tt, P, SCENE.tD), r = o.done && sceneDrift() ? 0.006 * (SCENE.tt - OPEN_TOUR_S) : 0, cr = Math.cos(r), sr = Math.sin(r);
+    c.t = o.t; look([-(o.d[0] * cr - o.d[1] * sr), -(o.d[0] * sr + o.d[1] * cr), -o.d[2]]); frameRad3(c, o.w / 2, 0.47);
+    const fpx = (H / 2) / Math.tan(FOV3 * Math.PI / 360);
+    SCENE.k3 = 1 + (clamp(BIG_PX / (mapSys.R[TOUR_I.earth] * fpx / c.dist), 1, BIG_K) - 1) * tourNear(o, P);
+    return;
+  }
   if (SCENE.kind === 'saturn') {
     if (!SCENE.i3) {
       SCENE.i3 = true;
-      const i = MAPK.indexOf('saturn'), Ax = bodyAxes('saturn', SCENE.t, MP, MV, i, MPAR[i], new Array(9)), p = [Ax[2], Ax[5], Ax[8]], s = nrm(v(i).map(x => -x));
-      const sp = dot(s, p), h = nrm(s.map((x, k) => x - sp * p[k])), w = cross(p, h), a = 50 * D2R, el = 18 * D2R * (sp >= 0 ? 1 : -1);
-      look([0, 1, 2].map(k => Math.cos(el) * (Math.cos(a) * h[k] + Math.sin(a) * w[k]) + Math.sin(el) * p[k]));
+      look(saturnEye(pos));
       frameRad3(c, 1.2 * BODIES.rhea.orb.sat[0] * 1e3, 0.58); // seen from low, the orbits are flattened: fill more
     }
     if (sceneDrift()) c.yaw += 0.008 * SCENE.dt;
@@ -2682,7 +2709,8 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
   fly2(MAP.follow != null);
   // the Earth–Moon scene shows its bodies enlarged (as the 3D "enlarged" size: the Earth up to BIG_PX on screen, at most
   // BIG_K times), one factor for all so the Earth and the Moon keep their proportions; zooming in brings it back to 1
-  SCENE.k2 = SCENE.on && SCENE.kind === 'earth' && !MAP.log ? clamp(BIG_PX / (mapSys.R[MAPK.indexOf('earth')] * cam.scale), 1, BIG_K) : 1;
+  const k2 = clamp(BIG_PX / (mapSys.R[MAPK.indexOf('earth')] * cam.scale), 1, BIG_K);
+  SCENE.k2 = !SCENE.on || MAP.log ? 1 : SCENE.kind === 'earth' ? k2 : SCENE.kind === 'tour' && !SCENE.free ? 1 + (k2 - 1) * (SCENE.near || 0) : 1;
   const keyA = S.bodies[0] && S.bodies[0].key, keyB = S.bodies[1] && S.bodies[1].key, sc = cam.scale;
   const moonsOn = MAP.moons && !MAP.log;
   // a moon is shown (linear scale only) once its orbit is a few pixels across
@@ -2738,7 +2766,7 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
 // map caption: the date, and what the scale or the model leaves out
 function mapNotes(T) {
   // the scene: what it shows, the enlargement (its date and rate are on the live bar)
-  if (SCENE.on) return [_(SCENE.free ? 'scene.capFree' : SCENE.kind === 'earth' ? 'scene.capEarth' : 'scene.capSaturn'),
+  if (SCENE.on) return [_(SCENE.free ? 'scene.capFree' : SCENE.kind === 'earth' ? 'scene.capEarth' : SCENE.kind === 'tour' ? 'scene.capTour' : 'scene.capSaturn'),
     ...((is3d() ? (SCENE.free ? 1 : SCENE.k3) : SCENE.k2) > 1.01 ? [_('scene.big', { k: nf0.format(is3d() ? SCENE.k3 : SCENE.k2) })] : [])];
   const notes = [_('map.caption', { date: fmtDate(daysToUtc(T / DAY)) })];
   if (MAP.log) notes.push(_('map.logNote'));
@@ -3002,6 +3030,7 @@ function draw(now) {
   }
   if (SCENE.on) { // the opening scene: the map on its own clock
     SCENE.dt = dt; SCENE.age += dt; SCENE.t = clockAt(MCLK, Date.now());
+    if (SCENE.kind === 'tour' && !SCENE.free && !reduceMotion) SCENE.tt += dt;
     if (v3) drawMap3(SCENE.t, glow, null, 0, 0); else { drawMap(SCENE.t, glow, null, 0, 0); if (!MAP.log) drawScale(); }
     if (now - ovLast > 500) { ovLast = now; ovDist(); }
     skyAdapt(dt); frameEnd(); requestAnimationFrame(draw); return;
@@ -3487,7 +3516,7 @@ function setMode(m, save) {
   MODE = m; Q = QUALITY[m]; SUB = Q.sub;
   document.documentElement.dataset.q = m;
   if (m !== 'low') { lowQ = false; slowFrames = 0; frameAvg = 1 / 60; fxSet(0); }
-  if (flip) { needFit = true; if (SCENE.on && !SCENE.free) sceneSet(SCENE.kind); else MAP.needFit = true; } // the scene re-aims
+  if (flip) { needFit = true; if (SCENE.on && !SCENE.free) { if (SCENE.kind === 'tour') SCENE.tD = null; else sceneSet(SCENE.kind); } else MAP.needFit = true; } // the scene re-aims (the tour goes on)
   sync3dUI();
   $('#tSkyWrap').hidden = !Q.stars;
   resize();
@@ -3600,7 +3629,7 @@ function toCabin(e) {
   e.preventDefault();
   const snap = { at: Date.now(), scene: SCENE.on ? SCENE.kind : '', map: MAP.on, K: KSAVE, S: Object.fromEntries(SNAP_KEYS.map(k => [k, S[k]])) };
   writePref(SS, PREF_KEYS.simSnap, JSON.stringify(snap));
-  location.href = 'kabin.html?manzara=' + SCENE.kind;
+  location.href = 'kabin.html?manzara=' + (SCENE.kind === 'earth' ? 'earth' : 'saturn');
 }
 for (const id of ['#railCabin', '#wcCabin']) $(id).addEventListener('click', toCabin);
 addEventListener('pageshow', e => { if (e.persisted) clearPref(SS, PREF_KEYS.simSnap); }); // back from the cache: nothing to restore
@@ -3643,7 +3672,7 @@ setSeg('#pcMetric', PC.metric);
 for (const id of WIN_IDS) applyWin(id);
 if (snapOk) { if (SNAP.map) setMap(true); } // back from the cabin: the mission as it was left
 else {
-  sceneStart(); if (SNAP && SNAP.scene) sceneSet(SNAP.scene);
+  sceneStart(); if (SNAP && SNAP.scene) sceneSet(SNAP.scene, { done: true });
   // where the viewer chose to start (the start screen on the first visit; not when coming back from the cabin or to the
   // Sources)
   const st = parseStart(readPref(LS, PREF_KEYS.start), SCENARIOS.map(s => s.id));

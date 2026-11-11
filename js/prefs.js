@@ -285,8 +285,70 @@ const SNAP_MAX_MS = 12 * 3600 * 1000;
 function parseSimSnap(raw, now) {
   let o = null; try { o = JSON.parse(raw); } catch (e) { return null; }
   if (!o || typeof o !== 'object' || !(now - o.at >= 0 && now - o.at < SNAP_MAX_MS)) return null;
-  if (!['', 'saturn', 'earth'].includes(o.scene) || !o.S || typeof o.S !== 'object' || !['transfer', 'man'].includes(o.S.kind) || !Array.isArray(o.S.bodies) || !o.S.M || typeof o.S.M !== 'object') return null;
+  if (!['', 'saturn', 'earth', 'tour'].includes(o.scene) || !o.S || typeof o.S !== 'object' || !['transfer', 'man'].includes(o.S.kind) || !Array.isArray(o.S.bodies) || !o.S.M || typeof o.S.M !== 'object') return null;
   return o;
 }
 
-if (typeof module !== 'undefined') module.exports = { PREF_OLD, autoMode, autoModeFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+// ----- The opening tour (Phase 16b) -----
+// Saturn → Jupiter → Mars → the Earth and the Moon → the Sun (≈ 52 s), built from the day's positions. Each stop: the
+// body, the width of the view there (w, m: Saturn out past Rhea, Jupiter past Callisto, Mars past Deimos, the Earth past
+// the Moon, the Sun past Mars), how long it takes to get there (move, s) and how long the camera stays (hold, s); phase:
+// the angle between the Sun and the camera seen from the body (part of the lit side in view), elev: the camera's height
+// over the ecliptic. Between two stops the camera takes van Wijk & Nuij's smooth zoom and pan ("Smooth and efficient
+// zooming and panning", 2003): the view widens on the way just enough that the motion on screen stays even, whether the
+// stops are 13 AU or 0.4 AU apart; eased in and out.
+const OPEN_TOUR = [
+  { k: 'saturn', w: 1.4e9, hold: 8, phase: 50, elev: 18 },
+  { k: 'jupiter', w: 4.5e9, move: 12, hold: 5, phase: 50, elev: 15 },
+  { k: 'mars', w: 6e7, move: 9, hold: 2, phase: 60, elev: 15 },
+  { k: 'earth', w: 1e9, move: 7, hold: 2, phase: 90, elev: 15 },
+  { k: 'sun', w: 6e11, move: 7, elev: 35 },
+];
+const OPEN_TOUR_S = OPEN_TOUR.reduce((a, k) => a + (k.move || 0) + (k.hold || 0), 0);
+const OPEN_TOUR_RHO = Math.SQRT2;
+const v3n = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+// the view direction (camera → body, unit) at each stop, from the positions P (key → [x, y, z], one frame for all, z up
+// from the ecliptic). over: a stop's own direction (the app gives Saturn's from its ring plane). A body is seen from its
+// sunward side turned by phase, to the side nearer the previous stop's direction; the Sun from above, along the last one.
+function tourDirs(P, over) {
+  const D = [];
+  for (let i = 0; i < OPEN_TOUR.length; i++) {
+    const k = OPEN_TOUR[i], e = (k.elev || 0) * Math.PI / 180, prev = D[i - 1];
+    if (over && over[k.k]) { D.push(v3n(over[k.k])); continue; }
+    if (k.k === 'sun') { const h = v3n([prev[0], prev[1], 0]); D.push([Math.cos(e) * h[0], Math.cos(e) * h[1], -Math.sin(e)]); continue; }
+    const s = v3n([P.sun[0] - P[k.k][0], P.sun[1] - P[k.k][1], 0]), a = (k.phase || 0) * Math.PI / 180;
+    const cand = [1, -1].map(g => { const c = Math.cos(g * a), n = Math.sin(g * a), h = [s[0] * c - s[1] * n, s[0] * n + s[1] * c]; return [-Math.cos(e) * h[0], -Math.cos(e) * h[1], -Math.sin(e)]; });
+    D.push(!prev || cand[0][0] * prev[0] + cand[0][1] * prev[1] + cand[0][2] * prev[2] >= cand[1][0] * prev[0] + cand[1][1] * prev[1] + cand[1][2] * prev[2] ? cand[0] : cand[1]);
+  }
+  return D;
+}
+// the smooth zoom and pan from width w0 to w1 over a distance u1: its length S and the place u / width w at s in [0, S]
+function zoomPan(w0, w1, u1) {
+  const r = OPEN_TOUR_RHO, r2 = r * r;
+  if (u1 < 1e-9 * Math.max(w0, w1)) { const g = Math.log(w1 / w0) >= 0 ? 1 : -1, S = Math.abs(Math.log(w1 / w0)) / r; return { S, at: s => [0, w0 * Math.exp(g * r * s)] }; }
+  const b0 = (w1 * w1 - w0 * w0 + r2 * r2 * u1 * u1) / (2 * w0 * r2 * u1), b1 = (w1 * w1 - w0 * w0 - r2 * r2 * u1 * u1) / (2 * w1 * r2 * u1);
+  const r0 = -Math.asinh(b0), rr1 = -Math.asinh(b1), S = (rr1 - r0) / r, c0 = Math.cosh(r0), s0 = Math.sinh(r0);
+  return { S, at: s => [w0 / r2 * (c0 * Math.tanh(r * s + r0) - s0), w0 * c0 / Math.cosh(r * s + r0)] };
+}
+const smooth01 = x => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+// the camera at tour time T (s): { t: the point looked at, w: the view's width there (m), d: the view direction, stop:
+// the stop held or arrived at (or -1 on the way), done: at the last stop }. P and D as above (D from tourDirs).
+function tourAt(T, P, D) {
+  let t = Math.max(0, T);
+  for (let i = 0; i < OPEN_TOUR.length; i++) {
+    const k = OPEN_TOUR[i], last = i === OPEN_TOUR.length - 1;
+    if (i > 0) {
+      if (t < k.move) {
+        const a = OPEN_TOUR[i - 1], A = P[a.k], B = P[k.k], dx = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], u1 = Math.hypot(...dx);
+        const zp = zoomPan(a.w, k.w, u1), f = smooth01(t / k.move), [u, w] = zp.at(zp.S * f), g = u1 > 0 ? u / u1 : 0;
+        const d0 = D[i - 1], d1 = D[i], d = v3n([0, 1, 2].map(j => d0[j] + (d1[j] - d0[j]) * f));
+        return { t: [A[0] + dx[0] * g, A[1] + dx[1] * g, A[2] + dx[2] * g], w, d, stop: -1, done: false };
+      }
+      t -= k.move;
+    }
+    if (last || t < k.hold) return { t: P[k.k].slice(0, 3), w: k.w, d: D[i], stop: i, done: last };
+    t -= k.hold;
+  }
+}
+
+if (typeof module !== 'undefined') module.exports = { OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
