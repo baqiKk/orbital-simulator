@@ -254,6 +254,26 @@ Genel ilkeler:
 ## Faz 15 — Benimle çalış
 - Benimle çalış (work with me) sekmesi: kameranın geri çekilip masada ders çalışan özgün bir karakterin görüldüğü, lo-fi çalışma videolarına benzer bir görünüme geçiş. Karakter özgün olacak, mevcut bir eser ya da markaya benzemeyecek; büyük ihtimalle illüstratör çizimi gerekecek.
 
+## Faz 16 — Canlı kip, açılış turu, tasarım sihirbazı
+Kararlar (2026-11-12): bi-eliptiğin rb sınırı etki küresinin yarısı; kayıtlı başlangıç seçimi yeni oturumda yalnızca kartı öne alır; efemeris Horizons'la karşılaştırılarak test edilir.
+
+### Faz 16a — Canlı kip
+- Harita saati (`core.js clockAt` / `clockSet`): canlıda t = duvar saati (UTC → TDB), hız 1 s/s; hızlandırmada çapa + hız, birikmez. Açılış manzarası, harita ve gezegen çevresi görünümleri (2B ve 3B) bu saati okur; görev oynatması kendi zaman çizelgesinde kalır.
+- Saat şeridi (kip başlığının altında): "● CANLI · tarih saat UTC" ya da tarih + hız + "Şimdiye dön"; hız menüsü: Canlı (1×) en üstte, 60×, 10 dk/s, 1 sa/s, 1 gün/s, 10 gün/s.
+- Yavaşlık ipucu: sayfa açıldığından beri Dünya'nın Güneş çevresinde aldığı yol (km, 30 km/s); Dünya/Ay görünümünde Ay'ın uzaklığı ve evresi; ilk girişte bir kez hızlandırma notu.
+- Testler: belirli bir UTC anında konumlar `states`'le aynı; JPL Horizons vektörleriyle her gezegen için JPL Tablo 1 "approximate errors" toleransıyla karşılaştırma; sahte saatle canlı kipin duvar saatini izlemesi, hızlandırma, Şimdiye dön.
+
+### Faz 16b — Açılış turu ve karşılama
+- Canlı kipte bugünkü konumlarla Satürn → Jüpiter → Mars → Dünya–Ay → Güneş kamera turu (≈ 52 s; o günün konumlarından kurulur, uzaklık logaritmik "atlama"yla), sonra Güneş'e bakan sakin kadraj. 3B yoksa 2B harita karşılığı; azaltılmış harekette doğrudan son kadraj. Dokunma kamerayı bırakır, "Satürn → Güneş turunu tekrar oynat". Saf `tourKeys` (test: cisimlerin yakınından geçer, sürekli, Güneş'te biter).
+- Karşılama ekranı her yeni oturumda (sessionStorage) turun üstünde, kompakt ve yarı saydam (masaüstünde altta yatay kartlar, telefonda alt yarıda 2 × 2); kart seçilince tur bitmeden geçilir. Kabinden dönüşte, URL parametresiyle (`?manzara=`, `#kaynakca`) ve aynı oturumda yeniden yüklemede çıkmaz.
+
+### Faz 16c — Tasarım sihirbazı
+- Görev penceresinin sade yüzü (uzman düzeni eski formu gösterir; aynı durum `S.M` / transfer kurulumu, aynı `rebuild`). İlk adım: yörünge değiştir / başka bir cisme git / serbest yanma. Adımlar katlanan kartlar; yapışkan, her zaman görünür "Görevi başlat" (hesaplar ve oynatır); geçersiz girişte düğmenin yanında Türkçe uyarı; varsayılanlar her zaman geçerli.
+- Yörünge değiştir: merkez cisim → başlangıç → hedef → yöntem (Otomatik, Hohmann, bi-eliptik, eğim birleşik/ayrı; gelişmiş: sonlu yanma, araç, J2). Otomatik bi-eliptiği yalnızca Δv kazancı ≥ %2 ise seçer (rb ≤ etki küresinin yarısı), karşılaştırma satırı süreleri de gösterir. Hazır örnekler: Dünya 600 → 1300 km, LEO → GEO, Ay 100 → 20 km, Mars alçaltma, eliptik → dairesel.
+- Sonuç kartı: toplam Δv, yanma başına zaman ve Δv, transfer süresi, isteğe bağlı kütle/Isp ile yakıt; "Değiştir".
+- Başka bir cisme git: kalkış + park irtifası → hedef → varış → zaman (en ucuz pencere ya da tarih) → `solveMission`.
+- Serbest yanma (Faz 7'deki madde): başlangıç yörüngesi + yer + prograd/radyal/normal Δv (`core.js freeBurn`, `M.type = 'free'`). Testler: sıfır Δv; prograd → vis-viva; saf normal Δv: eğim atan(Δv/v), hız √(v² + Δv²); hızı koruyan eğim değişimi 2·asin(Δv/2v); `rv2el(r, v + Δv)` ile tutarlılık.
+
 ## Notlar
 - Hibrit OTV hazır aracı: itki, Isp, kütle ve tek ateşleme süresini birlikte veren yayımlanmış birincil bir kaynak bulununca eklenecek. Yayımlanmamış şirket verileri kullanılmayacak.
 
