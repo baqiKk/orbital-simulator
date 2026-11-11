@@ -22,7 +22,7 @@ assert.ok(!/img\/planets/.test(kab), 'kabin-taslak.html asks for planet images o
 
 // 2) Every literal key in app.js / core.js exists (string literals inside a dictionary namespace, incl. ternaries)
 const spaces = new Set(Object.keys(DICT).map(k => k.split('.')[0]));
-for (const f of ['js/app.js', 'js/core.js', 'js/mode3d.js', 'js/globe.js']) {
+for (const f of ['js/app.js', 'js/core.js', 'js/mode3d.js', 'js/globe.js', 'js/wizard.js']) {
   for (const m of read(f).matchAll(/'([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9_]+)+)'/g)) {
     if (spaces.has(m[1].split('.')[0])) assert.ok(has(m[1]), `${f} key missing from dictionary: ${m[1]}`);
   }
@@ -990,5 +990,27 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const app = read('js/app.js');
   assert.ok(app.includes('tourAt(SCENE.tt, P, SCENE.tD)') && app.includes("sceneSet('tour')") && has('chip.replayTour') && has('wc.tour'), 'the scene opens on the tour, replayable');
   assert.ok(P.parseSimSnap(JSON.stringify({ at: 1000, scene: 'tour', map: false, K: {}, S: { kind: 'transfer', bodies: [], M: {} } }), 1000) !== null, 'back from the cabin to the tour');
+}
+// 35) The design wizard (Phase 16c, js/wizard.js): the mission window's face in the plain layout (the expert layout
+// shows the full form); after app.js; its composed keys exist; every example flies (a plan without error, a Hohmann
+// transfer chosen by the automatic method, within the body's sphere of influence); the result card follows updateResults.
+{
+  const C = require('../js/core.js'), wz = read('js/wizard.js'), css = read('css/style.css');
+  assert.ok(/<script src="js\/app\.js"><\/script>\n<script src="js\/wizard\.js"><\/script>/.test(html), 'wizard.js after app.js');
+  assert.ok(css.includes('html:not(.ui-expert) #w-mission .win-b>:not(.wiz):not(.status){display:none!important}') && css.includes('html.ui-expert #wiz{display:none}'), 'plain: the wizard; expert: the full form');
+  for (const id of ['wiz', 'wzPick', 'wzForm', 'wzSteps', 'wzEx', 'wzRes', 'wzFoot', 'wzErr', 'wzGo', 'wzExpert']) assert.ok(html.includes('id="' + id + '"'), 'wizard element ' + id);
+  for (const m of ['auto', 'hohmann', 'bielliptic']) assert.ok(has('wz.m.' + m) && has('wz.m.' + m + 'D'), 'method ' + m);
+  for (const k of Object.keys(P.WIZ_EX)) assert.ok(has('wz.ex.' + k), 'example ' + k);
+  assert.ok(app.includes("if (typeof wzAfterResults === 'function') wzAfterResults();"), 'the result card follows the results');
+  assert.ok(wz.includes('maneuverAuto(o.mu, o.R, o0, o1, { k: 1 }, o.soi / 2)'), 'automatic: rb up to half the sphere of influence');
+  const soi = k => { const d = BODIES[k], p = BODIES[d.parent], a = d.orb.jpl ? d.orb.jpl[0][0] * C.AU : d.orb.sat[0] * 1e3; return a * Math.pow(d.gm / p.gm, 0.4); };
+  for (const [k, e] of Object.entries(P.WIZ_EX)) {
+    const d = BODIES[e.body], Re = d.j2[1] * 1e3, mu = d.gm * 1e9, R = d.radius * 1e3;
+    const ap = n => e['c' + n] === 'circ' ? [+e['h' + n], +e['h' + n]] : [+e['p' + n], +e['a' + n]];
+    const [hp0, ha0] = ap(0), [hp1, ha1] = ap(1), rp1 = Re + hp1 * 1e3, ra1 = Re + ha1 * 1e3;
+    const { o0, o1 } = C.mvOrbits({ hp0, ha0, i0: +e.i0, hp1, e1: (ra1 - rp1) / (ra1 + rp1), i1: +e.i1, type: 'hohmann', rb: 0, plane: 'comb', k: 1 }, Re);
+    const a = C.maneuverAuto(mu, R, o0, o1, { k: 1 }, soi(e.body) / 2);
+    assert.ok(!a.error && a.type === 'hohmann' && a.plan.burns.length >= 1 && ra1 < soi(e.body), `example ${k}: flies (${a.plan.dv.toFixed(0)} m/s)`);
+  }
 }
 console.log('OK — all UI tests passed');

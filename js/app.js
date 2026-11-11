@@ -1784,6 +1784,7 @@ $('#res').addEventListener('click', e => {
   S.u = tToU(+tr.dataset.t); S.ext = 0; slowJump();
 });
 function updateResults() {
+  if (typeof wzAfterResults === 'function') wzAfterResults(); // the wizard's result card follows (js/wizard.js)
   if (S.kind === 'man') { updateResultsMan(); return; }
   const chip = $('#chip'), res = $('#res');
   if (!simR || !sys) { chip.className = 'chip bad'; chip.textContent = _('res.fail'); res.innerHTML = ''; return; }

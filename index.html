@@ -139,6 +139,25 @@
     <section class="win" id="w-mission" data-win="mission" aria-labelledby="wt-mission" hidden>
       <header class="win-h"><h2 id="wt-mission" data-i18n="win.mission"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
       <div class="win-b">
+        <div class="wiz" id="wiz">
+          <div class="wiz-pick" id="wzPick">
+            <p class="wiz-q" data-i18n="wz.q"></p>
+            <button type="button" class="wiz-card" data-path="orbit"><b data-i18n="wz.orbit"></b><span data-i18n="wz.orbitD"></span></button>
+            <button type="button" class="wiz-card" data-path="go" hidden><b data-i18n="wz.go"></b><span data-i18n="wz.goD"></span></button>
+            <button type="button" class="wiz-card" data-path="free" hidden><b data-i18n="wz.free"></b><span data-i18n="wz.freeD"></span></button>
+          </div>
+          <div class="wiz-form" id="wzForm" hidden>
+            <button type="button" class="link wiz-back" id="wzBack" data-i18n="wz.back"></button>
+            <div class="wiz-ex" id="wzEx" role="group" data-i18n-aria-label="wz.ex"></div>
+            <div class="wiz-steps" id="wzSteps"></div>
+          </div>
+          <div class="wiz-res" id="wzRes" hidden></div>
+          <div class="wiz-foot" id="wzFoot" hidden>
+            <p class="wiz-err" id="wzErr" role="alert"></p>
+            <button type="button" class="btn primary wiz-go" id="wzGo" data-i18n="wz.goBtn"></button>
+          </div>
+          <button type="button" class="link wiz-expert" id="wzExpert" data-i18n="wz.expert"></button>
+        </div>
         <div class="seg full" id="kindSeg" role="group" data-i18n-aria-label="ui.kind">
           <button type="button" data-v="transfer" data-i18n="ui.kind.transfer" data-i18n-title="ui.kind.transferTip"></button>
           <button type="button" data-v="man" data-i18n="ui.kind.man" data-i18n-title="ui.kind.manTip"></button>
@@ -445,5 +464,6 @@
 <script src="js/globe.js"></script>
 <script src="js/mode3d.js"></script>
 <script src="js/app.js"></script>
+<script src="js/wizard.js"></script>
 </body>
 </html>

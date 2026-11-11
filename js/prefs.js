@@ -298,6 +298,16 @@ function parseSimSnap(raw, now) {
   return o;
 }
 
+// ----- The design wizard's examples (Phase 16c, js/wizard.js): one click fills "Yörünge değiştir"; altitudes in km above
+// the body's equatorial radius, inclinations in degrees, as typed in the form (strings) -----
+const WIZ_EX = {
+  e600: { body: 'earth', c0: 'circ', h0: '600', i0: '0', c1: 'circ', h1: '1300', i1: '0' },
+  leoGeo: { body: 'earth', c0: 'circ', h0: '300', i0: '28.5', c1: 'circ', h1: '35786', i1: '0' },
+  moon: { body: 'moon', c0: 'circ', h0: '100', i0: '0', c1: 'circ', h1: '20', i1: '0' },
+  mars: { body: 'mars', c0: 'circ', h0: '400', i0: '0', c1: 'circ', h1: '250', i1: '0' },
+  ell: { body: 'earth', c0: 'ell', p0: '250', a0: '35786', i0: '0', c1: 'circ', h1: '35786', i1: '0' },
+};
+
 // ----- The opening tour (Phase 16b) -----
 // Saturn → Jupiter → Mars → the Earth and the Moon → the Sun (≈ 52 s), built from the day's positions. Each stop: the
 // body, the width of the view there (w, m: Saturn out past Rhea, Jupiter past Callisto, Mars past Deimos, the Earth past
@@ -360,4 +370,4 @@ function tourAt(T, P, D) {
   }
 }
 
-if (typeof module !== 'undefined') module.exports = { startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

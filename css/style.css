@@ -344,6 +344,64 @@ html[data-q=low] .toast{box-shadow:none}
 .tour-n{flex:1;font:500 11px/1 var(--f-mono);color:var(--faint)}
 .tour-hl{outline:2px solid var(--accent);outline-offset:2px}
 /* the guided mission's caption (js/app.js GUIDE): at the top under the mode title, above the windows; paused at an event, "Devam" */
+/* the design wizard (Phase 16c, js/wizard.js): the mission window's face in the plain layout; the expert layout shows
+   the full form instead */
+html:not(.ui-expert) #w-mission .win-b>:not(.wiz):not(.status){display:none!important}
+html.ui-expert #wiz{display:none}
+.wiz{display:flex;flex-direction:column;gap:10px}
+.wiz [hidden]{display:none!important}
+.wiz-q{margin:0;font:600 14px/1.2 var(--f-disp);letter-spacing:.03em;color:var(--ink)}
+.wiz-pick{display:flex;flex-direction:column;gap:8px}
+.wiz-card{display:flex;flex-direction:column;gap:4px;align-items:flex-start;text-align:left;padding:11px 12px;background:var(--raise);border:1px solid var(--line2);color:var(--dim);cursor:pointer;font:400 12px/1.4 var(--f-body)}
+.wiz-card b{font:600 13.5px/1.2 var(--f-disp);letter-spacing:.03em;color:var(--ink)}
+.wiz-card:hover,.wiz-card:focus-visible{border-color:var(--accent);color:var(--ink)}
+.wiz-back{align-self:flex-start;font-size:12px}
+.wiz-ex{display:flex;flex-wrap:wrap;gap:6px}
+.wiz-ex button{padding:4px 8px;font:500 11px/1.2 var(--f-disp);letter-spacing:.03em;color:var(--dim);background:transparent;border:1px solid var(--line2);cursor:pointer;white-space:nowrap}
+.wiz-ex button:hover,.wiz-ex button:focus-visible{border-color:var(--accent);color:var(--ink)}
+.wiz-steps{display:flex;flex-direction:column;gap:6px}
+.wz-step{border:1px solid var(--line);background:var(--raise)}
+.wz-step.on{border-color:var(--line2)}
+.wz-h{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;background:none;border:0;color:var(--ink);cursor:pointer;text-align:left;font:600 12.5px/1.2 var(--f-disp);letter-spacing:.03em}
+.wz-n{flex:none;width:18px;height:18px;display:grid;place-items:center;border:1px solid var(--line3);font:600 10.5px/1 var(--f-mono);color:var(--dim)}
+.wz-step.ok .wz-n{border-color:var(--good);color:var(--good)}
+.wz-step.bad .wz-n{border-color:var(--bad);color:var(--bad)}
+.wz-t{flex:none}
+.wz-sum{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font:400 11.5px/1.2 var(--f-mono);color:var(--dim);letter-spacing:0}
+.wz-step.on .wz-sum{display:none}
+.wz-b{display:none;flex-direction:column;gap:8px;padding:2px 10px 10px}
+.wz-step.on .wz-b{display:flex}
+.wz-b .grid2,.wz-b .grid3{gap:8px}
+.wz-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.wz-chips button{padding:5px 10px;font:500 12px/1.2 var(--f-disp);color:var(--dim);background:transparent;border:1px solid var(--line2);cursor:pointer}
+.wz-chips button[aria-pressed="true"]{color:var(--accent);border-color:var(--accent)}
+.wz-chips select{width:auto;flex:1;min-width:120px}
+.wz-d{margin:0;font-size:11.5px;line-height:1.4;color:var(--dim)}
+.wz-next{align-self:flex-end}
+.wz-b .field input[aria-invalid="true"]{border-color:var(--bad)}
+.wiz-foot{position:sticky;bottom:-1px;z-index:2;display:flex;flex-direction:column;gap:6px;padding:8px 0 2px;background:linear-gradient(to top,var(--panel-lo) 70%,transparent)}
+.wiz-err{margin:0;min-height:0;font-size:12px;line-height:1.4;color:var(--bad)}
+.wiz-err:empty{display:none}
+.wiz-go{width:100%;padding:11px 14px;font-size:14px}
+.wiz-go:disabled{opacity:.45;cursor:not-allowed}
+.wiz-expert{align-self:flex-start;font-size:11px;color:var(--faint)}
+.wiz-res{display:flex;flex-direction:column;gap:8px}
+.wr-h{display:flex;align-items:baseline;gap:8px}
+.wr-h b{flex:1;min-width:0;font:600 13.5px/1.25 var(--f-disp);letter-spacing:.03em;color:var(--ink)}
+.wr-big{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.wr-big div{padding:8px 10px;border:1px solid var(--line);background:var(--raise)}
+.wr-big span{display:block;font-size:11px;color:var(--dim)}
+.wr-big b{font:600 16px/1.2 var(--f-mono);color:var(--ink)}
+.wr-burns{width:100%;border-collapse:collapse;font-size:12px}
+.wr-burns th,.wr-burns td{padding:5px 4px;border-top:1px solid var(--line);text-align:left;font-weight:400}
+.wr-burns td{text-align:right;font-family:var(--f-mono);white-space:nowrap}
+.wr-burns tr.go{cursor:pointer}
+.wr-burns tr.go:hover th{color:var(--accent)}
+.wr-burns th small{display:block;color:var(--dim);font-size:11px}
+.wr-cmp{margin:0;font-size:11.5px;line-height:1.5;color:var(--dim)}
+.wr-cmp b{color:var(--ink);font-weight:500}
+.wr-act{display:flex;flex-wrap:wrap;gap:6px}
+.wr-note{margin:0;font-size:11.5px;color:var(--warn)}
 /* live mode clock (Phase 16a): under the mode title, placed by livePlace */
 .livebar{position:absolute;z-index:6;top:50px;left:50%;transform:translateX(-50%);max-width:calc(100% - 560px);padding:5px 10px;display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--ink)}
 .livebar[hidden]{display:none}
