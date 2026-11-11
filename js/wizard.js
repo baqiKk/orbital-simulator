@@ -4,7 +4,7 @@
 // a warning in plain words next to an always visible "Görevi başlat", which computes and plays; then a result card
 // ("Değiştir" goes back to the form). The wizard writes the same state the full form edits (S.M, the bodies) and runs
 // the same rebuild, so the expert layout shows what it set. Classic script after app.js (its globals).
-const WZ = { path: '', step: 0, res: false, auto: null, raf: 0, go: null };
+const WZ = { path: '', step: 0, res: false, auto: null, raf: 0, go: null, M: null }; // M: the mission state the wizard set up
 const wzToday = () => new Date().toISOString().slice(0, 10);
 const WZ_DEF = { body: 'earth', c0: 'circ', h0: '600', p0: '250', a0: '35786', i0: '0', c1: 'circ', h1: '1300', p1: '600', a1: '1300', i1: '0',
   meth: 'auto', plane: 'comb', rb: '100000', thr: 'imp', F: '400', isp: '', m0: '', md: '', j2: false,
@@ -299,7 +299,7 @@ function wzRunFree() {
   APP.mode = 'design';
   rebuild({ fit: true, resetU: true });
   S.playing = !reduceMotion; setPlayIcon();
-  WZ.res = true; wzShow(); wzResult();
+  WZ.M = S.M; WZ.res = true; wzShow(); wzResult();
 }
 function wzResultFree() {
   const box = wzEl('wzRes'), o = wzOrbitVals(), name = _('body.' + o.k), [pn, an] = apsNames(o.k);
@@ -347,7 +347,7 @@ function wzRunOrbit() {
   APP.mode = 'design';
   rebuild({ fit: true, resetU: true });
   S.playing = !reduceMotion; setPlayIcon();
-  WZ.res = true; wzShow(); wzResult();
+  WZ.M = S.M; WZ.res = true; wzShow(); wzResult();
 }
 
 // "Başka bir cisme git": the transfer state as the overview's pick builds it (the chain of bodies, the real model), then
@@ -372,7 +372,7 @@ async function wzRunGo() {
   APP.mode = 'design';
   rebuild({ fit: true, resetU: true });
   const run = WZ.go = { busy: true, phase: cheap ? 'pc' : 'solve', p: 0, err: '' };
-  WZ.res = true; wzShow(); wzResult();
+  WZ.M = S.M; WZ.res = true; wzShow(); wzResult();
   if (!sys) { run.busy = false; run.err = $('#err').textContent; wzResult(); return; }
   try {
     if (cheap) {
@@ -454,7 +454,7 @@ function wzResult() {
   // the burns flown (finite: each with its start and length), where each is (an apsis of the orbit before it)
   const burns = (simR.burns || []).map(b => ({ t: b.t0 != null ? b.t0 : b.t, len: b.t1 != null ? b.t1 - b.t0 : 0, dv: b.dv, node: b.node }));
   const where = b => {
-    const n = plan.nodes && plan.nodes[b.node]; if (!n) return '';
+    const n = plan.nodes && plan.nodes[b.node]; if (!n) return _('res.mvCircle');
     for (const a of [n.a1, n.a2]) { const r2 = 2 * a - n.r; if (Math.abs(r2 - n.r) > 1e-9 * n.r) return n.r < r2 ? pn : an; }
     return _('res.mvCircle');
   };
@@ -471,10 +471,18 @@ function wzResult() {
   }
   box.innerHTML = html + act;
 }
-// called by app.js updateResults (a finished worker job, a rebuild): the card follows, once per frame
+// called by app.js updateResults (a finished worker job, a rebuild): the card follows, once per frame. Only while the
+// mission is still the one the wizard set up (S.M the same object: the solver and the full form's edits keep it, a
+// scenario, the other mission kind or the cabin's way back replace it); otherwise the wizard goes back to its form.
 function wzAfterResults() {
   if (!WZ.res || WZ.raf) return;
-  WZ.raf = requestAnimationFrame(() => { WZ.raf = 0; if (((WZ.path === 'orbit' || WZ.path === 'free') && S.kind === 'man') || (WZ.path === 'go' && S.kind === 'transfer')) wzResult(); });
+  WZ.raf = requestAnimationFrame(() => {
+    WZ.raf = 0;
+    if (!WZ.res) return;
+    const kind = WZ.path === 'go' ? 'transfer' : 'man';
+    if (S.M !== WZ.M || S.kind !== kind) { WZ.res = false; wzShow(); wzCheckShow(); return; }
+    wzResult();
+  });
 }
 wzEl('wzRes').addEventListener('click', e => {
   const tr = e.target.closest('tr.go');
