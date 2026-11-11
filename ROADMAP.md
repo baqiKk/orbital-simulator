@@ -243,6 +243,14 @@ Genel ilkeler:
 - Dışarıdan gelen ışık manzaralarda görünmüyordu (2026-11-08): Güneş her manzarada izleyicinin arkasındaydı ve ışık yalnızca Güneş camda görünürken veriliyordu; gezegenlerin yansıyan ışığı en çok 0,1, lamba açıkken ×0,6. Şimdi: Güneş pencerenin önündeyse (eksenden 75°'ye kadar tam, 95°'de söner) camda görünmese de ışığı girer (gerçek bir pencere gibi), eğimi camın kenarının biraz ötesine kadar sahnelenir; Satürn ve Jüpiter'de kamera Güneş'in 100° yanına alındı (Güneş yanda ve hafif önde, küreler ≈ %40 aydınlık); büyük cisimlerin (Mars, yakın Ay, Ay yüzeyi) ışığı 0,4'e kadar, lekesi masaya düşecek kadar dik, yarı gölgesi en çok 200 px; lamba ışığı kısmıyor. Samanyolu'nda kaynak yok, ışık yok.
 - `?debug=1`: etkin manzara, manzara saati, döngü, lens ve kare süreleri; `t=<s>` saati kaydırır, `em=15` Dünya–Ay'ı 15 000 km'den gösterir.
 
+## Telefon çökmesi (açık)
+- Kabin iPhone'da (iOS Safari) çöküp yeniden yükleniyor; şimdilik bırakıldı (2026-11-12).
+- Bulgular: yalnızca oda görseli varken (`?bare=1`) çökmüyor. Sahnedeki parçalardan tek birini kaldırmak (`?mask=0`, `?paper=0`, `?cat=0`, `?top=0`, `?cv=0`, `?glow=0`) yetmiyor: çökmeyi birden çok parça birlikte getiriyor.
+- Kara kutuda `layerArtMB` = 864: 7136 × 3528 sanat pikselindeki sahnenin `scale` ile küçültülmesi, katman sahnenin kendi boyutunda ve gerçek DPR 3'le raster edilirse 7136 × 3528 × 3² × 4 bayt ≈ 864 MB. Şüphe: WebKit dönüştürülmüş sahnenin (ya da içindeki maskeli/dönüşümlü katmanların) bir kısmını küçültmeden önce tam boyutta tutuyor.
+- b8f90a0'da denenen yaklaşım (sahne `scale` yerine CSS `zoom` ile) geri alındı (fdc776c): iPhone açılır açılmaz çöktü. Yalnızca `?stage=zoom` ile denenebilir.
+- Kalanlar: `?bare=1&keep=…` anahtarları (parçaları ve anahtarları tek tek geri getirir), kara kutu (`boxWrite`, "Son çökme bilgisi · kopyala") ve güvenlik ağı yerinde.
+- Sonraki deneme için fikirler: `keep=` ile hangi parça çiftinin çökmeyi getirdiğini bulmak; sahneyi sanat pikseli yerine ekran ölçeğinde kurmak (sahnenin kendi boyutu küçük olsun, öğeler ölçekli konumlansın).
+
 ## Faz 15 — Benimle çalış
 - Benimle çalış (work with me) sekmesi: kameranın geri çekilip masada ders çalışan özgün bir karakterin görüldüğü, lo-fi çalışma videolarına benzer bir görünüme geçiş. Karakter özgün olacak, mevcut bir eser ya da markaya benzemeyecek; büyük ihtimalle illüstratör çizimi gerekecek.
 
