@@ -507,7 +507,7 @@ const MVF = ['hp0', 'ha0', 'i0', 'hp1', 'e1', 'i1', 'rb', 'k', 'm0', 'md', 'isp'
 const MV_DEF = { veh: '', tMax: 0, nMax: 0, wait: 0, at: 0, T: 60, dir: 'pro' };
 const VEH_F = ['F', 'isp', 'm0', 'md', 'tMax', 'nMax', 'wait'];
 // the engine runs: finite burns, the spiral and the single firing (always with the engine)
-const mvFinite = M => M.type === 'spiral' || M.type === 'burn' || M.thrust === 'fin';
+const mvFinite = M => M.type === 'spiral' || M.type === 'burn' || (M.thrust === 'fin' && M.type !== 'free'); // the free burn is impulsive
 // the vehicle planner splits the burns: finite apsis burns with a firing or ignition limit
 const mvLim = M => M.type !== 'spiral' && M.type !== 'burn' && M.thrust === 'fin' && (M.tMax > 0 || M.nMax > 0);
 // Vehicles: the ready-made ones (js/vehicles.js) and the viewer's, saved by name (prefs.js parseVehicles); the select
@@ -550,7 +550,7 @@ function syncMan() {
   for (const f of MVF) { const el = $('#mv-' + f); if (document.activeElement !== el) { el.value = +(+(M[f] != null ? M[f] : MV_DEF[f] || 0)).toFixed(6); el.setAttribute('aria-invalid', 'false'); } }
   // the single firing: where, how long, which way (the target and the plan's options do not apply)
   const burn = M.type === 'burn', lim = mvLim(M);
-  $('#mvBurnBox').hidden = !burn; $('#mvTargetBox').hidden = burn;
+  $('#mvBurnBox').hidden = !burn; $('#mvTargetBox').hidden = burn || M.type === 'free'; // the free burn (the wizard's) has no target
   $('#mvAt0').textContent = pn; $('#mvAt1').textContent = an; setSeg('#mvAtSeg', String(M.at || 0)); $('#mv-dir').value = M.dir || 'pro';
   renderVehSel();
   $('#mv-j2').checked = !!M.j2;
@@ -668,7 +668,7 @@ function eqFrame(k, t) {
   return k === 'earth' ? laplaceFrame(-90, 90) : d.pole ? equatorFrame(d.pole, t, 6) : equatorFrame(d.axis, t, 4);
 }
 function rebuildMan(o = {}) {
-  const M = S.M, k = M.body, d = BODIES[k], t0 = M.t0 * DAY, spiral = M.type === 'spiral', burn = M.type === 'burn', fin = mvFinite(M);
+  const M = S.M, k = M.body, d = BODIES[k], t0 = M.t0 * DAY, spiral = M.type === 'spiral', burn = M.type === 'burn', free = M.type === 'free', fin = mvFinite(M);
   sys = buildSystem(sysList()); guess = null;
   const mu = d.gm * 1e9, R = d.radius * 1e3, Re = d.j2[1] * 1e3, rot = eqFrame(k, t0);
   const { o0, o1, opt } = mvOrbits(M, Re);
@@ -677,8 +677,8 @@ function rebuildMan(o = {}) {
   const hoh = maneuverPlan(mu, R, o0, o1, { ...opt, type: 'hohmann', plane: 'comb', k: 1 });
   // the single firing has no plan (the worker flies it); a vehicle's limits split the plan's burns (core.js splitPlan)
   let plan = bad ? { error: 'err.mvApsis' } : spiral ? (o0.ra === o0.rp && o1.ra === o1.rp ? (hoh.error ? hoh : { burns: [], nodes: [], dv: 0, tof: 0, o0, o1 }) : { error: 'err.mvSpiralCirc' })
-    : burn ? { burns: [], nodes: [], dv: 0, tof: 0, o0, o1: o0 } : maneuverPlan(mu, R, o0, o1, opt);
-  const sp = !plan.error && mvLim(M) ? splitPlan(mu, R, o0, o1, opt, { F: M.F, isp: M.isp, m0: M.m0, md: M.md, tMax: M.tMax, nMax: M.nMax }) : null;
+    : burn || free ? { burns: [], nodes: [], dv: 0, tof: 0, o0, o1: o0 } : maneuverPlan(mu, R, o0, o1, opt);
+  const sp = !plan.error && !free && mvLim(M) ? splitPlan(mu, R, o0, o1, opt, { F: M.F, isp: M.isp, m0: M.m0, md: M.md, tMax: M.tMax, nMax: M.nMax }) : null;
   if (sp) plan = sp.error ? sp : sp.plan;
   if (plan.error) { mvStop(); showErr(_(plan.error, vehParams(plan.params)), 'err.mvFix'); simR = null; C = null; MAN = null; updateResults(); renderTicks(); return; }
   showErr('');
@@ -686,14 +686,16 @@ function rebuildMan(o = {}) {
   // impulsive: flown here at once (also what a finite flight shows until the worker returns); the spiral and the
   // single firing keep the previous one on screen meanwhile
   const keep = prev && prev.res && ((spiral && prev.spiral) || (burn && prev.burn));
-  if (!spiral && !burn) simR = maneuverSim(c, plan, { tol: 1e-10 });
+  // the free burn (Phase 16c, core.js freeBurn): Δv = [prograde, radial, normal] at the periapsis, the apoapsis or T s after it
+  if (free) simR = freeBurn(c, o0, { at: M.fbAt === 't' ? 0 : +M.fbAt || 0, tp: M.fbAt === 't' ? M.fbT : null, dv: [M.fbP || 0, M.fbR || 0, M.fbN || 0] });
+  else if (!spiral && !burn) simR = maneuverSim(c, plan, { tol: 1e-10 });
   else if (!keep) { simR = null; C = null; }
   // frames (ecliptic axes): the equator, the initial and the target orbit planes (x along the line of nodes ℓ)
   const ecl = u => [0, 1, 2].map(j => rot[3 * j] * u[0] + rot[3 * j + 1] * u[1] + rot[3 * j + 2] * u[2]);
   const O0 = M.O0 * D2R, L = ecl([Math.cos(O0), Math.sin(O0), 0]);
   const plane = i => { const n = ecl([Math.sin(i) * Math.sin(O0), -Math.sin(i) * Math.cos(O0), Math.cos(i)]); return { x: L, y: [n[1] * L[2] - n[2] * L[1], n[2] * L[0] - n[0] * L[2], n[0] * L[1] - n[1] * L[0]], n }; };
   const fr = { eq: { x: [rot[0], rot[3], rot[6]], y: [rot[1], rot[4], rot[7]], n: [rot[2], rot[5], rot[8]] }, p0: plane(o0.i), p1: plane(o1.i) };
-  MAN = { key: k, mu, R, Re, rot, plan, hoh, o0, o1: burn ? o0 : o1, opt, fr, j2: c.J2, spiral, burn, sp: sp && !sp.error ? sp : null, fin, res: null, busy: fin, prog: 0, fit: !!o.fit || !simR };
+  MAN = { key: k, mu, R, Re, rot, plan, hoh, o0, o1: burn || free ? o0 : o1, opt, fr, j2: c.J2, spiral, burn, free, sp: sp && !sp.error ? sp : null, fin, res: null, busy: fin, prog: 0, fit: !!o.fit || !simR };
   if ((spiral || burn) && simR) MAN.res = prev.res; // shown until the new one arrives
   if (!['eq', 'p0', 'p1'].includes(S.frame)) S.frame = 'eq';
   if (o.resetU) { S.u = 0; S.ext = 0; }
@@ -811,7 +813,7 @@ function buildCache() {
   const cum = new Float64Array(n);
   C = { sub, orbit, px: Float64Array.from(px), py: Float64Array.from(py), pz: Float64Array.from(pz), pt: Float64Array.from(pt), segStart, cum, T, n, fx: null, fy: null, frameKey: '' };
   // maneuvers: the initial and the target orbit as reference rings about the body (ecliptic axes)
-  C.rings = S.kind === 'man' && MAN ? [{ p: mvRing(MAN.o0, S.M.O0 * D2R, Q.ellK), col: COL.dim, a: 0.5 }, ...(MAN.burn ? [] : [{ p: mvRing(MAN.o1, S.M.O0 * D2R, Q.ellK), col: COL.cyan, a: 0.55, dash: true }])] : [];
+  C.rings = S.kind === 'man' && MAN ? [{ p: mvRing(MAN.o0, S.M.O0 * D2R, Q.ellK), col: COL.dim, a: 0.5 }, ...(MAN.burn || MAN.free ? [] : [{ p: mvRing(MAN.o1, S.M.O0 * D2R, Q.ellK), col: COL.cyan, a: 0.55, dash: true }])] : [];
   rebuildCum();
   let nodeNo = 0, lastNode = -1;
   C.markers = r.events.filter(e => e.type !== 'impact' || true).map(e => {
@@ -1631,6 +1633,26 @@ function updateResultsMan() {
     res.innerHTML = resRows(rows) + schedHtml();
     return;
   }
+  if (MAN.free) { // the free burn: its Δv and components, the speed before and after, the orbit it leaves (or the escape)
+    const b = r.burns[0], at = M.fbAt === 't' ? _('res.freeT', { t: fmtDur(M.fbT || 0, true) }) : +M.fbAt ? an : pn;
+    rows.push([_('res.sec.free', { at })]);
+    let cls = 'bad', txt = _('chip.impact', { name: S.bodies[0].name });
+    if (b) {
+      const dn = r.done, Re = MAN.Re, apsU = _('res.mvFinalUnit', { peri: pn, apo: an });
+      rows.push([_('res.freeDv'), nf1.format(b.dv), 'm/s']);
+      rows.push([_('res.freeComp'), sgn(M.fbP || 0) + ' / ' + sgn(M.fbR || 0) + ' / ' + sgn(M.fbN || 0), _('res.freeCompU')]);
+      rows.push([_('res.freeV'), nf3.format(r.vBefore / 1e3) + ' → ' + nf3.format(r.vAfter / 1e3), 'km/s']);
+      if (dn.e < 1 && dn.a > 0) {
+        rows.push([_('res.vOrbit'), km(dn.rp - Re) + ' × ' + km(dn.ra - Re), apsU]);
+        rows.push([_('res.mvFinalI'), deg(dn.i), '°']);
+        rows.push([_('res.mvPeriod'), fmtPeriod(2 * Math.PI * Math.sqrt(dn.a ** 3 / MAN.mu)), '']);
+      } else { const vinf = Math.sqrt(-MAN.mu / dn.a); rows.push([_('res.vEscape'), nf3.format(vinf / 1e3), 'km/s']); rows.push([_('res.vC3'), nf2.format(vinf * vinf / 1e6), 'km²/s²']); }
+      if (r.impact < 0) { cls = 'good'; txt = _('chip.freeBurn'); }
+    }
+    chip.className = 'chip ' + cls; chip.textContent = txt;
+    res.innerHTML = resRows(rows) + schedHtml();
+    return;
+  }
   if (MAN.spiral) { // the spiral: revolutions, time, Δv against Edelbaum and the impulsive Hohmann, propellant
     rows.push([_('res.sec.mvSpiral', { F: NF(M.F < 1 ? 2 : 0).format(M.F), isp: nf0.format(M.isp) })]);
     if (!cur) rows.push([_('res.mvFinBusy'), nf0.format(MAN.prog) + ' %', '']);
@@ -1752,6 +1774,7 @@ function schedHtml() {
     let place;
     if (e.spiral) { place = _('sch.spiral'); why.push(_('why.spiral')); }
     else if (man && MAN.burn) { place = S.M.at ? an : pn; why.push(_('why.vburn', { dir: _('mv.dir.' + (S.M.dir || 'pro')) })); }
+    else if (man && MAN.free) { place = S.M.fbAt === 't' ? _('res.freeT', { t: fmtDur(S.M.fbT || 0, true) }) : +S.M.fbAt ? an : pn; why.push(_('why.free', { p: nf1.format(S.M.fbP || 0), r: nf1.format(S.M.fbR || 0), n: nf1.format(S.M.fbN || 0) })); }
     else if (man) {
       const n = MAN.plan.nodes[e.node]; if (!n) continue;
       let at = 'circ';

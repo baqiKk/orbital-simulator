@@ -322,7 +322,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(P.PREF_KEYS.osc && P.PREF_KEYS.slow && /id="tOsc"/.test(html) && /id="slow"/.test(html), 'switches and saved keys');
   assert.ok(/S\.osc = readPref\(LS, PREF_KEYS\.osc\) !== '0';/.test(app) && /S\.slow = readPref\(LS, PREF_KEYS\.slow\) !== '0';/.test(app), 'on by default');
   assert.ok(/const slowOn = \(\) => S\.slow && Q\.glow && !lowQ && !reduceMotion;/.test(app), 'slow motion only where animations run');
-  assert.strictEqual([...app.matchAll(/res\.innerHTML = resRows\(rows\) \+ schedHtml\(\);/g)].length, 3, 'schedule in transfer, maneuver and single-firing results');
+  assert.strictEqual([...app.matchAll(/res\.innerHTML = resRows\(rows\) \+ schedHtml\(\);/g)].length, 4, 'schedule in transfer, maneuver, single-firing and free-burn results');
   assert.ok(/tr\.sch[\s\S]{0,120}S\.u = tToU\(\+tr\.dataset\.t\)/.test(app), 'a schedule row jumps to its burn');
   assert.ok(has('osc.morph') && /SLOW\.morph/.test(app), 'the impulsive turn is labelled a visual aid');
 }
@@ -1018,6 +1018,14 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const gk = [...gex.matchAll(/^\s*(\w+): \{/gm)].map(m => m[1]);
   assert.ok(gk.length >= 3 && gk.every(k => has('wz.exg.' + k)), 'go: examples ' + gk.join(', '));
   for (const m of ['capture', 'flyby', 'free']) assert.ok(has('wz.arr.' + m) && has('wz.arr.' + m + 'D'), 'arrival ' + m);
+  // "Serbest yanma": examples and texts; app.js flies type 'free' with core.js freeBurn, impulsive, no target ring
+  const fex = (/const WZ_FEX = \{([\s\S]*?)\n\};/.exec(wz) || [])[1] || '', fk = [...fex.matchAll(/^\s*(\w+): \{/gm)].map(m => m[1]);
+  assert.ok(fk.length >= 4 && fk.every(k => has('wz.exf.' + k)), 'free: examples ' + fk.join(', '));
+  assert.ok(app.includes("if (free) simR = freeBurn(c, o0,") && app.includes("(M.thrust === 'fin' && M.type !== 'free')") && app.includes('MAN.burn || MAN.free ? []'), 'free: flown by freeBurn, impulsive, no target ring');
+  {
+    const d = BODIES.earth, mu = d.gm * 1e9, Re = d.j2[1] * 1e3, s = C.freeBurn({ mu, R: d.radius * 1e3, J2: 0, Re, rot: null, O0: 0 }, { rp: Re + 400e3, ra: Re + 400e3, i: 0 }, { at: 0, dv: [0, 0, 500] });
+    assert.ok(!s.m && Math.abs(s.done.i - Math.atan(500 / s.vBefore)) < 1e-9, 'free: the plane example turns by atan(Δv/v); no mass without an engine');
+  }
   assert.ok(wz.includes('t1a = Math.max(r.d0, S.M.t0)') && wz.includes('await solve();') && wz.includes("if (!wzPair(v.dep, v.tgt)) return fail(2, '', _('wz.e.freePair'));"), 'go: from the date on, the solver, free return only about a moon');
 }
 console.log('OK — all UI tests passed');

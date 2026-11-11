@@ -9,7 +9,9 @@ const wzToday = () => new Date().toISOString().slice(0, 10);
 const WZ_DEF = { body: 'earth', c0: 'circ', h0: '600', p0: '250', a0: '35786', i0: '0', c1: 'circ', h1: '1300', p1: '600', a1: '1300', i1: '0',
   meth: 'auto', plane: 'comb', rb: '100000', thr: 'imp', F: '400', isp: '', m0: '', md: '', j2: false,
   // "Başka bir cisme git": departure and its parking orbit, target, arrival (capture, flyby, free return), when
-  dep: 'earth', gh0: '185', tgt: 'mars', mode: 'capture', ghB: '300', ghRet: '60', when: 'cheap', date: wzToday() };
+  dep: 'earth', gh0: '185', tgt: 'mars', mode: 'capture', ghB: '300', ghRet: '60', when: 'cheap', date: wzToday(),
+  // "Serbest yanma": where (the periapsis, the apoapsis, or T s after the periapsis) and Δv [prograde, radial, normal]
+  fbAt: 'peri', fbT: '600', fbP: '500', fbR: '0', fbN: '0' };
 const WZV = { ...WZ_DEF };
 const WZ_EX = WIZ_EX; // prefs.js (the tests fly each)
 const WZ_CHIPS = ['earth', 'moon', 'mars'];
@@ -21,6 +23,14 @@ const WZ_GEX = {
   moonFree: { dep: 'earth', gh0: '185', tgt: 'moon', mode: 'free', ghB: '250', ghRet: '60', when: 'date' },
   moonOrbit: { dep: 'earth', gh0: '185', tgt: 'moon', mode: 'capture', ghB: '100', when: 'date' },
   venus: { dep: 'earth', gh0: '185', tgt: 'venus', mode: 'flyby', ghB: '500', when: 'cheap' },
+};
+// "Serbest yanma": examples (the start orbit and the burn)
+const WZ_FEX = {
+  raise: { body: 'earth', c0: 'circ', h0: '400', i0: '51.6', fbAt: 'peri', fbP: '300', fbR: '0', fbN: '0' },
+  plane: { body: 'earth', c0: 'circ', h0: '400', i0: '0', fbAt: 'peri', fbP: '0', fbR: '0', fbN: '500' },
+  radial: { body: 'earth', c0: 'circ', h0: '400', i0: '0', fbAt: 'peri', fbP: '0', fbR: '200', fbN: '0' },
+  escape: { body: 'earth', c0: 'circ', h0: '300', i0: '0', fbAt: 'peri', fbP: '3300', fbR: '0', fbN: '0' },
+  moonDown: { body: 'moon', c0: 'circ', h0: '100', i0: '0', fbAt: 'peri', fbP: '-20', fbR: '0', fbN: '0' },
 };
 // a body and its own moon (either way): a free return makes sense, the porkchop does not (not siblings)
 const wzPair = (a, b) => BODIES[b].parent === a || BODIES[a].parent === b;
@@ -74,6 +84,17 @@ function wzSteps() {
         + `<label class="chk"><input type="checkbox" id="wz-j2"${WZV.j2 ? ' checked' : ''}><span>${esc(_('wz.j2'))}</span></label></div></details>` },
     ];
   }
+  if (WZ.path === 'free') {
+    const [pn, an] = wzNames(WZV.body);
+    return [
+      { t: 'wz.s.body', b: chipRow('wz-body', WZ_CHIPS, WZV.body, KEYS_MV) },
+      { t: 'wz.s.start', b: orbitFields(0) },
+      { t: 'wz.s.burn', b: `<div class="seg full" id="wz-fbAt" role="group">${[['peri', pn], ['apo', an], ['t', _('wz.fb.t')]].map(([x, l]) => `<button type="button" data-v="${x}" aria-pressed="${WZV.fbAt === x}">${esc(l)}</button>`).join('')}</div>`
+        + `<div class="grid2">${fld('wz-fbT', _('wz.fb.T'), WZV.fbT)}</div>`
+        + `<div class="grid3">${fld('wz-fbP', _('wz.fb.P'), WZV.fbP)}${fld('wz-fbR', _('wz.fb.R'), WZV.fbR)}${fld('wz-fbN', _('wz.fb.N'), WZV.fbN)}</div>`
+        + `<p class="wz-d" id="wz-fbD"></p>` },
+    ];
+  }
   if (WZ.path === 'go') {
     const pnT = wzNames(WZV.tgt)[0], pnD = wzNames(WZV.dep)[0];
     return [
@@ -91,7 +112,7 @@ function wzRender() {
   const st = wzSteps();
   wzEl('wzSteps').innerHTML = st.map((s, i) => `<section class="wz-step" data-i="${i}"><button type="button" class="wz-h" aria-expanded="false"><span class="wz-n">${i + 1}</span><span class="wz-t">${esc(_(s.t))}</span><span class="wz-sum"></span></button>`
     + `<div class="wz-b">${s.b}${i < st.length - 1 ? `<button type="button" class="btn sm wz-next">${esc(_('wz.next'))}</button>` : ''}</div></section>`).join('');
-  const ex = WZ.path === 'orbit' ? [WZ_EX, 'wz.ex.'] : WZ.path === 'go' ? [WZ_GEX, 'wz.exg.'] : null;
+  const ex = WZ.path === 'orbit' ? [WZ_EX, 'wz.ex.'] : WZ.path === 'go' ? [WZ_GEX, 'wz.exg.'] : WZ.path === 'free' ? [WZ_FEX, 'wz.exf.'] : null;
   wzEl('wzEx').innerHTML = ex ? Object.keys(ex[0]).map(k => `<button type="button" data-ex="${k}">${esc(_(ex[1] + k))}</button>`).join('') : '';
   wzEl('wzEx').hidden = !ex;
   wzOpen(WZ.step); wzSync();
@@ -104,13 +125,14 @@ function wzOpen(i) {
 // what depends on the values: shown fields, labels, summaries, the method's description
 function wzSync() {
   if (WZ.path === 'go') { wzSyncGo(); return; }
-  if (WZ.path !== 'orbit') return;
+  if (WZ.path !== 'orbit' && WZ.path !== 'free') return;
   const [pn, an] = wzNames(WZV.body);
-  for (const n of [0, 1]) {
+  for (const n of WZ.path === 'free' ? [0] : [0, 1]) {
     const circ = WZV['c' + n] === 'circ';
     wzEl('wz-h' + n + 'W').hidden = !circ; wzEl('wz-p' + n + 'W').hidden = circ; wzEl('wz-a' + n + 'W').hidden = circ;
     wzEl('wz-p' + n + 'L').textContent = _('wz.peri', { peri: pn }); wzEl('wz-a' + n + 'L').textContent = _('wz.apo', { apo: an });
   }
+  if (WZ.path === 'free') { wzSyncFree(); return; }
   const m = WZV.meth, inc = wzNum(WZV.i0) !== wzNum(WZV.i1);
   wzEl('wz-methD').textContent = _('wz.m.' + m + 'D');
   wzEl('wz-planeW').hidden = m === 'auto' || !inc; wzEl('wz-rbW').hidden = m !== 'bielliptic';
@@ -120,6 +142,15 @@ function wzSync() {
     ? _('wz.sumCirc', { h: WZV['h' + n], i: WZV['i' + n] }) : _('wz.sumEll', { p: WZV['p' + n], a: WZV['a' + n], i: WZV['i' + n] });
   sums[0].textContent = _('body.' + WZV.body); sums[1].textContent = orb(0); sums[2].textContent = orb(1);
   sums[3].textContent = _('wz.m.' + m) + (fin ? ' · ' + _('wz.thr.fin') : '');
+}
+function wzSyncFree() {
+  const v = WZV, [pn, an] = wzNames(v.body), sums = wzEl('wzSteps').querySelectorAll('.wz-sum');
+  wzEl('wz-fbTW').hidden = v.fbAt !== 't';
+  const p = wzNum(v.fbP), r = wzNum(v.fbR), n = wzNum(v.fbN), tot = Math.hypot(p, r, n);
+  wzEl('wz-fbD').textContent = Number.isFinite(tot) ? _('wz.fb.tot', { dv: nf1.format(tot) }) : _('wz.fb.d');
+  sums[0].textContent = _('body.' + v.body);
+  sums[1].textContent = v.c0 === 'circ' ? _('wz.sumCirc', { h: v.h0, i: v.i0 }) : _('wz.sumEll', { p: v.p0, a: v.a0, i: v.i0 });
+  sums[2].textContent = (v.fbAt === 'peri' ? pn : v.fbAt === 'apo' ? an : 'T+' + v.fbT + ' s') + ' · ' + (Number.isFinite(tot) ? nf1.format(tot) + ' m/s' : '—');
 }
 function wzSyncGo() {
   const v = WZV, sib = wzSib(v.dep, v.tgt);
@@ -142,10 +173,10 @@ function wzOrbitVals() {
 }
 function wzCheck() {
   if (WZ.path === 'go') return wzCheckGo();
-  if (WZ.path !== 'orbit') return { err: '' };
+  if (WZ.path !== 'orbit' && WZ.path !== 'free') return { err: '' };
   const v = WZV, o = wzOrbitVals(), [pn, an] = wzNames(o.k), name = _('body.' + o.k);
   const fail = (step, id, err) => ({ err, step, id });
-  for (const n of [0, 1]) {
+  for (const n of WZ.path === 'free' ? [0] : [0, 1]) {
     const ids = v['c' + n] === 'circ' ? ['h' + n] : ['p' + n, 'a' + n];
     for (const f of [...ids, 'i' + n]) {
       const x = wzNum(v[f]), lbl = f[0] === 'h' ? _('wz.alt') : f[0] === 'p' ? _('wz.peri', { peri: pn }) : f[0] === 'a' ? _('wz.apo', { apo: an }) : _('wz.inc');
@@ -156,6 +187,15 @@ function wzCheck() {
     if (ha < hp) return fail(1 + n, 'wz-a' + n, _('wz.e.apsis', { apo: an, peri: pn }));
     if (o.Re + ha * 1e3 > o.soi) return fail(1 + n, 'wz-' + (v['c' + n] === 'circ' ? 'h' : 'a') + n, _(n ? 'wz.e.soi' : 'wz.e.soiStart', { body: name, r: kmTxt(o.soi / 1e3) }));
     if (!(i >= 0 && i <= 180)) return fail(1 + n, 'wz-i' + n, _('wz.e.inc'));
+  }
+  if (WZ.path === 'free') { // the burn: three numbers, not all zero; a time after the periapsis not negative
+    const strip = s => s.replace(/ \(.*\)$/, '');
+    for (const [f, key] of [['fbP', 'wz.fb.P'], ['fbR', 'wz.fb.R'], ['fbN', 'wz.fb.N']].concat(v.fbAt === 't' ? [['fbT', 'wz.fb.T']] : [])) {
+      if (!Number.isFinite(wzNum(v[f]))) return fail(2, 'wz-' + f, _('wz.e.num', { f: strip(_(key)) }));
+    }
+    if (v.fbAt === 't' && !(wzNum(v.fbT) >= 0)) return fail(2, 'wz-fbT', _('wz.e.neg', { f: strip(_('wz.fb.T')) }));
+    if (!(Math.hypot(wzNum(v.fbP), wzNum(v.fbR), wzNum(v.fbN)) > 0)) return fail(2, 'wz-fbP', _('wz.e.zeroDv'));
+    return { err: '' };
   }
   if (Math.abs(o.hp0 - o.hp1) < 1e-9 && Math.abs(o.ha0 - o.ha1) < 1e-9 && Math.abs(o.i0 - o.i1) < 1e-9) return fail(2, 'wz-' + (v.c1 === 'circ' ? 'h1' : 'p1'), _('wz.e.same'));
   if (v.meth === 'bielliptic') {
@@ -210,6 +250,7 @@ wzEl('wzPick').addEventListener('click', e => { const c = e.target.closest('.wiz
 wzEl('wzBack').addEventListener('click', () => { WZ.path = ''; wzShow(); wzEl('wzPick').querySelector('.wiz-card').focus(); });
 wzEl('wzEx').addEventListener('click', e => {
   const b = e.target.closest('[data-ex]'); if (!b) return;
+  if (WZ.path === 'free') { Object.assign(WZV, WZ_FEX[b.dataset.ex]); wzRender(); wzOpen(-1); wzCheckShow(); wzEl('wzGo').focus(); return; }
   if (WZ.path === 'go') { Object.assign(WZV, WZ_GEX[b.dataset.ex], { date: wzToday() }); wzRender(); wzOpen(-1); wzCheckShow(); wzEl('wzGo').focus(); return; }
   Object.assign(WZV, { ...WZ_DEF, m0: WZV.m0, isp: WZV.isp, F: WZV.F, md: WZV.md, thr: WZV.thr, j2: WZV.j2 }, WZ_EX[b.dataset.ex]);
   wzRender(); wzOpen(-1); wzCheckShow(); wzEl('wzGo').focus();
@@ -240,6 +281,44 @@ function wzGo() {
   if (c.err) { if (c.step != null) wzOpen(c.step); const el = c.id && wzEl(c.id); if (el) el.focus(); return; }
   if (WZ.path === 'orbit') wzRunOrbit();
   else if (WZ.path === 'go') wzRunGo();
+  else if (WZ.path === 'free') wzRunFree();
+}
+// "Serbest yanma": the maneuver state with type 'free' (app.js rebuildMan flies core.js freeBurn); the target is the start
+function wzRunFree() {
+  const v = WZV, o = wzOrbitVals();
+  if (S.kind !== 'man') saveKind();
+  if (MAP.on) setMap(false);
+  Object.assign(S, { kind: 'man', model: 'real', frame: 'eq', scenario: '', follow: 'free' });
+  S.M = { ...MV_DEF, body: o.k, t0: utcToDays(Math.floor(Date.now() / 60000) * 60000), hp0: o.hp0, ha0: o.ha0, i0: o.i0, O0: 0, hp1: o.hp0, e1: 0, i1: o.i0,
+    type: 'free', rb: 100000, plane: 'comb', k: 1, j2: false, thrust: 'imp', steer: 'local', m0: 1000, md: 300, isp: 320, F: 400, veh: '',
+    fbAt: v.fbAt === 'apo' ? 1 : v.fbAt === 't' ? 't' : 0, fbT: wzNum(v.fbT) || 0, fbP: wzNum(v.fbP), fbR: wzNum(v.fbR), fbN: wzNum(v.fbN) };
+  S.bodies = [bodyFromPreset(o.k)];
+  $('#scenario').value = ''; $('#scNote').textContent = _('sc.mv.note');
+  openRows.clear(); MAP.needFit = true;
+  syncKind(); syncModel(); renderBodies(); syncMission(); syncMan(); renderFrameSeg();
+  APP.mode = 'design';
+  rebuild({ fit: true, resetU: true });
+  S.playing = !reduceMotion; setPlayIcon();
+  WZ.res = true; wzShow(); wzResult();
+}
+function wzResultFree() {
+  const box = wzEl('wzRes'), o = wzOrbitVals(), name = _('body.' + o.k), [pn, an] = apsNames(o.k);
+  const orb = (rp, ra) => Math.abs(ra - rp) < 0.5 ? kmTxt(rp) + ' km' : kmTxt(rp) + ' × ' + kmTxt(ra) + ' km';
+  let html = `<div class="wr-h"><b>${esc(_('wz.r.freeTitle', { body: name }))}</b><button type="button" class="btn sm" data-wr="edit">${esc(_('wz.r.edit'))}</button></div>`;
+  const r = simR, b = r && MAN && MAN.free && r.burns && r.burns[0];
+  if (!b) { box.innerHTML = html + `<p class="wr-note">${esc(_('wz.r.fail', { e: $('#err').textContent || _('chip.impact', { name }) }))}</p>`; return; }
+  const dn = r.done, bound = dn.e < 1 && dn.a > 0, Re = MAN.Re;
+  html += `<div class="wr-big"><div><span>Δv</span><b>${esc(fmtSpeed(b.dv))}</b></div><div><span>${esc(_(bound ? 'wz.r.newOrbit' : 'wz.r.escape'))}</span><b>${esc(bound ? orb((dn.rp - Re) / 1e3, (dn.ra - Re) / 1e3) : nf3.format(Math.sqrt(-MAN.mu / dn.a) / 1e3) + ' km/s')}</b></div></div>`;
+  const rows = [[_('wz.r.before'), orb(o.hp0, o.ha0) + ' · ' + nf2.format(o.i0) + '°'],
+    [_('wz.r.speed'), nf3.format(r.vBefore / 1e3) + ' → ' + nf3.format(r.vAfter / 1e3) + ' km/s']];
+  if (bound) {
+    rows.push([_('wz.r.after'), orb((dn.rp - Re) / 1e3, (dn.ra - Re) / 1e3) + ' · ' + nf2.format(dn.i / D2R) + '°']);
+    rows.push([_('wz.r.apsides', { peri: cap1(pn), apo: an }), kmTxt((dn.rp - Re) / 1e3) + ' / ' + kmTxt((dn.ra - Re) / 1e3) + ' km']);
+    rows.push([_('res.mvPeriod'), fmtPeriod(2 * Math.PI * Math.sqrt(dn.a ** 3 / MAN.mu))]);
+  }
+  if (r.impact >= 0) rows.push([_('wz.r.impact'), _('chip.impact', { name })]);
+  html += `<table class="wr-burns"><tbody>${rows.map(([l, x]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(x)}</td></tr>`).join('')}</tbody></table>`;
+  box.innerHTML = html + `<div class="wr-act"><button type="button" class="btn sm" data-wr="replay">${esc(_('wz.r.replay'))}</button><button type="button" class="btn sm" data-wr="more">${esc(_('wz.r.more'))}</button></div>`;
 }
 // the maneuver state for the core (the full form's fields), the automatic method resolved here
 function wzRunOrbit() {
@@ -365,6 +444,7 @@ const wzSpan = s => (s < 1 ? '—' : fmtDur(s));
 function wzResult() {
   if (!WZ.res) return;
   if (WZ.path === 'go') { wzResultGo(); return; }
+  if (WZ.path === 'free') { wzResultFree(); return; }
   const box = wzEl('wzRes'), v = WZV, o = wzOrbitVals(), name = _('body.' + o.k);
   const orb = n => (n ? o.hp1 === o.ha1 : o.hp0 === o.ha0) ? kmTxt(n ? o.hp1 : o.hp0) + ' km' : kmTxt(n ? o.hp1 : o.hp0) + ' × ' + kmTxt(n ? o.ha1 : o.ha0) + ' km';
   const head = `<div class="wr-h"><b>${esc(_('wz.r.title', { body: name, a: orb(0), b: orb(1) }))}</b><button type="button" class="btn sm" data-wr="edit">${esc(_('wz.r.edit'))}</button></div>`;
@@ -394,7 +474,7 @@ function wzResult() {
 // called by app.js updateResults (a finished worker job, a rebuild): the card follows, once per frame
 function wzAfterResults() {
   if (!WZ.res || WZ.raf) return;
-  WZ.raf = requestAnimationFrame(() => { WZ.raf = 0; if ((WZ.path === 'orbit' && S.kind === 'man') || (WZ.path === 'go' && S.kind === 'transfer')) wzResult(); });
+  WZ.raf = requestAnimationFrame(() => { WZ.raf = 0; if (((WZ.path === 'orbit' || WZ.path === 'free') && S.kind === 'man') || (WZ.path === 'go' && S.kind === 'transfer')) wzResult(); });
 }
 wzEl('wzRes').addEventListener('click', e => {
   const tr = e.target.closest('tr.go');

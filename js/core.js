@@ -1971,7 +1971,7 @@ function freeBurn(c, o0, opt) {
   const h0 = [y[1] * y[5] - y[2] * y[4], y[2] * y[3] - y[0] * y[5], y[0] * y[4] - y[1] * y[3]], hl0 = Math.hypot(...h0);
   out.normal = ecl(h0.map(q => q / hl0));
   F.push();
-  if (F.seg(lead, { rec: true }) !== 'end') return out;
+  if (F.seg(lead, { rec: true }) !== 'end') { delete out.m; return out; }
   const r = [y[0], y[1], y[2]], v = [y[3], y[4], y[5]], vn = Math.hypot(...v);
   const h = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]], hn = Math.hypot(...h);
   const vh = v.map(q => q / vn), nh = h.map(q => q / hn), rh = [vh[1] * nh[2] - vh[2] * nh[1], vh[2] * nh[0] - vh[0] * nh[2], vh[0] * nh[1] - vh[1] * nh[0]];
@@ -1987,6 +1987,7 @@ function freeBurn(c, o0, opt) {
   out.tEnd = F.t; out.end = Array.from(y.subarray(0, 6));
   out.done = el; out.before = before; out.vBefore = vn; out.vAfter = Math.hypot(...nv);
   out.tFirst = out.tLast = out.burns[0].t;
+  delete out.m; // no engine, no mass: the flight's placeholder mass is not the craft's
   return out;
 }
 
