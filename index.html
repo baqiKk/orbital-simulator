@@ -44,6 +44,16 @@
     <canvas id="cv" data-i18n-aria-label="ui.canvas"></canvas>
     <div class="msg" id="msg" hidden></div>
     <div class="mode-chip glass" id="modeChip" role="status"><span id="modeText"></span><div class="seg chip-scene" id="wcScene" role="group" data-i18n-aria-label="wc.sceneAria" hidden><button type="button" data-v="saturn" data-i18n="wc.saturn"></button><button type="button" data-v="earth" data-i18n="wc.earth"></button></div><button type="button" class="link" id="modeBack" hidden></button></div>
+    <div class="glass livebar" id="liveBar" role="group" data-i18n-aria-label="live.aria" hidden>
+      <div class="live-row"><span class="live-dot" id="liveDot" aria-hidden="true"></span><span class="live-time" id="liveText" aria-live="off"></span>
+        <select id="liveRate" data-i18n-aria-label="live.rate">
+          <option value="live" data-i18n="live.live"></option><option value="60" data-i18n="live.r60"></option><option value="600" data-i18n="live.r600"></option><option value="3600" data-i18n="live.r3600"></option><option value="86400" data-i18n="live.r86400"></option><option value="864000" data-i18n="live.r864000"></option>
+        </select>
+        <button type="button" class="link" id="liveNow" data-i18n="live.now" hidden></button>
+        <button type="button" class="link" id="liveMap" data-i18n="live.map" data-i18n-title="live.mapTip" hidden></button>
+      </div>
+      <div class="live-sub" id="liveSub" hidden></div>
+    </div>
     <div class="glass guide" id="guide" role="status" aria-live="polite" hidden><span id="guideText"></span><button class="btn sm primary" type="button" id="guideGo" data-i18n="guide.go" hidden></button></div>
     <div class="hud-top">
       <div class="ctrls" id="ctrls">

@@ -1169,7 +1169,7 @@ function measureFree() {
   const sr = stage.getBoundingClientRect(), gap = 12;
   const rel = el => { const r = el.getBoundingClientRect(); return { x0: r.left - sr.left, x1: r.right - sr.left, y0: r.top - sr.top, y1: r.bottom - sr.top }; };
   const shown = el => !el.hidden && el.getClientRects().length > 0;
-  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline'), $('#caption'), $('#modeChip')].filter(shown).map(rel);
+  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline'), $('#caption'), $('#modeChip'), $('#liveBar')].filter(shown).map(rel);
   const wins = floating() ? [...document.querySelectorAll('.win:not([hidden])')].filter(shown).map(rel) : [];
   const rects = freeRects(W, H, [...hud, ...wins], gap);
   // too little room left between the windows: let them overlap the plot instead (HUD still counts)
@@ -1394,7 +1394,7 @@ function focusName() {
 }
 // end of a frame: HUD focus tag, hover cursor and ring (rings are plain in the low-resource mode)
 function frameEnd() {
-  setCaption();
+  setCaption(); liveTick();
   const n = focusName();
   if (n !== focusTxt) { focusTxt = n; $('#focusName').textContent = n; $('#focusTag').hidden = !n; $('#followTxt').textContent = _('vw.followOn', { name: n || _('fo.free') }); $('#followX').hidden = !n; INS = null; }
   const h = hoverPt && !ptrs.size ? hitAt(hoverPt.x, hoverPt.y, HIT_PX.mouse) : null;
@@ -2331,14 +2331,18 @@ const mapTime = t => (SCENE.on ? SCENE.t : (S.model === 'real' ? S.M.t0 * DAY : 
 
 // ===================== Opening scene =====================
 // The site opens on a calm view instead of a running mission: Saturn and its moons, or the Earth and the Moon, today,
-// time flowing slowly (SCENE_RATE), the camera drifting gently (not in the low-resource mode or with reduced motion).
+// on the live clock (MCLK, 1 s/s at first), the camera drifting gently (not in the low-resource mode or with reduced motion).
 // It is the map's renderer (real bodies, their textures) on its own clock and camera aim; the default mission is loaded
 // behind it, paused, its readout, timeline and windows (mission, results) set aside. A rebuild (picking a scenario,
 // changing the mission), the map button or the M key end it and everything runs as before. Moving the camera or
 // picking a body keeps the scene but stops the aim. The first-run mode question comes first: until it is answered
 // nothing is drawn or fetched (wait).
 const SCENE = { on: false, wait: false, kind: 'saturn', t: 0, dt: 0, age: 0, free: false, s0: 0, i3: false, k2: 1, k3: 1, hide: new Set() };
-const SCENE_RATE = { saturn: 3600, earth: 600 }; // simulated seconds per second
+// The map's clock (core.js clockAt; Phase 16a): live at first (the wall clock, 1 s/s), sped up from the live bar. The
+// scene (the opening tour, Saturn, the Earth and the Moon, the free look) runs on it; a mission and its map keep the
+// mission's own time.
+let MCLK = clockSet({}, Date.now(), { live: true });
+const LIVE = { since: Date.now(), key: '', sub: '', tipUntil: 0 };
 const sceneDrift = () => Q.glow && !lowQ && !reduceMotion;
 function sceneSet(kind) {
   Object.assign(SCENE, { kind, free: false, s0: 0, i3: false, k3: 1 });
@@ -2352,12 +2356,13 @@ function sceneAside() {
   for (const id of ['mission', 'results', 'overview']) if (WINS[id].open) { SCENE.hide.add(id); winEl(id).classList.add('scene-hide'); }
   INS = null;
 }
-function sceneStart() {
-  SCENE.wait = false; SCENE.on = true; SCENE.t = utcToDays(Date.now()) * DAY; SCENE.age = 0;
+function sceneStart(free) {
+  SCENE.wait = false; SCENE.on = true; SCENE.t = clockAt(MCLK, Date.now()); SCENE.age = 0;
   skyHiAt = performance.now() + 5000;
   S.playing = false; setPlayIcon();
   setMap(true); sceneAside();
-  sceneSet('saturn');
+  if (free) { SCENE.free = true; MAP.needFit = false; } else sceneSet('saturn');
+  if (MCLK.live) liveTipOnce();
 }
 // toMission: back to the mission view, playing as a freshly loaded one does
 function sceneEnd(toMission) {
@@ -2386,6 +2391,58 @@ function modeChip() {
   INS = null;
 }
 $('#modeBack').addEventListener('click', () => { if (SCENE.on) { sceneSet(SCENE.kind); needFit = true; } });
+// The live bar (Phase 16a), under the mode title. In the scene: "● CANLI · date time UTC" or the date, the rate, "Şimdiye
+// dön"; a line that makes real time felt (the way the Earth went since the page opened; with the Earth and the Moon, the
+// Moon's distance and the next full or new moon); once, a note that real motion cannot be seen. In a mission's map: the
+// mission's time and "Canlı haritaya geç". Its text is written only when it changes (about once a second).
+const LIVEF = new Intl.DateTimeFormat(DICT['meta.locale'], { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+function liveTick() {
+  const bar = $('#liveBar'), on = SCENE.on || MAP.on;
+  if (bar.hidden === on) { bar.hidden = !on; INS = null; if (on) livePlace(); }
+  if (!on) return;
+  const ms = Date.now(), live = SCENE.on && MCLK.live, t = SCENE.on ? SCENE.t : mapTime(C ? uToT(S.u) : 0);
+  const d = esc(SCENE.on && !live ? DATEF.format(daysToUtc(t / DAY)) + ' UTC' : LIVEF.format(daysToUtc(t / DAY)) + ' UTC');
+  const txt = !SCENE.on ? esc(_('live.mission', { d: DATEF.format(daysToUtc(t / DAY)) + ' UTC' })) : live ? '<b>' + esc(_('live.on')) + '</b>' + d : d;
+  // the line under it: the moon (Earth–Moon scene) or the Earth's way (live), the note (once, 10 s)
+  let sub = '';
+  if (live && LIVE.tipUntil > ms) sub = _('live.tip');
+  else if (SCENE.on && SCENE.kind === 'earth' && !SCENE.free) {
+    const e = MAPK.indexOf('earth'), m = MAPK.indexOf('moon'), p = i => [MP[3 * i] - MP[3 * MSUN], MP[3 * i + 1] - MP[3 * MSUN + 1], MP[3 * i + 2] - MP[3 * MSUN + 2]];
+    const E = p(e), Mo = p(m), r = [Mo[0] - E[0], Mo[1] - E[1], Mo[2] - E[2]];
+    // elongation in ecliptic longitude: 0 new, 180° full; the synodic month 29.53 d
+    const D = ((Math.atan2(r[1], r[0]) - Math.atan2(-E[1], -E[0])) / D2R % 360 + 360) % 360, toFull = ((180 - D) % 360 + 360) % 360, toNew = 360 - D;
+    const next = toFull < toNew ? _('live.full', { n: nf0.format(toFull / 360 * 29.53) }) : _('live.new', { n: nf0.format(toNew / 360 * 29.53) });
+    sub = _('live.moon', { d: fmtDist(Math.hypot(...r)), next });
+  } else if (live) {
+    const e = MAPK.indexOf('earth'), v = Math.hypot(MV[3 * e] - MV[3 * MSUN], MV[3 * e + 1] - MV[3 * MSUN + 1], MV[3 * e + 2] - MV[3 * MSUN + 2]);
+    sub = _('live.earth', { d: nf0.format(v * (ms - LIVE.since) / 1e6) + ' km', v: fmtSpeed(v) });
+  }
+  const key = txt + '|' + sub + '|' + live + '|' + SCENE.on;
+  if (key === LIVE.key) return; LIVE.key = key; livePlace();
+  $('#liveText').innerHTML = txt; $('#liveDot').classList.toggle('off', !live); $('#liveDot').hidden = !SCENE.on;
+  $('#liveRate').hidden = !SCENE.on; $('#liveRate').value = MCLK.live ? 'live' : String(MCLK.rate);
+  $('#liveNow').hidden = !SCENE.on || MCLK.live; $('#liveMap').hidden = SCENE.on;
+  const sb = $('#liveSub'); if (sb.hidden !== !sub) { sb.hidden = !sub; INS = null; } sb.textContent = sub;
+}
+// under the mode title (on a phone, under the controls too), as the guide line is
+function livePlace() {
+  const g = $('#liveBar'); if (g.hidden) return;
+  const st = $('#stage').getBoundingClientRect(), b = el => el && el.getClientRects().length ? el.getBoundingClientRect().bottom - st.top : 0;
+  g.style.top = Math.round(Math.max(b($('#modeChip')), VW.phone.matches ? b($('#ctrls')) : 0) + 6) + 'px';
+}
+addEventListener('resize', livePlace);
+function liveSet(o) {
+  const ms = Date.now(), was = MCLK.live; MCLK = clockSet(MCLK, ms, o);
+  if (MCLK.live && !was) LIVE.since = ms; // the Earth's way counts from going live
+  if (SCENE.on) SCENE.t = clockAt(MCLK, ms);
+  LIVE.key = '';
+}
+$('#liveRate').addEventListener('change', e => { const v = e.target.value; liveSet(v === 'live' ? { live: true } : { rate: +v }); });
+$('#liveNow').addEventListener('click', () => liveSet({ live: true }));
+// from a mission's map to the live one: the scene, free, the camera where it is
+$('#liveMap').addEventListener('click', () => { const keep = { ...cam }, f = MAP.follow; sceneStart(true); Object.assign(cam, keep); MAP.follow = f; });
+// the first time live: the note, once
+function liveTipOnce() { if (readPref(LS, PREF_KEYS.liveTip)) return; writePref(LS, PREF_KEYS.liveTip, '1'); LIVE.tipUntil = Date.now() + 10000; }
 // 2D: Saturn followed, the orbits out to Rhea's in view, breathing slowly; the Earth on one side, the Moon on the other
 function sceneAim2(pos) {
   if (SCENE.free || MAP.follow == null) return;
@@ -2680,8 +2737,8 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
 }
 // map caption: the date, and what the scale or the model leaves out
 function mapNotes(T) {
-  // the scene: what it shows (or, once the viewer has moved on, the map's date), how fast time flows, the enlargement
-  if (SCENE.on) return [_(SCENE.free ? 'map.caption' : SCENE.kind === 'earth' ? 'scene.capEarth' : 'scene.capSaturn', { date: fmtDate(daysToUtc(T / DAY)) }), _(reduceMotion ? 'scene.paused' : SCENE.kind === 'earth' ? 'scene.rateEarth' : 'scene.rateSaturn'),
+  // the scene: what it shows, the enlargement (its date and rate are on the live bar)
+  if (SCENE.on) return [_(SCENE.free ? 'scene.capFree' : SCENE.kind === 'earth' ? 'scene.capEarth' : 'scene.capSaturn'),
     ...((is3d() ? (SCENE.free ? 1 : SCENE.k3) : SCENE.k2) > 1.01 ? [_('scene.big', { k: nf0.format(is3d() ? SCENE.k3 : SCENE.k2) })] : [])];
   const notes = [_('map.caption', { date: fmtDate(daysToUtc(T / DAY)) })];
   if (MAP.log) notes.push(_('map.logNote'));
@@ -2944,7 +3001,7 @@ function draw(now) {
     if (stars) { ctx.globalAlpha = Math.pow(SKYU.adapt, 1 / 2.2); ctx.drawImage(stars, 0, 0, W, H); ctx.globalAlpha = 1; }
   }
   if (SCENE.on) { // the opening scene: the map on its own clock
-    SCENE.dt = dt; SCENE.age += dt; SCENE.t += dt * (reduceMotion ? 0 : SCENE_RATE[SCENE.kind]);
+    SCENE.dt = dt; SCENE.age += dt; SCENE.t = clockAt(MCLK, Date.now());
     if (v3) drawMap3(SCENE.t, glow, null, 0, 0); else { drawMap(SCENE.t, glow, null, 0, 0); if (!MAP.log) drawScale(); }
     if (now - ovLast > 500) { ovLast = now; ovDist(); }
     skyAdapt(dt); frameEnd(); requestAnimationFrame(draw); return;

@@ -344,6 +344,22 @@ html[data-q=low] .toast{box-shadow:none}
 .tour-n{flex:1;font:500 11px/1 var(--f-mono);color:var(--faint)}
 .tour-hl{outline:2px solid var(--accent);outline-offset:2px}
 /* the guided mission's caption (js/app.js GUIDE): at the top under the mode title, above the windows; paused at an event, "Devam" */
+/* live mode clock (Phase 16a): under the mode title, placed by livePlace */
+.livebar{position:absolute;z-index:6;top:50px;left:50%;transform:translateX(-50%);max-width:calc(100% - 560px);padding:5px 10px;display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--ink)}
+.livebar[hidden]{display:none}
+.live-row{display:flex;gap:9px;align-items:center;white-space:nowrap;min-width:0}
+.live-time{font:500 11.5px/1.2 var(--f-mono);letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.live-time b{font:600 11px/1 var(--f-disp);letter-spacing:.1em;color:var(--bad);margin-right:6px}
+.live-dot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--bad);box-shadow:0 0 6px var(--bad);animation:livePulse 2s ease-in-out infinite}
+.live-dot.off{background:var(--faint);box-shadow:none;animation:none}
+@keyframes livePulse{50%{opacity:.35}}
+html[data-q=low] .live-dot{box-shadow:none;animation:none}
+@media (prefers-reduced-motion:reduce){.live-dot{animation:none}}
+.livebar select{flex:none;width:auto;font:400 11px/1.2 var(--f-mono);padding:3px 5px}
+.livebar .link{flex:none;font-size:11.5px}
+.live-sub{color:var(--dim);font-size:11px;line-height:1.35;white-space:normal;max-width:420px}
+@media (max-width:860px){.livebar{max-width:calc(100% - 300px)}}
+@media (max-width:560px){.livebar{left:8px;right:8px;transform:none;max-width:none;align-items:flex-start}}
 .guide{position:absolute;z-index:12;top:52px;left:50%;transform:translateX(-50%);width:max-content;max-width:min(520px,calc(100% - 560px));min-width:min(300px,calc(100% - 24px));padding:7px 12px;display:flex;gap:12px;align-items:center;font-size:12.5px;line-height:1.4;color:var(--ink);border-left:2px solid var(--accent)}
 .guide[hidden]{display:none}
 .guide .btn{flex:none}
