@@ -19,6 +19,17 @@ const J2000_MS = Date.UTC(2000, 0, 1, 12); // 2000-01-01 12:00 as a calendar rea
 function utcToDays(ms) { return ((ms - J2000_MS) / 1000 + TT_UTC) / DAY; }
 function daysToUtc(d) { return J2000_MS + (d * DAY - TT_UTC) * 1000; }
 
+// The map's clock (live mode): { live, rate, t0, w0 }. Live: t is the wall clock itself (UTC → s since J2000 TDB), so it
+// never drifts, whatever the frame rate or a sleeping tab. Otherwise anchored: t = t0 + (ms − w0)/1000 · rate (rate in
+// simulated seconds per second, 0 = held). clockSet returns a new clock from the time it shows at ms:
+// { live: true } back to now, { rate } sped up from here (leaving live), { t } a jump (keeping the rate).
+function clockAt(c, ms) { return c.live ? utcToDays(ms) * DAY : c.t0 + (ms - c.w0) / 1000 * c.rate; }
+function clockSet(c, ms, o) {
+  if (o.live) return { live: true, rate: 1, t0: utcToDays(ms) * DAY, w0: ms };
+  const t = o.t != null ? o.t : clockAt(c, ms), rate = o.rate != null ? o.rate : c.rate;
+  return { live: false, rate, t0: t, w0: ms };
+}
+
 // ----- Kepler elements -----
 // Solve Kepler's equation E − e·sin E = M (elliptic, 0 ≤ e < 1) by Newton–Raphson.
 // Start: E₀ = M + 0.85·e·sign(sin M) (Danby), robust for any e < 1; stops at |ΔE| < 1e-14 rad.
@@ -1941,7 +1952,7 @@ function maneuverRun(job, onProgress) {
 }
 
 if (typeof module !== 'undefined') module.exports = {
-  G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, keplerE, laplaceFrame, bodyFrame, orbitElements, orbitState, orbitPath,
+  G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, clockAt, clockSet, keplerE, laplaceFrame, bodyFrame, orbitElements, orbitState, orbitPath,
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed, SOLVE_KM, missionMiss, solveMission,
   G0, visViva, burnDv, propMass, dvAvail, planeSplit, maneuverPlan, mvOrbits, rv2el, j2Rates, keplerStep, equatorFrame, orbitPoint, maneuverSim,

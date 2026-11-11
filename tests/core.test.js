@@ -1111,3 +1111,65 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   assert.ok(w2.cycle === w1.cycle + 1 && w2.tau < 2, 'Mars: the loop wraps');
   console.log('cabin views ok');
 }
+
+// ===== Phase 16a: the live clock and the planets today =====
+{
+  // JPL Horizons (https://ssd.jpl.nasa.gov/api/horizons.api), fetched 2026-11-12: EPHEM_TYPE=VECTORS, CENTER='500@10'
+  // (the Sun's centre), REF_PLANE=ECLIPTIC, REF_SYSTEM=ICRF, TIME_TYPE=UT, START_TIME='2026-11-12 12:00' (JD 2461357.0
+  // UT), VEC_TABLE=1, OUT_UNITS=KM-S. Targets 199, 299, 3 (Earth–Moon barycentre: what Table 1 gives), 499, 599, 699, 799,
+  // 899. x, y, z in km.
+  const H = {
+    mercury: [-6.979384096337918E+05, 4.605719165513641E+07, 3.827999984936725E+06],
+    venus: [5.170250508222693E+07, 9.475797568699567E+07, -1.680985223927680E+06],
+    earth: [9.569656906770559E+07, 1.130056754884983E+08, -7.564122391603887E+03],
+    mars: [-6.565244095455001E+07, 2.310721207604308E+08, 6.452214236205772E+06],
+    jupiter: [-5.579373052289611E+08, 5.675614687213567E+08, 1.012545296043465E+07],
+    saturn: [1.376094341207850E+09, 2.989584375084769E+08, -5.998368685542102E+07],
+    uranus: [1.313536434041062E+09, 2.593548403590865E+09, -7.399150187513947E+06],
+    neptune: [4.462504026163503E+09, 2.265046738622120E+08, -1.075018257597688E+08],
+  };
+  // JPL "Approximate Positions of the Planets", Table 1 (1800–2050) approximate errors: heliocentric longitude λ and
+  // latitude φ (arcsec), distance ρ (1000 km). They are nominal: on this date Mercury is 1.5× its λ error off, Neptune
+  // 3.2× (the elements here reproduce Table 1 exactly, checked below), so each planet's tolerance is 4× its own error.
+  const ERR = { mercury: [15, 1, 1], venus: [20, 1, 4], earth: [20, 8, 6], mars: [40, 2, 25], jupiter: [400, 10, 600], saturn: [600, 25, 1500], uranus: [50, 2, 1000], neptune: [10, 1, 200] };
+  const K = ['sun', ...Object.keys(H)], ms = Date.UTC(2026, 10, 12, 12);
+  const sy = C.buildSystem(K.map(k => { const d = BODIES[k]; return { name: k, mu: d.gm * 1e9, radius: d.radius * 1e3, parent: K.indexOf(d.parent), a: 0, orb: d.orb }; }));
+  const P = new Float64Array(3 * K.length), V = new Float64Array(3 * K.length);
+  const clk = C.clockSet({}, ms, { live: true });
+  C.states(sy, C.clockAt(clk, ms), P, V);
+  const P2 = new Float64Array(P.length); C.states(sy, C.utcToDays(ms) * C.DAY, P2, new Float64Array(P.length));
+  assert.ok(P.every((x, i) => x === P2[i]), 'live clock: the same positions as the ephemeris at that UTC instant');
+  const sph = p => [Math.atan2(p[1], p[0]), Math.atan2(p[2], Math.hypot(p[0], p[1])), Math.hypot(...p)], AS = 180 / Math.PI * 3600;
+  // Table 1 by its own recipe (independent of core.js): elements at T centuries, Kepler, rotate by ω, I, Ω
+  const T = (C.utcToDays(ms)) / 36525, d2r = Math.PI / 180;
+  const table1 = k => {
+    const [[a0, e0, I0, L0, w0, O0], [a1, e1, I1, L1, w1, O1]] = BODIES[k].orb.jpl;
+    const a = (a0 + a1 * T) * C.AU / 1e3, e = e0 + e1 * T, I = (I0 + I1 * T) * d2r, L = L0 + L1 * T, w = w0 + w1 * T, O = (O0 + O1 * T) * d2r, om = w * d2r - O;
+    const M = (((L - w) % 360 + 540) % 360 - 180) * d2r; let E = M + e * Math.sin(M);
+    for (let n = 0; n < 30; n++) E -= (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+    const x = a * (Math.cos(E) - e), y = a * Math.sqrt(1 - e * e) * Math.sin(E), co = Math.cos(om), so = Math.sin(om), cO = Math.cos(O), sO = Math.sin(O), cI = Math.cos(I), sI = Math.sin(I);
+    return [(co * cO - so * sO * cI) * x + (-so * cO - co * sO * cI) * y, (co * sO + so * cO * cI) * x + (-so * sO + co * cO * cI) * y, so * sI * x + co * sI * y];
+  };
+  for (let i = 1; i < K.length; i++) {
+    const k = K[i], p = [0, 1, 2].map(c => (P[3 * i + c] - P[c]) / 1e3); // heliocentric: the Sun moves about the barycentre
+    const t1 = table1(k);
+    assert.ok(Math.hypot(p[0] - t1[0], p[1] - t1[1], p[2] - t1[2]) < 1, k + ': Table 1 reproduced');
+    const a = sph(p), b = sph(H[k]), [eL, eP, eR] = ERR[k];
+    const dl = Math.abs(((a[0] - b[0]) * AS + 648000 * 3) % 1296000 - 648000), dp = Math.abs(a[1] - b[1]) * AS, dr = Math.abs(a[2] - b[2]) / 1e3;
+    assert.ok(dl < 4 * eL && dp < 4 * eP && dr < 4 * eR, `${k}: Horizons Δλ ${dl.toFixed(1)}″ Δφ ${dp.toFixed(1)}″ Δρ ${dr.toFixed(1)}e3 km`);
+  }
+  // live: the wall clock itself (a frame, a minute, a sleeping tab of three hours)
+  for (const dt of [16, 60e3, 3 * 3600e3]) assert.ok(Math.abs(C.clockAt(clk, ms + dt) - C.clockAt(clk, ms) - dt / 1000) < 1e-6, 'live: follows the wall clock over ' + dt + ' ms');
+  assert.ok(Math.abs(C.clockAt(clk, Date.UTC(2026, 11, 1)) - C.utcToDays(Date.UTC(2026, 11, 1)) * C.DAY) < 1e-6, 'live: any instant is that instant');
+  // sped up from here: leaves live, continues from the time shown, at its rate; a jump keeps the rate; back to now
+  const f = C.clockSet(clk, ms + 5000, { rate: 3600 });
+  assert.ok(!f.live && Math.abs(C.clockAt(f, ms + 5000) - C.clockAt(clk, ms + 5000)) < 1e-6, '1 h/s: starts at the time shown');
+  assert.ok(Math.abs(C.clockAt(f, ms + 15000) - C.clockAt(f, ms + 5000) - 36000) < 1e-6, '1 h/s: 10 s → 10 h');
+  const j = C.clockSet(f, ms + 15000, { t: 0 });
+  assert.ok(j.rate === 3600 && C.clockAt(j, ms + 15000) === 0, 'a jump keeps the rate');
+  const h = C.clockSet(f, ms + 20000, { rate: 0 });
+  assert.ok(C.clockAt(h, ms + 9e6) === C.clockAt(f, ms + 20000), 'held');
+  const n = C.clockSet(f, ms + 20000, { live: true });
+  assert.ok(n.live && Math.abs(C.clockAt(n, ms + 20000) - C.utcToDays(ms + 20000) * C.DAY) < 1e-6, 'back to now');
+  console.log('live clock ok');
+}
