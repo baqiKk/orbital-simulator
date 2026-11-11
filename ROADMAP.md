@@ -254,25 +254,28 @@ Genel ilkeler:
 ## Faz 15 — Benimle çalış
 - Benimle çalış (work with me) sekmesi: kameranın geri çekilip masada ders çalışan özgün bir karakterin görüldüğü, lo-fi çalışma videolarına benzer bir görünüme geçiş. Karakter özgün olacak, mevcut bir eser ya da markaya benzemeyecek; büyük ihtimalle illüstratör çizimi gerekecek.
 
-## Faz 16 — Canlı kip, açılış turu, tasarım sihirbazı
+## Faz 16 — Canlı kip, açılış turu, tasarım sihirbazı ✅ tamamlandı (2026-11-12)
 Kararlar (2026-11-12): bi-eliptiğin rb sınırı etki küresinin yarısı; kayıtlı başlangıç seçimi yeni oturumda yalnızca kartı öne alır; efemeris Horizons'la karşılaştırılarak test edilir.
 
-### Faz 16a — Canlı kip
+### Faz 16a — Canlı kip ✅ tamamlandı (2026-11-12)
 - Harita saati (`core.js clockAt` / `clockSet`): canlıda t = duvar saati (UTC → TDB), hız 1 s/s; hızlandırmada çapa + hız, birikmez. Açılış manzarası, harita ve gezegen çevresi görünümleri (2B ve 3B) bu saati okur; görev oynatması kendi zaman çizelgesinde kalır.
 - Saat şeridi (kip başlığının altında): "● CANLI · tarih saat UTC" ya da tarih + hız + "Şimdiye dön"; hız menüsü: Canlı (1×) en üstte, 60×, 10 dk/s, 1 sa/s, 1 gün/s, 10 gün/s.
 - Yavaşlık ipucu: sayfa açıldığından beri Dünya'nın Güneş çevresinde aldığı yol (km, 30 km/s); Dünya/Ay görünümünde Ay'ın uzaklığı ve evresi; ilk girişte bir kez hızlandırma notu.
 - Testler: belirli bir UTC anında konumlar `states`'le aynı; JPL Horizons vektörleriyle her gezegen için JPL Tablo 1 "approximate errors" toleransıyla karşılaştırma; sahte saatle canlı kipin duvar saatini izlemesi, hızlandırma, Şimdiye dön.
+- Sonuç: kod Tablo 1'i birebir uyguluyor (bağımsız hesapla < 1 km). Horizons'a göre (2026-11-12 12:00 UT) Merkür Δλ 22,6″ (nominal 15″), Neptün 31,5″ (nominal 10″): JPL'in değerleri nominal olduğundan tolerans gezegen başına nominal hatanın 4 katı. Görevin haritası görev zamanında kalır, "Canlı haritaya geç" manzaraya geçer.
 
-### Faz 16b — Açılış turu ve karşılama
+### Faz 16b — Açılış turu ve karşılama ✅ tamamlandı (2026-11-12)
 - Canlı kipte bugünkü konumlarla Satürn → Jüpiter → Mars → Dünya–Ay → Güneş kamera turu (≈ 52 s; o günün konumlarından kurulur, uzaklık logaritmik "atlama"yla), sonra Güneş'e bakan sakin kadraj. 3B yoksa 2B harita karşılığı; azaltılmış harekette doğrudan son kadraj. Dokunma kamerayı bırakır, "Satürn → Güneş turunu tekrar oynat". Saf `tourKeys` (test: cisimlerin yakınından geçer, sürekli, Güneş'te biter).
+- Sonuç: prefs.js `OPEN_TOUR` / `tourDirs` / `tourAt`; duraklar arası van Wijk & Nuij yumuşak yakınlaştırma-kaydırma (Satürn–Jüpiter yolunun ortasında görüş ≈ 11 AU, kare başına kayma görüşün en çok %3'ü); Dünya'ya yaklaşırken ortak büyütme; Tur / Satürn / Dünya–Ay seçicisi. 3B, 2B ve düşük kaynakta, 390 px'te denetlendi.
 - Karşılama ekranı her yeni oturumda (sessionStorage) turun üstünde, kompakt ve yarı saydam (masaüstünde altta yatay kartlar, telefonda alt yarıda 2 × 2); kart seçilince tur bitmeden geçilir. Kabinden dönüşte, URL parametresiyle (`?manzara=`, `#kaynakca`) ve aynı oturumda yeniden yüklemede çıkmaz.
 
-### Faz 16c — Tasarım sihirbazı
+### Faz 16c — Tasarım sihirbazı ✅ tamamlandı (2026-11-12)
 - Görev penceresinin sade yüzü (uzman düzeni eski formu gösterir; aynı durum `S.M` / transfer kurulumu, aynı `rebuild`). İlk adım: yörünge değiştir / başka bir cisme git / serbest yanma. Adımlar katlanan kartlar; yapışkan, her zaman görünür "Görevi başlat" (hesaplar ve oynatır); geçersiz girişte düğmenin yanında Türkçe uyarı; varsayılanlar her zaman geçerli.
 - Yörünge değiştir: merkez cisim → başlangıç → hedef → yöntem (Otomatik, Hohmann, bi-eliptik, eğim birleşik/ayrı; gelişmiş: sonlu yanma, araç, J2). Otomatik bi-eliptiği yalnızca Δv kazancı ≥ %2 ise seçer (rb ≤ etki küresinin yarısı), karşılaştırma satırı süreleri de gösterir. Hazır örnekler: Dünya 600 → 1300 km, LEO → GEO, Ay 100 → 20 km, Mars alçaltma, eliptik → dairesel.
 - Sonuç kartı: toplam Δv, yanma başına zaman ve Δv, transfer süresi, isteğe bağlı kütle/Isp ile yakıt; "Değiştir".
 - Başka bir cisme git: kalkış + park irtifası → hedef → varış → zaman (en ucuz pencere ya da tarih) → `solveMission`.
-- Serbest yanma (Faz 7'deki madde): başlangıç yörüngesi + yer + prograd/radyal/normal Δv (`core.js freeBurn`, `M.type = 'free'`). Testler: sıfır Δv; prograd → vis-viva; saf normal Δv: eğim atan(Δv/v), hız √(v² + Δv²); hızı koruyan eğim değişimi 2·asin(Δv/2v); `rv2el(r, v + Δv)` ile tutarlılık.
+- Serbest yanma (Faz 7'deki madde): başlangıç yörüngesi + yer + prograd/radyal/normal Δv (`core.js freeBurn`, `M.type = 'free'`).
+- Sonuç (js/wizard.js): örnekler tarayıcıda çalıştırıldı — Dünya 600 → 1300 km 353 m/s, 52 dk (Hohmann; bi-eliptik 356 m/s); LEO 28,5° → GEO 4,231 km/s; Ay 100 → 20 km 37 m/s; Mars 400 → 250 km 68 m/s; GTO → GEO 1,472 km/s (sonlu yanmayla 400 N, 2 sa 52 dk, 1 481 m/s, yakıt 1 317 kg); Dünya → Mars (seçilen tarihten sonraki pencere) 5,744 km/s, 304 gün; Ay serbest dönüşü 3,166 km/s; Venüs yakın geçişi Mart 2028; yalnız normal 500 m/s → eğim 3,73°. Sonuç kartı yalnızca sihirbazın kurduğu görevi anlatır (senaryo yüklenince form). Uzman düzeni eski formu gösterir. Testler: sıfır Δv; prograd → vis-viva; saf normal Δv: eğim atan(Δv/v), hız √(v² + Δv²); hızı koruyan eğim değişimi 2·asin(Δv/2v); `rv2el(r, v + Δv)` ile tutarlılık.
 
 ## Notlar
 - Hibrit OTV hazır aracı: itki, Isp, kütle ve tek ateşleme süresini birlikte veren yayımlanmış birincil bir kaynak bulununca eklenecek. Yayımlanmamış şirket verileri kullanılmayacak.
