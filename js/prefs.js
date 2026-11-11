@@ -43,6 +43,15 @@ function startupMode(store) {
 }
 // The main page's start (what the viewer chose on the start screen; the cabin is not remembered): 'scene', 'design' or
 // 'mission:<scenario id>' (one of ids); anything else null (the start screen then)
+// The start screen comes on every new visit (tab or session: sessionStorage PREF_KEYS.startSeen), over the opening
+// tour; not when coming back from the cabin (snap), from a link with a query or hash (?manzara=, #kaynakca: deep) or on
+// a reload in the same session (seen). Then the remembered choice applies as before.
+function startShow(o) { return !o.seen && !o.snap && !o.deep; }
+// ?manzara=tour|saturn|earth (a shared link): the scene to open on, or null
+function sceneParam(search) {
+  const m = /[?&]manzara=([a-z]+)/.exec(search || '');
+  return m && ['tour', 'saturn', 'earth'].includes(m[1]) ? m[1] : null;
+}
 function parseStart(raw, ids) {
   if (raw === 'scene' || raw === 'design') return raw;
   if (typeof raw === 'string' && raw.startsWith('mission:') && ids.includes(raw.slice(8))) return raw;
@@ -351,4 +360,4 @@ function tourAt(T, P, D) {
   }
 }
 
-if (typeof module !== 'undefined') module.exports = { OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

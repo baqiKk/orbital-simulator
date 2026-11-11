@@ -2528,7 +2528,13 @@ $('#wcScene').addEventListener('click', e => { const b = e.target.closest('butto
 // windows), focus in the cabin. The choice is remembered (PREF_KEYS.start, prefs.js parseStart) and the next visit starts
 // there; the cabin is not (it would keep sending the viewer away): it counts as the scene. Esc or a click outside: the scene.
 const APP = { mode: '' }; // 'scene' | 'mission' | 'design': what the viewer chose (the mode title follows it)
-function startOpen() { $('#start').hidden = false; $('#startCards').hidden = false; $('#startMis').hidden = true; $('#startCards .start-card').focus(); }
+// last: the remembered choice ('scene', 'design', 'mission:<id>'): its card is marked ("Son seçimin") and focused
+function startOpen(last) {
+  $('#start').hidden = false; $('#startCards').hidden = false; $('#startMis').hidden = true;
+  const go = last ? last.split(':')[0] : '', sc = last && last.startsWith('mission:') ? last.slice(8) : '';
+  for (const c of document.querySelectorAll('#start .start-card')) c.classList.toggle('last', !!go && (c.dataset.go === go || (!!sc && c.dataset.sc === sc)));
+  ($('#startCards .start-card.last') || $('#startCards .start-card')).focus({ preventScroll: true });
+}
 function startClose() { $('#start').hidden = true; }
 function startScene() { APP.mode = 'scene'; if (!SCENE.on) sceneStart(); }
 function startDesign() {
@@ -2541,7 +2547,7 @@ function startMission(id) { APP.mode = 'mission'; writePref(LS, PREF_KEYS.start,
 $('#startCards').addEventListener('click', e => {
   const c = e.target.closest('.start-card'); if (!c) return;
   const go = c.dataset.go;
-  if (go === 'mission') { $('#startCards').hidden = true; $('#startMis').hidden = false; $('#startMis .start-card').focus(); return; }
+  if (go === 'mission') { $('#startCards').hidden = true; $('#startMis').hidden = false; ($('#startMis .start-card.last') || $('#startMis .start-card')).focus(); return; }
   if (go === 'cabin') { writePref(LS, PREF_KEYS.start, 'scene'); return; } // the link (toCabin) goes on
   writePref(LS, PREF_KEYS.start, go); startClose();
   if (go === 'design') startDesign(); else startScene();
@@ -2550,7 +2556,7 @@ $('#startMis').addEventListener('click', e => { const c = e.target.closest('[dat
 $('#startBack').addEventListener('click', () => { $('#startMis').hidden = true; $('#startCards').hidden = false; $('#startCards .start-card').focus(); });
 $('#start').addEventListener('pointerdown', e => { if (e.target === $('#start')) { startClose(); startScene(); } });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#start').hidden) { e.stopPropagation(); startClose(); startScene(); } }, true);
-$('#startBtn').addEventListener('click', startOpen);
+$('#startBtn').addEventListener('click', () => startOpen(parseStart(readPref(LS, PREF_KEYS.start), SCENARIOS.map(s => s.id))));
 
 // The rail on phones: its names under the icons, and the less used windows (and "reset") in "Diğer" (a list above the
 // rail) so the names never shrink or get cut. The buttons are moved, the rail's own click handler still serves them.
@@ -3672,12 +3678,15 @@ setSeg('#pcMetric', PC.metric);
 for (const id of WIN_IDS) applyWin(id);
 if (snapOk) { if (SNAP.map) setMap(true); } // back from the cabin: the mission as it was left
 else {
-  sceneStart(); if (SNAP && SNAP.scene) sceneSet(SNAP.scene, { done: true });
-  // where the viewer chose to start (the start screen on the first visit; not when coming back from the cabin or to the
-  // Sources)
+  const sp = sceneParam(location.search);
+  sceneStart(); if (SNAP && SNAP.scene) sceneSet(SNAP.scene, { done: true }); else if (sp) sceneSet(sp);
+  // the start screen on every new visit, over the tour (prefs.js startShow); a link, the way back from the cabin and a
+  // reload in the same session go on as chosen before
   const st = parseStart(readPref(LS, PREF_KEYS.start), SCENARIOS.map(s => s.id));
-  if (SNAP && SNAP.scene || location.hash === '#kaynakca') APP.mode = 'scene';
-  else if (!st) startOpen();
+  const seen = !!readPref(SS, PREF_KEYS.startSeen); writePref(SS, PREF_KEYS.startSeen, '1');
+  const deep = location.search.length > 1 || !!location.hash;
+  if (startShow({ seen, snap: !!SNAP, deep })) { APP.mode = 'scene'; startOpen(st); }
+  else if (SNAP && SNAP.scene || deep || !st) APP.mode = 'scene';
   else if (st === 'design') startDesign();
   else if (st === 'scene') APP.mode = 'scene';
   else { APP.mode = 'mission'; loadScenario(st.slice(8)); }

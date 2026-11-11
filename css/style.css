@@ -381,24 +381,27 @@ html[data-q=low] .live-dot{box-shadow:none;animation:none}
 .follow-menu .seg button[aria-pressed="true"],.follow-map button[aria-pressed="true"]{color:var(--accent)}
 html:not(.ui-expert) #focusTag,html:not(.ui-expert) .vw-follow>.lbl,html.ui-expert #followCtl{display:none}
 @media (max-width:560px){.ctrl-bar{flex-direction:column;align-items:flex-start}.ctrl-bar .vw-btn{order:-1}.follow-menu{left:0;right:auto}}
-/* the start screen (js/app.js START): four cards, 2 × 2 on phones without scrolling */
-.start{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:color-mix(in srgb,var(--void) 62%,transparent)}
-.start-in{width:min(860px,100%);padding:22px 22px 16px;display:flex;flex-direction:column;gap:16px}
-.start-in h2{margin:0;font:600 18px/1.2 var(--f-disp);letter-spacing:.04em;color:var(--ink)}
+/* the start screen (js/app.js startOpen): compact over the opening tour, which stays in view above it: four cards in a
+   row at the bottom; on phones 2 × 2 in the lower half, without scrolling */
+.start{position:fixed;inset:0;z-index:60;display:grid;place-items:end center;padding:16px 16px 22px;background:linear-gradient(to top,color-mix(in srgb,var(--void) 72%,transparent),transparent 45%)}
+.start-in{width:min(900px,100%);padding:14px 16px 10px;display:flex;flex-direction:column;gap:10px;background:color-mix(in srgb,var(--solid) 62%,transparent)}
+.start-in h2{margin:0;font:600 15px/1.2 var(--f-disp);letter-spacing:.04em;color:var(--ink)}
 .start-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .start-cards[hidden]{display:none}
-.start-card{display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:left;padding:14px 14px 16px;min-height:120px;background:var(--panel);border:1px solid var(--line2);color:var(--dim);text-decoration:none;cursor:pointer;font:400 12.5px/1.4 var(--f-body)}
+.start-card{position:relative;display:flex;flex-direction:column;gap:5px;align-items:flex-start;text-align:left;padding:11px 12px 12px;min-height:84px;background:color-mix(in srgb,var(--solid) 70%,transparent);border:1px solid var(--line2);color:var(--dim);text-decoration:none;cursor:pointer;font:400 12.5px/1.4 var(--f-body)}
 .start-card b{font:600 14px/1.2 var(--f-disp);letter-spacing:.03em;color:var(--ink)}
 .start-card:hover,.start-card:focus-visible{border-color:var(--accent);color:var(--ink);background:var(--raise)}
+.start-card.last{border-color:var(--line3)}
+.start-card.last::after{content:attr(data-last);position:absolute;top:-8px;right:8px;padding:1px 6px;font:600 9.5px/1.4 var(--f-disp);letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent)}
 #startMis{grid-template-columns:repeat(2,minmax(0,1fr))}
 .start-back{grid-column:1/-1;justify-self:start}
-.start-foot{margin:0;font-size:11.5px;color:var(--faint)}
+.start-foot{margin:0;font-size:11px;color:var(--faint)}
 button.rail-mark{background:none;border:0;border-bottom:1px solid var(--line);padding:0;width:100%;cursor:pointer}
 button.rail-mark:hover{color:var(--accent)}
 .chip-scene button{padding:4px 8px;font-size:10.5px}
 @media (max-width:560px){
-  .start{padding:10px;align-items:center}
-  .start-in{padding:16px 14px 12px;gap:12px}
+  .start{padding:8px 8px 70px;align-items:end;background:linear-gradient(to top,color-mix(in srgb,var(--void) 75%,transparent),transparent 55%)}
+  .start-in{max-height:50vh;padding:12px 12px 9px;gap:9px}
   .start-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .start-card{min-height:0;padding:12px 11px 13px;font-size:12px}
   .start-card b{font-size:13.5px}

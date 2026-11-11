@@ -852,9 +852,19 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   for (const g of ['scene', 'mission', 'design', 'cabin']) assert.ok(page.includes('data-go="' + g + '"'), 'card ' + g);
   for (const sc of ['em_free', 'r_e_mars']) assert.ok(page.includes('data-sc="' + sc + '"') && app.includes("{ id: '" + sc + "'"), 'mission ' + sc);
   assert.ok(['start.title', 'start.scene', 'start.mission', 'start.design', 'start.cabin', 'start.foot', 'start.reopen'].every(has), 'start texts');
-  assert.ok(app.includes("if (go === 'cabin') { writePref(LS, PREF_KEYS.start, 'scene'); return; }") && app.includes("$('#startBtn').addEventListener('click', startOpen);") && app.includes("if (e.key === 'Escape' && !$('#start').hidden) { e.stopPropagation(); startClose(); startScene(); }"), 'remembered, not the cabin; Esc: the scene; the logo opens it');
+  assert.ok(app.includes("if (go === 'cabin') { writePref(LS, PREF_KEYS.start, 'scene'); return; }") && app.includes("$('#startBtn').addEventListener('click', () => startOpen(parseStart(readPref(LS, PREF_KEYS.start), SCENARIOS.map(s => s.id))));") && app.includes("if (e.key === 'Escape' && !$('#start').hidden) { e.stopPropagation(); startClose(); startScene(); }"), 'remembered, not the cabin; Esc: the scene; the logo opens it');
   assert.ok(/@media \(max-width:560px\)\{\n  \.start\{[^}]*\}\n  \.start-in\{[^}]*\}\n  \.start-cards\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/.test(css), 'phones: 2 × 2');
   assert.ok(!page.includes('id="welcome"'), 'the old welcome card is gone');
+  // Phase 16b: on every new visit (session), over the tour; not back from the cabin, from a link or on a reload in the
+  // same session; the remembered choice only marks its card. Compact: at the bottom, the tour above it in view; phones
+  // 2 × 2 in the lower half.
+  assert.ok(P.startShow({ seen: false, snap: false, deep: false }), 'a new visit: the start screen');
+  for (const o of [{ seen: true }, { snap: true }, { deep: true }]) assert.ok(!P.startShow({ seen: false, snap: false, deep: false, ...o }), 'not when ' + Object.keys(o)[0]);
+  assert.strictEqual(P.sceneParam('?manzara=earth'), 'earth'); assert.strictEqual(P.sceneParam('?x=1&manzara=tour'), 'tour');
+  assert.strictEqual(P.sceneParam('?manzara=pluto'), null); assert.strictEqual(P.sceneParam(''), null);
+  assert.ok(app.includes("const seen = !!readPref(SS, PREF_KEYS.startSeen); writePref(SS, PREF_KEYS.startSeen, '1');") && app.includes("if (startShow({ seen, snap: !!SNAP, deep })) { APP.mode = 'scene'; startOpen(st); }"), 'shown per session, the remembered choice marked');
+  assert.ok(P.PREF_KEYS.startSeen && has('start.last') && (page.match(/data-i18n-data-last="start\.last"/g) || []).length === 5, 'the "last choice" tag');
+  assert.ok(/\.start\{[^}]*place-items:end center/.test(css) && /\.start-in\{[^}]*max-height:50vh/.test(css), 'compact: at the bottom; phones in the lower half');
 }
 // 28) The rail's names (hover on desktop, under the icons on phones), the less used ones in "Diğer" on phones so no name
 // is shortened, and a short tour offered once when the viewer first chooses to design
