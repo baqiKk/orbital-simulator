@@ -1,22 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<!-- Site icon (original): a ringed planet on a dark disc, a dashed transfer orbit around it, a craft on the orbit.
-     Colours are css/style.css tokens: bg #05080b, cyan #9fd6e4, orbit #7cc4d8, ink #d9e7eb, accent #ffb547.
-     Small sizes: longer dashes up to 40 px; at tab size (≤ 24 px) the dashes, the ring's far side and the disc's edge
-     give way to bolder strokes. -->
-<style>
-.orb{stroke-dasharray:6.2 4.4}
-@media (max-width:40px){.orb{stroke-dasharray:10 6.5;stroke-width:3.6}.edge{stroke-opacity:.45}}
-@media (max-width:24px){.orb{stroke-dasharray:none;stroke-width:4.2}.ring{stroke-width:3.6}.far,.edge{display:none}.craft{r:6.6}.core{r:2.6}}
-</style>
-<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9fd6e4"/><stop offset="1" stop-color="#7cc4d8"/></linearGradient></defs>
+<!-- Site icon (original, flat): a dark disc, the Earth and the Moon, the simulator's own Earth-Moon free return as an
+     amber S wrapping both, and the craft on it. Colours are css/style.css tokens: bg #05080b, accent #ffb547 (the path),
+     orbit #7cc4d8 (the Earth), dim #86a0a8 (the Moon), ink #d9e7eb (the craft). At tab size (24 px and below) the path
+     grows bolder and the craft goes: the disc, the S and two dots remain. -->
+<style>@media (max-width:24px){.p{stroke-width:5}.c{display:none}}</style>
 <circle cx="32" cy="32" r="32" fill="#05080b"/>
-<circle class="edge" cx="32" cy="32" r="31" fill="none" stroke="#9fd6e4" stroke-opacity=".3" stroke-width="2"/>
-<ellipse class="orb" cx="35" cy="29.5" rx="25" ry="14.5" transform="rotate(-24 35 29.5)" fill="none" stroke="#ffb547" stroke-width="3" stroke-linecap="round"/>
-<g transform="translate(29 35) rotate(-18)">
-  <path class="ring far" d="M-17 0A17 5.2 0 0 1 17 0" fill="none" stroke="#d9e7eb" stroke-width="2.6"/>
-  <circle r="10" fill="url(#g)"/>
-  <path class="ring" d="M-17 0A17 5.2 0 0 0 17 0" fill="none" stroke="#d9e7eb" stroke-width="2.6" stroke-linecap="round"/>
-</g>
-<circle class="craft" cx="47" cy="13" r="5.2" fill="#ffb547"/>
-<circle class="core" cx="47" cy="13" r="2" fill="#d9e7eb"/>
+<path class="p" d="M29 13C39 5 55 9 54 21C53 32 41 33 32 33C23 33 9 37 11.5 47C14 57 29 58 34 50" fill="none" stroke="#ffb547" stroke-width="3.6" stroke-linecap="round"/>
+<circle cx="23" cy="44" r="8.5" fill="#7cc4d8"/>
+<circle cx="42" cy="21" r="5.5" fill="#86a0a8"/>
+<circle class="c" cx="31.5" cy="33" r="3" fill="#d9e7eb"/>
 </svg>

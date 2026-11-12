@@ -297,6 +297,7 @@ Kararlar (2026-11-12): bi-eliptiğin rb sınırı etki küresinin yarısı; kay�
 ### Faz 17d — Site simgesi ✅ tamamlandı (2026-11-12)
 - Özgün simge: koyu disk üzerinde halkalı küçük gezegen, onu saran kesik çizgili transfer yörüngesi (amber), üstünde araç noktası; 16 px'te kesikler ve ince ayrıntı kalkar (SVG içi boyut medya sorgusu). Kabin varyantı: pirinç lomboz içinde gezegen, önünde beyaz kedinin kulakları (arkadan).
 - Sonuç: `favicon.svg`, `favicon-kabin.svg`, PNG'ler (32, 180, 192, 512; `tools/icons/render.js`, Playwright depo dışında), `site.webmanifest`; index.html, kabin.html, kabin-taslak.html bağlantıları ve theme-color; ui.test.js 38. test.
+- Yeniden tasarım (2026-11-12): üç seçenek (A sade, B çerçeveli ve yazılı arma, C hilal Dünya'lı resimli) arasından A seçildi: koyu disk, mavi Dünya, gri Ay, ikisini saran amber S biçimli serbest dönüş yolu, araç noktası; kabin ikonu aynı dilde lomboz içinde Dünya–Ay ve S, önünde kedi kulakları. 16 px'te daire + S + iki nokta.
 
 ## Notlar
 - Hibrit OTV hazır aracı: itki, Isp, kütle ve tek ateşleme süresini birlikte veren yayımlanmış birincil bir kaynak bulununca eklenecek. Yayımlanmamış şirket verileri kullanılmayacak.

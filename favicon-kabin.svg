@@ -1,31 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<!-- Cabin icon (original), in the site icon's language: a brass porthole on the dark disc, a small ringed planet in it,
-     and in front the ears of the cabin's white cat, seen from behind as it sits at the window. Colours are css/style.css
-     tokens: bg #05080b, void #030507, cyan #9fd6e4, orbit #7cc4d8, ink #d9e7eb, cab-brass #c8954f, cab-brass-lo #6e4a22,
-     cab-cat #f6f2ea, cab-ear #e3a19c. At tab size (≤ 24 px) the rivets, stars and the ring's far
-     side go, the frame and the ears grow bolder. -->
-<style>
-@media (max-width:24px){.fine{display:none}.frame{stroke-width:7.5}.ring{stroke-width:3.4}.planet{r:8.5}}
-</style>
-<defs>
-  <clipPath id="d"><circle cx="32" cy="32" r="32"/></clipPath>
-  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9fd6e4"/><stop offset="1" stop-color="#7cc4d8"/></linearGradient>
-</defs>
+<!-- Cabin icon (original), in the site icon's flat style: a brass porthole on the dark disc with the Earth, the Moon and
+     the amber free-return S seen through it, and in front the ears of the cabin's white cat, seen from behind as it sits
+     at the window. Colours are css/style.css tokens: bg #05080b, void #030507, accent #ffb547, orbit #7cc4d8, dim
+     #86a0a8, cab-brass #c8954f, cab-brass-lo #6e4a22, cab-cat #f6f2ea, cab-ear #e3a19c. At tab size (24 px and below)
+     the rivets go, the frame and the path grow bolder. -->
+<style>@media (max-width:24px){.fine{display:none}.frame{stroke-width:7}.p{stroke-width:6.5}}</style>
+<defs><clipPath id="d"><circle cx="32" cy="32" r="32"/></clipPath><clipPath id="w"><circle cx="32" cy="28" r="23"/></clipPath></defs>
 <circle cx="32" cy="32" r="32" fill="#05080b"/>
-<circle cx="32" cy="29" r="23.5" fill="#030507"/>
-<circle class="fine" cx="20" cy="19" r="1.1" fill="#d9e7eb"/>
-<circle class="fine" cx="27" cy="12.5" r=".8" fill="#d9e7eb"/>
-<circle class="fine" cx="15.5" cy="29" r=".8" fill="#d9e7eb"/>
-<g transform="translate(38 23) rotate(-18)">
-  <path class="ring fine" d="M-12 0A12 3.8 0 0 1 12 0" fill="none" stroke="#d9e7eb" stroke-width="2.2"/>
-  <circle class="planet" r="7" fill="url(#g)"/>
-  <path class="ring" d="M-12 0A12 3.8 0 0 0 12 0" fill="none" stroke="#d9e7eb" stroke-width="2.2" stroke-linecap="round"/>
-</g>
-<circle class="frame" cx="32" cy="29" r="25" fill="none" stroke="#c8954f" stroke-width="5.5"/>
-<g class="fine" fill="#6e4a22"><circle cx="49.7" cy="11.3" r="1.3"/><circle cx="14.3" cy="11.3" r="1.3"/><circle cx="7" cy="29" r="1.3"/><circle cx="57" cy="29" r="1.3"/></g>
+<circle cx="32" cy="28" r="23" fill="#030507"/>
+<g clip-path="url(#w)"><g transform="translate(32 24.5) scale(.6) translate(-32 -32)">
+  <path class="p" d="M29 13C39 5 55 9 54 21C53 32 41 33 32 33C23 33 9 37 11.5 47C14 57 29 58 34 50" fill="none" stroke="#ffb547" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="23" cy="44" r="8.5" fill="#7cc4d8"/>
+  <circle cx="42" cy="21" r="5.5" fill="#86a0a8"/>
+</g></g>
+<circle class="frame" cx="32" cy="28" r="25" fill="none" stroke="#c8954f" stroke-width="5"/>
+<g class="fine" fill="#6e4a22"><circle cx="49.7" cy="10.3" r="1.2"/><circle cx="14.3" cy="10.3" r="1.2"/><circle cx="7" cy="28" r="1.2"/><circle cx="57" cy="28" r="1.2"/></g>
 <g clip-path="url(#d)">
-  <path d="M12 66C11 54 15 48 20.5 45.5L18.5 34.5L27.5 41.6Q32 40.2 36.5 41.6L45.5 34.5L43.5 45.5C49 48 53 54 52 66Z" fill="#f6f2ea" stroke="#f6f2ea" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M21 38.3L25.6 42.3L21.7 44.2Z" fill="#e3a19c" stroke="#e3a19c" stroke-width="1" stroke-linejoin="round"/>
-  <path d="M43 38.3L38.4 42.3L42.3 44.2Z" fill="#e3a19c" stroke="#e3a19c" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M12 69C11 57 15 51 20.5 48.5L18.5 37.5L27.5 44.6Q32 43.2 36.5 44.6L45.5 37.5L43.5 48.5C49 51 53 57 52 69Z" fill="#f6f2ea" stroke="#f6f2ea" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M21 41.3L25.6 45.3L21.7 47.2Z" fill="#e3a19c" stroke="#e3a19c" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M43 41.3L38.4 45.3L42.3 47.2Z" fill="#e3a19c" stroke="#e3a19c" stroke-width="1" stroke-linejoin="round"/>
 </g>
 </svg>

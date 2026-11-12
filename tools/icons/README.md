@@ -1,6 +1,6 @@
 # Site simgeleri (tools/icons)
 
-Kaynaklar elle çizilmiş iki SVG (depo kökünde): `favicon.svg` (ana site: koyu disk, halkalı gezegen, kesik çizgili transfer yörüngesi, araç noktası) ve `favicon-kabin.svg` (kabin: pirinç lomboz, içinde küçük gezegen, önünde beyaz kedinin kulakları). Renkler `css/style.css` token'larından. İki SVG de boyuta göre sadeleşir (SVG içinde `@media (max-width: …)`): 40 px'e kadar uzun kesikler, sekme boyutunda (≤ 24 px) kesik ve ince ayrıntı yok, çizgiler kalın.
+Kaynaklar elle çizilmiş, düz renkli iki SVG (depo kökünde): `favicon.svg` (ana site: koyu disk, mavi Dünya, gri Ay, ikisini saran amber S biçimli Dünya–Ay serbest dönüş yolu, araç noktası) ve `favicon-kabin.svg` (kabin: pirinç lomboz, içinde Dünya, Ay ve S yolu, önünde beyaz kedinin kulakları). Renkler `css/style.css` token'larından. İki SVG de sekme boyutunda (≤ 24 px, SVG içinde `@media (max-width: 24px)`) sadeleşir: araç noktası ve perçinler kalkar, yol ve çerçeve kalınlaşır.
 
 `render.js` PNG'leri bu SVG'lerden üretir:
 
