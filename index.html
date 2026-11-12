@@ -134,6 +134,20 @@
           <label class="chk" data-i18n-title="ui.loopTip"><input type="checkbox" id="loop"><span data-i18n="ui.loop"></span></label>
           <label class="chk" data-i18n-title="ui.slowTip"><input type="checkbox" id="slow" checked><span data-i18n="ui.slow"></span></label>
           <label class="chk" id="evStopWrap" data-i18n-title="ui.evStopTip" hidden><input type="checkbox" id="evStop"><span data-i18n="ui.evStop"></span></label>
+          <button type="button" class="ghost rec-btn" id="recBtn" data-i18n-title="rec.tip" aria-controls="recPanel"><svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="3.2"/></svg><span data-i18n="rec.btn"></span></button>
+        </div>
+        <div class="glass rec-panel" id="recPanel" role="dialog" aria-labelledby="recT" hidden>
+          <div class="rec-h"><h3 id="recT" data-i18n="rec.title"></h3><button type="button" class="ibtn x" id="recX" data-i18n-aria-label="rec.close" data-i18n-title="rec.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></div>
+          <div id="recSetup">
+            <div class="rec-row"><span data-i18n="rec.fmt"></span><div class="seg" id="recFmt" role="group" data-i18n-aria-label="rec.fmt"><button type="button" data-v="gif" data-i18n="rec.gif"></button><button type="button" data-v="video" data-i18n="rec.video"></button></div></div>
+            <p class="rec-note" id="recFmtNote"></p>
+            <div class="rec-row"><span data-i18n="rec.width"></span><div class="seg" id="recW" role="group" data-i18n-aria-label="rec.width"><button type="button" data-v="480">480</button><button type="button" data-v="720">720</button><button type="button" data-v="1080">1080</button></div></div>
+            <label class="chk"><input type="checkbox" id="recTitle"><span data-i18n="rec.addTitle"></span></label>
+            <p class="rec-note warn" id="recNote" role="status"></p>
+            <button type="button" class="btn primary" id="recGo" data-i18n="rec.go"></button>
+          </div>
+          <div id="recProg" hidden><progress id="recBar" max="1" value="0"></progress><p class="rec-note" id="recMsg" role="status" aria-live="polite"></p><button type="button" class="btn" id="recCancel" data-i18n="rec.cancel"></button></div>
+          <div id="recDone" hidden><p id="recDoneMsg" role="status"></p><p class="rec-note warn" id="recDoneNote"></p><button type="button" class="btn primary" id="recSave"></button></div>
         </div>
       </div>
     </div>
@@ -469,5 +483,6 @@
 <script src="js/mode3d.js"></script>
 <script src="js/app.js"></script>
 <script src="js/wizard.js"></script>
+<script src="js/record.js"></script>
 </body>
 </html>

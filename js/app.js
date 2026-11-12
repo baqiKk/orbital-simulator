@@ -1168,6 +1168,7 @@ const freeArea = () => INS || (INS = measureFree());
 const rectInsets = q => ({ l: q.x0, r: W - q.x1, t: q.y0, b: H - q.y1 });
 function insets() { return rectInsets(bestRect(freeArea())); }
 function measureFree() {
+  if (REC.full) return [{ x0: 0, x1: W, y0: 0, y1: H }];
   const sr = stage.getBoundingClientRect(), gap = 12;
   const rel = el => { const r = el.getBoundingClientRect(); return { x0: r.left - sr.left, x1: r.right - sr.left, y0: r.top - sr.top, y1: r.bottom - sr.top }; };
   const shown = el => !el.hidden && el.getClientRects().length > 0;
@@ -2957,6 +2958,8 @@ function drawTrail(ext, cpos) {
   ctx.strokeStyle = hexA(COL.traj, 0.9);
   ctx.beginPath(); ctx.moveTo(sx(tr.x[i1]), sy(tr.y[i1])); ctx.lineTo(sx(cpos[0]), sy(cpos[1])); ctx.stroke();
 }
+// the mission recording (js/record.js): busy while it draws its frames; full: the free area is the whole canvas
+const REC = { busy: false, full: false };
 let last = performance.now(), hold = 0, hudTick = 0, hudLast = 0, frameAvg = 1 / 60, slowFrames = 0, lowQ = false;
 const tmp = [0, 0], tmp2 = [0, 0], tmp3 = [0, 0, 0];
 
@@ -3042,9 +3045,10 @@ const _hx = new Map();
 function hexA(hex, a) { const k = hex + a; let v = _hx.get(k); if (!v) { v = hexA0(hex, a); _hx.set(k, v); } return v; }
 function hexA0(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
 
-function draw(now) {
+// one frame; once: drawn on demand (the mission recording, js/record.js), the loop not scheduled again
+function drawBody(now, once) {
   // frame cap (low-resource mode); the small slack keeps 60 Hz displays at an even 30 fps
-  if (Q.fpsCap && now - last < 1000 / Q.fpsCap - 4) { requestAnimationFrame(draw); return; }
+  if (Q.fpsCap && now - last < 1000 / Q.fpsCap - 4) { if (!once) requestAnimationFrame(draw); return; }
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   autoFrame(now, dt);
   // adaptive quality (normal and 3D modes): if frames stay slow, the ladder (FX) turns effects off one step at a time,
@@ -3060,7 +3064,7 @@ function draw(now) {
   HITS = []; CAPTION.length = 0; modeChip();
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   const v3 = is3d(); // 3D: the WebGL canvas below draws the scene, this one only the overlay
-  if (SCENE.wait) { ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H); requestAnimationFrame(draw); return; } // first-run question open
+  if (SCENE.wait) { ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H); if (!once) requestAnimationFrame(draw); return; } // first-run question open
   if (v3) ctx.clearRect(0, 0, W, H);
   else {
     // the sky: built once the map and stars are in, again when the sharper map tier arrives; dimmed by the eye adaptation
@@ -3074,12 +3078,12 @@ function draw(now) {
     if (SCENE.kind === 'tour' && !SCENE.free && !reduceMotion) SCENE.tt += dt;
     if (v3) drawMap3(SCENE.t, glow, null, 0, 0); else { drawMap(SCENE.t, glow, null, 0, 0); if (!MAP.log) drawScale(); }
     if (now - ovLast > 500) { ovLast = now; ovDist(); }
-    skyAdapt(dt); frameEnd(); requestAnimationFrame(draw); return;
+    skyAdapt(dt); frameEnd(); if (!once) requestAnimationFrame(draw); return;
   }
   if (!sys || !simR || !C) {
     if (MAP.on) { if (v3) drawMap3(mapTime(0), glow, null, 0, 0); else { drawMap(mapTime(0), glow, null, 0, 0); if (!MAP.log) drawScale(); } }
     else if (v3) { V3.setActive('none'); V3.render({ stars: Q.stars, skyGain: skyGain() }); }
-    skyAdapt(dt); frameEnd(); requestAnimationFrame(draw); return;
+    skyAdapt(dt); frameEnd(); if (!once) requestAnimationFrame(draw); return;
   }
   if (S.kind === 'man' && !MAP.on) { CAPTION.push(_('mv.caption')); setCaption(); } // before fitting: an obstacle
   if (!v3) frameCache();
@@ -3321,8 +3325,10 @@ function draw(now) {
   if (now - ovLast > 500) { ovLast = now; ovDist(); }
   skyAdapt(dt);
   frameEnd();
-  requestAnimationFrame(draw);
+  if (!once) requestAnimationFrame(draw);
 }
+// the loop; while a recording draws its own frames (REC.busy) it only keeps time
+function draw(now) { if (REC.busy) { last = now; requestAnimationFrame(draw); return; } drawBody(now, false); }
 
 // scale bar, bottom-left of the free plot area
 // scale: px per metre (3D: at the camera target's distance)
@@ -3359,6 +3365,8 @@ function musicCredits() {
   }
   return out.join('');
 }
+// the software the site carries (vendor/): name, licence, what for
+const CODE_SRC = { three: 'https://threejs.org/', gifenc: 'https://github.com/mattdesl/gifenc', mp4: 'https://github.com/Vanilagy/mp4-muxer', webm: 'https://github.com/Vanilagy/webm-muxer' };
 function renderCredits() {
   const rows = [], used = new Set();
   for (const [k, b] of Object.entries(BODIES)) {
@@ -3385,6 +3393,8 @@ function renderCredits() {
       ${musicCredits()}
       <li>${esc(_('cred.cabin.space'))} — ${esc(_('cred.cabin.spaceNote'))} ${SPACE_SND.map(s => link(SND_SRC[s.src], s.src.toUpperCase())).join(' · ')} · ${link(SND_SRC.jpl, _('cred.cabin.jpl'))}</li>
       <li>${link(CABIN_SRC.font, _('cred.cabin.font'))} — ${esc(_('cred.cabin.fontNote'))} ${link(CABIN_SRC.ofl, _('cred.cabin.ofl'))}</li></ul>
+    <h3>${esc(_('cred.h.code'))}</h3>
+    <ul>${Object.keys(CODE_SRC).map(k => `<li>${link(CODE_SRC[k], _('cred.code.' + k))}</li>`).join('')}</ul>
     <h3>${esc(_('cred.h.lic'))}</h3>
     <ul>${[...used].map(s => `<li><b>${esc(_('cred.src.' + s))}</b>: ${esc(_('cred.lic.' + s))}</li>`).join('')}</ul>
     <p>${esc(_('cred.disclaimer'))}</p>`;

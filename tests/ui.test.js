@@ -22,7 +22,7 @@ assert.ok(!/img\/planets/.test(kab), 'kabin-taslak.html asks for planet images o
 
 // 2) Every literal key in app.js / core.js exists (string literals inside a dictionary namespace, incl. ternaries)
 const spaces = new Set(Object.keys(DICT).map(k => k.split('.')[0]));
-for (const f of ['js/app.js', 'js/core.js', 'js/mode3d.js', 'js/globe.js', 'js/wizard.js']) {
+for (const f of ['js/app.js', 'js/core.js', 'js/mode3d.js', 'js/globe.js', 'js/wizard.js', 'js/record.js']) {
   for (const m of read(f).matchAll(/'([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9_]+)+)'/g)) {
     if (spaces.has(m[1].split('.')[0])) assert.ok(has(m[1]), `${f} key missing from dictionary: ${m[1]}`);
   }
@@ -1142,4 +1142,93 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(man.icons.some(i => i.sizes === '192x192') && man.icons.some(i => i.sizes === '512x512'), 'icons: 192 and 512 in the manifest');
   assert.ok(!exists('tools/icons/node_modules') && !exists('tools/icons/package.json') && read('tools/icons/render.js').includes("require('playwright-core')"), 'icons: the renderer is a script, Playwright stays outside the repository');
 }
-console.log('OK — all UI tests passed');
+// 39) Mission recording (js/record.js, js/rec-worker.mjs; Phase 17c): frame by frame, not a screen capture. The schedule
+// (u from 0 to 1, 10–20 s at 15 frames/s, slower around events, GIF delays in hundredths that keep the film's length,
+// the last frame held); sizes (even, no wider than the canvas); the GIF ladder (frame rate, colours, width); file names
+// from the mission; the watermark (bottom right) on every frame, the last included; a real GIF from the encoder (header,
+// size, loop, one image per frame, the last frame's pause, unchanged pixels transparent). The libraries load only with
+// a recording; the app draws a frame on demand and fits to the whole canvas while recording; the licences in Kaynakça.
+{
+  const Rc = require('../js/record.js');
+  const sc = Rc.recSchedule([0.3, 0.7]), n = sc.u.length;
+  assert.ok(n >= 10 * 15 && n <= 20 * 15 && sc.u[0] === 0 && sc.u[n - 1] === 1, `recording: ${n} frames`);
+  for (let k = 1; k < n; k++) assert.ok(sc.u[k] > sc.u[k - 1], 'recording: u only grows');
+  const step = u => { let k = 0; while (k < n - 1 && sc.u[k + 1] < u) k++; return sc.u[k + 1] - sc.u[k]; };
+  assert.ok(step(0.3) < step(0.5) / 2.5 && step(0.7) < step(0.5) / 2.5, `recording: slower at events (${(step(0.5) / step(0.3)).toFixed(1)}×)`);
+  const total = sc.delay.reduce((a, b) => a + b, 0) / 1000;
+  assert.ok(sc.delay.every(d => d % 10 === 0) && Math.abs(total - (sc.T + Rc.REC_OPT.hold)) < 0.011 && sc.delay[n - 1] >= Rc.REC_OPT.hold * 1000, `recording: ${total.toFixed(2)} s with the last frame held`);
+  const many = Rc.recSchedule(new Array(40).fill(0).map((_, i) => i / 40)), none = Rc.recSchedule([]);
+  assert.ok(many.T === Rc.REC_OPT.max && none.T >= Rc.REC_OPT.min && none.T <= Rc.REC_OPT.max, 'recording: 10–20 s');
+  const s1 = Rc.recSize(1392, 900, 720), s2 = Rc.recSize(390 * 2, 790 * 2, 1080), s3 = Rc.recSize(301, 201, 720);
+  assert.ok(s1.w === 720 && s1.h % 2 === 0 && Math.abs(s1.h / s1.w - 900 / 1392) < 0.01 && !s1.capped, 'recording: 720 px wide, aspect kept, even');
+  assert.ok(s2.w === 780 && s2.capped && s3.w % 2 === 0 && s3.h % 2 === 0 && s3.w <= 301, 'recording: never wider than the canvas');
+  const lad = Rc.recLadder(720);
+  assert.ok(lad[0].w === 720 && lad[0].fps === 15 && lad[0].colors === 255 && lad.some(c => c.fps === 10) && lad.some(c => c.colors < 255) && lad[lad.length - 1].w === 480, 'recording: the GIF ladder (frame rate, colours, width)');
+  assert.ok(Rc.recEstimate(1000, 100, 11) > 2000, 'recording: size estimate');
+  const tr = k => DICT[k];
+  const e600 = P.WIZ_EX.e600;
+  assert.strictEqual(Rc.recFileName(Rc.recWords({ kind: 'man', body: DICT['body.' + e600.body], type: 'hohmann', hp0: +e600.h0, ha0: +e600.h0, hp1: +e600.h1 }, tr), 'gif'), 'yorunge-dunya-600-1300km.gif', 'recording: file name of a maneuver');
+  assert.strictEqual(Rc.recFileName(Rc.recWords({ kind: 'transfer', a: DICT['body.earth'], b: DICT['body.moon'], mode: 'free' }, tr), 'mp4'), 'yorunge-dunya-ay-serbest-donus.mp4', 'recording: file name of a free return');
+  assert.strictEqual(Rc.recFileName(Rc.recWords({ kind: 'transfer', a: DICT['body.earth'], b: DICT['body.mars'], mode: 'capture' }, tr), 'gif'), 'yorunge-dunya-mars.gif', 'recording: file name of a transfer');
+  assert.strictEqual(Rc.recFileName(Rc.recWords({ kind: 'man', body: DICT['body.moon'], type: 'free' }, tr), 'webm'), 'yorunge-ay-serbest-yanma.webm', 'recording: file name of a free burn');
+  assert.ok(Rc.recSlug('Şğüöçı İ Âb') === 'sguoci-i-ab' && Rc.recFileName([], 'gif') === 'yorunge.gif', 'recording: Turkish letters, empty name');
+  // the watermark: one constant for the address, the site's name from the dictionary; on every frame, bottom right
+  assert.strictEqual(Rc.recMark(tr), DICT['meta.title'] + ' · baqikk.github.io/orbital-simulator', 'recording: the watermark text');
+  assert.strictEqual((read('js/record.js').match(/baqikk\.github\.io/g) || []).length, 1, 'recording: the address written once (SITE_URL)');
+  const mock = () => { const ops = []; return { ops, save() {}, restore() {}, fillRect() {}, drawImage(s) { ops.push(['img', s]); }, fillText(t, x, y) { ops.push(['text', t, x, y, this.textAlign, this.textBaseline]); } }; };
+  const deco = { bg: '#030507', ink: '#d9e7eb', mark: Rc.recMark(tr), title: 'Görev', sub: 'Toplam Δv 1 km/s' };
+  let lastOps = null;
+  for (let k = 0; k < n; k++) { const m = mock(); Rc.recCompose(m, ['gl', 'cv'], 720, 466, deco); lastOps = m.ops; assert.ok(m.ops.some(o => o[0] === 'text' && o[1] === deco.mark), 'recording: watermark on frame ' + k); }
+  const wm = lastOps.find(o => o[0] === 'text' && o[1] === deco.mark);
+  assert.ok(wm[2] > 600 && wm[3] > 420 && wm[4] === 'right' && wm[5] === 'bottom' && lastOps[0][1] === 'gl' && lastOps[1][1] === 'cv' && lastOps.some(o => o[1] === 'Görev' && o[2] < 40), 'recording: the last frame: canvases (3D below), title top left, watermark bottom right');
+  // the libraries: vendored, unchanged, only with a recording
+  const rj = read('js/record.js'), app = read('js/app.js');
+  for (const [d, f, l] of [['gifenc', 'gifenc.esm.js', 'LICENSE.md'], ['mp4-muxer', 'mp4-muxer.mjs', 'LICENSE'], ['webm-muxer', 'webm-muxer.mjs', 'LICENSE']]) {
+    assert.ok(fs.existsSync(path.join(__dirname, '..', 'vendor', d, f)) && /MIT License/.test(read(`vendor/${d}/${l}`)) && read(`vendor/${d}/README.md`).includes('sha1'), `recording: vendor/${d} (MIT, its source noted)`);
+    assert.ok(!html.includes('vendor/' + d) && !app.includes('vendor/' + d), `recording: vendor/${d} not loaded with the page`);
+  }
+  assert.ok(rj.includes("new Worker(new URL('js/rec-worker.mjs', document.baseURI), { type: 'module' })") && rj.includes("await import(new URL(v.box === 'mp4' ? 'vendor/mp4-muxer/mp4-muxer.mjs' : 'vendor/webm-muxer/webm-muxer.mjs'") && read('js/rec-worker.mjs').includes("from '../vendor/gifenc/gifenc.esm.js'"), 'recording: the encoder in a worker, the muxers by import(), only when recording');
+  assert.ok(html.includes('<script src="js/record.js"></script>') && html.includes('id="recBtn"') && html.includes('id="recPanel"') && has('rec.btn') && has('rec.tip'), 'recording: the button by the timeline');
+  for (const k of ['three', 'gifenc', 'mp4', 'webm']) assert.ok(has('cred.code.' + k) && app.includes(`${k}: 'https://`), 'recording: Kaynakça names ' + k);
+  // the app: one frame on demand, the loop idle meanwhile, the whole canvas as the frame
+  const db = app.slice(app.indexOf('function drawBody(now, once) {'), app.indexOf('\nfunction draw(now) {'));
+  assert.ok(db.length > 1000 && !db.replace(/if \(!once\) requestAnimationFrame\(draw\)/g, '').includes('requestAnimationFrame(draw)'), 'recording: drawBody never schedules itself when drawn once');
+  assert.ok(app.includes('function draw(now) { if (REC.busy) { last = now; requestAnimationFrame(draw); return; } drawBody(now, false); }') && app.includes('if (REC.full) return [{ x0: 0, x1: W, y0: 0, y1: H }];'), 'recording: the loop idles, the frame is the whole canvas');
+  assert.ok(rj.includes("recCompose(octx, is3d() ? [$('#gl'), cv] : [cv]") && rj.includes('drawBody(t, true);'), 'recording: 3D read right after drawing');
+  assert.ok(rj.includes("phone() ? { fmt: CAN_VIDEO ? 'video' : 'gif', w: 480 }") && rj.includes('navigator.canShare') && rj.includes('navigator.share('), 'recording: phones default to video at 480 px, share sheet');
+}
+// the encoder itself (an ES module): a real GIF
+(async () => {
+  const G = await import(require('url').pathToFileURL(path.join(__dirname, '..', 'js', 'rec-worker.mjs')).href);
+  const w = 64, h = 40, frame = k => {
+    const a = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h; i++) { a[4 * i] = 3; a[4 * i + 1] = 5; a[4 * i + 2] = 7; a[4 * i + 3] = 255; }
+    for (let y = 10; y < 20; y++) for (let x = 2 + 2 * k; x < 8 + 2 * k; x++) { const i = 4 * (y * w + x); a[i] = 255; a[i + 1] = 181; a[i + 2] = 71; }
+    for (let y = h - 4; y < h - 1; y++) for (let x = w - 20; x < w - 2; x++) { const i = 4 * (y * w + x); a[i] = a[i + 1] = a[i + 2] = 200; }
+    return a;
+  };
+  const delays = [70, 60, 70, 60, 70, 1570], N = delays.length, p = G.gifPalette([frame(0), frame(N - 1)]), g = G.gifStart(w, h, p);
+  for (let k = 0; k < N; k++) G.gifFrame(g, frame(k), delays[k]);
+  const b = G.gifEnd(g);
+  // walk the GIF's blocks: header, screen, global table, extensions, images (LZW data skipped by sub-blocks)
+  assert.strictEqual(String.fromCharCode(...b.slice(0, 6)), 'GIF89a', 'gif: header');
+  assert.ok((b[6] | b[7] << 8) === w && (b[8] | b[9] << 8) === h && (b[10] & 0x80), 'gif: logical screen and a global palette');
+  let i = 13 + 3 * (1 << ((b[10] & 7) + 1)), images = 0, loop = false;
+  const gce = [], skipSub = () => { while (b[i]) i += b[i] + 1; i++; };
+  while (i < b.length && b[i] !== 0x3b) {
+    if (b[i] === 0x21) {
+      const label = b[i + 1]; i += 2;
+      if (label === 0xf9) gce.push({ dispose: (b[i + 1] >> 2) & 7, transp: b[i + 1] & 1, delay: (b[i + 2] | b[i + 3] << 8) * 10, index: b[i + 4] });
+      if (label === 0xff && String.fromCharCode(...b.slice(i + 1, i + 12)) === 'NETSCAPE2.0') loop = true;
+      skipSub();
+    } else if (b[i] === 0x2c) { images++; const lct = b[i + 9] & 0x80; i += 10 + (lct ? 3 * (1 << ((b[i + 9] & 7) + 1)) : 0); i++; skipSub(); }
+    else throw new Error('gif: unknown block ' + b[i] + ' at ' + i);
+  }
+  assert.ok(b[i] === 0x3b && images === N && gce.length === N && loop, `gif: ${images} images, looping, ends with the trailer`);
+  assert.ok(gce[N - 1].delay === 1570 && gce.slice(1).every(e => e.transp && e.dispose === 1 && e.index === p.clear) && !gce[0].transp, 'gif: the last frame held; later frames draw only what changed');
+  const pr = G.gifProbe(w, h, [[frame(0), frame(1)], [frame(3), frame(4)]]);
+  assert.ok(pr.key > 0 && pr.diff > 0 && pr.diff < pr.key, 'gif: the probe (a following frame costs less than the first)');
+  const coarse = G.gifPalette([frame(0)], { fmt: 'rgb444', colors: 64 });
+  assert.ok(coarse.pal.length <= 65 && coarse.fmt === 'rgb444', 'gif: fewer, coarser colours on request');
+  console.log('OK — all UI tests passed');
+})().catch(e => { console.error(e); process.exit(1); });
