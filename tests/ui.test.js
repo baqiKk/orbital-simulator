@@ -1081,4 +1081,38 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   for (const f of ['applyWin', 'sceneAside', 'sceneEnd', 'sceneUnhide']) assert.ok(body(f).includes('railSync()'), `rail: ${f} updates the icons`);
   assert.ok(app.includes('if (winShown(id)) { setWin(id, { open: false }); return; }\n  sceneUnhide(id); setWin(id, { open: true, collapsed: false });'), 'rail: a click closes what is in view, else brings it into view');
 }
+// 38) Site icons (tools/icons): every page of the site links its icon (SVG, 32 px PNG), the touch icon, the manifest and a
+// theme colour; the files exist at their sizes (read from the PNG header), the touch icons opaque; the manifest names
+// the site with the --bg token as its colour; the SVGs are well-formed enough to load as images (no "--" in comments).
+{
+  const png = f => { const b = fs.readFileSync(path.join(__dirname, '..', f)); assert.ok(b.slice(1, 4).toString() === 'PNG', f + ' is a PNG'); return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), alpha: b[25] === 6 || b[25] === 4 }; };
+  const exists = f => fs.existsSync(path.join(__dirname, '..', f));
+  const bg = (/--bg:(#[0-9a-f]{6})/i.exec(read('css/style.css')) || [])[1];
+  const pages = fs.readdirSync(path.join(__dirname, '..')).filter(f => f.endsWith('.html') && !/^google[0-9a-f]+\.html$/.test(f)); // not the search console's token file
+  assert.ok(pages.includes('index.html') && pages.includes('kabin.html'), 'icons: the pages ' + pages.join(', '));
+  for (const f of pages) {
+    const h = read(f), k = /^kabin/.test(f) ? 'favicon-kabin' : 'favicon', touch = /^kabin/.test(f) ? 'apple-touch-icon-kabin.png' : 'apple-touch-icon.png';
+    for (const tag of [`<link rel="icon" href="${k}-32.png" sizes="32x32" type="image/png">`, `<link rel="icon" href="${k}.svg" type="image/svg+xml">`, `<link rel="apple-touch-icon" href="${touch}">`, '<link rel="manifest" href="site.webmanifest">'])
+      assert.ok(h.includes(tag), `icons: ${f} has ${tag}`);
+    const tc = (/<meta name="theme-color" content="(#[0-9a-f]{6})">/i.exec(h) || [])[1];
+    assert.ok(tc && new RegExp('--[a-z-]+:' + tc + '\\b', 'i').test(read('css/style.css')), `icons: ${f} theme colour from a token (${tc})`);
+    assert.ok(h.indexOf(`${k}-32.png`) < h.indexOf(`${k}.svg`), `icons: ${f} lists the PNG before the SVG (browsers that read SVG take the SVG)`);
+  }
+  for (const [f, s, opaque] of [['favicon-32.png', 32], ['favicon-kabin-32.png', 32], ['apple-touch-icon.png', 180, true], ['apple-touch-icon-kabin.png', 180, true], ['icon-192.png', 192, true], ['icon-512.png', 512, true]]) {
+    const p = png(f); assert.ok(p.w === s && p.h === s && (!opaque || !p.alpha), `icons: ${f} ${p.w}×${p.h}${opaque ? ', opaque' : ''}`);
+  }
+  for (const f of ['favicon.svg', 'favicon-kabin.svg']) {
+    const s = read(f);
+    assert.ok(s.startsWith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">') && s.trim().endsWith('</svg>') && /@media \(max-width:24px\)/.test(s), `icons: ${f} (64 × 64, simpler at tab size)`);
+    for (const c of s.matchAll(/<!--([\s\S]*?)-->/g)) assert.ok(!c[1].includes('--'), `icons: ${f} comment without "--" (else not XML, the icon would not load)`);
+  }
+  const man = JSON.parse(read('site.webmanifest'));
+  assert.ok(man.name === 'Yörünge Transfer Simülatörü' && man.short_name === 'Yörünge' && man.theme_color === bg && man.background_color === bg && man.lang === 'tr', 'icons: the manifest names the site, colours from --bg');
+  for (const i of man.icons) {
+    assert.ok(exists(i.src), 'icons: manifest file ' + i.src);
+    if (i.type === 'image/png') { const p = png(i.src); assert.strictEqual(i.sizes, p.w + 'x' + p.h, 'icons: manifest size of ' + i.src); }
+  }
+  assert.ok(man.icons.some(i => i.sizes === '192x192') && man.icons.some(i => i.sizes === '512x512'), 'icons: 192 and 512 in the manifest');
+  assert.ok(!exists('tools/icons/node_modules') && !exists('tools/icons/package.json') && read('tools/icons/render.js').includes("require('playwright-core')"), 'icons: the renderer is a script, Playwright stays outside the repository');
+}
 console.log('OK — all UI tests passed');

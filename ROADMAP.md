@@ -288,6 +288,10 @@ Kararlar (2026-11-12): bi-eliptiğin rb sınırı etki küresinin yarısı; kay�
 - Açılışta Görev (ve Sonuçlar, Genel bakış) simgesi etkin görünüyordu: pencereler açık sayılıyor ama manzara onları kenara almıştı. Simge artık yalnızca pencere gerçekten görünürken (açık, katlı değil, kenarda değil) etkin; kapanınca, katlanınca, manzara başlayıp bitince güncellenir. Etkin olmayan simgeye tıklama pencereyi açar ve genişletir.
 - Sonuç: prefs.js `railPressed`, app.js `railSync` / `winShown`; ui.test.js 37. test; tarayıcıda 8 simge × aç / katla / genişlet / kapat ve manzara başla/bitir denendi.
 
+### Faz 17d — Site simgesi ✅ tamamlandı (2026-11-12)
+- Özgün simge: koyu disk üzerinde halkalı küçük gezegen, onu saran kesik çizgili transfer yörüngesi (amber), üstünde araç noktası; 16 px'te kesikler ve ince ayrıntı kalkar (SVG içi boyut medya sorgusu). Kabin varyantı: pirinç lomboz içinde gezegen, önünde beyaz kedinin kulakları (arkadan).
+- Sonuç: `favicon.svg`, `favicon-kabin.svg`, PNG'ler (32, 180, 192, 512; `tools/icons/render.js`, Playwright depo dışında), `site.webmanifest`; index.html, kabin.html, kabin-taslak.html bağlantıları ve theme-color; ui.test.js 38. test.
+
 ## Notlar
 - Hibrit OTV hazır aracı: itki, Isp, kütle ve tek ateşleme süresini birlikte veren yayımlanmış birincil bir kaynak bulununca eklenecek. Yayımlanmamış şirket verileri kullanılmayacak.
 
