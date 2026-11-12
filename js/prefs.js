@@ -370,4 +370,84 @@ function tourAt(T, P, D) {
   }
 }
 
-if (typeof module !== 'undefined') module.exports = { WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+// ----- The opening view: Saturn back-lit (replaces the tour as the default) -----
+// Saturn seen from its night side: the Sun behind it and to one side (phase angle, Sun–Saturn–camera, `phase`), the
+// camera a little above the ecliptic (`elev`), the Sun and Saturn in one frame with the Milky Way. Of the two places
+// that give that phase and height (the Sun to the left or to the right), the one with more of the bright band in
+// frame wins (a rough band: galactic latitude within ~10°, brightest towards the centre), the rings seen open (the
+// planet's shadow across them) and their lit face counting too. Wide screens keep the ecliptic level (Saturn on one side, the Sun near the other edge); tall ones turn the view
+// (roll) so the Sun stands above Saturn. The field of view is what puts the Sun there, within fovMin..fovMax.
+// Drift: the camera sways slowly around that place (phase and height, minutes per swing), the frame itself fixed.
+const SAT_SHOT = { phase: 128, phaseTall: 136, elev: 8, ring: 0.2, ringTall: 0.34, fovMin: 40, fovMax: 85,
+  sway: { phase: 3, elev: 2.5, tp: 420, te: 330 } };
+const D2R_ = Math.PI / 180;
+// galactic axes in the J2000 ecliptic (IAU: north pole RA 192.85948°, Dec +27.12825°; centre RA 266.40510°, Dec −28.93617°)
+const GAL_AX = (() => {
+  const eq = (ra, de) => { ra *= D2R_; de *= D2R_; const x = Math.cos(de) * Math.cos(ra), y = Math.cos(de) * Math.sin(ra), z = Math.sin(de), e = 23.4392911 * D2R_; return [x, Math.cos(e) * y + Math.sin(e) * z, -Math.sin(e) * y + Math.cos(e) * z]; };
+  const Z = eq(192.85948, 27.12825), X0 = eq(266.40510, -28.93617), k = X0[0] * Z[0] + X0[1] * Z[1] + X0[2] * Z[2], X = v3n([X0[0] - k * Z[0], X0[1] - k * Z[1], X0[2] - k * Z[2]]);
+  return { X, Y: [Z[1] * X[2] - Z[2] * X[1], Z[2] * X[0] - Z[0] * X[2], Z[0] * X[1] - Z[1] * X[0]], Z };
+})();
+// how bright the Milky Way roughly is towards unit direction d (ecliptic): 1 at the galactic centre
+function milkyBright(d) {
+  const g = GAL_AX, b = Math.asin(Math.max(-1, Math.min(1, d[0] * g.Z[0] + d[1] * g.Z[1] + d[2] * g.Z[2]))) / D2R_;
+  const l = Math.atan2(d[0] * g.Y[0] + d[1] * g.Y[1] + d[2] * g.Y[2], d[0] * g.X[0] + d[1] * g.X[1] + d[2] * g.X[2]), c = (1 + Math.cos(l)) / 2;
+  return Math.exp(-(b / 10) * (b / 10)) * (0.25 + 0.75 * c * c);
+}
+// The camera basis as js/mode3d.js builds it (d: target → camera, unit; right r level with the ecliptic), turned by roll
+function shotBasis(d, roll) {
+  const yaw = Math.atan2(d[0], -d[1]), r = [Math.cos(yaw), Math.sin(yaw), 0];
+  const u = [d[1] * r[2] - d[2] * r[1], d[2] * r[0] - d[0] * r[2], d[0] * r[1] - d[1] * r[0]], c = Math.cos(roll), s = Math.sin(roll);
+  return { r: [0, 1, 2].map(k => r[k] * c + u[k] * s), u: [0, 1, 2].map(k => u[k] * c - r[k] * s), d };
+}
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+// eye direction (Saturn → camera) at phase angle ph and ecliptic latitude el (deg), the Sun along unit s; g = ±1 the side
+function shotEye(s, ph, el, g) {
+  const e = el * D2R_, bs = Math.asin(Math.max(-1, Math.min(1, s[2]))), ls = Math.atan2(s[1], s[0]);
+  const c = (Math.cos(ph * D2R_) - Math.sin(e) * Math.sin(bs)) / (Math.cos(e) * Math.cos(bs)), dl = Math.acos(Math.max(-1, Math.min(1, c))), l = ls + g * dl;
+  return [Math.cos(e) * Math.cos(l), Math.cos(e) * Math.sin(l), Math.sin(e)];
+}
+// sat, sun: positions (m, ecliptic axes); pole: Saturn's north pole (unit); box: { W, H } the canvas and { l, t, w, h }
+// the free area (px) to compose in; o: { R ring radius (m), t sway time (s; 0 or none: no sway), side (as returned, once chosen) }.
+// Returns { e (Saturn → camera, unit), roll (rad), fov (deg), f (px), x, y (Saturn's place, px), sun: [x, y] (the Sun's
+// place), dist (m), side ([g, k], to keep), phase (deg, with the sway), lit (the camera on the rings' lit face) }.
+function saturnShot(sat, sun, pole, box, o = {}) {
+  const P = SAT_SHOT, s = v3n([sun[0] - sat[0], sun[1] - sat[1], sun[2] - sat[2]]), tall = box.h > box.w * 1.05;
+  const ph0 = tall ? P.phaseTall : P.phase, ring = (tall ? P.ringTall : P.ring) * Math.min(box.w, box.h);
+  const compose = (g, k, yk) => {
+    const d = shotEye(s, ph0, P.elev, g), B0 = shotBasis(d, 0), dep = -dot3(s, B0.d), x = dot3(s, B0.r) / dep, y = dot3(s, B0.u) / dep;
+    const tg = Math.hypot(x, y), a0 = Math.atan2(y, x), side = x >= 0 ? 1 : -1;
+    let roll = 0, X, Y, L;
+    if (!tall && Math.abs(Math.sin(a0)) < Math.sin(35 * D2R_)) { // level: Saturn to one side, the Sun's height as it comes
+      X = box.l + box.w * (0.5 - side * 0.24); Y = box.t + box.h * 0.58;
+      L = box.w * 0.64 / Math.abs(Math.cos(a0));
+      const sy = Y - L * Math.sin(a0), top = box.t + box.h * 0.06, bot = box.t + box.h * 0.94;
+      if (sy < top) L = (Y - top) / Math.sin(a0); else if (sy > bot) L = (bot - Y) / -Math.sin(a0);
+    } else { // turned: the Sun above Saturn, towards one side (k), Saturn towards the other
+      X = box.l + box.w * (0.5 - k * 0.14); Y = box.t + box.h * yk;
+      const sx = box.l + box.w * (0.5 + k * 0.32), sy = box.t + box.h * 0.06;
+      L = Math.hypot(sx - X, sy - Y); roll = a0 - Math.atan2(Y - sy, sx - X);
+    }
+    let f = L / tg, fov = 2 * Math.atan(box.H / 2 / f) / D2R_;
+    if (fov < P.fovMin || fov > P.fovMax) { fov = Math.max(P.fovMin, Math.min(P.fovMax, fov)); f = box.H / 2 / Math.tan(fov * D2R_ / 2); }
+    const B = shotBasis(d, roll), dS = -dot3(s, B.d), sx = X + f * dot3(s, B.r) / dS, sy = Y - f * dot3(s, B.u) / dS;
+    const inside = sx > box.l + 0.02 * box.w && sx < box.l + 0.98 * box.w && sy > box.t + 0.02 * box.h && sy < box.t + 0.98 * box.h;
+    let mw = 0, n = 0; // the band across the frame
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 6; j++) {
+      const px = (box.l + box.w * (i + 0.5) / 8 - X) / f, py = -(box.t + box.h * (j + 0.5) / 6 - Y) / f;
+      mw += milkyBright(v3n([0, 1, 2].map(k => B.r[k] * px + B.u[k] * py - B.d[k]))); n++;
+    }
+    const lit = dot3(d, pole) * dot3(s, pole) > 0, open = Math.min(1, Math.abs(dot3(d, pole)) / Math.sin(20 * D2R_));
+    return { g, k, roll, f, fov, X, Y, mw: mw / n, lit, score: mw / n + (lit ? 0.06 : 0) + 0.1 * open - (inside ? 0 : 1) };
+  };
+  // the side kept once chosen (o.side = [g, k] as returned: the eye's side, the Sun's corner when turned)
+  const cands = o.side && o.side.length === 2 ? [o.side] : [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+  let c = null; // tall: Saturn's height too (lower leaves room for the Sun, higher for what lies beyond Saturn)
+  for (const [g, k] of cands) for (const yk of tall ? [0.6, 0.68, 0.76] : [0.62]) { const q = compose(g, k, yk); if (!c || q.score > c.score + 1e-9) c = q; }
+  // the sway: the eye moves, the frame (roll, focal length, Saturn's place) stays
+  const sw = P.sway, t = o.t || 0, ph = ph0 + (t ? sw.phase * Math.sin(2 * Math.PI * t / sw.tp) : 0), el = P.elev + (t ? sw.elev * Math.sin(2 * Math.PI * t / sw.te + 1) : 0);
+  const e = shotEye(s, ph, el, c.g), B = shotBasis(e, c.roll), dep = -dot3(s, B.d);
+  const sunAt = [c.X + c.f * dot3(s, B.r) / dep, c.Y - c.f * dot3(s, B.u) / dep];
+  return { e, roll: c.roll, fov: c.fov, f: c.f, x: c.X, y: c.Y, sun: sunAt, dist: c.f * (o.R || 1.4e8) / ring, side: [c.g, c.k], phase: ph, lit: c.lit, milky: c.mw };
+}
+
+if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

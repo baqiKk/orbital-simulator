@@ -13,7 +13,16 @@ const ROT3 = 0.006;                      // rad per px of drag
 const V3S = { grid: true, big: false };  // view options (HUD)
 let V3 = null, V3load = null, V3fail = false, V3sys = null, V3caps = null, MAP3 = null;
 const CAM3 = { sim: cam3new(1e9), map: cam3new(7.5e11) };
-function cam3new(dist) { return { t: [0, 0, 0], yaw: 0, elev: 55 * Math.PI / 180, dist, cx: null, cy: null }; }
+// roll (rad, about the view direction) and fov (deg, vertical) are the opening Saturn shot's; elsewhere 0 and FOV3
+function cam3new(dist) { return { t: [0, 0, 0], yaw: 0, elev: 55 * Math.PI / 180, dist, cx: null, cy: null, roll: 0, fov: FOV3 }; }
+// back to a level view and the usual field of view, gently (dt s; at once when 0)
+function camLevel3(c, dt) {
+  if (!c.roll && c.fov === FOV3) return;
+  const k = dt > 0 && !reduceMotion ? 1 - Math.exp(-dt / 0.5) : 1;
+  const f0 = c.fov; c.roll -= c.roll * k; c.fov += (FOV3 - c.fov) * k;
+  c.dist *= Math.tan(f0 * Math.PI / 360) / Math.tan(c.fov * Math.PI / 360); // what is followed keeps its size
+  if (Math.abs(c.roll) < 1e-4 && Math.abs(c.fov - FOV3) < 1e-3) { c.roll = 0; c.fov = FOV3; }
+}
 const cam3 = () => (MAP.on ? CAM3.map : CAM3.sim);
 const is3d = () => MODE === '3d' && !!V3;
 // WebGL 2 is required by Three.js r163+
@@ -37,16 +46,17 @@ function load3d() {
 }
 
 // ---------- camera ----------
-// right r, up u, target→camera d, eye e, focal length f (px), principal point (cx, cy)
-const CB = { r: [1, 0, 0], u: [0, 1, 0], d: [0, 0, 1], e: [0, 0, 0], f: 1, cx: 0, cy: 0 };
+// right r, up u, target→camera d, eye e, focal length f (px), principal point (cx, cy), vertical field of view (deg)
+const CB = { r: [1, 0, 0], u: [0, 1, 0], d: [0, 0, 1], e: [0, 0, 0], f: 1, cx: 0, cy: 0, fov: FOV3 };
 function camBasis(c) {
   const cy = Math.cos(c.yaw), sy = Math.sin(c.yaw), ce = Math.cos(c.elev), se = Math.sin(c.elev);
   const r = CB.r, u = CB.u, d = CB.d;
   r[0] = cy; r[1] = sy; r[2] = 0;
   d[0] = sy * ce; d[1] = -cy * ce; d[2] = se;
   u[0] = d[1] * r[2] - d[2] * r[1]; u[1] = d[2] * r[0] - d[0] * r[2]; u[2] = d[0] * r[1] - d[1] * r[0];
+  if (c.roll) { const cr = Math.cos(c.roll), sr = Math.sin(c.roll); for (let k = 0; k < 3; k++) { const a = r[k], b = u[k]; r[k] = a * cr + b * sr; u[k] = b * cr - a * sr; } }
   for (let k = 0; k < 3; k++) CB.e[k] = c.t[k] + d[k] * c.dist;
-  CB.f = (H / 2) / Math.tan(FOV3 * Math.PI / 360);
+  CB.fov = c.fov || FOV3; CB.f = (H / 2) / Math.tan(CB.fov * Math.PI / 360);
   CB.cx = c.cx == null ? W / 2 : c.cx; CB.cy = c.cy == null ? H / 2 : c.cy;
   return CB;
 }
@@ -331,7 +341,7 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   fly3(c, S.follow !== 'free');
   c.dist = Math.max(c.dist, minDist3());
   const B = camBasis(c);
-  V3.view(c.t, B.r, B.u, B.d, c.dist, B.cx, B.cy);
+  V3.view(c.t, B.r, B.u, B.d, c.dist, B.cx, B.cy, B.fov);
   const X = FP.X, Y = FP.Y, Z = FP.Z;
   ROT9[0] = X[0]; ROT9[1] = X[1]; ROT9[2] = X[2]; ROT9[3] = Y[0]; ROT9[4] = Y[1]; ROT9[5] = Y[2]; ROT9[6] = Z[0]; ROT9[7] = Z[1]; ROT9[8] = Z[2];
 
@@ -564,14 +574,15 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
   const c = CAM3.map;
   if (MAP.follow != null) c.t = [pos[3 * MAP.follow], pos[3 * MAP.follow + 1], pos[3 * MAP.follow + 2]];
   if (SCENE.on) sceneAim3(pos, c);
+  if (!(SCENE.on && !SCENE.free && SCENE.kind === 'saturn')) camLevel3(c, SCENE.on ? SCENE.dt : 0);
   fly3(c, MAP.follow != null);
   c.dist = Math.max(c.dist, minDist3());
   const B = camBasis(c);
-  V3.view(c.t, B.r, B.u, B.d, c.dist, B.cx, B.cy);
+  V3.view(c.t, B.r, B.u, B.d, c.dist, B.cx, B.cy, B.fov);
   mapOrbits3(T);
   const keyA = S.bodies[0] && S.bodies[0].key, keyB = S.bodies[1] && S.bodies[1].key, moonsOn = MAP.moons && !MAP.log;
   // a moon is shown (linear scale only) once its orbit is a few pixels across
-  const scr = [], rpx = new Float64Array(N), show = new Uint8Array(N);
+  const scr = [], rpx = new Float64Array(N), show = new Uint8Array(N), shot = SCENE.on && !SCENE.free && SCENE.kind === 'saturn';
   OCC.length = 0;
   for (let i = 0; i < N; i++) {
     proj3(pos, PJ, 3 * i); scr.push([PJ[0], PJ[1], PJ[2]]);
@@ -587,7 +598,7 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
     V3.body('map', i, [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], r, i === MSUN ? null : [-pos[3 * i] / l, -pos[3 * i + 1] / l, -pos[3 * i + 2] / l], !!show[i], o);
     if (show[i]) OCC.push([pos[3 * i], pos[3 * i + 1], pos[3 * i + 2], r, i]);
     if (show[i] && i !== MSUN && PJ[2] > 0) { const e = CB.e, vx = e[0] - pos[3 * i], vy = e[1] - pos[3 * i + 1], vz = e[2] - pos[3 * i + 2]; skyLit(PJ[0], PJ[1], rpx[i], -(pos[3 * i] * vx + pos[3 * i + 1] * vy + pos[3 * i + 2] * vz) / (l * (Math.hypot(vx, vy, vz) || 1)), MAPK[i], !!BODIES[MAPK[i]].rings); }
-    if (mapSys.orb[i]) V3.lineSet('map', 'orb' + i, moon ? [pos[3 * p], pos[3 * p + 1], pos[3 * p + 2]] : null, !!show[i] && (moon || !SCENE.on));
+    if (mapSys.orb[i]) V3.lineSet('map', 'orb' + i, moon ? [pos[3 * p], pos[3 * p + 1], pos[3 * p + 2]] : null, !!show[i] && (moon ? !shot : !SCENE.on)); // the opening shot: no lines
   }
   if (tr && craft) { V3.lineSet('map', 'traj', null, true); V3.lineSet('map', 'trajB', null, true); V3.lineUpTo('map', 'trajB', pathIdx); }
   grid3(c, V3S.grid && !MAP.log && !SCENE.on); // the opening scene stays clean: no grid, no node marks
@@ -617,6 +628,7 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
     const [x, y, dep] = scr[i], r = rpx[i], k = MAPK[i], moon = isMoon(i);
     if (!(dep > 0) || x < -40 || x > W + 40 || y < -40 || y > H + 40 || behind3(pos, 3 * i, i)) continue;
     addHit('m', i, x, y, r);
+    if (shot && !moon && i !== MSUN && k !== 'saturn') continue; // the opening shot names Saturn, its moons and the Sun
     if ((k === keyA || k === keyB) && !SCENE.on) { ctx.strokeStyle = k === keyA ? COL.traj : COL.orbit; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.2832); ctx.stroke(); }
     if (moon && (!Q.glow || (dep > 0 && Math.hypot(MP[3 * i] - MP[3 * MPAR[i]], MP[3 * i + 1] - MP[3 * MPAR[i] + 1]) * CB.f / dep < 22))) continue;
     const txt = _('body.' + k).toLocaleUpperCase(DICT['meta.locale']), w = ctx.measureText(txt).width;

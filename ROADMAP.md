@@ -277,6 +277,13 @@ Kararlar (2026-11-12): bi-eliptiğin rb sınırı etki küresinin yarısı; kay�
 - Serbest yanma (Faz 7'deki madde): başlangıç yörüngesi + yer + prograd/radyal/normal Δv (`core.js freeBurn`, `M.type = 'free'`).
 - Sonuç (js/wizard.js): örnekler tarayıcıda çalıştırıldı — Dünya 600 → 1300 km 353 m/s, 52 dk (Hohmann; bi-eliptik 356 m/s); LEO 28,5° → GEO 4,231 km/s; Ay 100 → 20 km 37 m/s; Mars 400 → 250 km 68 m/s; GTO → GEO 1,472 km/s (sonlu yanmayla 400 N, 2 sa 52 dk, 1 481 m/s, yakıt 1 317 kg); Dünya → Mars (seçilen tarihten sonraki pencere) 5,744 km/s, 304 gün; Ay serbest dönüşü 3,166 km/s; Venüs yakın geçişi Mart 2028; yalnız normal 500 m/s → eğim 3,73°. Sonuç kartı yalnızca sihirbazın kurduğu görevi anlatır (senaryo yüklenince form). Uzman düzeni eski formu gösterir. Testler: sıfır Δv; prograd → vis-viva; saf normal Δv: eğim atan(Δv/v), hız √(v² + Δv²); hızı koruyan eğim değişimi 2·asin(Δv/2v); `rv2el(r, v + Δv)` ile tutarlılık.
 
+## Faz 17 — Açılış manzarası, simgeler, görev kaydı
+
+### Faz 17a — Arkadan aydınlanan Satürn ✅ tamamlandı (2026-11-12)
+- Açılışta tur yerine Satürn: Güneş arkasında ve yanında (faz açısı geniş ekranda 128°, telefonda 136°), kamera ekliptiğin 8° üstünde, Güneş, Samanyolu şeridi ve Satürn aynı karede; gezegenin halkalara düşen gölgesi görünür. İki olası göz yerinden kadrajda daha çok Samanyolu (ve açık halka) gösteren seçilir; telefonda görünüm döndürülür (Güneş üstte), görüş alanı Güneş'i kadraja koyacak kadar genişler (en çok 85°).
+- Kamera dakikalar süren salınımla (±3° faz, ±2,5° yükseklik) yavaşça kayar; canlı saat aynen. Dokununca serbest bakış (görünüm yumuşakça düzelir), "Satürn'e dön" kadraja döner. Tur seçicide "Tur" olarak kalır. 2B: Rhea'ya kadar yörüngelerle sakin Satürn, 5 dakikalık nefes.
+- Sonuç: prefs.js `SAT_SHOT` / `saturnShot`, app.js `sceneAim3` / `sceneBox`, mode3d.js kamera `roll` / `fov` / `camLevel3`; ui.test.js 36. test.
+
 ## Notlar
 - Hibrit OTV hazır aracı: itki, Isp, kütle ve tek ateşleme süresini birlikte veren yayımlanmış birincil bir kaynak bulununca eklenecek. Yayımlanmamış şirket verileri kullanılmayacak.
 

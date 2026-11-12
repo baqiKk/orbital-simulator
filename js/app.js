@@ -2354,14 +2354,15 @@ MAP.today = utcToDays(Date.now()) * DAY;
 const mapTime = t => (SCENE.on ? SCENE.t : (S.model === 'real' ? S.M.t0 * DAY : MAP.today) + t);
 
 // ===================== Opening scene =====================
-// The site opens on a calm view instead of a running mission: Saturn and its moons, or the Earth and the Moon, today,
+// The site opens on a calm view instead of a running mission: Saturn back-lit (the default; the tour, the Earth and the
+// Moon on the scene switch), today,
 // on the live clock (MCLK, 1 s/s at first), the camera drifting gently (not in the low-resource mode or with reduced motion).
 // It is the map's renderer (real bodies, their textures) on its own clock and camera aim; the default mission is loaded
 // behind it, paused, its readout, timeline and windows (mission, results) set aside. A rebuild (picking a scenario,
 // changing the mission), the map button or the M key end it and everything runs as before. Moving the camera or
 // picking a body keeps the scene but stops the aim. The first-run mode question comes first: until it is answered
 // nothing is drawn or fetched (wait).
-const SCENE = { on: false, wait: false, kind: 'tour', tt: 0, tD: null, t: 0, dt: 0, age: 0, free: false, s0: 0, i3: false, k2: 1, k3: 1, hide: new Set() };
+const SCENE = { on: false, wait: false, kind: 'saturn', side: null, tt: 0, tD: null, t: 0, dt: 0, age: 0, free: false, s0: 0, i3: false, k2: 1, k3: 1, hide: new Set() };
 // The map's clock (core.js clockAt; Phase 16a): live at first (the wall clock, 1 s/s), sped up from the live bar. The
 // scene (the opening tour, Saturn, the Earth and the Moon, the free look) runs on it; a mission and its map keep the
 // mission's own time.
@@ -2370,7 +2371,7 @@ const LIVE = { since: Date.now(), key: '', sub: '', tipUntil: 0 };
 const sceneDrift = () => Q.glow && !lowQ && !reduceMotion;
 // o.done: the tour at its last stop (back from the cabin; with reduced motion it always starts there)
 function sceneSet(kind, o = {}) {
-  Object.assign(SCENE, { kind, free: false, s0: 0, i3: false, k3: 1, tt: o.done || reduceMotion ? OPEN_TOUR_S : 0, tD: null });
+  Object.assign(SCENE, { kind, free: false, s0: 0, i3: false, side: null, k3: 1, tt: o.done || reduceMotion ? OPEN_TOUR_S : 0, tD: null });
   MAP.log = false; MAP.moons = true; $('#tMoons').checked = true; syncMapUI();
   MAP.needFit = false; MAP.follow = kind === 'tour' ? null : MAPK.indexOf(kind === 'earth' ? 'earth' : 'saturn');
   setSeg('#wcScene', kind);
@@ -2386,7 +2387,7 @@ function sceneStart(free) {
   skyHiAt = performance.now() + 5000;
   S.playing = false; setPlayIcon();
   setMap(true); sceneAside();
-  if (free) { SCENE.free = true; MAP.needFit = false; } else sceneSet('tour');
+  if (free) { SCENE.free = true; MAP.needFit = false; } else sceneSet('saturn');
   if (MCLK.live) liveTipOnce();
 }
 // toMission: back to the mission view, playing as a freshly loaded one does
@@ -2483,21 +2484,29 @@ function sceneAim2(pos) {
     cam.cx = pos[2 * e] + dx / 2; cam.cy = pos[2 * e + 1] + dy / 2;
   } else {
     if (!SCENE.s0) SCENE.s0 = Math.min(fw, fh) * 0.47 / (1.3 * BODIES.rhea.orb.sat[0] * 1e3);
-    cam.scale = SCENE.s0 * (sceneDrift() ? 1 + 0.035 * Math.sin(SCENE.age * 2 * Math.PI / 50) : 1);
+    cam.scale = SCENE.s0 * (sceneDrift() ? 1 + 0.05 * Math.sin(SCENE.age * 2 * Math.PI / 300) : 1); // a slow breath, minutes long
   }
   cam.cx -= ox / cam.scale; cam.cy += oy / cam.scale;
 }
-// 3D (map camera c, positions pos 3 per body): Saturn from 18° above its lit ring face, 50° off the Sun, turning slowly.
+// 3D (map camera c, positions pos 3 per body): Saturn back-lit, the Sun and the Milky Way in one frame (prefs.js
+// saturnShot), the camera swaying slowly about that place; the frame kept as the free area changes, reached gently.
 // The Earth and the Moon: when the Earth seen from the Moon shows a day and a night side (25–80 % lit), from beyond the
 // Moon along their line, a little above it (the Moon large in front, the Earth above it: an "Earthrise"); else (near
 // full or new moon) from the side, square to the Sun so both are half lit, the bodies enlarged by one common factor (k3)
-// Saturn's view (from the body towards the eye): 18° above its lit ring face, 50° off the Sun
+// the tour's Saturn stop (from the body towards the eye): 18° above its lit ring face, 50° off the Sun
 function saturnEye(pos) {
   const v = i => [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], nrm = a => { const l = Math.hypot(...a) || 1; return a.map(x => x / l); };
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
   const i = MAPK.indexOf('saturn'), Ax = bodyAxes('saturn', SCENE.t, MP, MV, i, MPAR[i], new Array(9)), p = [Ax[2], Ax[5], Ax[8]], s = nrm(v(i).map(x => -x));
   const sp = dot(s, p), h = nrm(s.map((x, k) => x - sp * p[k])), w = cross(p, h), a = 50 * D2R, el = 18 * D2R * (sp >= 0 ? 1 : -1);
   return [0, 1, 2].map(k => Math.cos(el) * (Math.cos(a) * h[k] + Math.sin(a) * w[k]) + Math.sin(el) * p[k]);
+}
+// the opening shot's frame (px): the free area, above the start screen's panel while it is open
+function sceneBox() {
+  const q = insets(), b = { W, H, l: q.l, t: q.t, w: W - q.l - q.r, h: H - q.t - q.b };
+  const p = !$('#start').hidden && $('#start .start-in');
+  if (p) { const top = p.getBoundingClientRect().top - stage.getBoundingClientRect().top - 8; if (top > b.t + 0.35 * b.h) b.h = Math.min(b.h, top - b.t); }
+  return b;
 }
 // the tour's bodies from a position getter (map body index → [x, y, z])
 const TOUR_I = Object.fromEntries(OPEN_TOUR.map(k => [k.k, MAPK.indexOf(k.k)]));
@@ -2519,13 +2528,13 @@ function sceneAim3(pos, c) {
     SCENE.k3 = 1 + (clamp(BIG_PX / (mapSys.R[TOUR_I.earth] * fpx / c.dist), 1, BIG_K) - 1) * tourNear(o, P);
     return;
   }
-  if (SCENE.kind === 'saturn') {
-    if (!SCENE.i3) {
-      SCENE.i3 = true;
-      look(saturnEye(pos));
-      frameRad3(c, 1.2 * BODIES.rhea.orb.sat[0] * 1e3, 0.58); // seen from low, the orbits are flattened: fill more
-    }
-    if (sceneDrift()) c.yaw += 0.008 * SCENE.dt;
+  if (SCENE.kind === 'saturn') { // back-lit, the Sun and the Milky Way in frame (prefs.js saturnShot), swaying slowly
+    const i = MAPK.indexOf('saturn'), Ax = bodyAxes('saturn', SCENE.t, MP, MV, i, MPAR[i], new Array(9)), sat = BODIES.saturn;
+    const o = saturnShot(v(i), v(MSUN), [Ax[2], Ax[5], Ax[8]], sceneBox(), { R: sat.rings.r[1] * sat.rings.req * 1e3, t: sceneDrift() ? SCENE.age : 0, side: SCENE.side });
+    // a new frame (the start screen gone, a resize, a turned phone) is reached in about a second; the sway as it comes
+    const k = SCENE.i3 && !reduceMotion ? 1 - Math.exp(-SCENE.dt / 0.7) : 1, dr = Math.atan2(Math.sin(o.roll - c.roll), Math.cos(o.roll - c.roll));
+    SCENE.side = o.side; SCENE.i3 = true; look(o.e);
+    c.roll += dr * k; c.fov += (o.fov - c.fov) * k; c.dist *= Math.pow(o.dist / c.dist, k); c.cx += (o.x - c.cx) * k; c.cy += (o.y - c.cy) * k;
     return;
   }
   const E = v(MAPK.indexOf('earth')), Mo = v(MAPK.indexOf('moon')), L = Math.hypot(Mo[0] - E[0], Mo[1] - E[1], Mo[2] - E[2]);

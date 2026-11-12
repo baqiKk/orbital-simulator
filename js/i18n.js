@@ -450,7 +450,7 @@ const I18N = {
     'why.aero': 'Atmosfer geçişi: fazla hız sürtünmeyle alınır (anlık ve ideal varsayılır).',
     'start.title': 'Ne yapmak istersin?',
     'start.scene': 'Manzarayı izle',
-    'start.sceneD': 'Satürn\'den Güneş\'e kısa bir tur; gezegenler bugünkü yerlerinde, gerçek zamanda.',
+    'start.sceneD': 'Satürn, Güneş arkasından aydınlatırken, Samanyolu önünde; bugünkü yerinde, gerçek zamanda.',
     'start.mission': 'Bir göreve çık',
     'start.missionD': 'Ay\'a ya da Mars\'a hazır bir yolculuk, olayları açıklanarak.',
     'start.design': 'Kendi transferini tasarla',

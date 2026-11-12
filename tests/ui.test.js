@@ -988,7 +988,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const z = P.zoomPan(1, 100, 0);
   assert.ok(Math.abs(z.at(z.S)[1] - 100) < 1e-9 && z.at(z.S / 2)[0] === 0, 'zoom only');
   const app = read('js/app.js');
-  assert.ok(app.includes('tourAt(SCENE.tt, P, SCENE.tD)') && app.includes("sceneSet('tour')") && has('chip.replayTour') && has('wc.tour'), 'the scene opens on the tour, replayable');
+  assert.ok(app.includes('tourAt(SCENE.tt, P, SCENE.tD)') && /data-v="tour" data-i18n="wc.tour"/.test(html) && has('chip.replayTour') && has('wc.tour'), 'the tour stays on the scene switch, replayable');
   assert.ok(P.parseSimSnap(JSON.stringify({ at: 1000, scene: 'tour', map: false, K: {}, S: { kind: 'transfer', bodies: [], M: {} } }), 1000) !== null, 'back from the cabin to the tour');
 }
 // 35) The design wizard (Phase 16c, js/wizard.js): the mission window's face in the plain layout (the expert layout
@@ -1027,5 +1027,39 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     assert.ok(!s.m && Math.abs(s.done.i - Math.atan(500 / s.vBefore)) < 1e-9, 'free: the plane example turns by atan(Δv/v); no mass without an engine');
   }
   assert.ok(wz.includes('t1a = Math.max(r.d0, S.M.t0)') && wz.includes('await solve();') && wz.includes("if (!wzPair(v.dep, v.tgt)) return fail(2, '', _('wz.e.freePair'));"), 'go: from the date on, the solver, free return only about a moon');
+}
+// 36) The opening view: Saturn back-lit (prefs.js saturnShot), the default instead of the tour. For several dates, a wide
+// and a phone screen: the Sun behind Saturn and to one side (phase angle about 100–140°), the camera above the ecliptic,
+// Saturn and the Sun inside the free area, the field of view within its limits, the ecliptic level on wide screens; the
+// side kept once chosen; the sway slow (noticeable over minutes, never a jump between frames); the bright band of the
+// Milky Way in frame on today's wide screen. The app opens on it, the old tour stays on the switch.
+{
+  const C = require('../js/core.js'), K = ['sun', 'saturn'];
+  const sy = C.buildSystem(K.map(k => { const d = BODIES[k]; return { name: k, mu: d.gm * 1e9, radius: d.radius * 1e3, parent: K.indexOf(d.parent), a: 0, orb: d.orb }; }));
+  const X = new Float64Array(6), V = new Float64Array(6), R = BODIES.saturn.rings.r[1] * BODIES.saturn.rings.req * 1e3;
+  const ang = (a, b) => Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]))) * 180 / Math.PI;
+  for (const iso of ['2026-11-12T12:00:00Z', '2029-03-01T00:00:00Z', '2033-07-01T00:00:00Z', '2041-01-01T00:00:00Z']) {
+    const t = C.utcToDays(Date.parse(iso)) * C.DAY; C.states(sy, t, X, V);
+    const F = C.bodyFrame(BODIES.saturn.pole, t), pole = [F[2], F[5], F[8]], sat = [X[3], X[4], X[5]], sun = [X[0], X[1], X[2]];
+    const l = Math.hypot(X[0] - X[3], X[1] - X[4], X[2] - X[5]), s = [0, 1, 2].map(k => (sun[k] - sat[k]) / l);
+    for (const box of [{ W: 1392, H: 900, l: 0, t: 119, w: 1392, h: 742 }, { W: 390, H: 790, l: 0, t: 158, w: 390, h: 597 }]) {
+      const tag = iso.slice(0, 10) + ' ' + box.W + ' px', o = P.saturnShot(sat, sun, pole, box, { R });
+      const ph = ang(o.e, s), inB = (x, y) => x > box.l && x < box.l + box.w && y > box.t && y < box.t + box.h;
+      assert.ok(ph > 100 && ph < 140 && Math.abs(ph - o.phase) < 1e-6, `${tag}: the Sun behind Saturn (phase ${ph.toFixed(1)}°)`);
+      assert.ok(o.e[2] > Math.sin(3 * Math.PI / 180) && o.e[2] < Math.sin(15 * Math.PI / 180), `${tag}: the camera a little above the ecliptic`);
+      assert.ok(inB(o.x, o.y) && inB(o.sun[0], o.sun[1]), `${tag}: Saturn and the Sun in frame (${o.sun.map(v => v.toFixed(0))})`);
+      assert.ok(o.fov >= P.SAT_SHOT.fovMin && o.fov <= P.SAT_SHOT.fovMax && o.dist > 3 * R, `${tag}: field of view ${o.fov.toFixed(1)}°`);
+      if (box.w > box.h) assert.ok(o.roll === 0, `${tag}: the ecliptic level on a wide screen`);
+      if (iso.startsWith('2026') && box.w > box.h) assert.ok(o.milky > 0.05, `${tag}: the Milky Way in frame (${o.milky.toFixed(3)})`);
+      // the sway: the side and the frame kept, slow, smooth, the Sun still in frame
+      const a = P.saturnShot(sat, sun, pole, box, { R, side: o.side, t: 30 }), b = P.saturnShot(sat, sun, pole, box, { R, side: o.side, t: 30 + 1 / 30 }), c2 = P.saturnShot(sat, sun, pole, box, { R, side: o.side, t: 150 });
+      assert.ok(a.side.join() === o.side.join() && a.roll === o.roll && a.x === o.x && a.f === o.f, `${tag}: the frame kept while swaying`);
+      assert.ok(ang(a.e, b.e) < 0.01 && ang(a.e, c2.e) > 0.5 && ang(a.e, c2.e) < 8, `${tag}: a slow sway (${ang(a.e, c2.e).toFixed(2)}° in two minutes)`);
+      assert.ok(inB(c2.sun[0], c2.sun[1]), `${tag}: the Sun stays in frame while swaying`);
+    }
+  }
+  const app = read('js/app.js'), m3 = read('js/mode3d.js');
+  assert.ok(app.includes("else sceneSet('saturn');") && app.includes("kind: 'saturn', side: null") && app.includes('saturnShot(v(i), v(MSUN)'), 'the site opens on Saturn back-lit');
+  assert.ok(m3.includes('V3.view(c.t, B.r, B.u, B.d, c.dist, B.cx, B.cy, B.fov);') && !m3.includes('B.cx, B.cy);') && m3.includes('camLevel3(c,'), "the shot's roll and field of view reach the renderer, and go back once the view is moved");
 }
 console.log('OK — all UI tests passed');
