@@ -1196,6 +1196,15 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(app.includes('function draw(now) { if (REC.busy) { last = now; requestAnimationFrame(draw); return; } drawBody(now, false); }') && app.includes('if (REC.full) return [{ x0: 0, x1: W, y0: 0, y1: H }];'), 'recording: the loop idles, the frame is the whole canvas');
   assert.ok(rj.includes("recCompose(octx, is3d() ? [$('#gl'), cv] : [cv]") && rj.includes('drawBody(t, true);'), 'recording: 3D read right after drawing');
   assert.ok(rj.includes("phone() ? { fmt: CAN_VIDEO ? 'video' : 'gif', w: 480 }") && rj.includes('navigator.canShare') && rj.includes('navigator.share('), 'recording: phones default to video at 480 px, share sheet');
+  // the background: plain void by default (no Milky Way, stars or glare in the recording; the screen unchanged), the
+  // starry one on request ("Yıldızlı arka plan")
+  const m3 = read('js/mode3d.js');
+  assert.ok(rj.includes("const W0 = { fmt: 'gif', w: 720, title: true, sky: false }") && rj.includes('REC.sky = !!R.set.sky;') && html.includes('id="recSky"') && has('rec.sky') && has('rec.skyTip'), 'recording: the starry background is an option, off by default');
+  assert.ok(app.includes('const REC = { busy: false, full: false, sky: false };') && app.includes('const skyRec = () => REC.busy && !REC.sky;'), 'recording: the sky is left out only while a recording draws');
+  assert.ok(app.includes('if (stars && !skyRec())') && app.includes('if (!FXON.glare || skyRec()) return;') && app.includes('V3.render({ stars: Q.stars && !skyRec(), skyGain: skyGain() });'), 'recording: 2D stars and glare left out');
+  assert.strictEqual((m3.match(/V3\.render\(\{ stars: Q\.stars && !skyRec\(\)/g) || []).length, (m3.match(/V3\.render\(/g) || []).length, 'recording: every 3D render leaves the sky out');
+  assert.ok(m3.includes('if (!Q.glow || lowQ || !FXON.glare || skyRec()) return null;'), 'recording: no 3D glare');
+  assert.ok(Rc.recLadder(720)[0].w === 720 && Rc.recLadder(720)[0].fps === 15, 'recording: a plain background fits the first step (720 px, 15 frames/s; 785 KB measured in 3D, the turning frame)');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

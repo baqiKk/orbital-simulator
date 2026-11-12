@@ -1,7 +1,9 @@
 // Mission recording (Phase 17c): the mission from start to end as a GIF or a video, drawn frame by frame (not a
 // screen capture): the progress u steps from 0 to 1 on a fixed schedule, each frame is drawn on demand (app.js
 // drawBody), the canvases (3D below, the overlay above) are copied at the recording's size right after drawing, and a
-// watermark (and, if asked, the mission's name and total Δv) is added. A slow device still gives an even film.
+// watermark (and, if asked, the mission's name and total Δv) is added. A slow device still gives an even film. By
+// default the background is the plain void (no Milky Way, stars or Sun glare: app.js skyRec), small and calm; the
+// panel's "Yıldızlı arka plan" keeps the sky. The view on screen never changes.
 // GIF: js/rec-worker.mjs (gifenc, vendor/gifenc) in a module worker, sized under ~8 MB (frame rate, then width, lowered
 // when a probe says it would not fit; the viewer is told). Video: WebCodecs VideoEncoder with mp4-muxer (H.264) or
 // webm-muxer (VP9/VP8) from vendor/, whatever the browser encodes; hidden without WebCodecs. The libraries come only
@@ -99,7 +101,7 @@ if (typeof module !== 'undefined') module.exports = { SITE_URL, REC_OPT, recSche
 
 // ===================== The recorder (the page) =====================
 if (typeof document !== 'undefined' && typeof S !== 'undefined') (() => {
-  const W0 = { fmt: 'gif', w: 720, title: true }, CAN_VIDEO = typeof VideoEncoder === 'function' && typeof VideoFrame === 'function';
+  const W0 = { fmt: 'gif', w: 720, title: true, sky: false }, CAN_VIDEO = typeof VideoEncoder === 'function' && typeof VideoFrame === 'function';
   const phone = () => VW.phone.matches;
   const load = () => { try { const o = JSON.parse(readPref(LS, PREF_KEYS.rec) || 'null'); if (o && typeof o === 'object') return o; } catch (e) { /* defaults */ } return null; };
   const R = { set: Object.assign({}, W0, phone() ? { fmt: CAN_VIDEO ? 'video' : 'gif', w: 480 } : {}, load() || {}), cancel: false, url: null, file: null };
@@ -111,7 +113,7 @@ if (typeof document !== 'undefined' && typeof S !== 'undefined') (() => {
     setSeg('#recFmt', R.set.fmt); setSeg('#recW', String(R.set.w));
     $('#recFmt button[data-v="video"]').disabled = !CAN_VIDEO;
     $('#recFmtNote').textContent = _(!CAN_VIDEO ? 'rec.noVideo' : R.set.fmt === 'gif' ? 'rec.gifD' : 'rec.videoD');
-    $('#recTitle').checked = !!R.set.title;
+    $('#recTitle').checked = !!R.set.title; $('#recSky').checked = !!R.set.sky;
   }
   const save = () => writePref(LS, PREF_KEYS.rec, JSON.stringify(R.set));
   function stage(s) { show('#recSetup', s === 'setup'); show('#recProg', s === 'prog'); show('#recDone', s === 'done'); }
@@ -126,6 +128,7 @@ if (typeof document !== 'undefined' && typeof S !== 'undefined') (() => {
   $('#recFmt').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; R.set.fmt = b.dataset.v; save(); sync(); });
   $('#recW').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; R.set.w = +b.dataset.v; save(); sync(); });
   $('#recTitle').addEventListener('change', e => { R.set.title = e.target.checked; save(); });
+  $('#recSky').addEventListener('change', e => { R.set.sky = e.target.checked; save(); });
   $('#recCancel').addEventListener('click', () => { R.cancel = true; });
   $('#recGo').addEventListener('click', () => { recStart().catch(err => fail(err)); });
   $('#recSave').addEventListener('click', deliver);
@@ -178,7 +181,7 @@ if (typeof document !== 'undefined' && typeof S !== 'undefined') (() => {
   async function recStart() {
     if (REC.busy || !C || !simR) return;
     const keep = { u: S.u, ext: S.ext, playing: S.playing };
-    R.cancel = false; R.keep = keep; REC.busy = true; REC.full = true; INS = null; needFit = true;
+    R.cancel = false; R.keep = keep; REC.busy = true; REC.full = true; REC.sky = !!R.set.sky; INS = null; needFit = true;
     S.playing = false; setPlayIcon();
     stage('prog'); $('#recBar').value = 0; status('rec.probe'); btn.disabled = true;
     const notes = [];

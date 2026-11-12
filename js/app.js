@@ -2958,8 +2958,10 @@ function drawTrail(ext, cpos) {
   ctx.strokeStyle = hexA(COL.traj, 0.9);
   ctx.beginPath(); ctx.moveTo(sx(tr.x[i1]), sy(tr.y[i1])); ctx.lineTo(sx(cpos[0]), sy(cpos[1])); ctx.stroke();
 }
-// the mission recording (js/record.js): busy while it draws its frames; full: the free area is the whole canvas
-const REC = { busy: false, full: false };
+// the mission recording (js/record.js): busy while it draws its frames; full: the free area is the whole canvas; sky:
+// the starry background goes into the recording too (off by default: plain void, no Milky Way, stars or glare)
+const REC = { busy: false, full: false, sky: false };
+const skyRec = () => REC.busy && !REC.sky; // drawing a recording frame without the sky
 let last = performance.now(), hold = 0, hudTick = 0, hudLast = 0, frameAvg = 1 / 60, slowFrames = 0, lowQ = false;
 const tmp = [0, 0], tmp2 = [0, 0], tmp3 = [0, 0, 0];
 
@@ -3034,7 +3036,7 @@ function globeMap(i, x, y, r, T) {
 }
 // the Sun's glare in 2D (normal mode): the same profile as in 3D, drawn additively
 function glare2d(x, y, rs) {
-  if (!FXON.glare) return;
+  if (!FXON.glare || skyRec()) return;
   const L = glareL(rs), e = L * GLARE_EXT;
   if (x + e < 0 || x - e > W || y + e < 0 || y - e > H) return;
   ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(glareSprite(), x - e, y - e, 2 * e, 2 * e); ctx.globalCompositeOperation = 'source-over';
@@ -3071,7 +3073,7 @@ function drawBody(now, once) {
     // (alpha on sRGB values ≈ the linear gain^(1/2.2))
     if (Q.stars && !skyTimer && (skyKey === 'wait' || stars)) { const sk = skyReady(true, skyHi(skyPx2d())); if (sk && (skyKey === 'wait' || sk.milky.img.naturalWidth !== +skyKey.split('|')[3])) makeStars(); }
     ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H);
-    if (stars) { ctx.globalAlpha = Math.pow(SKYU.adapt, 1 / 2.2); ctx.drawImage(stars, 0, 0, W, H); ctx.globalAlpha = 1; }
+    if (stars && !skyRec()) { ctx.globalAlpha = Math.pow(SKYU.adapt, 1 / 2.2); ctx.drawImage(stars, 0, 0, W, H); ctx.globalAlpha = 1; }
   }
   if (SCENE.on) { // the opening scene: the map on its own clock
     SCENE.dt = dt; SCENE.age += dt; SCENE.t = clockAt(MCLK, Date.now());
@@ -3082,7 +3084,7 @@ function drawBody(now, once) {
   }
   if (!sys || !simR || !C) {
     if (MAP.on) { if (v3) drawMap3(mapTime(0), glow, null, 0, 0); else { drawMap(mapTime(0), glow, null, 0, 0); if (!MAP.log) drawScale(); } }
-    else if (v3) { V3.setActive('none'); V3.render({ stars: Q.stars, skyGain: skyGain() }); }
+    else if (v3) { V3.setActive('none'); V3.render({ stars: Q.stars && !skyRec(), skyGain: skyGain() }); }
     skyAdapt(dt); frameEnd(); if (!once) requestAnimationFrame(draw); return;
   }
   if (S.kind === 'man' && !MAP.on) { CAPTION.push(_('mv.caption')); setCaption(); } // before fitting: an obstacle

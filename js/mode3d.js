@@ -302,7 +302,7 @@ function sky3() { if (Q.stars && !SCENE.wait) V3.skySet(skyReady(true, skyHi((H 
 // the Sun's glare at view-frame point p (or, far away, direction p from the camera when dir), disc radius rs px: how much
 // of the disc is in view (9 points on it, against the bodies drawn this frame) and on screen; null when none
 function glare3(p, dir, rs, skip) {
-  if (!Q.glow || lowQ || !FXON.glare) return null;
+  if (!Q.glow || lowQ || !FXON.glare || skyRec()) return null; // a recording without the sky has no glare either
   const e = CB.e, q = dir ? [e[0] + p[0] * 1e18, e[1] + p[1] * 1e18, e[2] + p[2] * 1e18] : p;
   proj3(q, PJ); if (!(PJ[2] > 0)) return null;
   const L = glareL(rs), x = PJ[0], y = PJ[1], out = Math.max(0, -x, x - W, -y, y - H);
@@ -379,7 +379,7 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   const gl3 = sunIdx >= 0 ? glare3([BP3[3 * sunIdx], BP3[3 * sunIdx + 1], BP3[3 * sunIdx + 2]], false, rpx[sunIdx], sunIdx)
     : S.model === 'real' ? glare3(SUN3, true, CB.f * sunAngOf(S.bodies[0].key), -1) : null;
   if (gl3) skySun(gl3.i, sunIdx >= 0 ? rpx[sunIdx] : CB.f * sunAngOf(S.bodies[0].key));
-  V3.render({ stars: Q.stars, sky: ROT9, skyGain: skyGain(), glare: glow ? gl3 : null });
+  V3.render({ stars: Q.stars && !skyRec(), sky: ROT9, skyGain: skyGain(), glare: glow ? gl3 : null });
 
   // ---- overlay ----
   // SOI
@@ -605,7 +605,7 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
   sky3();
   const glm = glow ? glare3([pos[3 * MSUN], pos[3 * MSUN + 1], pos[3 * MSUN + 2]], false, rpx[MSUN], MSUN) : null;
   if (glm) skySun(glm.i, rpx[MSUN]);
-  V3.render({ stars: Q.stars, sky: null, skyGain: skyGain(), glare: glm });
+  V3.render({ stars: Q.stars && !skyRec(), sky: null, skyGain: skyGain(), glare: glm });
 
   // overlay: nodes, craft, labels (Sun and planets first, a label overlapping another is skipped)
 

@@ -199,6 +199,8 @@ const I18N = {
     'rec.noVideo': 'Bu tarayıcı video kodlayamıyor; GIF kullanılabilir.',
     'rec.width': 'Genişlik (px)',
     'rec.addTitle': 'Görev adı ve toplam Δv sol üstte',
+    'rec.sky': 'Yıldızlı arka plan',
+    'rec.skyTip': 'Samanyolu, yıldızlar ve Güneş parlaması kayda girsin (dosya büyür; kapalıyken zemin düz koyu)',
     'rec.go': 'Kaydı başlat',
     'rec.cancel': 'İptal',
     'rec.busy': 'Önce görevin hesaplanması bitsin.',
