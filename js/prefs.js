@@ -72,6 +72,14 @@ function autoModeFrames(dts) {
   return s[s.length >> 1] > 0.04 ? 'low' : 'normal';
 }
 
+// The opening starts in 3D (when the device is not light and WebGL 2 is there); its first seconds' frame times (s,
+// as the draw loop measures them, at most 0.1): 'slow' when they average over 40 ms or one in ten stutters (≥ 100 ms),
+// then a note offers 2D (never switched by itself); too few frames: no verdict
+function auto3dFrames(dts) {
+  if (dts.length < 30) return null;
+  const mean = dts.reduce((a, b) => a + b, 0) / dts.length, stall = dts.filter(d => d >= 0.099).length / dts.length;
+  return mean > 0.04 || stall > 0.1 ? 'slow' : 'ok';
+}
 // narrow: a narrow desktop (floating windows, little room) — Results starts collapsed so the plot stays clear.
 // wide: a wide desktop (≥ 1440 px) — the overview (body picker) starts open too, collapsed to its title bar
 // unless full (≥ 1920 px), so it does not cover the plot.
@@ -378,11 +386,16 @@ function tourAt(T, P, D) {
 // camera a little above the ecliptic (`elev`), the Sun and Saturn in one frame with the Milky Way. Of the two places
 // that give that phase and height (the Sun to the left or to the right), the one with more of the bright band in
 // frame wins (a rough band: galactic latitude within ~10°, brightest towards the centre), the rings seen open (the
-// planet's shadow across them) and their lit face counting too. Wide screens keep the ecliptic level (Saturn on one side, the Sun near the other edge); tall ones turn the view
-// (roll) so the Sun stands above Saturn. The field of view is what puts the Sun there, within fovMin..fovMax.
-// Drift: the camera sways slowly around that place (phase and height, minutes per swing), the frame itself fixed.
-const SAT_SHOT = { phase: 128, phaseTall: 136, elev: 8, ring: 0.2, ringTall: 0.34, fovMin: 40, fovMax: 85,
-  sway: { phase: 3, elev: 2.5, tp: 420, te: 330 } };
+// planet's shadow across them) and their lit face counting too. Wide screens keep the ecliptic level (Saturn on one
+// side, the Sun near the other edge); tall ones turn the view (roll) so the Sun stands above Saturn. The field of view
+// is what puts the Sun there, within fovMin..fovMax.
+// The camera breathes: it swings around Saturn in azimuth (about the ecliptic pole: the phase goes with it), a little
+// up and down, the distance opening and closing slightly; each swing 40–60 s, slow but seen within seconds. The frame
+// (roll, focal length, Saturn's place) stays; it is composed at the swing's widest Sun–Saturn separation, so the Sun
+// only moves inwards from there, and the swing is scaled down (sway.k for the azimuth, the height and distance apart)
+// until the Sun stays in frame and the phase within phaseLim all along it.
+const SAT_SHOT = { phase: 132, phaseTall: 135, elev: 8, ring: 0.2, ringTall: 0.34, fovMin: 40, fovMax: 85, phaseLim: [120, 140],
+  sway: { az: 6, azTall: 5, el: 2.5, dist: 0.04, taz: 52, tel: 44, tdist: 58, k: [1, 0.8, 0.6, 0.4, 0.2, 0] } };
 const D2R_ = Math.PI / 180;
 // galactic axes in the J2000 ecliptic (IAU: north pole RA 192.85948°, Dec +27.12825°; centre RA 266.40510°, Dec −28.93617°)
 const GAL_AX = (() => {
@@ -403,21 +416,26 @@ function shotBasis(d, roll) {
   return { r: [0, 1, 2].map(k => r[k] * c + u[k] * s), u: [0, 1, 2].map(k => u[k] * c - r[k] * s), d };
 }
 const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-// eye direction (Saturn → camera) at phase angle ph and ecliptic latitude el (deg), the Sun along unit s; g = ±1 the side
-function shotEye(s, ph, el, g) {
+// eye direction (Saturn → camera) at phase angle ph and ecliptic latitude el (deg), the Sun along unit s; g = ±1 the
+// side; then turned by da (deg) in azimuth about the ecliptic pole (positive: away from the Sun, the phase grows) and
+// raised by de (deg)
+function shotEye(s, ph, el, g, da = 0, de = 0) {
   const e = el * D2R_, bs = Math.asin(Math.max(-1, Math.min(1, s[2]))), ls = Math.atan2(s[1], s[0]);
-  const c = (Math.cos(ph * D2R_) - Math.sin(e) * Math.sin(bs)) / (Math.cos(e) * Math.cos(bs)), dl = Math.acos(Math.max(-1, Math.min(1, c))), l = ls + g * dl;
-  return [Math.cos(e) * Math.cos(l), Math.cos(e) * Math.sin(l), Math.sin(e)];
+  const c = (Math.cos(ph * D2R_) - Math.sin(e) * Math.sin(bs)) / (Math.cos(e) * Math.cos(bs)), dl = Math.acos(Math.max(-1, Math.min(1, c)));
+  const l = ls + g * (dl + da * D2R_), e2 = e + de * D2R_;
+  return [Math.cos(e2) * Math.cos(l), Math.cos(e2) * Math.sin(l), Math.sin(e2)];
 }
 // sat, sun: positions (m, ecliptic axes); pole: Saturn's north pole (unit); box: { W, H } the canvas and { l, t, w, h }
-// the free area (px) to compose in; o: { R ring radius (m), t sway time (s; 0 or none: no sway), side (as returned, once chosen) }.
+// the free area (px) to compose in; o: { R ring radius (m), sway (true: the camera breathes), t sway time (s), side and
+// fit (as returned, once chosen; fit for the same box only) }.
 // Returns { e (Saturn → camera, unit), roll (rad), fov (deg), f (px), x, y (Saturn's place, px), sun: [x, y] (the Sun's
-// place), dist (m), side ([g, k], to keep), phase (deg, with the sway), lit (the camera on the rings' lit face) }.
+// place), dist (m), side ([g, k], to keep), phase (deg, with the sway), lit (the camera on the rings' lit face), sway:
+// { k, ke (the azimuth's and the height's scales), az, el (deg), dist (share) amplitudes }, fit (to pass back as o.fit) }.
 function saturnShot(sat, sun, pole, box, o = {}) {
   const P = SAT_SHOT, s = v3n([sun[0] - sat[0], sun[1] - sat[1], sun[2] - sat[2]]), tall = box.h > box.w * 1.05;
   const ph0 = tall ? P.phaseTall : P.phase, ring = (tall ? P.ringTall : P.ring) * Math.min(box.w, box.h);
-  const compose = (g, k, yk) => {
-    const d = shotEye(s, ph0, P.elev, g), B0 = shotBasis(d, 0), dep = -dot3(s, B0.d), x = dot3(s, B0.r) / dep, y = dot3(s, B0.u) / dep;
+  const compose = (g, k, yk, da = 0) => {
+    const d = shotEye(s, ph0, P.elev, g, da), B0 = shotBasis(d, 0), dep = -dot3(s, B0.d), x = dot3(s, B0.r) / dep, y = dot3(s, B0.u) / dep;
     const tg = Math.hypot(x, y), a0 = Math.atan2(y, x), side = x >= 0 ? 1 : -1;
     let roll = 0, X, Y, L;
     if (!tall && Math.abs(Math.sin(a0)) < Math.sin(35 * D2R_)) { // level: Saturn to one side, the Sun's height as it comes
@@ -440,17 +458,40 @@ function saturnShot(sat, sun, pole, box, o = {}) {
       mw += milkyBright(v3n([0, 1, 2].map(k => B.r[k] * px + B.u[k] * py - B.d[k]))); n++;
     }
     const lit = dot3(d, pole) * dot3(s, pole) > 0, open = Math.min(1, Math.abs(dot3(d, pole)) / Math.sin(20 * D2R_));
-    return { g, k, roll, f, fov, X, Y, mw: mw / n, lit, score: mw / n + (lit ? 0.06 : 0) + 0.1 * open - (inside ? 0 : 1) };
+    return { g, k, yk, roll, f, fov, X, Y, mw: mw / n, lit, score: mw / n + (lit ? 0.06 : 0) + 0.1 * open - (inside ? 0 : 1) };
   };
   // the side kept once chosen (o.side = [g, k] as returned: the eye's side, the Sun's corner when turned)
   const cands = o.side && o.side.length === 2 ? [o.side] : [[1, 1], [1, -1], [-1, 1], [-1, -1]];
   let c = null; // tall: Saturn's height too (lower leaves room for the Sun, higher for what lies beyond Saturn)
   for (const [g, k] of cands) for (const yk of tall ? [0.6, 0.68, 0.76] : [0.62]) { const q = compose(g, k, yk); if (!c || q.score > c.score + 1e-9) c = q; }
-  // the sway: the eye moves, the frame (roll, focal length, Saturn's place) stays
-  const sw = P.sway, t = o.t || 0, ph = ph0 + (t ? sw.phase * Math.sin(2 * Math.PI * t / sw.tp) : 0), el = P.elev + (t ? sw.elev * Math.sin(2 * Math.PI * t / sw.te + 1) : 0);
-  const e = shotEye(s, ph, el, c.g), B = shotBasis(e, c.roll), dep = -dot3(s, B.d);
-  const sunAt = [c.X + c.f * dot3(s, B.r) / dep, c.Y - c.f * dot3(s, B.u) / dep];
-  return { e, roll: c.roll, fov: c.fov, f: c.f, x: c.X, y: c.Y, sun: sunAt, dist: c.f * (o.R || 1.4e8) / ring, side: [c.g, c.k], phase: ph, lit: c.lit, milky: c.mw };
+  // the sway: the largest scale whose whole swing keeps the Sun in frame and the phase within its limits; the frame
+  // composed at the swing's widest separation (azimuth −A: towards the Sun, the smallest phase)
+  const sw = P.sway, A = tall ? sw.azTall : sw.az, ang = (a, b) => Math.acos(Math.max(-1, Math.min(1, dot3(a, b)))) / D2R_;
+  const sunOf = (q, e) => { const B = shotBasis(e, q.roll), dep = -dot3(s, B.d); return [q.X + q.f * dot3(s, B.r) / dep, q.Y - q.f * dot3(s, B.u) / dep, dep]; };
+  const inFrame = p => p[2] > 0 && p[0] > box.l + 0.02 * box.w && p[0] < box.l + 0.98 * box.w && p[1] > box.t + 0.02 * box.h && p[1] < box.t + 0.98 * box.h;
+  // the azimuth swing (K) and the height and distance (KE) scaled apart: the azimuth moves the Sun most; tall screens may
+  // set Saturn lower for room
+  let K = 0, KE = 0, F = c;
+  const fits = (q, k, ke) => {
+    for (let i = -4; i <= 4; i++) for (let j = -1; j <= 1; j++) {
+      const e = shotEye(s, ph0, P.elev, c.g, A * k * i / 4, sw.el * ke * j), ph = ang(e, s);
+      if (ph < P.phaseLim[0] || ph > P.phaseLim[1] || !inFrame(sunOf(q, e))) return false;
+    }
+    return true;
+  };
+  // the best that fits (azimuth first); o.fit: one found before for this frame box (the app keeps it, searching once)
+  let best = -1, yk0 = c.yk;
+  if (o.sway && o.fit && o.fit.length === 3) { [K, KE, yk0] = o.fit; F = compose(c.g, c.k, yk0, -A * K); }
+  else if (o.sway) for (const k of sw.k) for (const ke of [1, 0.5, 0]) for (const yk of tall ? [c.yk, 0.76, 0.68, 0.6] : [c.yk]) {
+    const sc = k + 0.6 * ke; if (sc <= best || !sc) continue;
+    const q = compose(c.g, c.k, yk, -A * k);
+    if (fits(q, k, ke)) { best = sc; K = k; KE = ke; F = q; yk0 = yk; }
+  }
+  const t = o.t || 0, w = (k, T, p) => (k ? Math.sin(2 * Math.PI * t / T + p) : 0);
+  const e = shotEye(s, ph0, P.elev, c.g, A * K * w(K, sw.taz, 0), sw.el * KE * w(KE, sw.tel, 1));
+  const sunAt = sunOf(F, e);
+  return { e, roll: F.roll, fov: F.fov, f: F.f, x: F.X, y: F.Y, sun: [sunAt[0], sunAt[1]], dist: F.f * (o.R || 1.4e8) / ring * (1 + sw.dist * w(o.sway ? 1 : 0, sw.tdist, 2)), // the distance never moves the Sun
+    side: [c.g, c.k], phase: ang(e, s), lit: c.lit, milky: c.mw, sway: { k: K, ke: KE, az: A * K, el: sw.el * KE, dist: o.sway ? sw.dist : 0 }, fit: [K, KE, yk0] };
 }
 
-if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, auto3dFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

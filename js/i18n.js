@@ -177,6 +177,8 @@ const I18N = {
     'lite.text': 'Hafif mod açıldı.',
     'lite.crash': 'Cihazın belleği için hafif mod açıldı.',
     'lite.change': 'Değiştir',
+    'lite.slow3d': 'Cihazın 3B\'de zorlanıyor.',
+    'lite.to2d': '2B\'ye geç',
     'perf.text': 'Performans düşük görünüyor. Düşük kaynak moduna geç?',
     'perf.text3d': '3B görünüm bu cihazda yavaş çalışıyor. Normal 2B moduna geç?',
 

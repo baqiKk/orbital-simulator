@@ -809,7 +809,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.strictEqual(P.autoModeFrames(Array(5).fill(0.1)), null, 'too few frames');
   assert.ok(/if \(start\.auto\) \{/.test(app) && /autoMode\(\{ crashed: CRASHED, saveData: /.test(app) && /if \(autoModeFrames\(AUTO\.dts\) === 'low' && MODE !== 'low'\) \{ setMode\('low', false\); liteTip\('lite\.text'\); \}/.test(app), 'the device, then the frames; not saved');
   assert.ok(/const CRASHED = readPref\(SS, PREF_KEYS\.simBoot\) != null;/.test(app) && /addEventListener\('pagehide', \(\) => clearPref\(SS, PREF_KEYS\.simBoot\)\)/.test(app) && /clearPref\(SS, PREF_KEYS\.simBoot\), 20000\)/.test(app), 'safety net on the main page');
-  assert.ok(/id="liteTip"/.test(page) && has('lite.text') && has('lite.crash') && has('lite.change') && /\$\('#liteGo'\)\.addEventListener\('click', \(\) => \{ \$\('#liteTip'\)\.hidden = true; setMode\('normal', true\); \}\);/.test(app), 'the light note and its "change"');
+  assert.ok(/id="liteTip"/.test(page) && has('lite.text') && has('lite.crash') && has('lite.change') && app.includes("$('#liteGo').addEventListener('click', () => { $('#liteTip').hidden = true; (liteTip.go || (() => setMode('normal', true)))(); });") && app.includes("function liteTip(key, goKey = 'lite.change', go = () => setMode('normal', true)) {"), 'the light note and its "change" (by default back to the normal mode, saved)');
 }
 
 // 24) Layout: on phones the view fills the screen down to the rail (100dvh, the home indicator's inset), no empty band;
@@ -1031,8 +1031,11 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // 36) The opening view: Saturn back-lit (prefs.js saturnShot), the default instead of the tour. For several dates, a wide
 // and a phone screen: the Sun behind Saturn and to one side (phase angle about 100–140°), the camera above the ecliptic,
 // Saturn and the Sun inside the free area, the field of view within its limits, the ecliptic level on wide screens; the
-// side kept once chosen; the sway slow (noticeable over minutes, never a jump between frames); the bright band of the
-// Milky Way in frame on today's wide screen. The app opens on it, the old tour stays on the switch.
+// side kept once chosen; the bright band of the Milky Way in frame on today's wide screen. The camera breathes: swings of
+// 40–60 s in azimuth, height and distance, seen within seconds (wide screens: the full ±6° azimuth swing), smooth
+// between frames, and all along it (every quarter second over ten minutes, which holds the swings' extremes) the Sun in
+// frame and the phase within 120–140°; none with reduced motion (sway off). The app opens on it, in 3D when it can,
+// offering 2D (never switching) when the first seconds struggle; the old tour stays on the switch.
 {
   const C = require('../js/core.js'), K = ['sun', 'saturn'];
   const sy = C.buildSystem(K.map(k => { const d = BODIES[k]; return { name: k, mu: d.gm * 1e9, radius: d.radius * 1e3, parent: K.indexOf(d.parent), a: 0, orb: d.orb }; }));
@@ -1051,14 +1054,38 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
       assert.ok(o.fov >= P.SAT_SHOT.fovMin && o.fov <= P.SAT_SHOT.fovMax && o.dist > 3 * R, `${tag}: field of view ${o.fov.toFixed(1)}°`);
       if (box.w > box.h) assert.ok(o.roll === 0, `${tag}: the ecliptic level on a wide screen`);
       if (iso.startsWith('2026') && box.w > box.h) assert.ok(o.milky > 0.05, `${tag}: the Milky Way in frame (${o.milky.toFixed(3)})`);
-      // the sway: the side and the frame kept, slow, smooth, the Sun still in frame
-      const a = P.saturnShot(sat, sun, pole, box, { R, side: o.side, t: 30 }), b = P.saturnShot(sat, sun, pole, box, { R, side: o.side, t: 30 + 1 / 30 }), c2 = P.saturnShot(sat, sun, pole, box, { R, side: o.side, t: 150 });
-      assert.ok(a.side.join() === o.side.join() && a.roll === o.roll && a.x === o.x && a.f === o.f, `${tag}: the frame kept while swaying`);
-      assert.ok(ang(a.e, b.e) < 0.01 && ang(a.e, c2.e) > 0.5 && ang(a.e, c2.e) < 8, `${tag}: a slow sway (${ang(a.e, c2.e).toFixed(2)}° in two minutes)`);
-      assert.ok(inB(c2.sun[0], c2.sun[1]), `${tag}: the Sun stays in frame while swaying`);
+      // no sway: the same place at any time
+      assert.ok(ang(P.saturnShot(sat, sun, pole, box, { R, side: o.side, t: 37 }).e, o.e) < 1e-9 && o.sway.k === 0, `${tag}: no sway when it is off`);
+      // the breathing camera: one fit, the frame kept, the extremes checked along ten minutes
+      const sw = P.SAT_SHOT.sway, o1 = P.saturnShot(sat, sun, pole, box, { R, sway: true }), opt = t => ({ R, sway: true, side: o1.side, fit: o1.fit, t });
+      assert.ok([sw.taz, sw.tel, sw.tdist].every(T => T >= 40 && T <= 60), 'swings of 40–60 s');
+      assert.ok(o1.side.join() === o.side.join() && o1.sway.ke > 0 && o1.sway.dist > 0 && (box.w < box.h || o1.sway.k === 1), `${tag}: it breathes (azimuth ×${o1.sway.k}, height ×${o1.sway.ke})`);
+      let pmin = 180, pmax = 0, jump = 0, moved = 0, prev = null, dmin = Infinity, dmax = 0;
+      for (let tt = 0; tt <= 600; tt += 0.25) {
+        const q = P.saturnShot(sat, sun, pole, box, opt(tt));
+        assert.ok(q.roll === o1.roll && q.x === o1.x && q.f === o1.f, `${tag}: the frame kept while swaying`);
+        assert.ok(inB(q.sun[0], q.sun[1]), `${tag}: the Sun in frame at ${tt} s (${q.sun.map(v => v.toFixed(0))})`);
+        pmin = Math.min(pmin, q.phase); pmax = Math.max(pmax, q.phase); dmin = Math.min(dmin, q.dist); dmax = Math.max(dmax, q.dist);
+        if (prev) jump = Math.max(jump, ang(q.e, prev.e));
+        prev = q;
+      }
+      for (let tt = 0; tt < 60; tt += 1) moved = Math.max(moved, ang(P.saturnShot(sat, sun, pole, box, opt(tt)).e, P.saturnShot(sat, sun, pole, box, opt(tt + 3)).e));
+      assert.ok(pmin >= 120 && pmax <= 140, `${tag}: phase ${pmin.toFixed(1)}–${pmax.toFixed(1)}° while swaying`);
+      assert.ok(jump < 0.25 && moved > (box.w > box.h ? 1.5 : 0.5), `${tag}: smooth, yet seen within seconds (${moved.toFixed(2)}° in 3 s)`);
+      assert.ok(dmax / dmin > 1.04 && dmax / dmin < 1.12, `${tag}: the distance opens and closes slightly (×${(dmax / dmin).toFixed(3)})`);
     }
   }
   const app = read('js/app.js'), m3 = read('js/mode3d.js');
+  assert.ok(app.includes('sway, t: SCENE.age, side: SCENE.side, fit: SCENE.fit') && app.includes('sway = sceneDrift()') && app.includes('const sceneDrift = () => Q.glow && !lowQ && !reduceMotion;'), 'the camera breathes in the app, not with reduced motion or in the light mode');
+  // the opening in 3D: automatic only, not light, WebGL 2 there; measured, a note offers 2D (saved), never a switch
+  assert.strictEqual(P.auto3dFrames(new Array(20).fill(0.1)), null, '3D frames: too few, no verdict');
+  assert.strictEqual(P.auto3dFrames(new Array(200).fill(1 / 60)), 'ok', '3D frames: 60 fps');
+  assert.strictEqual(P.auto3dFrames(new Array(200).fill(0.045)), 'slow', '3D frames: over 40 ms');
+  assert.strictEqual(P.auto3dFrames([...new Array(170).fill(1 / 60), ...new Array(30).fill(0.1)]), 'slow', '3D frames: frequent stalls');
+  assert.strictEqual(P.auto3dFrames([...new Array(195).fill(1 / 60), ...new Array(5).fill(0.1)]), 'ok', '3D frames: a rare stall');
+  assert.ok(app.includes("if (m === 'low') liteTip(CRASHED ? 'lite.crash' : 'lite.text');\n  else if (GL2) { start.mode = '3d'; AUTO.d3 = true; }") && app.includes("liteTip('lite.slow3d', 'lite.to2d')") && app.includes("go = () => setMode('normal', true)") && has('lite.slow3d') && has('lite.to2d'), 'the opening in 3D, a struggling device offered 2D');
+  assert.ok(!/AUTO\.d3[^\n]*setMode\(/.test(app), '3D: never switched to 2D by itself');
+  assert.deepStrictEqual(P.startupMode({ getItem: () => 'normal' }), { mode: 'normal', auto: false }, 'a saved 2D starts in 2D (no measuring, no note)');
   assert.ok(app.includes("else sceneSet('saturn');") && app.includes("kind: 'saturn', side: null") && app.includes('saturnShot(v(i), v(MSUN)'), 'the site opens on Saturn back-lit');
   assert.ok(m3.includes('V3.view(c.t, B.r, B.u, B.d, c.dist, B.cx, B.cy, B.fov);') && !m3.includes('B.cx, B.cy);') && m3.includes('camLevel3(c,'), "the shot's roll and field of view reach the renderer, and go back once the view is moved");
 }

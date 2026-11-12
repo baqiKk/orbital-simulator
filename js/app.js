@@ -2362,7 +2362,7 @@ const mapTime = t => (SCENE.on ? SCENE.t : (S.model === 'real' ? S.M.t0 * DAY : 
 // changing the mission), the map button or the M key end it and everything runs as before. Moving the camera or
 // picking a body keeps the scene but stops the aim. The first-run mode question comes first: until it is answered
 // nothing is drawn or fetched (wait).
-const SCENE = { on: false, wait: false, kind: 'saturn', side: null, tt: 0, tD: null, t: 0, dt: 0, age: 0, free: false, s0: 0, i3: false, k2: 1, k3: 1, hide: new Set() };
+const SCENE = { on: false, wait: false, kind: 'saturn', side: null, fit: null, fitKey: '', tt: 0, tD: null, t: 0, dt: 0, age: 0, free: false, s0: 0, i3: false, k2: 1, k3: 1, hide: new Set() };
 // The map's clock (core.js clockAt; Phase 16a): live at first (the wall clock, 1 s/s), sped up from the live bar. The
 // scene (the opening tour, Saturn, the Earth and the Moon, the free look) runs on it; a mission and its map keep the
 // mission's own time.
@@ -2371,7 +2371,7 @@ const LIVE = { since: Date.now(), key: '', sub: '', tipUntil: 0 };
 const sceneDrift = () => Q.glow && !lowQ && !reduceMotion;
 // o.done: the tour at its last stop (back from the cabin; with reduced motion it always starts there)
 function sceneSet(kind, o = {}) {
-  Object.assign(SCENE, { kind, free: false, s0: 0, i3: false, side: null, k3: 1, tt: o.done || reduceMotion ? OPEN_TOUR_S : 0, tD: null });
+  Object.assign(SCENE, { kind, free: false, s0: 0, i3: false, side: null, fit: null, fitKey: '', k3: 1, tt: o.done || reduceMotion ? OPEN_TOUR_S : 0, tD: null });
   MAP.log = false; MAP.moons = true; $('#tMoons').checked = true; syncMapUI();
   MAP.needFit = false; MAP.follow = kind === 'tour' ? null : MAPK.indexOf(kind === 'earth' ? 'earth' : 'saturn');
   setSeg('#wcScene', kind);
@@ -2530,10 +2530,12 @@ function sceneAim3(pos, c) {
   }
   if (SCENE.kind === 'saturn') { // back-lit, the Sun and the Milky Way in frame (prefs.js saturnShot), swaying slowly
     const i = MAPK.indexOf('saturn'), Ax = bodyAxes('saturn', SCENE.t, MP, MV, i, MPAR[i], new Array(9)), sat = BODIES.saturn;
-    const o = saturnShot(v(i), v(MSUN), [Ax[2], Ax[5], Ax[8]], sceneBox(), { R: sat.rings.r[1] * sat.rings.req * 1e3, t: sceneDrift() ? SCENE.age : 0, side: SCENE.side });
+    const box = sceneBox(), bk = [box.W, box.H, box.l, box.t, box.w, box.h].map(Math.round).join(), sway = sceneDrift();
+    if (SCENE.fitKey !== bk + sway) { SCENE.fit = null; SCENE.fitKey = bk + sway; } // the swing is fitted once per frame box
+    const o = saturnShot(v(i), v(MSUN), [Ax[2], Ax[5], Ax[8]], box, { R: sat.rings.r[1] * sat.rings.req * 1e3, sway, t: SCENE.age, side: SCENE.side, fit: SCENE.fit });
     // a new frame (the start screen gone, a resize, a turned phone) is reached in about a second; the sway as it comes
     const k = SCENE.i3 && !reduceMotion ? 1 - Math.exp(-SCENE.dt / 0.7) : 1, dr = Math.atan2(Math.sin(o.roll - c.roll), Math.cos(o.roll - c.roll));
-    SCENE.side = o.side; SCENE.i3 = true; look(o.e);
+    SCENE.side = o.side; SCENE.fit = o.fit; SCENE.i3 = true; look(o.e);
     c.roll += dr * k; c.fov += (o.fov - c.fov) * k; c.dist *= Math.pow(o.dist / c.dist, k); c.cx += (o.x - c.cx) * k; c.cy += (o.y - c.cy) * k;
     return;
   }
@@ -3624,9 +3626,11 @@ $('#viewMode').addEventListener('click', e => {
 });
 
 // No saved mode: never asked. The device decides (prefs.js autoMode: a start that died, data saving, a small device;
-// iOS only by frames), then the first seconds' frames (AUTO, autoModeFrames: a light mode when the median frame is
-// over 40 ms). The automatic choice is not saved; a mode the viewer picks is. Going light says so in a small note
-// that closes by itself ("Hafif mod açıldı · Değiştir").
+// iOS only by frames). Not light: 3D when WebGL 2 is there, its first 5 s measured once it runs (AUTO.d3,
+// auto3dFrames); a struggling device gets a note ("Cihazın 3B'de zorlanıyor · 2B'ye geç"), never a switch. Without
+// WebGL 2 (or if 3D fails to load): 2D, its first seconds' frames as before (AUTO, autoModeFrames: a light mode when the
+// median frame is over 40 ms). The automatic choice is not saved; a mode the viewer picks is (a saved 2D starts in 2D,
+// no note). Going light says so in a small note that closes by itself ("Hafif mod açıldı · Değiştir").
 // The safety net (as the cabin's): a mark in sessionStorage while the page starts (gone after 20 s or on pagehide);
 // found at the start, the last one died (a tab killed for its memory and loaded again), so this one runs light.
 const CRASHED = readPref(SS, PREF_KEYS.simBoot) != null;
@@ -3635,15 +3639,26 @@ bootMark();
 addEventListener('pagehide', () => clearPref(SS, PREF_KEYS.simBoot));
 addEventListener('pageshow', e => { if (e.persisted) bootMark(); });
 const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-const AUTO = { on: false, t0: 0, dts: [] };
-function liteTip(key) {
-  $('#liteText').textContent = _(key); $('#liteTip').hidden = false;
+const AUTO = { on: false, d3: false, t0: 0, dts: [] };
+// the note: its text, its action's label and what it does (by default: back to the normal mode, saved)
+function liteTip(key, goKey = 'lite.change', go = () => setMode('normal', true)) {
+  $('#liteText').textContent = _(key); $('#liteGo').textContent = _(goKey); liteTip.go = go; $('#liteTip').hidden = false;
   clearTimeout(liteTip.t); liteTip.t = setTimeout(() => { $('#liteTip').hidden = true; }, 12000);
 }
-$('#liteGo').addEventListener('click', () => { $('#liteTip').hidden = true; setMode('normal', true); });
+$('#liteGo').addEventListener('click', () => { $('#liteTip').hidden = true; (liteTip.go || (() => setMode('normal', true)))(); });
 $('#liteX').addEventListener('click', () => { $('#liteTip').hidden = true; });
 // a frame's time while the first seconds are measured (from half a second in: the first frames load things)
 function autoFrame(now, dt) {
+  if (AUTO.d3) { // the automatic 3D start: measured once 3D draws, 5 s after its first second
+    if (V3fail || (MODE !== '3d' && V3)) { AUTO.d3 = false; if (V3fail) { AUTO.on = true; AUTO.t0 = 0; AUTO.dts = []; } return; }
+    if (!is3d()) return;
+    if (!AUTO.t0) AUTO.t0 = now;
+    if (now - AUTO.t0 > 1000) AUTO.dts.push(dt);
+    if (now - AUTO.t0 < 6000) return;
+    AUTO.d3 = false;
+    if (auto3dFrames(AUTO.dts) === 'slow' && MODE === '3d') liteTip('lite.slow3d', 'lite.to2d');
+    return;
+  }
   if (!AUTO.on) return;
   if (!AUTO.t0) AUTO.t0 = now;
   if (now - AUTO.t0 > 500) AUTO.dts.push(dt);
@@ -3699,7 +3714,9 @@ const start = startupMode(LS);
 if (start.auto) {
   const conn = navigator.connection, m = autoMode({ crashed: CRASHED, saveData: !!(conn && conn.saveData), ios: IOS, mem: navigator.deviceMemory, cores: navigator.hardwareConcurrency });
   start.mode = m;
-  if (m === 'low') liteTip(CRASHED ? 'lite.crash' : 'lite.text'); else AUTO.on = true;
+  if (m === 'low') liteTip(CRASHED ? 'lite.crash' : 'lite.text');
+  else if (GL2) { start.mode = '3d'; AUTO.d3 = true; } // the opening in 3D, watched (not saved)
+  else AUTO.on = true;
 } else if (CRASHED && start.mode !== 'low') { start.mode = 'low'; liteTip('lite.crash'); } // a saved mode, but the last start died: light this once
 bind3d();
 vwLayout(); railLayout();
