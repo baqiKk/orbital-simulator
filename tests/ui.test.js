@@ -1062,4 +1062,23 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(app.includes("else sceneSet('saturn');") && app.includes("kind: 'saturn', side: null") && app.includes('saturnShot(v(i), v(MSUN)'), 'the site opens on Saturn back-lit');
   assert.ok(m3.includes('V3.view(c.t, B.r, B.u, B.d, c.dist, B.cx, B.cy, B.fov);') && !m3.includes('B.cx, B.cy);') && m3.includes('camLevel3(c,'), "the shot's roll and field of view reach the renderer, and go back once the view is moved");
 }
+// 37) The rail icons look pressed only while their window is really in view (prefs.js railPressed): open, not collapsed,
+// not set aside by the opening scene. For every window: its rail button exists, starts unpressed, has its window; the
+// app writes the pressed state only through railSync, after every change of a window and of the scene's set-aside list;
+// a click closes a window in view and brings any other one into view.
+{
+  for (const id of P.WIN_IDS) {
+    assert.ok(new RegExp(`<button class="rail-btn" type="button" data-win="${id}"[^>]*aria-pressed="false"`).test(html) && html.includes(`id="w-${id}"`), `rail: ${id} has a button (unpressed at first) and a window`);
+    for (const open of [false, true]) for (const collapsed of [false, true]) for (const aside of [false, true]) {
+      assert.strictEqual(P.railPressed({ open, collapsed }, aside), open && !collapsed && !aside, `rail: ${id} open=${open} collapsed=${collapsed} aside=${aside}`);
+    }
+  }
+  assert.ok(!P.railPressed(undefined, false) && !P.railPressed(null, false), 'rail: no state, not pressed');
+  assert.strictEqual((html.match(/class="rail-btn[^"]*"[^>]*data-win=/g) || []).length, P.WIN_IDS.length, 'rail: one button per window');
+  const app = read('js/app.js'), body = name => { const i = app.indexOf('function ' + name + '('); return app.slice(i, app.indexOf('\n}', i)); };
+  assert.ok(!/railBtn\([^)]*\)\.setAttribute\('aria-pressed'/.test(app) && app.includes("function railSync() { for (const id of WIN_IDS) { const b = railBtn(id); if (b) b.setAttribute('aria-pressed', String(winShown(id))); } }"), 'rail: pressed state written only by railSync');
+  assert.ok(app.includes("return railPressed(WINS[id], winEl(id).classList.contains('scene-hide'));"), 'rail: what is in view decides');
+  for (const f of ['applyWin', 'sceneAside', 'sceneEnd', 'sceneUnhide']) assert.ok(body(f).includes('railSync()'), `rail: ${f} updates the icons`);
+  assert.ok(app.includes('if (winShown(id)) { setWin(id, { open: false }); return; }\n  sceneUnhide(id); setWin(id, { open: true, collapsed: false });'), 'rail: a click closes what is in view, else brings it into view');
+}
 console.log('OK — all UI tests passed');

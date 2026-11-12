@@ -80,6 +80,9 @@ function defaultWins(opts = {}) {
   for (const id of WIN_IDS) o[id] = { open: !!WIN_DEFAULT_OPEN[id] || (!!opts.wide && id === 'overview'), collapsed: (!!opts.narrow && id === 'results') || (!!opts.wide && !opts.full && id === 'overview'), x: null, y: null };
   return o;
 }
+// A rail icon looks pressed only while its window is really in view: open, not collapsed, not set aside (the opening
+// scene hides the mission windows without closing them). st: the window's state ({ open, collapsed }); aside: set aside.
+function railPressed(st, aside) { return !!(st && st.open && !st.collapsed && !aside); }
 // Tolerates missing, corrupt or partial data; x/y null means "use the default position".
 // Saved entries always win over the defaults. A saved layout (even one from before a window existed)
 // is left as it is: the wide-screen overview default only applies on a first visit.
@@ -450,4 +453,4 @@ function saturnShot(sat, sun, pole, box, o = {}) {
   return { e, roll: c.roll, fov: c.fov, f: c.f, x: c.X, y: c.Y, sun: sunAt, dist: c.f * (o.R || 1.4e8) / ring, side: [c.g, c.k], phase: ph, lit: c.lit, milky: c.mw };
 }
 
-if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

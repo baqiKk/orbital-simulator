@@ -2380,7 +2380,7 @@ function sceneSet(kind, o = {}) {
 function sceneAside() {
   document.documentElement.dataset.scene = '';
   for (const id of ['mission', 'results', 'overview']) if (WINS[id].open) { SCENE.hide.add(id); winEl(id).classList.add('scene-hide'); }
-  INS = null;
+  INS = null; railSync();
 }
 function sceneStart(free) {
   SCENE.wait = false; SCENE.on = true; SCENE.t = clockAt(MCLK, Date.now()); SCENE.age = 0;
@@ -2395,12 +2395,12 @@ function sceneEnd(toMission) {
   if (!SCENE.on) return;
   SCENE.on = false; delete document.documentElement.dataset.scene;
   for (const id of SCENE.hide) winEl(id).classList.remove('scene-hide');
-  SCENE.hide.clear(); INS = null; MAP.needFit = true;
+  SCENE.hide.clear(); INS = null; MAP.needFit = true; railSync();
   tlRoom(); clampWins(); // the timeline is back: windows keep above it again
   if (toMission) { setMap(false); needFit = true; if (!reduceMotion) { S.playing = true; setPlayIcon(); } }
 }
 // a window set aside by the scene comes back (rail button, "pick a mission")
-function sceneUnhide(id) { if (!SCENE.hide.delete(id)) return false; winEl(id).classList.remove('scene-hide'); INS = null; return true; }
+function sceneUnhide(id) { if (!SCENE.hide.delete(id)) return false; winEl(id).classList.remove('scene-hide'); INS = null; railSync(); return true; }
 // the viewer moved the camera or picked a body: the scene keeps running without its aim
 function sceneTouch() { FLY.on = false; if (SCENE.on) SCENE.free = true; }
 // Where the viewer is, at the top middle: "Manzara · Satürn" (once the view was moved: "Serbest bakış · Satürn'e dön",
@@ -3429,6 +3429,10 @@ const ICON_PLUS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7
 let zTop = 10;
 const winEl = id => $('#w-' + id);
 const railBtn = id => $(`.rail-btn[data-win="${id}"]`);
+// the rail icons follow what is in view (prefs.js railPressed): after opening, closing, collapsing a window, the scene
+// setting windows aside or bringing them back
+function winShown(id) { return railPressed(WINS[id], winEl(id).classList.contains('scene-hide')); }
+function railSync() { for (const id of WIN_IDS) { const b = railBtn(id); if (b) b.setAttribute('aria-pressed', String(winShown(id))); } }
 function saveWins() { writePref(LS, PREF_KEYS.wins, JSON.stringify(WINS)); }
 
 // Default spots: mission top-left, results under the view controls on the right and the overview beside
@@ -3472,7 +3476,7 @@ function applyWin(id) {
   cb.innerHTML = st.collapsed ? ICON_PLUS : ICON_MINUS;
   cb.setAttribute('aria-label', _(st.collapsed ? 'win.expand' : 'win.collapse'));
   cb.setAttribute('aria-expanded', String(!st.collapsed));
-  railBtn(id).setAttribute('aria-pressed', String(st.open));
+  railSync();
   if (id === 'gloss' && st.open) renderGloss($('#glossQ').value);
   if (id === 'credits' && st.open) renderCredits();
   if (id === 'overview' && st.open) ovDist(true);
@@ -3492,8 +3496,9 @@ function bringFront(el) { el.style.zIndex = ++zTop; }
 
 document.querySelector('.rail').addEventListener('click', e => {
   const b = e.target.closest('[data-win]'); if (!b) return;
-  if (sceneUnhide(b.dataset.win)) { setWin(b.dataset.win, { open: true, collapsed: false }); return; }
-  setWin(b.dataset.win, { open: !WINS[b.dataset.win].open, collapsed: false });
+  const id = b.dataset.win; // a pressed icon closes its window; any other brings it into view (open, expanded, back from aside)
+  if (winShown(id)) { setWin(id, { open: false }); return; }
+  sceneUnhide(id); setWin(id, { open: true, collapsed: false });
 });
 $('#wins').addEventListener('click', e => {
   const b = e.target.closest('.wbtn'); if (!b) return;

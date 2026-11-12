@@ -284,6 +284,10 @@ Kararlar (2026-11-12): bi-eliptiğin rb sınırı etki küresinin yarısı; kay�
 - Kamera dakikalar süren salınımla (±3° faz, ±2,5° yükseklik) yavaşça kayar; canlı saat aynen. Dokununca serbest bakış (görünüm yumuşakça düzelir), "Satürn'e dön" kadraja döner. Tur seçicide "Tur" olarak kalır. 2B: Rhea'ya kadar yörüngelerle sakin Satürn, 5 dakikalık nefes.
 - Sonuç: prefs.js `SAT_SHOT` / `saturnShot`, app.js `sceneAim3` / `sceneBox`, mode3d.js kamera `roll` / `fov` / `camLevel3`; ui.test.js 36. test.
 
+### Faz 17b — Sol çubuk simgeleri ✅ tamamlandı (2026-11-12)
+- Açılışta Görev (ve Sonuçlar, Genel bakış) simgesi etkin görünüyordu: pencereler açık sayılıyor ama manzara onları kenara almıştı. Simge artık yalnızca pencere gerçekten görünürken (açık, katlı değil, kenarda değil) etkin; kapanınca, katlanınca, manzara başlayıp bitince güncellenir. Etkin olmayan simgeye tıklama pencereyi açar ve genişletir.
+- Sonuç: prefs.js `railPressed`, app.js `railSync` / `winShown`; ui.test.js 37. test; tarayıcıda 8 simge × aç / katla / genişlet / kapat ve manzara başla/bitir denendi.
+
 ## Notlar
 - Hibrit OTV hazır aracı: itki, Isp, kütle ve tek ateşleme süresini birlikte veren yayımlanmış birincil bir kaynak bulununca eklenecek. Yayımlanmamış şirket verileri kullanılmayacak.
 
