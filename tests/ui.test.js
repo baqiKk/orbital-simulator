@@ -1275,6 +1275,15 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok((wz.match(/\{ t: 'wz\.s\.engine', b: wzEngFields\(/g) || []).length === 3 && (wz.match(/engCardHtml\(\)/g) || []).length === 3 && wz.includes("fail('wz-eng', _('wz.e.eng'))") && has('wz.e.eng'), 'wizard: the engine step on every path, its lines in every result card');
   assert.ok(html.includes('id="mvEng"') && has('mv.eng') && read('js/app.js').includes("engOpenFrom(S.M.eng || null)"), 'maneuver form: the engine and a way to the window');
 }
+// 41) The smoke test (tests/smoke.js): a real browser over every page and a short design session, in CI (its own job,
+// Playwright installed outside the repository); the site and the repository get no dependency.
+{
+  const sm = read('tests/smoke.js'), ci = read('.github/workflows/test.yml');
+  assert.ok(/pageerror/.test(sm) && /'console'/.test(sm) && /requestfailed/.test(sm) && /fonts\\\.googleapis/.test(sm) && sm.includes("[{ width: 390, height: 844 }, 'phone']") && sm.includes('#wzGo') && sm.includes('#engApply'), 'smoke: page and console errors, failed requests (Google Fonts aside), phone size, the wizard and the engine window');
+  assert.ok(/\n  smoke:\n/.test(ci) && ci.includes('playwright@1.49.1') && ci.includes('--prefix "$RUNNER_TEMP/pw"') && ci.includes('node tests/smoke.js'), 'smoke: its own CI job, Playwright outside the repository');
+  assert.ok(!fs.existsSync(path.join(__dirname, '..', 'package.json')) && !fs.existsSync(path.join(__dirname, '..', 'node_modules')), 'smoke: no package.json or node_modules in the repository');
+  assert.ok(/Push'tan önce duman testini yerelde de çalıştır/.test(read('CLAUDE.md')), 'smoke: the rule in CLAUDE.md');
+}
 // the encoder itself (an ES module): a real GIF
 (async () => {
   const G = await import(require('url').pathToFileURL(path.join(__dirname, '..', 'js', 'rec-worker.mjs')).href);

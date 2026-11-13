@@ -1,5 +1,6 @@
 # The two test files on Node 22 and 24 (no dependencies, no npm install): the physics and the UI must hold on any
-# supported Node version and processor (floating point compared with physical tolerances, see CLAUDE.md).
+# supported Node version and processor (floating point compared with physical tolerances, see CLAUDE.md). Then the
+# smoke test in a headless browser (job "smoke"; Playwright installed only there, outside the repository).
 name: test
 
 on:
@@ -26,3 +27,23 @@ jobs:
         run: node tests/core.test.js
       - name: UI (tests/ui.test.js)
         run: node tests/ui.test.js
+
+  # A real browser (headless Chromium): every page opens without a script error, and a short design session (the
+  # wizard flies a maneuver, the engine window applies an engine) works. Playwright is installed outside the
+  # repository, only here; the site gets no dependency (see tests/smoke.js).
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Playwright (outside the repository)
+        run: |
+          npm i --no-audit --no-fund --prefix "$RUNNER_TEMP/pw" playwright@1.49.1
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Smoke (tests/smoke.js)
+        env:
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/pw/node_modules/playwright
+        run: node tests/smoke.js
