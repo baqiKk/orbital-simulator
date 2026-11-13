@@ -504,7 +504,7 @@ const apsNames = k => { const a = APSIS[k]; return a && a[1] ? a : [_('apsis.gen
 const cap1 = s => s[0].toLocaleUpperCase(DICT['meta.locale']) + s.slice(1);
 const MVF = ['hp0', 'ha0', 'i0', 'hp1', 'e1', 'i1', 'rb', 'k', 'm0', 'md', 'isp', 'F', 'O0', 'tMax', 'nMax', 'wait', 'T'];
 // what a maneuver setup has when its scenario leaves it out: no vehicle limits, the single firing's point, length, way
-const MV_DEF = { veh: '', tMax: 0, nMax: 0, wait: 0, at: 0, T: 60, dir: 'pro' };
+const MV_DEF = { veh: '', tMax: 0, nMax: 0, wait: 0, at: 0, T: 60, dir: 'pro', eng: null };
 const VEH_F = ['F', 'isp', 'm0', 'md', 'tMax', 'nMax', 'wait'];
 // the engine runs: finite burns, the spiral and the single firing (always with the engine)
 const mvFinite = M => M.type === 'spiral' || M.type === 'burn' || (M.thrust === 'fin' && M.type !== 'free'); // the free burn is impulsive
@@ -524,6 +524,7 @@ function applyVehicle(val) {
   const v = val.startsWith('p:') ? VEHICLES.find(q => q.id === val.slice(2)) : val.startsWith('s:') ? SAVED_VEH[+val.slice(2)] : null;
   S.M.veh = v ? val : '';
   if (v) { for (const f of VEH_F) S.M[f] = v[f]; if (S.M.type !== 'spiral' && S.M.type !== 'burn') S.M.thrust = 'fin'; }
+  S.M.eng = val.startsWith('p:') ? engOfVehicle(val.slice(2)) : null; // its engine (js/engines.js), if the vehicle has one listed
   syncMan(); rebuild({ resetU: true });
 }
 $('#mv-veh').addEventListener('change', e => applyVehicle(e.target.value));
@@ -543,6 +544,26 @@ $('#mvVehDel').addEventListener('click', () => {
 });
 $('#mvAtSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.M.at = +b.dataset.v; syncMan(); rebuild({ resetU: true }); });
 $('#mv-dir').addEventListener('change', e => { S.M.dir = e.target.value; syncMan(); rebuild({ resetU: true }); });
+// The mission's engine (js/engine-ui.js, S.M.eng) and the maneuver's own figures stay in step: applying an engine sets
+// F, Isp, m₀ = m_d + m_p and m_d; a figure typed in the form goes back into the engine (it becomes a typed-in one)
+function engSyncM() {
+  const s = engSpecOf(S.M.eng); if (!s || s.error) return;
+  Object.assign(S.M, { F: s.F, isp: s.isp, m0: s.m0, md: s.md });
+  if (s.type === 'sol' && S.M.type === 'burn') S.M.T = +s.tb.toFixed(3); // a solid burns to the end
+}
+function engFromM() {
+  const E = S.M.eng, M = S.M; if (!E) return;
+  S.M.eng = { ...E, id: '', F: M.F, isp: M.isp, md: M.md, pm: 'tot', mp: Math.max(0, M.m0 - M.md) };
+}
+function engApply(E) {
+  if (!S.M) return;
+  S.M.eng = E;
+  if (S.kind === 'man') {
+    engSyncM(); S.M.veh = '';
+    if (S.M.type !== 'spiral' && S.M.type !== 'burn' && S.M.type !== 'free') S.M.thrust = 'fin';
+    syncMan(); rebuild({ resetU: true });
+  } else updateResults();
+}
 function syncMan() {
   const M = S.M, [pn, an] = apsNames(M.body).map(cap1), sel = $('#mv-body'), spiral = M.type === 'spiral', fin = mvFinite(M);
   if (sel.options.length !== KEYS_MV.length) sel.innerHTML = KEYS_MV.map(k => `<option value="${k}">${esc(_('body.' + k))}</option>`).join('');
@@ -594,6 +615,7 @@ for (const f of MVF) {
     e.target.setAttribute('aria-invalid', String(bad));
     if (bad) return;
     S.M[f] = v; if (VEH_F.includes(f)) S.M.veh = ''; // edited by hand: no longer the vehicle chosen
+    if (S.M.eng && ['F', 'isp', 'm0', 'md'].includes(f)) engFromM();
     syncMan(); scheduleRebuild();
   });
 }
@@ -702,7 +724,12 @@ function rebuildMan(o = {}) {
   if (simR) { PLANE = planeBasis(simR.normal); buildCache(); }
   if (o.fit) needFit = true;
   $('#dateWarn').hidden = inEphem(M.t0);
-  if (fin) mvStart({ c, o0, o1, opt: { ...opt, type: M.type, at: M.at, T: M.T, dir: M.dir }, fin: { F: M.F, isp: M.isp, m0: M.m0, md: M.md, steer: M.steer },
+  const es = M.eng ? engSpecOf(M.eng) : null, eng = es && !es.error ? es : null;
+  if (eng && eng.type === 'sol' && !burn && !free && !spiral) { // a solid cannot stop or restart: the plan's first burn alone, and what it needs
+    const b1 = MAN.plan && MAN.plan.burns && MAN.plan.burns[0];
+    showErr(_('err.engSolidPlan', { kg: nf0.format(b1 ? engNeed(b1.dv, eng.md, eng.isp) : 0) }), 'err.mvFix'); mvStop(); simR = null; C = null; updateResults(); renderTicks(); return;
+  }
+  if (fin) mvStart({ c, o0, o1, opt: { ...opt, type: M.type, at: M.at, T: eng && eng.type === 'sol' ? eng.tb : M.T, dir: M.dir }, fin: { F: M.F, isp: M.isp, m0: M.m0, md: M.md, steer: M.steer, eng },
     lim: mvLim(M) ? { tMax: M.tMax, nMax: M.nMax, wait: M.wait } : null, cap: MODE === 'low' ? 20000 : 60000 }, MAN);
   else mvStop();
   updateResults(); renderTicks(); renderFrameSeg(); pcSync();
@@ -1399,6 +1426,7 @@ function focusName() {
 // end of a frame: HUD focus tag, hover cursor and ring (rings are plain in the low-resource mode)
 function frameEnd() {
   setCaption(); liveTick();
+  if (typeof engTick === 'function') engTick(); // the engine charts' playhead (O(1))
   const n = focusName();
   if (n !== focusTxt) { focusTxt = n; $('#focusName').textContent = n; $('#focusTag').hidden = !n; $('#followTxt').textContent = _('vw.followOn', { name: n || _('fo.free') }); $('#followX').hidden = !n; INS = null; }
   const h = hoverPt && !ptrs.size ? hitAt(hoverPt.x, hoverPt.y, HIT_PX.mouse) : null;
@@ -1632,7 +1660,7 @@ function updateResultsMan() {
       txt = cur.sim.impact >= 0 ? _('chip.impact', { name: S.bodies[0].name }) : _(b.fuelOut ? 'chip.vDry' : 'chip.vDone');
     } else { cls = 'bad'; txt = _('chip.impact', { name: S.bodies[0].name }); }
     chip.className = 'chip ' + cls; chip.textContent = txt;
-    res.innerHTML = resRows(rows) + schedHtml();
+    res.innerHTML = resRows(rows.concat(engResRows())) + schedHtml();
     return;
   }
   if (MAN.free) { // the free burn: its Δv and components, the speed before and after, the orbit it leaves (or the escape)
@@ -1652,7 +1680,7 @@ function updateResultsMan() {
       if (r.impact < 0) { cls = 'good'; txt = _('chip.freeBurn'); }
     }
     chip.className = 'chip ' + cls; chip.textContent = txt;
-    res.innerHTML = resRows(rows) + schedHtml();
+    res.innerHTML = resRows(rows.concat(engResRows())) + schedHtml();
     return;
   }
   if (MAN.spiral) { // the spiral: revolutions, time, Δv against Edelbaum and the impulsive Hohmann, propellant
@@ -1760,7 +1788,7 @@ function updateResultsMan() {
   }
   if (busy) { cls = 'warn'; txt = _('chip.mvBusy', { p: nf0.format(MAN.prog) }); }
   chip.className = 'chip ' + cls; chip.textContent = txt;
-  res.innerHTML = resRows(rows) + schedHtml();
+  res.innerHTML = resRows(rows.concat(engResRows())) + schedHtml();
 }
 // Burn schedule (Results): per burn where (apsis, node), when (T+, UTC; a finite burn's start, end and duration), Δv and
 // why it is done there; a row moves the timeline to the burn's start.
@@ -1810,6 +1838,7 @@ $('#res').addEventListener('click', e => {
 });
 function updateResults() {
   if (typeof wzAfterResults === 'function') wzAfterResults(); // the wizard's result card follows (js/wizard.js)
+  if (typeof engAfterResults === 'function') engAfterResults(); // and the engine window (js/engine-ui.js)
   if (S.kind === 'man') { updateResultsMan(); return; }
   const chip = $('#chip'), res = $('#res');
   if (!simR || !sys) { chip.className = 'chip bad'; chip.textContent = _('res.fail'); res.innerHTML = ''; return; }
@@ -1863,7 +1892,7 @@ function updateResults() {
     rows.push([_('res.oop'), nf0.format(tr.oop), _('res.oopUnit')]);
     if (tr.vEntry) rows.push([_('res.vEntry'), nf3.format(tr.vEntry / 1e3), 'km/s']);
   }
-  res.innerHTML = resRows(rows) + schedHtml();
+  res.innerHTML = resRows(rows.concat(engResRows())) + schedHtml();
 }
 // the overview window repeats the mission status, so picks and solver progress show where the user clicked
 // warn: the solver missed its target (shown in the warning colour until the next status)
@@ -2597,7 +2626,7 @@ $('#startBtn').addEventListener('click', () => startOpen(parseStart(readPref(LS,
 
 // The rail on phones: its names under the icons, and the less used windows (and "reset") in "Diğer" (a list above the
 // rail) so the names never shrink or get cut. The buttons are moved, the rail's own click handler still serves them.
-const RAIL = { more: ['bodies', 'transfer', 'gloss', 'model', 'credits'], phone: matchMedia('(max-width: 860px)'), homes: new Map() };
+const RAIL = { more: ['bodies', 'transfer', 'engine', 'gloss', 'model', 'credits'], phone: matchMedia('(max-width: 860px)'), homes: new Map() };
 function railLayout() {
   const list = $('#railMoreList'), btns = [...RAIL.more.map(id => railBtn(id)), $('#resetWins')];
   for (const b of btns) { if (!RAIL.homes.has(b)) { const m = document.createComment('rail'); b.before(m); RAIL.homes.set(b, m); } }
@@ -3398,6 +3427,9 @@ function renderCredits() {
     <table><thead><tr><th>${esc(_('cred.col.body'))}</th><th>${esc(_('cred.col.src'))}</th><th>${esc(_('cred.col.note'))}</th></tr></thead><tbody>${rows.join('')}</tbody></table>
     <label class="chk"><input type="checkbox" id="venusRadar"${TEXOPT.venusRadar ? ' checked' : ''}><span>${esc(_('cred.venusRadar'))}</span></label>
     <label class="chk"><input type="checkbox" id="earthClouds"${TEXOPT.clouds ? ' checked' : ''}><span>${esc(_('cred.clouds'))}</span></label>
+    <h3>${esc(_('cred.h.eng'))}</h3>
+    <ul>${ENGINES.map(v => `<li><b>${esc(_('eng.' + v.id))}</b> — ${esc(_('cred.eng.' + v.id))} ${v.src.map(s => link(ENG_SRC[s], _('cred.esrc.' + s))).join(' · ')}</li>`).join('')}
+      ${['lox_paraffin', 'n2o_htpb'].map(k => `<li><b>${esc(_('eng.p.' + k))}</b> — ${esc(_('cred.prop.' + k))} ${PROPS[k].src.map(s => link(ENG_SRC[s], _('cred.esrc.' + s))).join(' · ')}</li>`).join('')}</ul>
     <h3>${esc(_('cred.h.veh'))}</h3>
     <ul>${VEHICLES.map(v => `<li><b>${esc(_('veh.' + v.id))}</b> — ${esc(_('cred.veh.' + v.id))} ${v.src.map(s => link(VEH_SRC[s], _('cred.vsrc.' + s))).join(' · ')}</li>`).join('')}</ul>
     <h3>${esc(_('cred.h.cabin'))}</h3>
@@ -3504,6 +3536,7 @@ function applyWin(id) {
   railSync();
   if (id === 'gloss' && st.open) renderGloss($('#glossQ').value);
   if (id === 'credits' && st.open) renderCredits();
+  if (id === 'engine' && st.open && !st.collapsed && typeof engWinOpened === 'function') engWinOpened();
   if (id === 'overview' && st.open) ovDist(true);
   placeWin(id);
   if (id === 'transfer' && st.open && !st.collapsed) pcSync();

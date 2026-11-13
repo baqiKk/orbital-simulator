@@ -775,3 +775,21 @@ html[data-q=low] .k-root *{animation:none!important;transition:none!important}
 .k-nolife .k-cat,.k-nolife .k-cat *{animation:none!important} /* ?life=0 */
 html[data-q=low] #kGlowArt{filter:none}
 @media (prefers-reduced-motion:reduce){.k-root *{animation:none!important}}
+
+/* ---------- engine window (Phase 18a) ---------- */
+#w-engine{width:min(400px,calc(100vw - 24px))}
+.win-b.eng{display:flex;flex-direction:column;gap:10px}
+.eng-out{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:0;font-size:12px}
+.eng-out dt{color:var(--faint);font:500 10px/1.5 var(--f-disp);letter-spacing:.1em;text-transform:uppercase}
+.eng-out dd{margin:0;font-family:var(--f-mono);color:var(--ink);text-align:right}
+.eng-chart{position:relative;width:100%}
+.eng-chart canvas{display:block;width:100%}
+.eng-chart canvas+canvas{position:absolute;left:0;top:0;pointer-events:none}
+.eng-burns{width:100%;border-collapse:collapse;font:400 11.5px/1.4 var(--f-mono)}
+.eng-burns caption{text-align:left;color:var(--faint);font:500 10px/1.6 var(--f-disp);letter-spacing:.1em;text-transform:uppercase}
+.eng-burns th,.eng-burns td{padding:3px 4px;border-top:1px solid var(--line);text-align:right;color:var(--ink)}
+.eng-burns th{text-align:left;color:var(--dim);font-weight:400}
+.eng-burns td.warn,.res .warn{color:var(--warn)}
+.eng-act{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.eng-act input{flex:1;min-width:110px}
+.eng-burns th{white-space:nowrap}

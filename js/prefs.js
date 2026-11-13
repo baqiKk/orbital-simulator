@@ -1,10 +1,10 @@
 // Persisted UI preferences: view mode and window layout.
 // DOM-free: the storage object is passed in (localStorage, sessionStorage, a stub or null), so Node tests can run it.
 // Every storage access is wrapped: private windows, blocked site data and quota errors must never break the page.
-const PREF_KEYS = { rec: 'orbsim.rec', mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify', cabSaver: 'orbsim.cab.saver.v1', cabPanHint: 'orbsim.cab.panHint', cabBoot: 'orbsim.cab.boot', cabBox: 'orbsim.cab.box.v1', cabQ: 'orbsim.cab.q', simBoot: 'orbsim.boot', uiExpert: 'orbsim.ui.expert', start: 'orbsim.start', tour: 'orbsim.tour.v1', evStop: 'orbsim.evStop', liveTip: 'orbsim.liveTip', startSeen: 'orbsim.startSeen' };
+const PREF_KEYS = { engines: 'orbsim.engines.v1', rec: 'orbsim.rec', mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify', cabSaver: 'orbsim.cab.saver.v1', cabPanHint: 'orbsim.cab.panHint', cabBoot: 'orbsim.cab.boot', cabBox: 'orbsim.cab.box.v1', cabQ: 'orbsim.cab.q', simBoot: 'orbsim.boot', uiExpert: 'orbsim.ui.expert', start: 'orbsim.start', tour: 'orbsim.tour.v1', evStop: 'orbsim.evStop', liveTip: 'orbsim.liveTip', startSeen: 'orbsim.startSeen' };
 const VIEW_MODES = ['low', 'normal', '3d'];
 // placement order: overview's default spot sits under Results, so it comes after it
-const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'gloss', 'model', 'credits'];
+const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'engine', 'gloss', 'model', 'credits'];
 const WIN_DEFAULT_OPEN = { mission: true, results: true };
 
 // keys of settings whose features are gone (the cabin's ceiling strip): cleared once read, so nothing old lingers
@@ -16,6 +16,26 @@ function clearPref(store, key) { try { if (store) store.removeItem(key); } catch
 // Saved vehicles (orbit maneuvers): a JSON list of { name, F, isp, m0, md, tMax, nMax, wait }. Entries that are not
 // usable are dropped (thrust, Isp and masses positive, dry below wet, limits ≥ 0, a name of 1–40 characters), 50 at most;
 // anything unreadable gives the empty list (the ready-made vehicles remain).
+// Saved engines (Phase 18a, js/engine-ui.js): [{ name, type, prop, F, isp, of, pm, mp, mf, mox, md, r0, grain }], the
+// broken ones left out, at most 50
+const ENG_KINDS = { liq: ['lox_lh2', 'lox_rp1', 'nto_mmh', 'nto_a50'], hyb: ['n2o_htpb', 'lox_paraffin'], sol: ['apcp'], mono: ['n2h4', 'h2o2'] };
+function parseEngines(raw) {
+  let d;
+  try { d = JSON.parse(raw); } catch (e) { return []; }
+  if (!Array.isArray(d)) return [];
+  const num = v => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : NaN), out = [];
+  for (const q of d) {
+    if (!q || typeof q !== 'object' || typeof q.name !== 'string' || !ENG_KINDS[q.type] || !ENG_KINDS[q.type].includes(q.prop)) continue;
+    const name = q.name.trim().slice(0, 40), e = { name, type: q.type, prop: q.prop, pm: q.pm === 'split' ? 'split' : 'tot', grain: ['bates', 'tube', 'rod'].includes(q.grain) ? q.grain : 'bates' };
+    for (const f of ['F', 'isp', 'of', 'mp', 'mf', 'mox', 'md', 'r0']) e[f] = num(q[f]);
+    const bi = q.type === 'liq' || q.type === 'hyb', load = bi && e.pm === 'split' ? e.mf > 0 && e.mox > 0 : e.mp > 0;
+    if (!name || !(e.F > 0 && e.isp > 0 && e.md > 0 && load) || (bi && e.pm === 'tot' && !(e.of > 0)) || (q.type === 'hyb' && !(e.r0 > 0))) continue;
+    for (const f of ['of', 'mp', 'mf', 'mox', 'r0']) if (!Number.isFinite(e[f])) e[f] = 0;
+    out.push(e);
+    if (out.length >= 50) break;
+  }
+  return out;
+}
 function parseVehicles(raw) {
   let d;
   try { d = JSON.parse(raw); } catch (e) { return []; }
@@ -494,4 +514,4 @@ function saturnShot(sat, sun, pole, box, o = {}) {
     side: [c.g, c.k], phase: ang(e, s), lit: c.lit, milky: c.mw, sway: { k: K, ke: KE, az: A * K, el: sw.el * KE, dist: o.sway ? sw.dist : 0 }, fit: [K, KE, yk0] };
 }
 
-if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, auto3dFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, auto3dFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, parseEngines, ENG_KINDS, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };

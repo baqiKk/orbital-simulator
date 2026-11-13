@@ -22,7 +22,7 @@ assert.ok(!/img\/planets/.test(kab), 'kabin-taslak.html asks for planet images o
 
 // 2) Every literal key in app.js / core.js exists (string literals inside a dictionary namespace, incl. ternaries)
 const spaces = new Set(Object.keys(DICT).map(k => k.split('.')[0]));
-for (const f of ['js/app.js', 'js/core.js', 'js/mode3d.js', 'js/globe.js', 'js/wizard.js', 'js/record.js']) {
+for (const f of ['js/app.js', 'js/core.js', 'js/mode3d.js', 'js/globe.js', 'js/wizard.js', 'js/record.js', 'js/engine-ui.js']) {
   for (const m of read(f).matchAll(/'([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9_]+)+)'/g)) {
     if (spaces.has(m[1].split('.')[0])) assert.ok(has(m[1]), `${f} key missing from dictionary: ${m[1]}`);
   }
@@ -322,7 +322,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(P.PREF_KEYS.osc && P.PREF_KEYS.slow && /id="tOsc"/.test(html) && /id="slow"/.test(html), 'switches and saved keys');
   assert.ok(/S\.osc = readPref\(LS, PREF_KEYS\.osc\) !== '0';/.test(app) && /S\.slow = readPref\(LS, PREF_KEYS\.slow\) !== '0';/.test(app), 'on by default');
   assert.ok(/const slowOn = \(\) => S\.slow && Q\.glow && !lowQ && !reduceMotion;/.test(app), 'slow motion only where animations run');
-  assert.strictEqual([...app.matchAll(/res\.innerHTML = resRows\(rows\) \+ schedHtml\(\);/g)].length, 4, 'schedule in transfer, maneuver, single-firing and free-burn results');
+  assert.strictEqual([...app.matchAll(/res\.innerHTML = resRows\(rows\.concat\(engResRows\(\)\)\) \+ schedHtml\(\);/g)].length, 4, 'schedule (and the engine rows) in transfer, maneuver, single-firing and free-burn results');
   assert.ok(/tr\.sch[\s\S]{0,120}S\.u = tToU\(\+tr\.dataset\.t\)/.test(app), 'a schedule row jumps to its burn');
   assert.ok(has('osc.morph') && /SLOW\.morph/.test(app), 'the impulsive turn is labelled a visual aid');
 }
@@ -873,7 +873,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   for (const w of ['mission', 'bodies', 'results', 'overview', 'transfer', 'gloss', 'model', 'credits'])
     assert.ok(page.includes('data-win="' + w + '" data-i18n-aria-label="win.' + w + '" data-i18n-data-label="rail.' + w + '"') && has('rail.' + w), 'rail name ' + w);
   assert.ok(page.includes('data-i18n-data-label="rail.cabin"') && page.includes('data-i18n-data-label="rail.reset"') && page.includes('id="railMore"') && page.includes('id="railMoreList"'), 'cabin, reset, more');
-  assert.ok(app.includes("more: ['bodies', 'transfer', 'gloss', 'model', 'credits']") && app.includes("$('#resetWins')]"), 'the less used ones go into Diğer');
+  assert.ok(app.includes("more: ['bodies', 'transfer', 'engine', 'gloss', 'model', 'credits']") && app.includes("$('#resetWins')]"), 'the less used ones go into Diğer');
   assert.ok(css.includes('.rail-btn::after{content:attr(data-label)') && !css.includes('text-overflow:ellipsis;content:attr'), 'names from data-label, not cut');
   for (const k of ['tour.1', 'tour.2', 'tour.3', 'tour.4', 'tour.skip', 'tour.next', 'tour.done', 'tour.n']) assert.ok(has(k), k);
   assert.ok(P.PREF_KEYS.tour && app.includes('function tourStart() { if (readPref(LS, PREF_KEYS.tour)) return;') && app.includes("writePref(LS, PREF_KEYS.tour, '1')") && app.includes('setTimeout(tourStart, 700)'), 'tour once, skippable, from the design choice');
@@ -996,7 +996,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // transfer chosen by the automatic method, within the body's sphere of influence); the result card follows updateResults.
 {
   const C = require('../js/core.js'), wz = read('js/wizard.js'), css = read('css/style.css');
-  assert.ok(/<script src="js\/app\.js"><\/script>\n<script src="js\/wizard\.js"><\/script>/.test(html), 'wizard.js after app.js');
+  assert.ok(/<script src="js\/app\.js"><\/script>\n<script src="js\/engine-ui\.js"><\/script>\n<script src="js\/wizard\.js"><\/script>/.test(html), 'wizard.js after app.js (and the engine window between)');
   assert.ok(css.includes('html:not(.ui-expert) #w-mission .win-b>:not(.wiz){display:none!important}') && css.includes('html.ui-expert #wiz{display:none}'), 'plain: the wizard; expert: the full form');
   for (const id of ['wiz', 'wzPick', 'wzForm', 'wzSteps', 'wzEx', 'wzRes', 'wzFoot', 'wzErr', 'wzGo', 'wzExpert']) assert.ok(html.includes('id="' + id + '"'), 'wizard element ' + id);
   for (const m of ['auto', 'hohmann', 'bielliptic']) assert.ok(has('wz.m.' + m) && has('wz.m.' + m + 'D'), 'method ' + m);
@@ -1226,6 +1226,49 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.strictEqual((m3.match(/V3\.render\(\{ stars: Q\.stars && !skyRec\(\)/g) || []).length, (m3.match(/V3\.render\(/g) || []).length, 'recording: every 3D render leaves the sky out');
   assert.ok(m3.includes('if (!Q.glow || lowQ || !FXON.glare || skyRec()) return null;'), 'recording: no 3D glare');
   assert.ok(Rc.recLadder(1080)[0].w === 1080 && Rc.recLadder(1080)[0].fps === 24, 'recording: the first step as asked (1080 px, 24 frames/s)');
+}
+// 40) Engines (Phase 18a, js/engines.js, js/engine-ui.js): the ready-made engines' values exactly as their sources give
+// them (converted only by the factors stated), each with a name, a note and its links in Kaynakça; the propellant data
+// (regression laws, the CEA table as run); the engine window (types, presets, the two ways to give the load, the hybrid
+// and solid inputs, the figures, the charts, apply / save) and its rail button; saved engines parsed safely; the
+// charts' playhead draws only itself each frame; the wizard has an engine step; the Model window says what is assumed.
+{
+  const E = require('../js/engines.js'), lbf = 4.4482216, lb = 0.45359237, by = id => E.ENGINES.find(q => q.id === id);
+  const V = require('../js/vehicles.js').VEHICLES, veh = id => V.find(q => q.id === id);
+  assert.ok(by('rl10').F === 99200 && by('rl10').isp === 450.5 && by('rl10').of === 5.5 && by('rl10').veh === 'centaur' && veh('centaur').F === 99200, 'engines: RL10A-4-2 99.2 kN, 450.5 s, O/F 5.5 (Atlas V guide, L3Harris)');
+  assert.ok(by('aj10').F === 91188.5 && by('aj10').isp === 314.5 && Math.abs(by('aj10').of - 24389.10 / 15252.70) < 1e-12, 'engines: AJ10-137, O/F from the AOH loads');
+  assert.ok(by('s400').F === 420 && by('s400').isp === 318 && by('s400').of === 1.65, 'engines: S400-12 420 N, 318 s, O/F 1.65 (ArianeGroup)');
+  assert.ok(by('n2h4').F === 22 && by('n2h4').isp === 230 && by('n2h4').type === 'mono' && !by('n2h4').of, 'engines: the 22 N hydrazine thruster');
+  const st = by('star48');
+  assert.ok(st.type === 'sol' && Math.abs(st.F - 15430 * lbf) < 1e-9 && st.isp === 292.1 && Math.abs(st.mp - 4431.2 * lb) < 1e-9 && Math.abs(st.md - 257.8 * lb) < 1e-9, 'engines: STAR 48B long nozzle (catalog: 15,430 lbf, 292.1 s, 4,431.2 / 257.8 lbm)');
+  assert.ok(by('hyb').ex && by('hyb').prop === 'n2o_htpb' && !E.ENGINES.some(q => /merlin/i.test(q.id)), 'engines: the hybrid is marked as an example; no engine without a published Isp');
+  const PR = E.PROPS;
+  assert.ok(PR.lox_paraffin.hyb.a === 9.36e-2 && PR.lox_paraffin.hyb.n === 0.62 && PR.lox_paraffin.hyb.rho === 920 && PR.n2o_htpb.hyb.a === 0.1876 && PR.n2o_htpb.hyb.n === 0.347 && PR.n2o_htpb.hyb.ispOF === null, 'engines: the regression laws as published; no Isp table for N2O/HTPB yet');
+  assert.ok(E.CEA_PARAFFIN_IVAC.length === 13 && E.CEA_PARAFFIN_IVAC[6][0] === 2.5 && E.CEA_PARAFFIN_IVAC[6][1] === 3474.9 && PR.lox_paraffin.hyb.ispOF.every((q, i) => Math.abs(q[1] * 9.80665 - E.CEA_PARAFFIN_IVAC[i][1]) < 1e-9), 'engines: the CEA table (Ivac, m/s) as run, in seconds');
+  const ej = read('js/engines.js');
+  assert.ok(/pressure 30 bar, supersonic area ratio Ae\/At = 50/.test(ej) && /equilibrium \(shifting\)/.test(ej) && ej.includes('CEA2, February 5, 2004'), 'engines: the CEA run\'s Pc, ε and equilibrium assumption in the comment');
+  for (const q of E.ENGINES) {
+    assert.ok(has('eng.' + q.id) && has('cred.eng.' + q.id) && q.src.every(s => E.ENG_SRC[s] && has('cred.esrc.' + s)), 'engines: name, note and links of ' + q.id);
+    if (q.veh) assert.ok(veh(q.veh), 'engines: ' + q.id + ' takes its masses from ' + q.veh);
+  }
+  for (const k of ['lox_paraffin', 'n2o_htpb']) assert.ok(has('cred.prop.' + k) && PR[k].src.every(s => E.ENG_SRC[s]), 'engines: propellant data credited ' + k);
+  const appJs = read('js/app.js'), ui = read('js/engine-ui.js');
+  assert.ok(appJs.includes("${esc(_('cred.h.eng'))}") && appJs.includes('ENG_SRC[s]') && has('cred.h.eng'), 'engines: Kaynakça lists the engines and the propellant data');
+  // the window and its rail button
+  for (const id of ['w-engine', 'engType', 'engPre', 'engProp', 'eng-F', 'eng-isp', 'engPm', 'eng-of', 'eng-mp', 'eng-mf', 'eng-mox', 'eng-md', 'engGrain', 'eng-r0', 'engOut', 'engCv', 'engCvP', 'engBurns', 'engApply', 'engSave'])
+    assert.ok(html.includes(`id="${id}"`), 'engine window: #' + id);
+  assert.ok(P.WIN_IDS.includes('engine') && html.includes('data-win="engine"') && has('win.engine') && has('rail.engine'), 'engine window: a window with its rail button');
+  // the two ways of giving the load never go to the core together; the hidden fields follow the choice
+  assert.ok(/\.\.\.\(split \? \{ mf: \+E\.mf, mox: \+E\.mox \} : \{ mp: \+E\.mp \}\)/.test(ui) && ui.includes("engEl('eng-mfW').hidden = engEl('eng-moxW').hidden = !(bi && E.pm === 'split');") && ui.includes("engEl('eng-mpW').hidden = bi && E.pm === 'split';"), 'engine window: total or fuel + oxidizer, never both');
+  // the playhead draws only itself (the charts are drawn once per change)
+  const tick = ui.slice(ui.indexOf('function engTick('), ui.indexOf('// ----- events -----'));
+  assert.ok(tick.length > 100 && !tick.includes('engChart(') && !tick.includes('engCompute(') && appJs.includes("if (typeof engTick === 'function') engTick();"), 'engine charts: the playhead alone each frame');
+  // saved engines
+  const ok = P.parseEngines(JSON.stringify([{ name: 'A', type: 'liq', prop: 'nto_mmh', F: 400, isp: 320, of: 1.65, pm: 'tot', mp: 700, md: 300 }, { name: 'B', type: 'hyb', prop: 'n2o_htpb', F: 5000, isp: 250, of: 6.5, pm: 'tot', mp: 300, md: 150, r0: 0 }, { name: 'C', type: 'sol', prop: 'nto_mmh', F: 1, isp: 1, mp: 1, md: 1 }, null, 5]));
+  assert.ok(ok.length === 1 && ok[0].name === 'A' && P.parseEngines('{') .length === 0 && P.PREF_KEYS.engines, 'saved engines: the broken ones left out');
+  // mission: finite flights read the curve; a solid flies a single firing or the free burn; what is missing is said
+  assert.ok(appJs.includes('fin: { F: M.F, isp: M.isp, m0: M.m0, md: M.md, steer: M.steer, eng },') && appJs.includes("_('err.engSolidPlan'") && has('err.engSolidPlan') && has('eng.short') && /\{kg\} kg itki maddesi eksik/.test(DICT['eng.short']), 'engine: the flight uses it, a solid\'s limits, the missing propellant in plain words');
+  assert.ok(html.includes('data-i18n="ui.model11"') && has('ui.model11') && /CEA/.test(DICT['ui.model11']) && /Isp sabit/.test(DICT['ui.model11']), 'engine: the Model window states the assumptions');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {
