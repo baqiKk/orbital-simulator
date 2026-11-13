@@ -1243,3 +1243,81 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   }
   console.log('free burn and automatic method ok');
 }
+
+// ===== Engines (Phase 18a): engineSpec / engineCurve, the curve in the finite-burn flight, impulsive burns =====
+// ṁ, burn time, Δv and the accelerations as by hand; fuel + oxidizer given → O/F from them, not both ways at once;
+// hybrid: the port grows monotonically as the closed form says, O/F drifts (up for n > ½, down for n < ½), fuel and
+// oxidizer run out together at τ = tb, the mean thrust is the F given; solid profiles flat / rising / falling; the
+// engine stops when the propellant does; Δv = ∫F/m dt with the curve; impulsive burns and the propellant missing.
+{
+  const G0 = C.G0, rel = (a, b) => Math.abs(a - b) / Math.abs(b);
+  // liquid, by hand
+  const L = C.engineSpec({ type: 'liq', F: 99200, isp: 450.5, of: 5.5, mp: 20830, md: 2243 });
+  const mdot = 99200 / (450.5 * G0);
+  assert.ok(rel(L.mdot, mdot) < 1e-12 && rel(L.tb, 20830 / mdot) < 1e-12 && rel(L.dv, 450.5 * G0 * Math.log(23073 / 2243)) < 1e-12, `engine: ṁ ${L.mdot.toFixed(3)} kg/s, burn ${L.tb.toFixed(1)} s, Δv ${L.dv.toFixed(0)} m/s by hand`);
+  assert.ok(rel(L.mdotOx / L.mdotF, 5.5) < 1e-12 && rel(L.mdotOx + L.mdotF, mdot) < 1e-12 && rel(L.mox / L.mf, 5.5) < 1e-12 && rel(L.mox + L.mf, 20830) < 1e-12, 'engine: fuel and oxidizer shares and flows');
+  assert.ok(rel(L.a0, 99200 / 23073) < 1e-12 && rel(L.a1, 99200 / 2243) < 1e-12, 'engine: acceleration at the start and the end');
+  // fuel + oxidizer given: O/F from them; both ways at once refused; the other refusals
+  const S = C.engineSpec({ type: 'liq', F: 420, isp: 318, mf: 160, mox: 267, md: 725 });
+  assert.ok(rel(S.of, 267 / 160) < 1e-12 && S.mp === 427 && rel(S.tb, 427 / (420 / (318 * G0))) < 1e-12, 'engine: O/F from the fuel and oxidizer masses');
+  assert.strictEqual(C.engineSpec({ type: 'liq', F: 420, isp: 318, of: 1.65, mp: 427, mf: 160, mox: 267, md: 725 }).error, 'err.engBoth', 'engine: total and fuel + oxidizer together refused');
+  assert.strictEqual(C.engineSpec({ type: 'mono', F: 22, isp: 230, mf: 100, mox: 30, md: 158 }).error, 'err.engSplit1', 'engine: a monopropellant has no oxidizer');
+  assert.strictEqual(C.engineSpec({ type: 'liq', F: 420, isp: 318, mp: 427, md: 725 }).error, 'err.engOF', 'engine: a bipropellant needs O/F');
+  const bad = [{ type: 'liq', F: 0, isp: 1, of: 1, mp: 1, md: 1 }, { type: 'liq', F: 1, isp: 0, of: 1, mp: 1, md: 1 }, { type: 'liq', F: 1, isp: 1, of: 1, mp: 1, md: 0 }, { type: 'liq', F: 1, isp: 1, of: 1, mp: 0, md: 1 }];
+  assert.ok(['err.engF', 'err.engIsp', 'err.engMd', 'err.engMp'].every((k, i) => C.engineSpec(bad[i]).error === k), 'engine: missing values refused');
+  const H2 = C.engineSpec({ type: 'mono', F: 22, isp: 230, mp: 137.7, md: 158.7 });
+  assert.ok(H2.of === 0 && H2.mox === 0 && H2.mf === 137.7 && H2.mdotOx === 0, 'engine: a monopropellant burns one propellant');
+  // hybrids: LOX/paraffin (n = 0.62, the CEA Isp table) and N2O/HTPB (n = 0.347, Isp constant)
+  const E = require('../js/engines.js');
+  const hyb = (pk, of, r0) => { const p = E.PROPS[pk].hyb; return C.engineSpec({ type: 'hyb', F: 5000, isp: 280, of, mp: 300, md: 150, hyb: { a: p.a, n: p.n, r0, rho: p.rho, ispOF: p.ispOF } }); };
+  for (const [pk, of, up] of [['lox_paraffin', 2.5, true], ['n2o_htpb', 6.5, false]]) {
+    const h = hyb(pk, of, 0.03), c = h.curve, p = E.PROPS[pk].hyb, N = c.n;
+    let mono = true, ofMono = true;
+    for (let k = 1; k < N; k++) { if (!(c.r[k] > c.r[k - 1])) mono = false; if (up ? !(c.of[k] > c.of[k - 1]) : !(c.of[k] < c.of[k - 1])) ofMono = false; }
+    assert.ok(mono, pk + ': the port radius only grows');
+    // the closed form, r^(2n+1) = r0^(2n+1) + (2n+1)·a·(ṁ_ox/π)^n·t
+    const mo = h.mox / h.tb, kk = 2 * p.n + 1, rc = t => Math.pow(Math.pow(0.03, kk) + kk * p.a * 1e-3 * Math.pow(mo / Math.PI, p.n) * t, 1 / kk);
+    assert.ok([0, 60, 120, 240].every(k => rel(c.r[k], rc(k * c.dt)) < 1e-12), pk + ': the port radius as the closed form');
+    assert.ok(ofMono && rel(h.of0, of) > 0.02, `${pk}: O/F drifts ${up ? 'up' : 'down'} (${h.of0.toFixed(2)} → ${h.of1.toFixed(2)}, mean ${of})`);
+    const u = C.engUsed(h, h.tb);
+    assert.ok(rel(u.fuel, h.mf) < 1e-9 && rel(u.ox, h.mox) < 1e-9 && rel(h.mox / h.mf, of) < 1e-12, pk + ': ∫ṁ_f = m_f and ∫ṁ_ox = m_ox at the same τ (time-weighted O/F = the O/F given)');
+    let imp = 0; for (let k = 1; k < N; k++) imp += 0.5 * (c.F[k] + c.F[k - 1]) * c.dt;
+    assert.ok(rel(imp / h.tb, 5000) < 1e-9, `${pk}: the mean thrust is the F given (${h.F0.toFixed(0)} → ${h.F1.toFixed(0)} N)`);
+    assert.ok(rel(Math.PI * h.rhoL * (h.r1 * h.r1 - 0.03 * 0.03), h.mf) < 1e-12, pk + ': ρ·L burns the fuel given through the web');
+    if (p.rho > 0) assert.ok(rel(h.L * p.rho, h.rhoL) < 1e-12, pk + ': the grain length from the density');
+    if (p.ispOF) assert.ok(c.isp.some((v, k) => k && Math.abs(v - c.isp[0]) > 0.5), pk + ': Isp follows O/F by the CEA table');
+    else assert.ok(c.isp.every(v => v === 280), pk + ': Isp constant without a table');
+  }
+  assert.strictEqual(C.engineSpec({ type: 'hyb', F: 5000, isp: 280, of: 6.5, mp: 300, md: 150, hyb: { a: 0.1876, n: 0.347, r0: 0 } }).error, 'err.engR0', 'hybrid: a port radius is needed');
+  // solids: BATES ≈ flat, a core-burning tube rising, an outside-burning rod falling; the load and the mean thrust
+  for (const [grain, kind] of [['bates', 'flat'], ['tube', 'up'], ['rod', 'down']]) {
+    const s = C.engineSpec({ type: 'sol', F: 68636.06, isp: 292.1, mp: 2009.96, md: 116.94, sol: { grain } }), c = s.curve;
+    let mp = 0, imp = 0; for (let k = 1; k < c.n; k++) { mp += 0.5 * (c.md[k] + c.md[k - 1]) * c.dt; imp += 0.5 * (c.F[k] + c.F[k - 1]) * c.dt; }
+    const mx = Math.max(...c.F), mn = Math.min(...c.F), rising = c.F.every((v, k) => !k || v > c.F[k - 1]), falling = c.F.every((v, k) => !k || v < c.F[k - 1]);
+    assert.ok(rel(mp, 2009.96) < 1e-9 && rel(imp / s.tb, 68636.06) < 1e-9, `solid ${grain}: the load and the mean thrust`);
+    assert.ok(kind === 'flat' ? mx / mn < 1.1 : kind === 'up' ? rising : falling, `solid ${grain}: ${kind} (${(mn / 1e3).toFixed(1)}–${(mx / 1e3).toFixed(1)} kN)`);
+  }
+  // the curve in the flight: a firing longer than the propellant stops when it runs out; Δv = ∫F/m dt, as an independent
+  // integration of the curve gives it
+  const muE = 398600.4418e9, cc = { mu: muE, R: 6371e3, J2: 0, Re: 6378.137e3, rot: null, O0: 0 };
+  const o0 = { rp: 6778.137e3, ra: 6778.137e3, i: 0 };
+  for (const spec of [hyb('lox_paraffin', 2.5, 0.03), C.engineSpec({ type: 'sol', F: 68636.06, isp: 292.1, mp: 2009.96, md: 1116.94, sol: { grain: 'tube' } })]) {
+    const fin = { F: spec.F, isp: spec.isp, m0: spec.m0, md: spec.md, eng: spec }, run = C.burnFor(cc, o0, fin, { at: 0, T: 2 * spec.tb, dir: 'pro' }), b = run.burns[0];
+    let m = spec.m0, dvI = 0; const n = 20000, h = spec.tb / n;
+    for (let k = 0; k < n; k++) { const q = C.engAt(spec, (k + 0.5) * h); dvI += q.F / (m - 0.5 * q.md * h) * h; m -= q.md * h; }
+    assert.ok(run.fuelOut && rel(b.t1 - b.t0, spec.tb) < 1e-6 && rel(b.m1, spec.md) < 1e-6 && rel(b.tau1, spec.tb) < 1e-6, `${spec.type}: the firing ends with the propellant (${(b.t1 - b.t0).toFixed(1)} s)`);
+    assert.ok(Math.abs(b.dv - b.dvAcc) < 1e-9 && rel(b.dv, dvI) < 1e-4, `${spec.type}: Δv = ∫F/m dt (${b.dv.toFixed(1)} m/s)`);
+  }
+  // a constant engine through the spec is the old flight
+  const fl = { F: 420, isp: 318, m0: 3500, md: 1900 }, a1 = C.burnFor(cc, o0, fl, { at: 0, T: 300, dir: 'pro' });
+  const a2 = C.burnFor(cc, o0, { ...fl, eng: C.engineSpec({ type: 'liq', F: 420, isp: 318, of: 1.65, mp: 1600, md: 1900 }) }, { at: 0, T: 300, dir: 'pro' });
+  assert.ok(Math.abs(a1.burns[0].dv - a2.burns[0].dv) < 1e-9 && Math.abs(a1.done.ra - a2.done.ra) < 1e-6, 'engine: liquid and monopropellant engines fly as before');
+  // impulsive burns with the engine: each burn's propellant, duration, fuel and oxidizer; the propellant missing
+  const R = C.engBurns(L, [1500, 2000]);
+  const p1 = L.m0 * (1 - Math.exp(-1500 / L.ve)), p2 = (L.m0 - p1) * (1 - Math.exp(-2000 / L.ve));
+  assert.ok(rel(R.burns[0].prop, p1) < 1e-12 && rel(R.burns[1].prop, p2) < 1e-12 && rel(R.burns[0].t, p1 / L.mdot) < 1e-9 && rel(R.burns[1].fuel + R.burns[1].ox, p2) < 1e-9 && rel(R.burns[1].ox / R.burns[1].fuel, 5.5) < 1e-9, 'engine: impulsive burns, their propellant and durations');
+  assert.ok(R.short === 0 && rel(R.need, 2243 * (Math.exp(3500 / L.ve) - 1)) < 1e-12, 'engine: what the burns need');
+  const big = C.engBurns(L, [9000, 2000]);
+  assert.ok(big.short > 0 && rel(big.short, 2243 * (Math.exp(11000 / L.ve) - 1) - 20830) < 1e-12 && big.burns[1].short, `engine: ${big.short.toFixed(0)} kg of propellant missing`);
+  console.log('engines ok');
+}
