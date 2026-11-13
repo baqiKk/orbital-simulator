@@ -303,7 +303,7 @@ Kararlar (2026-11-12): bi-eliptiğin rb sınırı etki küresinin yarısı; kay�
 
 ## Faz 18 — Motor ve yanma
 
-### Faz 18a — Motor modeli ve arayüz
+### Faz 18a — Motor modeli ve arayüz ✅ tamamlandı (2026-11-14)
 - Motor türleri: sıvı iki bileşenli, hibrit, katı, tek bileşenli (H2O2, hidrazin). Girdiler: vakum itkisi, vakum Isp, O/F, itki maddesi kütlesi ya da yakıt + oksitleyici kütleleri (o zaman O/F bunlardan; ikisi birlikte girilemez), kuru kütle. Yanma süresi hesaplanır.
 - Hesaplananlar: ṁ = F/(Isp·g₀), yanma süresi, yakıt/oksitleyici payları ve debileri, Δv kapasitesi (Tsiolkovsky), başlangıç/bitiş ivmesi, kalan itki maddesi.
 - Hibrit: ṙ = a·G_ox^n (kaynaklı a, n; N2O/HTPB, LOX/parafin), ṁ_ox sabit. Girilen O/F ve itki ortalama değerlerdir: çubuk uzunluğu L, oksitleyici tükendiği anda tam girilen yakıt kütlesi yanmış olacak şekilde seçilir (zaman ortalamalı O/F = girilen O/F); anlık O/F bunun etrafında kayar, başlangıç O/F'si ayrıca gösterilir. Isp(O/F) NASA CEA tablosundan (Pc, ε, donmuş/denge yorumda aynen); tablo gelene kadar Isp sabit, Model penceresinde not.
@@ -312,6 +312,7 @@ Kararlar (2026-11-12): bi-eliptiğin rb sınırı etki küresinin yarısı; kay�
 - Görevle bağ: sihirbazda ve manevralarda "Motor"; sonlu yanma itkiyi ve ṁ'yi motordan (eğriden, motor saati τ) alır; itki maddesi yetmezse "Bu görev için 120 kg itki maddesi eksik"; sonuç kartında yanma başına süre, yakıt ve oksitleyici. Transferler anlık kalır; motor süreleri ve kütleleri hesaplar.
 - "Motor tasarla" penceresi: tür, hazır/kayıtlı motor, alanlar, hesaplananlar, 2B grafikler (itki, ṁ, kalan yakıt ve oksitleyici, O/F; yatay eksen motor saati, oynatma çizgisi görevle eşzamanlı).
 - Testler: ṁ, yanma süresi, Δv elle hesapla; yakıt + oksitleyici modunda O/F; hibritte port yarıçapı monoton (kapalı formla), O/F kayar, ∫ṁ_f = m_f ve ∫ṁ_ox = m_ox aynı τ'da, ortalama itki = F; katı profiller; itki maddesi bitince yanma durur; hazır motorların değerleri kaynakla birebir.
+- Sonuç: core.js `engineSpec` / `engineCurve` / `engBurns`, `flight` motor saatiyle; js/engines.js, js/engine-ui.js ("Motor tasarla" penceresi, grafikler), sihirbazda her yolda Motor adımı, sonuç kartlarında yanma başına süre / yakıt / oksitleyici, "Bu görev için … kg itki maddesi eksik". Hazır motorlar: RL10A-4-2, AJ10-137, S400-12, 22 N hidrazin, STAR 48B (uzun lüle, NG kataloğu), örnek N2O/HTPB hibrit (yalnızca a, n kaynaklı). Merlin Vac girmedi: SpaceX vakum Isp yayımlamıyor. LOX/parafin Isp(O/F) CEARUN ile (CEA2, 30 bar, ε = 50, kaydırmalı denge); N2O/HTPB için CEA tablosu bekleniyor (CEA kütüphanesinde HTPB yok, CEARUN kullanıcı reaktanı almıyor), o zamana kadar Isp sabit. Parafin gerilemesi KCZ 2007 Tablo 1 (GOX ile ölçülmüş), HTPB/N2O Doran 2007 (birincil makale ücretli; birimler Ito, Kamps, Nagata'nın aynı makaleye atfıyla). Tarayıcıda: S400 ile LEO → GEO yakıt ilk yanmada biter, 1 664 kg eksik; RL10 ile Ay yörüngesi yanma başına yakıt/oksitleyici; STAR 48B ile Hohmann reddedilir (ilk yanma için ≈ 158 kg önerisi). Testler: core.test.js motorlar, ui.test.js 40. test.
 
 ### Faz 18b — Araç ve kesit (3B)
 - Araca yaklaşınca motor türüne göre prosedürel, düşük poligonlu araç (sıvı: iki tank + motor; hibrit: oksitleyici tankı + yakıt çubuğu odası; katı: tek gövde; tek bileşenli: tank + küçük iticiler); dış model dosyası yok, gölgelendirici logdepthbuf parçalarıyla.
