@@ -6,7 +6,7 @@
 const { webkit } = require('playwright-core');
 const fs = require('fs'), path = require('path'), { pathToFileURL } = require('url');
 const repo = path.resolve(process.argv[2] || '.'), prev = process.argv[3] ? path.resolve(process.argv[3]) : null;
-const TILE = '#0b1116'; // the icons' own rounded tile (favicon.svg)
+const TILE = '#0b1116'; // the icons' own rounded tile (favicon.svg; css/style.css --icon-bg)
 // [source, size px, output, solid background (none: transparent), art's share of the size]
 // apple-touch-icon: opaque and full bleed on the tile's colour (iOS rounds the corners itself); icon-192/512 (manifest,
 // "any maskable"): on the tile's colour, the orbit's ends inside the safe circle (40 % of the size from the centre)

@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 <!-- Site icon (original, flat): a planet, half lit, inside an amber orbit that passes behind it and in front of it, a
      white four pointed spark (the craft) on the near side and a small star in the corner. Designed in conversation with
-     the site's author; geometry and colours are fixed: tile #0b1116, planet #7cc4d8 (orbit token) and #4c8da1 (its
-     night half), orbit #ffb547 (accent token), star #d9e7eb (ink token). The near arc is cut out of the planet by a tile
+     the site's author; geometry and colours are fixed: tile #0b1116 (icon-bg token), planet #7cc4d8 (orbit token) and
+     #4c8da1 (its night half, icon-shade token), orbit #ffb547 (accent token), star #d9e7eb (ink token). The near arc is cut out of the planet by a tile
      coloured band. At tab size (24 px and below) the orbit and its cut grow bolder and the corner star goes. -->
 <style>@media (max-width:24px){.r{stroke-width:4}.g{stroke-width:7.5}.s2{display:none}}</style>
 <rect width="64" height="64" rx="9" fill="#0b1116"/>

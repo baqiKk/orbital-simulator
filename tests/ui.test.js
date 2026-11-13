@@ -1132,6 +1132,9 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     const s = read(f);
     assert.ok(s.startsWith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">') && s.trim().endsWith('</svg>') && /@media \(max-width:24px\)/.test(s), `icons: ${f} (64 × 64, simpler at tab size)`);
     for (const c of s.matchAll(/<!--([\s\S]*?)-->/g)) assert.ok(!c[1].includes('--'), `icons: ${f} comment without "--" (else not XML, the icon would not load)`);
+    // every colour drawn is a css/style.css token (white aside: the spark)
+    const css = read('css/style.css'), body = s.replace(/<!--[\s\S]*?-->/g, '');
+    for (const [c] of body.matchAll(/#[0-9a-f]{6}\b/gi)) assert.ok(c.toLowerCase() === '#ffffff' || new RegExp('--[a-z-]+:' + c + '\\b', 'i').test(css), `icons: ${f} colour ${c} is a token`);
   }
   const man = JSON.parse(read('site.webmanifest'));
   assert.ok(man.name === 'Yörünge Transfer Simülatörü' && man.short_name === 'Yörünge' && man.theme_color === bg && man.background_color === bg && man.lang === 'tr', 'icons: the manifest names the site, colours from --bg');

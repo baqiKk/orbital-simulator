@@ -300,6 +300,25 @@ Kararlar (2026-11-12): bi-eliptiğin rb sınırı etki küresinin yarısı; kay�
 - Yeniden tasarım (2026-11-12): üç seçenek (A sade, B çerçeveli ve yazılı arma, C hilal Dünya'lı resimli) arasından A seçildi: koyu disk, mavi Dünya, gri Ay, ikisini saran amber S biçimli serbest dönüş yolu, araç noktası; kabin ikonu aynı dilde lomboz içinde Dünya–Ay ve S, önünde kedi kulakları. 16 px'te daire + S + iki nokta.
 - Yeniden tasarım (2026-11-14): kullanıcıyla sohbette tasarlanan simge: yuvarlak köşeli koyu kare, yarısı gölgeli mavi gezegen, arkasından ve önünden geçen amber yörünge, önde beyaz parıltı, köşede yıldız (16 px'te yıldız yok, yörünge kalın). Kabin: aynı kare ve renkler, sert gölgeli pirinç lomboz, camında gezegen ve yörünge, önde kedi kulakları. Dokunma simgesi karenin renginde tam boy, manifest simgeleri %88.
 
+## Faz 18 — Motor ve yanma
+
+### Faz 18a — Motor modeli ve arayüz
+- Motor türleri: sıvı iki bileşenli, hibrit, katı, tek bileşenli (H2O2, hidrazin). Girdiler: vakum itkisi, vakum Isp, O/F, itki maddesi kütlesi ya da yakıt + oksitleyici kütleleri (o zaman O/F bunlardan; ikisi birlikte girilemez), kuru kütle. Yanma süresi hesaplanır.
+- Hesaplananlar: ṁ = F/(Isp·g₀), yanma süresi, yakıt/oksitleyici payları ve debileri, Δv kapasitesi (Tsiolkovsky), başlangıç/bitiş ivmesi, kalan itki maddesi.
+- Hibrit: ṙ = a·G_ox^n (kaynaklı a, n; N2O/HTPB, LOX/parafin), ṁ_ox sabit. Girilen O/F ve itki ortalama değerlerdir: çubuk uzunluğu L, oksitleyici tükendiği anda tam girilen yakıt kütlesi yanmış olacak şekilde seçilir (zaman ortalamalı O/F = girilen O/F); anlık O/F bunun etrafında kayar, başlangıç O/F'si ayrıca gösterilir. Isp(O/F) NASA CEA tablosundan (Pc, ε, donmuş/denge yorumda aynen); tablo gelene kadar Isp sabit, Model penceresinde not.
+- Katı: tane geometrisi BATES (≈ düz), dairesel port (artan), dıştan yanan çubuk (azalan); ṁ ∝ A_b^(1/(1−n)). Durdurulamaz, tek ateşleme: yalnızca tek ateşleme ve serbest yanma; Hohmann seçilirse açık uyarı ve tek yanma için gereken itki maddesi önerisi.
+- Hazır motorlar yalnızca herkese açık kaynaklı değerlerle (RL10A-4-2, AJ10-137, S400-12, 20 N hidrazin, Merlin Vac (Isp yayımlanmışsa), genel N2O/HTPB hibrit, Star 48B); kaynaklar Kaynakça'da. Gizli/kurum içi veri yok.
+- Görevle bağ: sihirbazda ve manevralarda "Motor"; sonlu yanma itkiyi ve ṁ'yi motordan (eğriden, motor saati τ) alır; itki maddesi yetmezse "Bu görev için 120 kg itki maddesi eksik"; sonuç kartında yanma başına süre, yakıt ve oksitleyici. Transferler anlık kalır; motor süreleri ve kütleleri hesaplar.
+- "Motor tasarla" penceresi: tür, hazır/kayıtlı motor, alanlar, hesaplananlar, 2B grafikler (itki, ṁ, kalan yakıt ve oksitleyici, O/F; yatay eksen motor saati, oynatma çizgisi görevle eşzamanlı).
+- Testler: ṁ, yanma süresi, Δv elle hesapla; yakıt + oksitleyici modunda O/F; hibritte port yarıçapı monoton (kapalı formla), O/F kayar, ∫ṁ_f = m_f ve ∫ṁ_ox = m_ox aynı τ'da, ortalama itki = F; katı profiller; itki maddesi bitince yanma durur; hazır motorların değerleri kaynakla birebir.
+
+### Faz 18b — Araç ve kesit (3B)
+- Araca yaklaşınca motor türüne göre prosedürel, düşük poligonlu araç (sıvı: iki tank + motor; hibrit: oksitleyici tankı + yakıt çubuğu odası; katı: tek gövde; tek bileşenli: tank + küçük iticiler); dış model dosyası yok, gölgelendirici logdepthbuf parçalarıyla.
+- "Kesit": gövde yarıya açılır; tank seviyeleri, hibritte port çapı ve oksitleyici seviyesi, katıda yanma yüzeyi görev zamanıyla.
+
+### Faz 18c — Plume
+- Vakum plume'u: geniş açılan, şok elmassız, yarı saydam koni; renk/parlaklık itki maddesine göre (LOX/LH2 soluk mavi, kerosen turuncu, katı parlak beyaz, tek bileşenli neredeyse görünmez), itkiyle orantılı; ucuz gölgelendirici, eklemeli karışım yok; düşük kaynakta basit sprite.
+
 ## Notlar
 - Hibrit OTV hazır aracı: itki, Isp, kütle ve tek ateşleme süresini birlikte veren yayımlanmış birincil bir kaynak bulununca eklenecek. Yayımlanmamış şirket verileri kullanılmayacak.
 

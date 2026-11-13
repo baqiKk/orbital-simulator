@@ -2,8 +2,8 @@
 <!-- Cabin icon (original), in the site icon's flat style with hard shadows (no gradients, no glare): the same rounded
      tile, a brass porthole with a dark brass shadow offset to the lower right, through its glass the site icon's planet
      and orbit, and in front the ears of the cabin's white cat seen from behind, parted from the brass by a tile coloured
-     band. Colours: the site icon's (tile #0b1116, planet #7cc4d8 and #4c8da1, orbit #ffb547, spark #ffffff, star
-     #d9e7eb) and css/style.css tokens: void #030507 (glass), cab-brass #c8954f, cab-brass-lo #6e4a22, cab-cat #f6f2ea,
+     band. Colours: the site icon's (tile #0b1116 icon-bg, planet #7cc4d8 and #4c8da1 icon-shade, orbit #ffb547, spark
+     #ffffff, star #d9e7eb) and css/style.css tokens: void #030507 (glass), cab-brass #c8954f, cab-brass-lo #6e4a22, cab-cat #f6f2ea,
      cab-cat-mid #ddd4c7 (the cat's shaded half, as the planet's), cab-ear #e3a19c. At tab size
      (24 px and below) the rivets and the star go, the frame and the orbit grow bolder. -->
 <style>@media (max-width:24px){.fine{display:none}.frame{stroke-width:7}.r{stroke-width:5}.g{stroke-width:9}}</style>

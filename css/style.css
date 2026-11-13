@@ -13,6 +13,8 @@
   --good:#68d3a0; --warn:#f2c85b; --bad:#ff6f6f;
   --shadow:0 12px 32px rgba(0,0,0,.5);
   --rail:48px;
+  /* site icons (favicon.svg, favicon-kabin.svg; Phase 17d): the rounded tile and the planet's night half */
+  --icon-bg:#0b1116; --icon-shade:#4c8da1;
   --f-disp:"Chakra Petch","Segoe UI",system-ui,sans-serif;
   --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
