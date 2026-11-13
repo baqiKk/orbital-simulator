@@ -99,7 +99,7 @@ function engRender() {
   const ps = engEl('engProp'), list = ENG_PROP_OF[E.type];
   if (!list.includes(E.prop)) E.prop = list[0];
   ps.innerHTML = list.map(k => `<option value="${k}">${esc(_('eng.p.' + k))}</option>`).join(''); ps.value = E.prop;
-  for (const f of ENG_NUM) { const el = engEl('eng-' + f); if (document.activeElement !== el) { el.value = +(+E[f] || 0).toFixed(6); el.setAttribute('aria-invalid', 'false'); } }
+  for (const f of ENG_NUM) { const el = engEl('eng-' + f); if (document.activeElement !== el) { el.value = +(+E[f] || 0).toFixed(f === 'of' ? 4 : 2); el.setAttribute('aria-invalid', 'false'); } }
   engEl('engPmW').hidden = !bi;
   engEl('eng-ofW').hidden = !bi || E.pm === 'split';
   engEl('eng-mpW').hidden = bi && E.pm === 'split';
@@ -171,7 +171,7 @@ function engChart(s, m) {
     const Y = v => y1 - (y1 - y0) * (v - lo) / (hi - lo);
     x.strokeStyle = col.line; x.lineWidth = 1; x.beginPath(); x.moveTo(L, y1 + 0.5); x.lineTo(L + W, y1 + 0.5); x.stroke();
     x.fillStyle = col.dim; x.textAlign = 'right';
-    const nf = v => NF(Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2).format(v);
+    const nf = v => { v = Math.abs(v) < 1e-9 ? 0 : v; return NF(Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2).format(v); };
     x.fillText(nf(hi), L - 4, y0 + 2); x.fillText(unit[r], L - 4, (y0 + y1) / 2 + 2); x.fillText(nf(lo), L - 4, y1 - 3);
     pts.forEach((a, si) => {
       x.strokeStyle = series[r][si][1]; x.lineWidth = 1.5; x.beginPath();
