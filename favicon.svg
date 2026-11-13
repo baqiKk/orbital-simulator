@@ -1,12 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<!-- Site icon (original, flat): a dark disc, the Earth and the Moon, the simulator's own Earth-Moon free return as an
-     amber S wrapping both, and the craft on it. Colours are css/style.css tokens: bg #05080b, accent #ffb547 (the path),
-     orbit #7cc4d8 (the Earth), dim #86a0a8 (the Moon), ink #d9e7eb (the craft). At tab size (24 px and below) the path
-     grows bolder and the craft goes: the disc, the S and two dots remain. -->
-<style>@media (max-width:24px){.p{stroke-width:5}.c{display:none}}</style>
-<circle cx="32" cy="32" r="32" fill="#05080b"/>
-<path class="p" d="M29 13C39 5 55 9 54 21C53 32 41 33 32 33C23 33 9 37 11.5 47C14 57 29 58 34 50" fill="none" stroke="#ffb547" stroke-width="3.6" stroke-linecap="round"/>
-<circle cx="23" cy="44" r="8.5" fill="#7cc4d8"/>
-<circle cx="42" cy="21" r="5.5" fill="#86a0a8"/>
-<circle class="c" cx="31.5" cy="33" r="3" fill="#d9e7eb"/>
-</svg>
+<!-- Site icon (original, flat): a planet, half lit, inside an amber orbit that passes behind it and in front of it, a
+     white four pointed spark (the craft) on the near side and a small star in the corner. Designed in conversation with
+     the site's author; geometry and colours are fixed: tile #0b1116, planet #7cc4d8 (orbit token) and #4c8da1 (its
+     night half), orbit #ffb547 (accent token), star #d9e7eb (ink token). The near arc is cut out of the planet by a tile
+     coloured band. At tab size (24 px and below) the orbit and its cut grow bolder and the corner star goes. -->
+<style>@media (max-width:24px){.r{stroke-width:4}.g{stroke-width:7.5}.s2{display:none}}</style>
+<rect width="64" height="64" rx="9" fill="#0b1116"/>
+<g transform="rotate(-24 32 32)"><path class="r" d="M5 32 A27 7.5 0 0 1 59 32" fill="none" stroke="#ffb547" stroke-width="2.4" stroke-linecap="butt"/></g>
+<circle cx="32" cy="32" r="12.5" fill="#7cc4d8"/>
+<path d="M32 19.5 A12.5 12.5 0 0 0 32 44.5 L32 19.5Z" fill="#4c8da1"/>
+<g transform="rotate(-24 32 32)">
+<path class="g" d="M59 32 A27 7.5 0 0 1 5 32" fill="none" stroke="#0b1116" stroke-width="4.8"/>
+<path class="r" d="M59 32 A27 7.5 0 0 1 5 32" fill="none" stroke="#ffb547" stroke-width="2.4" stroke-linecap="butt"/>
+<path d="M13.50 33.80 Q14.05 37.85 18.10 38.40 Q14.05 38.95 13.50 43.00 Q12.95 38.95 8.90 38.40 Q12.95 37.85 13.50 33.80 Z" fill="#ffffff"/></g>
+<path class="s2" d="M51.00 12.00 Q51.36 14.64 54.00 15.00 Q51.36 15.36 51.00 18.00 Q50.64 15.36 48.00 15.00 Q50.64 14.64 51.00 12.00 Z" fill="#d9e7eb"/></svg>
