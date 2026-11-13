@@ -1146,27 +1146,42 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(!exists('tools/icons/node_modules') && !exists('tools/icons/package.json') && read('tools/icons/render.js').includes("require('playwright-core')"), 'icons: the renderer is a script, Playwright stays outside the repository');
 }
 // 39) Mission recording (js/record.js, js/rec-worker.mjs; Phase 17c): frame by frame, not a screen capture. The schedule
-// (u from 0 to 1, 10–20 s at 15 frames/s, slower around events, GIF delays in hundredths that keep the film's length,
-// the last frame held); sizes (even, no wider than the canvas); the GIF ladder (frame rate, colours, width); file names
+// (u from 0 to 1, 10–20 s at 24 frames/s, slower around events, GIF delays in hundredths that keep the film's length,
+// the last frame held); sizes (as asked, even, the screen's shape, drawn supersampled on a virtual screen that keeps
+// lines and labels in proportion); the GIF ladder (frame rate, colours, width); the palette's fixed colours (tokens
+// exactly, ramps toward the void) and its dithering; file names
 // from the mission; the watermark (bottom right) on every frame, the last included; a real GIF from the encoder (header,
 // size, loop, one image per frame, the last frame's pause, unchanged pixels transparent). The libraries load only with
 // a recording; the app draws a frame on demand and fits to the whole canvas while recording; the licences in Kaynakça.
 {
   const Rc = require('../js/record.js');
   const sc = Rc.recSchedule([0.3, 0.7]), n = sc.u.length;
-  assert.ok(n >= 10 * 15 && n <= 20 * 15 && sc.u[0] === 0 && sc.u[n - 1] === 1, `recording: ${n} frames`);
+  assert.ok(Rc.REC_OPT.fps === 24 && Rc.REC_OPT.fpsList.join() === '15,24,30' && n >= 10 * 24 && n <= 20 * 24 && sc.u[0] === 0 && sc.u[n - 1] === 1, `recording: ${n} frames at 24/s`);
+  const s15 = Rc.recSchedule([0.3, 0.7], { fps: 15 }), s30 = Rc.recSchedule([0.3, 0.7], { fps: 30 });
+  for (const q of [s15, s30]) assert.ok(Math.abs(q.delay.reduce((a, b) => a + b, 0) / 1000 - (q.u.length / q.fps + Rc.REC_OPT.hold)) < 0.011, `recording: ${q.fps}/s keeps the length`);
   for (let k = 1; k < n; k++) assert.ok(sc.u[k] > sc.u[k - 1], 'recording: u only grows');
   const step = u => { let k = 0; while (k < n - 1 && sc.u[k + 1] < u) k++; return sc.u[k + 1] - sc.u[k]; };
   assert.ok(step(0.3) < step(0.5) / 2.5 && step(0.7) < step(0.5) / 2.5, `recording: slower at events (${(step(0.5) / step(0.3)).toFixed(1)}×)`);
   const total = sc.delay.reduce((a, b) => a + b, 0) / 1000;
-  assert.ok(sc.delay.every(d => d % 10 === 0) && Math.abs(total - (sc.T + Rc.REC_OPT.hold)) < 0.011 && sc.delay[n - 1] >= Rc.REC_OPT.hold * 1000, `recording: ${total.toFixed(2)} s with the last frame held`);
+  assert.ok(sc.delay.every(d => d % 10 === 0) && Math.abs(total - (n / sc.fps + Rc.REC_OPT.hold)) < 0.011 && Math.abs(n / sc.fps - sc.T) <= 0.5 / sc.fps && sc.delay[n - 1] >= Rc.REC_OPT.hold * 1000, `recording: ${total.toFixed(2)} s with the last frame held`);
   const many = Rc.recSchedule(new Array(40).fill(0).map((_, i) => i / 40)), none = Rc.recSchedule([]);
   assert.ok(many.T === Rc.REC_OPT.max && none.T >= Rc.REC_OPT.min && none.T <= Rc.REC_OPT.max, 'recording: 10–20 s');
-  const s1 = Rc.recSize(1392, 900, 720), s2 = Rc.recSize(390 * 2, 790 * 2, 1080), s3 = Rc.recSize(301, 201, 720);
-  assert.ok(s1.w === 720 && s1.h % 2 === 0 && Math.abs(s1.h / s1.w - 900 / 1392) < 0.01 && !s1.capped, 'recording: 720 px wide, aspect kept, even');
-  assert.ok(s2.w === 780 && s2.capped && s3.w % 2 === 0 && s3.h % 2 === 0 && s3.w <= 301, 'recording: never wider than the canvas');
-  const lad = Rc.recLadder(720);
-  assert.ok(lad[0].w === 720 && lad[0].fps === 15 && lad[0].colors === 255 && lad.some(c => c.fps === 10) && lad.some(c => c.colors < 255) && lad[lad.length - 1].w === 480, 'recording: the GIF ladder (frame rate, colours, width)');
+  const s1 = Rc.recSize(1392, 900, 1080), s2 = Rc.recSize(390, 790, 1080), s3 = Rc.recSize(301, 201, 480), s4 = Rc.recSize(1392, 900, 720), s5 = Rc.recSize(390, 790, 1080, 6e6);
+  assert.ok(s1.w === 1080 && s1.h % 2 === 0 && Math.abs(s1.h / s1.w - 900 / 1392) < 0.01, 'recording: 1080 px wide (any screen: drawn anew), the shape kept, even');
+  assert.ok(s2.w === 1080 && s2.h === 1920 && s3.w === 480 && s3.h % 2 === 0, 'recording: a tall phone screen gives 9:16 at most');
+  // the virtual screen: a 1080 px film draws as 720 CSS px at 1.5× (a 1.2 px line is 1.8 px), 720 and 480 px as 480 CSS px
+  assert.ok(s1.cw === 720 && s1.k === 1.5 && Math.abs(s1.ch * s1.k - s1.h) < 1e-9 && s4.cw === 480 && s4.k === 1.5 && s3.cw === 480 && s3.k === 1, 'recording: lines and labels in proportion to the film');
+  assert.ok(s1.ss === 2 && s4.ss === 2 && s5.ss >= 1 && s5.ss < 2 && 4 * s1.w * s1.h <= Rc.REC_OPT.ssPx && s5.ss * s5.ss * s5.w * s5.h <= 6e6 * 1.0001, 'recording: drawn at twice the size (fewer pixels on phones)');
+  const lad = Rc.recLadder(1080);
+  assert.ok(lad[0].w === 1080 && lad[0].fps === 24 && lad[0].colors === 255 && lad.some(c => c.fps === 15) && lad.some(c => c.colors < 255) && lad.some(c => c.w === 720) && lad[lad.length - 1].w === 480, 'recording: the GIF ladder (frame rate, colours, width)');
+  // the palette's fixed colours: every hex token exactly, the bodies, 8–16 tones of the amber and the white toward the void
+  const COLT = { traj: '#ffb547', orbit: '#7cc4d8', ink: '#d9e7eb', void: '#030507', dim: '#86a0a8', line: 'rgba(140,196,212,.28)' };
+  const fx = Rc.recFixed(COLT, ['#c9a36b']), hex = c => '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
+  assert.ok(hex(fx[0]) === '#030507' && ['#ffb547', '#7cc4d8', '#d9e7eb', '#86a0a8', '#c9a36b'].every(h => fx.some(c => hex(c) === h)), 'recording: the tokens and the bodies in the palette, the void first');
+  const between = (a, b) => fx.filter(c => { const d = b.map((v, j) => v - a[j]), q = c.map((v, j) => v - a[j]), t = (q[0] * d[0] + q[1] * d[1] + q[2] * d[2]) / (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]); return t > 0.01 && t < 0.99 && Math.hypot(...q.map((v, j) => v - t * d[j])) < 1.5; }).length; // tones on the line from a to b
+  const ampR = between([255, 181, 71], [3, 5, 7]), inkR = between([217, 231, 235], [3, 5, 7]);
+  assert.ok(ampR >= 8 && ampR <= 16 && inkR >= 8 && inkR <= 16 && fx.length < 100, `recording: ramps toward the void (amber ${ampR}, white ${inkR}; ${fx.length} fixed)`);
+  assert.ok(Rc.recBitrate(1080, 698, 24, 'high') > Rc.recBitrate(1080, 698, 24, 'std') && Rc.recBitrate(1080, 698, 24, 'high') > Rc.recBitrate(480, 310, 24, 'high'), 'recording: the video bit rate by quality and size');
   assert.ok(Rc.recEstimate(1000, 100, 11) > 2000, 'recording: size estimate');
   const tr = k => DICT[k];
   const e600 = P.WIZ_EX.e600;
@@ -1198,16 +1213,19 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(db.length > 1000 && !db.replace(/if \(!once\) requestAnimationFrame\(draw\)/g, '').includes('requestAnimationFrame(draw)'), 'recording: drawBody never schedules itself when drawn once');
   assert.ok(app.includes('function draw(now) { if (REC.busy) { last = now; requestAnimationFrame(draw); return; } drawBody(now, false); }') && app.includes('if (REC.full) return [{ x0: 0, x1: W, y0: 0, y1: H }];'), 'recording: the loop idles, the frame is the whole canvas');
   assert.ok(rj.includes("recCompose(octx, is3d() ? [$('#gl'), cv] : [cv]") && rj.includes('drawBody(t, true);'), 'recording: 3D read right after drawing');
-  assert.ok(rj.includes("phone() ? { fmt: CAN_VIDEO ? 'video' : 'gif', w: 480 }") && rj.includes('navigator.canShare') && rj.includes('navigator.share('), 'recording: phones default to video at 480 px, share sheet');
+  assert.ok(rj.includes("phone() ? { fmt: CAN_VIDEO ? 'video' : 'gif', w: 720 }") && rj.includes('navigator.canShare') && rj.includes('navigator.share('), 'recording: phones default to video at 720 px, share sheet');
+  // drawn at the film's own size: app.js recView sets the virtual screen and its pixel ratio, and gives the screen back
+  assert.ok(app.includes('function recView(v) {') && app.includes('if (REC.view) { recView(REC.view); return; }') && rj.includes('recView({ cw: sz.cw, ch: sz.ch, dpr: sz.k * sz.ss });') && rj.includes('recView(null);'), 'recording: drawn at its own size, supersampled, the screen given back');
+  assert.ok(html.includes('id="recFps"') && html.includes('id="recQ"') && html.includes('id="recDither"') && ['rec.fps', 'rec.q', 'rec.qHigh', 'rec.qStd', 'rec.dither', 'rec.ditherTip'].every(has), 'recording: frame rate, video quality and dithering in the panel');
   // the background: plain void by default (no Milky Way, stars or glare in the recording; the screen unchanged), the
   // starry one on request ("Yıldızlı arka plan")
   const m3 = read('js/mode3d.js');
-  assert.ok(rj.includes("const W0 = { fmt: 'gif', w: 720, title: true, sky: false }") && rj.includes('REC.sky = !!R.set.sky;') && html.includes('id="recSky"') && has('rec.sky') && has('rec.skyTip'), 'recording: the starry background is an option, off by default');
-  assert.ok(app.includes('const REC = { busy: false, full: false, sky: false };') && app.includes('const skyRec = () => REC.busy && !REC.sky;'), 'recording: the sky is left out only while a recording draws');
+  assert.ok(rj.includes("const W0 = { fmt: 'gif', w: 1080, fps: 24, title: true, sky: false, dither: null, q: 'high' }") && rj.includes('R.set.dither == null ? !!R.set.sky') && rj.includes('REC.sky = !!R.set.sky;') && html.includes('id="recSky"') && has('rec.sky') && has('rec.skyTip'), 'recording: the starry background is an option, off by default');
+  assert.ok(app.includes('const REC = { busy: false, full: false, sky: false, view: null };') && app.includes('const skyRec = () => REC.busy && !REC.sky;'), 'recording: the sky is left out only while a recording draws');
   assert.ok(app.includes('if (stars && !skyRec())') && app.includes('if (!FXON.glare || skyRec()) return;') && app.includes('V3.render({ stars: Q.stars && !skyRec(), skyGain: skyGain() });'), 'recording: 2D stars and glare left out');
   assert.strictEqual((m3.match(/V3\.render\(\{ stars: Q\.stars && !skyRec\(\)/g) || []).length, (m3.match(/V3\.render\(/g) || []).length, 'recording: every 3D render leaves the sky out');
   assert.ok(m3.includes('if (!Q.glow || lowQ || !FXON.glare || skyRec()) return null;'), 'recording: no 3D glare');
-  assert.ok(Rc.recLadder(720)[0].w === 720 && Rc.recLadder(720)[0].fps === 15, 'recording: a plain background fits the first step (720 px, 15 frames/s; 785 KB measured in 3D, the turning frame)');
+  assert.ok(Rc.recLadder(1080)[0].w === 1080 && Rc.recLadder(1080)[0].fps === 24, 'recording: the first step as asked (1080 px, 24 frames/s)');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {
@@ -1242,5 +1260,23 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(pr.key > 0 && pr.diff > 0 && pr.diff < pr.key, 'gif: the probe (a following frame costs less than the first)');
   const coarse = G.gifPalette([frame(0)], { fmt: 'rgb444', colors: 64 });
   assert.ok(coarse.pal.length <= 65 && coarse.fmt === 'rgb444', 'gif: fewer, coarser colours on request');
+  // fixed colours: kept exactly and first; the dark background's many shades do not eat the rest; exact pixels map to
+  // themselves; a frame of soft shades on the void spends the free entries elsewhere
+  const Rc2 = require('../js/record.js'), fixed = Rc2.recFixed({ void: '#030507', traj: '#ffb547', ink: '#d9e7eb', orbit: '#7cc4d8' }, []);
+  const shaded = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) { const v = 3 + (i % 9); shaded[4 * i] = v; shaded[4 * i + 1] = v + 2; shaded[4 * i + 2] = v + 4; shaded[4 * i + 3] = 255; }
+  for (let i = 0; i < 40; i++) { const j = 4 * (w * 5 + i); shaded[j] = 40 + 5 * i; shaded[j + 1] = 200 - 3 * i; shaded[j + 2] = 90; } // a gradient of other colours
+  const pf = G.gifPalette([shaded, frame(2)], { fixed });
+  assert.ok(pf.fixedN === fixed.length && fixed.every((c, j) => pf.pal[j].join() === c.join()), 'gif: the fixed colours first, exactly');
+  const darkFree = pf.pal.slice(pf.fixedN, pf.clear).filter(c => c[0] < 16 && c[1] < 18 && c[2] < 20).length;
+  assert.ok(darkFree <= 2, `gif: the void's shades take ${darkFree} free entries`);
+  const ex = new Uint8ClampedArray(fixed.length * 4); fixed.forEach((c, j) => ex.set([c[0], c[1], c[2], 255], 4 * j));
+  const ix = G.gifIndex(pf, ex, fixed.length);
+  assert.ok(fixed.every((c, j) => ix[j] === j), 'gif: a token pixel is its own palette entry');
+  // dithering: ordered (the same pattern every frame), off on request; a flat void stays one colour without it
+  const pd = G.gifPalette([shaded], { fixed, dither: true }), a1 = G.gifIndex(pd, shaded, w), a2 = G.gifIndex(pd, shaded, w);
+  assert.ok(pd.dither && a1.every((v, i) => v === a2[i]), 'gif: ordered dithering, steady from frame to frame');
+  const flat = frame(0).map((v, i) => (i % 4 === 3 ? 255 : [3, 5, 7][i % 4])), pn = G.gifPalette([flat], { fixed });
+  assert.ok(new Set(G.gifIndex(pn, flat, w)).size === 1 && !pn.dither, 'gif: no dithering by default, the plain void one entry');
   console.log('OK — all UI tests passed');
 })().catch(e => { console.error(e); process.exit(1); });

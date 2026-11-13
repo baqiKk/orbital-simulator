@@ -1052,6 +1052,7 @@ const css = getComputedStyle(document.documentElement);
 const COL = { traj: css.getPropertyValue('--traj').trim() || '#ffb547', orbit: css.getPropertyValue('--orbit').trim() || '#6b9be0', burn: css.getPropertyValue('--burn').trim() || '#ff7a52', dim: css.getPropertyValue('--dim').trim() || '#8a96ae', faint: css.getPropertyValue('--faint').trim() || '#56637d', void: css.getPropertyValue('--void').trim() || '#04060b', ink: css.getPropertyValue('--ink').trim() || '#e2e8f3', bad: css.getPropertyValue('--bad').trim() || '#ff6f6f', warn: css.getPropertyValue('--warn').trim() || '#f2c85b', accent: css.getPropertyValue('--accent').trim() || '#ffb547', solid: css.getPropertyValue('--solid').trim() || '#080c10', line: css.getPropertyValue('--line2').trim() || 'rgba(140,196,212,.28)', cyan: css.getPropertyValue('--cyan').trim() || '#9fd6e4' };
 
 function resize() {
+  if (REC.view) { recView(REC.view); return; } // a recording draws at its own size until it ends
   const r = stage.getBoundingClientRect();
   W = Math.max(1, r.width); H = Math.max(1, r.height); DPR = lowQ ? 1 : Math.min(Q.dprMax, window.devicePixelRatio || 1);
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
@@ -2960,7 +2961,17 @@ function drawTrail(ext, cpos) {
 }
 // the mission recording (js/record.js): busy while it draws its frames; full: the free area is the whole canvas; sky:
 // the starry background goes into the recording too (off by default: plain void, no Milky Way, stars or glare)
-const REC = { busy: false, full: false, sky: false };
+const REC = { busy: false, full: false, sky: false, view: null };
+// a recording's own canvas size (js/record.js): v = { cw, ch: the virtual screen in CSS px, dpr: device px per CSS px
+// (the film's scale × its supersampling) }, or null: the screen's again. Lines, bodies and labels are drawn in CSS px,
+// so they keep their share of the film at any width; the screen shows the frames meanwhile (same shape, scaled).
+function recView(v) {
+  REC.view = v; INS = null; needFit = true;
+  if (!v) { resize(); return; }
+  W = v.cw; H = v.ch; DPR = v.dpr;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  if (V3) V3.size(W, H, DPR);
+}
 const skyRec = () => REC.busy && !REC.sky; // drawing a recording frame without the sky
 let last = performance.now(), hold = 0, hudTick = 0, hudLast = 0, frameAvg = 1 / 60, slowFrames = 0, lowQ = false;
 const tmp = [0, 0], tmp2 = [0, 0], tmp3 = [0, 0, 0];
