@@ -996,7 +996,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // transfer chosen by the automatic method, within the body's sphere of influence); the result card follows updateResults.
 {
   const C = require('../js/core.js'), wz = read('js/wizard.js'), css = read('css/style.css');
-  assert.ok(/<script src="js\/app\.js"><\/script>\n<script src="js\/engine-ui\.js"><\/script>\n<script src="js\/wizard\.js"><\/script>/.test(html), 'wizard.js after app.js (and the engine window between)');
+  assert.ok(/<script src="js\/mode3d\.js"><\/script>\n<script src="js\/engine-ui\.js"><\/script>\n<script src="js\/app\.js"><\/script>\n<script src="js\/wizard\.js"><\/script>/.test(html), 'wizard.js after app.js; the engine window before app.js (app.js calls it while starting)');
   assert.ok(css.includes('html:not(.ui-expert) #w-mission .win-b>:not(.wiz){display:none!important}') && css.includes('html.ui-expert #wiz{display:none}'), 'plain: the wizard; expert: the full form');
   for (const id of ['wiz', 'wzPick', 'wzForm', 'wzSteps', 'wzEx', 'wzRes', 'wzFoot', 'wzErr', 'wzGo', 'wzExpert']) assert.ok(html.includes('id="' + id + '"'), 'wizard element ' + id);
   for (const m of ['auto', 'hohmann', 'bielliptic']) assert.ok(has('wz.m.' + m) && has('wz.m.' + m + 'D'), 'method ' + m);
@@ -1262,7 +1262,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/\.\.\.\(split \? \{ mf: \+E\.mf, mox: \+E\.mox \} : \{ mp: \+E\.mp \}\)/.test(ui) && ui.includes("engEl('eng-mfW').hidden = engEl('eng-moxW').hidden = !(bi && E.pm === 'split');") && ui.includes("engEl('eng-mpW').hidden = bi && E.pm === 'split';"), 'engine window: total or fuel + oxidizer, never both');
   // the playhead draws only itself (the charts are drawn once per change)
   const tick = ui.slice(ui.indexOf('function engTick('), ui.indexOf('// ----- events -----'));
-  assert.ok(tick.length > 100 && !tick.includes('engChart(') && !tick.includes('engCompute(') && appJs.includes("if (typeof engTick === 'function') engTick();"), 'engine charts: the playhead alone each frame');
+  assert.ok(tick.length > 100 && !tick.includes('engChart(') && !tick.includes('engCompute(') && appJs.includes('  engTick(); // the engine charts'), 'engine charts: the playhead alone each frame');
   // saved engines
   const ok = P.parseEngines(JSON.stringify([{ name: 'A', type: 'liq', prop: 'nto_mmh', F: 400, isp: 320, of: 1.65, pm: 'tot', mp: 700, md: 300 }, { name: 'B', type: 'hyb', prop: 'n2o_htpb', F: 5000, isp: 250, of: 6.5, pm: 'tot', mp: 300, md: 150, r0: 0 }, { name: 'C', type: 'sol', prop: 'nto_mmh', F: 1, isp: 1, mp: 1, md: 1 }, null, 5]));
   assert.ok(ok.length === 1 && ok[0].name === 'A' && P.parseEngines('{') .length === 0 && P.PREF_KEYS.engines, 'saved engines: the broken ones left out');

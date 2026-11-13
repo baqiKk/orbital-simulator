@@ -1,6 +1,10 @@
 // The engine (Phase 18a): the "Motor tasarla" window, the mission's engine, saved engines, the engine's charts and the
-// lines the result cards show. Classic script after app.js (its globals) and before wizard.js. The engine model is
-// core.js engineSpec / engineCurve; the ready-made engines and propellant data js/engines.js.
+// lines the result cards show. Classic script loaded BEFORE app.js (app.js calls engResRows, engTick, engAfterResults
+// and engWinOpened while it starts up), after core.js and engines.js. At load it only defines things and binds the
+// window's events; it uses app.js's globals ($, _, the formatters, S, simR, MAN, setWin, engApply …) only inside
+// functions that run once app.js has loaded (events, the window opening — app.js applies the windows at the end of its
+// start —, results). It keeps its own storage handle (prefs.js readPref / writePref) rather than app.js's LS. The engine
+// model is core.js engineSpec / engineCurve; the ready-made engines and propellant data js/engines.js.
 //
 // An engine as the window and the mission hold it (E): { id ('' typed in, 'p:<id>' ready-made, 's:<n>' saved), type,
 // prop (PROPS key), F (N), isp (s), of, pm ('tot' | 'split'), mp, mf, mox, md (kg), r0 (cm, hybrid port), grain }.
@@ -9,7 +13,8 @@
 const ENG_PROP_OF = { liq: ['lox_lh2', 'lox_rp1', 'nto_mmh', 'nto_a50'], hyb: ['n2o_htpb', 'lox_paraffin'], sol: ['apcp'], mono: ['n2h4', 'h2o2'] };
 const ENG_DEF = { id: '', type: 'liq', prop: 'nto_mmh', F: 400, isp: 320, of: 1.65, pm: 'tot', mp: 700, mf: 264, mox: 436, md: 300, r0: 3, grain: 'bates' };
 const ENG_NUM = ['F', 'isp', 'of', 'mp', 'mf', 'mox', 'md', 'r0'];
-let SAVED_ENG = parseEngines(readPref(LS, PREF_KEYS.engines));
+const ENG_LS = (() => { try { return window.localStorage; } catch (e) { return null; } })();
+let SAVED_ENG = parseEngines(readPref(ENG_LS, PREF_KEYS.engines));
 // an engine from a ready-made one (its masses from the vehicle it flew on, else its own)
 function engPreset(id) {
   const p = ENGINES.find(q => q.id === id); if (!p) return null;
@@ -244,13 +249,13 @@ engEl('engSave').addEventListener('click', () => {
   delete q.id;
   const list = SAVED_ENG.filter(v => v.name !== name).concat([q]), ok = parseEngines(JSON.stringify(list));
   if (ok.length !== list.length) { engEl('engNote').textContent = _('eng.bad'); return; }
-  SAVED_ENG = ok; writePref(LS, PREF_KEYS.engines, JSON.stringify(ok));
+  SAVED_ENG = ok; writePref(ENG_LS, PREF_KEYS.engines, JSON.stringify(ok));
   ENGW.E.id = 's:' + ok.findIndex(v => v.name === name); engEl('eng-name').value = '';
   engRenderPre(); engEl('engNote').textContent = _('eng.saved1', { name });
 });
 engEl('engDel').addEventListener('click', () => {
   if (!ENGW.E.id.startsWith('s:')) return;
-  SAVED_ENG.splice(+ENGW.E.id.slice(2), 1); writePref(LS, PREF_KEYS.engines, JSON.stringify(SAVED_ENG));
+  SAVED_ENG.splice(+ENGW.E.id.slice(2), 1); writePref(ENG_LS, PREF_KEYS.engines, JSON.stringify(SAVED_ENG));
   ENGW.E.id = ''; engRenderPre();
 });
 if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (!engEl('w-engine').hidden && ENGW.s && !ENGW.s.error) engChart(ENGW.s, ENGW.linked ? engMission() : null); }).observe(engEl('engCv').parentElement);
@@ -258,4 +263,4 @@ if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (!engEl(
 function engWinOpened() { engOpenFrom(S.M && S.M.eng ? S.M.eng : null); }
 // a finished result (app.js updateResults): the window follows when it shows the mission's engine
 function engAfterResults() { if (!engEl('w-engine').hidden) engCompute(); }
-engRender();
+// (no drawing at load: the window is drawn when it opens, engWinOpened from app.js applyWin)

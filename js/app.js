@@ -1428,7 +1428,7 @@ function focusName() {
 // end of a frame: HUD focus tag, hover cursor and ring (rings are plain in the low-resource mode)
 function frameEnd() {
   setCaption(); liveTick();
-  if (typeof engTick === 'function') engTick(); // the engine charts' playhead (O(1))
+  engTick(); // the engine charts' playhead (O(1); js/engine-ui.js, loaded before this file)
   const n = focusName();
   if (n !== focusTxt) { focusTxt = n; $('#focusName').textContent = n; $('#focusTag').hidden = !n; $('#followTxt').textContent = _('vw.followOn', { name: n || _('fo.free') }); $('#followX').hidden = !n; INS = null; }
   const h = hoverPt && !ptrs.size ? hitAt(hoverPt.x, hoverPt.y, HIT_PX.mouse) : null;
@@ -1840,7 +1840,7 @@ $('#res').addEventListener('click', e => {
 });
 function updateResults() {
   if (typeof wzAfterResults === 'function') wzAfterResults(); // the wizard's result card follows (js/wizard.js)
-  if (typeof engAfterResults === 'function') engAfterResults(); // and the engine window (js/engine-ui.js)
+  engAfterResults(); // and the engine window (js/engine-ui.js)
   if (S.kind === 'man') { updateResultsMan(); return; }
   const chip = $('#chip'), res = $('#res');
   if (!simR || !sys) { chip.className = 'chip bad'; chip.textContent = _('res.fail'); res.innerHTML = ''; return; }
@@ -3538,7 +3538,7 @@ function applyWin(id) {
   railSync();
   if (id === 'gloss' && st.open) renderGloss($('#glossQ').value);
   if (id === 'credits' && st.open) renderCredits();
-  if (id === 'engine' && st.open && !st.collapsed && typeof engWinOpened === 'function') engWinOpened();
+  if (id === 'engine' && st.open && !st.collapsed) engWinOpened();
   if (id === 'overview' && st.open) ovDist(true);
   placeWin(id);
   if (id === 'transfer' && st.open && !st.collapsed) pcSync();
