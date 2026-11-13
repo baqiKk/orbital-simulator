@@ -7,7 +7,10 @@
 const WZ = { path: '', step: 0, res: false, auto: null, raf: 0, go: null, M: null }; // M: the mission state the wizard set up
 const wzToday = () => new Date().toISOString().slice(0, 10);
 const WZ_DEF = { body: 'earth', c0: 'circ', h0: '600', p0: '250', a0: '35786', i0: '0', c1: 'circ', h1: '1300', p1: '600', a1: '1300', i1: '0',
-  meth: 'auto', plane: 'comb', rb: '100000', thr: 'imp', F: '400', isp: '', m0: '', md: '', j2: false,
+  meth: 'auto', plane: 'comb', rb: '100000', thr: 'imp', j2: false,
+  // the engine step (Phase 18a): eng '' none, 'p:<id>' ready-made, 's:<n>' saved, 'w' the engine window's design; its
+  // propellant and dry mass as typed here
+  eng: '', emp: '', emd: '',
   // "Başka bir cisme git": departure and its parking orbit, target, arrival (capture, flyby, free return), when
   dep: 'earth', gh0: '185', tgt: 'mars', mode: 'capture', ghB: '300', ghRet: '60', when: 'cheap', date: wzToday(),
   // "Serbest yanma": where (the periapsis, the apoapsis, or T s after the periapsis) and Δv [prograde, radial, normal]
@@ -68,6 +71,39 @@ function orbitFields(n) { // n: 0 start, 1 target
   return seg2('wz-c' + n, [['circ', 'wz.circ'], ['ell', 'wz.ell']], c)
     + `<div class="grid3">${fld('wz-h' + n, _('wz.alt'), WZV['h' + n])}${fld('wz-p' + n, _('wz.peri', { peri: pn }), WZV['p' + n])}${fld('wz-a' + n, _('wz.apo', { apo: an }), WZV['a' + n])}${fld('wz-i' + n, _('wz.inc'), WZV['i' + n])}</div>`;
 }
+// The engine step (Phase 18a, js/engine-ui.js): finite or impulsive burns (the orbit path), an engine (none, ready-made,
+// saved, or the one in the "Motor tasarla" window), its propellant and dry mass, a one-line summary
+function wzEngFields(thr) {
+  const opt = (v, l) => `<option value="${v}"${WZV.eng === v ? ' selected' : ''}>${esc(l)}</option>`;
+  return (thr ? `<div class="field"><span>${esc(_('wz.thr'))}</span>${seg2('wz-thr', [['imp', 'wz.thr.imp'], ['fin', 'wz.thr.fin']], WZV.thr)}</div>` : '')
+    + `<label class="field"><span>${esc(_('wz.eng'))}</span><select id="wz-eng">${opt('', _('wz.engNone'))}<optgroup label="${esc(_('eng.presets'))}">${ENGINES.map(p => opt('p:' + p.id, _('eng.' + p.id))).join('')}</optgroup>`
+    + (SAVED_ENG.length ? `<optgroup label="${esc(_('eng.saved'))}">${SAVED_ENG.map((q, j) => opt('s:' + j, q.name)).join('')}</optgroup>` : '') + `${opt('w', _('wz.engWin'))}</select></label>`
+    + `<div class="grid2" id="wz-engM">${fld('wz-emp', _('eng.mp'), WZV.emp)}${fld('wz-emd', _('eng.md'), WZV.emd)}</div>`
+    + `<p class="wz-d" id="wz-engD"></p><button type="button" class="link" id="wz-engOpen">${esc(_('wz.engOpen'))}</button>`;
+}
+// the engine the step describes (E for js/engine-ui.js), or null
+function wzEngE() {
+  const v = WZV.eng;
+  let E = v.startsWith('p:') ? engPreset(v.slice(2)) : v.startsWith('s:') && SAVED_ENG[+v.slice(2)] ? { ...ENG_DEF, ...SAVED_ENG[+v.slice(2)], id: v } : v === 'w' ? { ...ENGW.E } : null;
+  if (!E) return null;
+  const mp = wzNum(WZV.emp), md = wzNum(WZV.emd);
+  if (Number.isFinite(mp) && mp > 0) { if (E.pm === 'split' && E.mf > 0) E.of = E.mox / E.mf; E.pm = 'tot'; E.mp = mp; }
+  if (Number.isFinite(md) && md > 0) E.md = md;
+  return E;
+}
+// a newly chosen engine brings its own load into the fields
+function wzEngPick() {
+  const v = WZV.eng, E = v.startsWith('p:') ? engPreset(v.slice(2)) : v.startsWith('s:') ? SAVED_ENG[+v.slice(2)] : v === 'w' ? ENGW.E : null;
+  if (E) { const mp = E.pm === 'split' && (E.type === 'liq' || E.type === 'hyb') ? E.mf + E.mox : E.mp; WZV.emp = String(+(+mp).toFixed(1)); WZV.emd = String(+(+E.md).toFixed(1)); }
+  const a = wzEl('wz-emp'), b = wzEl('wz-emd'); if (a) a.value = WZV.emp; if (b) b.value = WZV.emd;
+}
+function wzEngSync() {
+  const E = wzEngE(), d = wzEl('wz-engD'); if (!d) return;
+  wzEl('wz-engM').hidden = !E;
+  d.textContent = E ? engSummary(E, engSpecOf(E)) : _(WZ.path === 'orbit' && WZV.thr === 'fin' ? 'wz.e.eng' : 'wz.engNoneD');
+  const sums = wzEl('wzSteps').querySelectorAll('.wz-sum'), last = sums[sums.length - 1];
+  if (last) last.textContent = E ? engName(E) : _('wz.engNone');
+}
 function wzSteps() {
   if (WZ.path === 'orbit') {
     return [
@@ -78,10 +114,8 @@ function wzSteps() {
         + `<div class="field" id="wz-planeW"><span>${esc(_('wz.plane'))}</span>${seg2('wz-plane', [['comb', 'wz.plane.comb'], ['sep', 'wz.plane.sep']], WZV.plane)}</div>`
         + fld('wz-rb', _('wz.rb'), WZV.rb)
         + `<details class="adv"><summary>${esc(_('wz.adv'))}</summary><div class="adv-b wz-adv">`
-        + `<div class="field"><span>${esc(_('wz.thr'))}</span>${seg2('wz-thr', [['imp', 'wz.thr.imp'], ['fin', 'wz.thr.fin']], WZV.thr)}</div>`
-        + `<div class="grid2">${fld('wz-m0', _('wz.m0'), WZV.m0)}${fld('wz-isp', _('wz.isp'), WZV.isp)}${fld('wz-F', _('wz.F'), WZV.F)}${fld('wz-md', _('wz.md'), WZV.md)}</div>`
-        + `<p class="wz-d" id="wz-fuelD">${esc(_('wz.fuelHint'))}</p>`
         + `<label class="chk"><input type="checkbox" id="wz-j2"${WZV.j2 ? ' checked' : ''}><span>${esc(_('wz.j2'))}</span></label></div></details>` },
+      { t: 'wz.s.engine', b: wzEngFields(true) },
     ];
   }
   if (WZ.path === 'free') {
@@ -93,6 +127,7 @@ function wzSteps() {
         + `<div class="grid2">${fld('wz-fbT', _('wz.fb.T'), WZV.fbT)}</div>`
         + `<div class="grid3">${fld('wz-fbP', _('wz.fb.P'), WZV.fbP)}${fld('wz-fbR', _('wz.fb.R'), WZV.fbR)}${fld('wz-fbN', _('wz.fb.N'), WZV.fbN)}</div>`
         + `<p class="wz-d" id="wz-fbD"></p>` },
+      { t: 'wz.s.engine', b: wzEngFields(false) },
     ];
   }
   if (WZ.path === 'go') {
@@ -104,6 +139,7 @@ function wzSteps() {
         + `<div class="grid2">${fld('wz-ghB', _('wz.peri', { peri: pnT }), WZV.ghB)}${fld('wz-ghRet', _('wz.hRet', { peri: pnD }), WZV.ghRet)}</div>` },
       { t: 'wz.s.when', b: seg2('wz-when', [['cheap', 'wz.when.cheap'], ['date', 'wz.when.date']], WZV.when) + `<p class="wz-d" id="wz-whenD"></p>`
         + `<label class="field" id="wz-dateW"><span>${esc(_('wz.date'))}</span><input type="date" id="wz-date" value="${esc(WZV.date)}" min="${EPHEM_YEARS[0]}-01-01" max="${EPHEM_YEARS[1]}-12-31"></label>` },
+      { t: 'wz.s.engine', b: wzEngFields(false) },
     ];
   }
   return [];
@@ -136,12 +172,13 @@ function wzSync() {
   const m = WZV.meth, inc = wzNum(WZV.i0) !== wzNum(WZV.i1);
   wzEl('wz-methD').textContent = _('wz.m.' + m + 'D');
   wzEl('wz-planeW').hidden = m === 'auto' || !inc; wzEl('wz-rbW').hidden = m !== 'bielliptic';
-  const fin = WZV.thr === 'fin'; wzEl('wz-FW').hidden = !fin; wzEl('wz-mdW').hidden = !fin;
+  const fin = WZV.thr === 'fin';
   // summaries
   const sums = wzEl('wzSteps').querySelectorAll('.wz-sum'), orb = n => WZV['c' + n] === 'circ'
     ? _('wz.sumCirc', { h: WZV['h' + n], i: WZV['i' + n] }) : _('wz.sumEll', { p: WZV['p' + n], a: WZV['a' + n], i: WZV['i' + n] });
   sums[0].textContent = _('body.' + WZV.body); sums[1].textContent = orb(0); sums[2].textContent = orb(1);
   sums[3].textContent = _('wz.m.' + m) + (fin ? ' · ' + _('wz.thr.fin') : '');
+  wzEngSync();
 }
 function wzSyncFree() {
   const v = WZV, [pn, an] = wzNames(v.body), sums = wzEl('wzSteps').querySelectorAll('.wz-sum');
@@ -151,6 +188,7 @@ function wzSyncFree() {
   sums[0].textContent = _('body.' + v.body);
   sums[1].textContent = v.c0 === 'circ' ? _('wz.sumCirc', { h: v.h0, i: v.i0 }) : _('wz.sumEll', { p: v.p0, a: v.a0, i: v.i0 });
   sums[2].textContent = (v.fbAt === 'peri' ? pn : v.fbAt === 'apo' ? an : 'T+' + v.fbT + ' s') + ' · ' + (Number.isFinite(tot) ? nf1.format(tot) + ' m/s' : '—');
+  wzEngSync();
 }
 function wzSyncGo() {
   const v = WZV, sib = wzSib(v.dep, v.tgt);
@@ -163,6 +201,7 @@ function wzSyncGo() {
   const sums = wzEl('wzSteps').querySelectorAll('.wz-sum');
   sums[0].textContent = _('wz.sumGo', { body: _('body.' + v.dep), h: v.gh0 }); sums[1].textContent = _('body.' + v.tgt);
   sums[2].textContent = _('wz.arr.' + v.mode) + ' · ' + v.ghB + ' km'; sums[3].textContent = when === 'cheap' ? _('wz.when.cheap') : v.date;
+  wzEngSync();
 }
 // ----- checks: the first problem, in plain words, and the step it is in -----
 function wzOrbitVals() {
@@ -195,7 +234,7 @@ function wzCheck() {
     }
     if (v.fbAt === 't' && !(wzNum(v.fbT) >= 0)) return fail(2, 'wz-fbT', _('wz.e.neg', { f: strip(_('wz.fb.T')) }));
     if (!(Math.hypot(wzNum(v.fbP), wzNum(v.fbR), wzNum(v.fbN)) > 0)) return fail(2, 'wz-fbP', _('wz.e.zeroDv'));
-    return { err: '' };
+    return wzEngCheck(3) || { err: '' };
   }
   if (Math.abs(o.hp0 - o.hp1) < 1e-9 && Math.abs(o.ha0 - o.ha1) < 1e-9 && Math.abs(o.i0 - o.i1) < 1e-9) return fail(2, 'wz-' + (v.c1 === 'circ' ? 'h1' : 'p1'), _('wz.e.same'));
   if (v.meth === 'bielliptic') {
@@ -203,19 +242,13 @@ function wzCheck() {
     if (!Number.isFinite(rb)) return fail(3, 'wz-rb', _('wz.e.num', { f: _('wz.rb').replace(/ \(.*\)$/, '') }));
     if (!(rb > Math.max(o.ha0, o.ha1)) || o.Re + rb * 1e3 > o.soi / 2) return fail(3, 'wz-rb', _('wz.e.rb'));
   }
-  const m0 = wzNum(v.m0), isp = wzNum(v.isp), F = wzNum(v.F), md = wzNum(v.md);
-  if (v.thr === 'fin') {
-    for (const [f, x, key] of [['m0', m0, 'wz.m0'], ['isp', isp, 'wz.isp'], ['F', F, 'wz.F'], ['md', md, 'wz.md']]) {
-      const lbl = _(key).replace(/ \(.*\)$/, '');
-      if (!Number.isFinite(x)) return fail(3, 'wz-' + f, _('wz.e.num', { f: lbl }));
-      if (!(x > 0)) return fail(3, 'wz-' + f, _('wz.e.pos', { f: lbl }));
-    }
-    if (!(md < m0)) return fail(3, 'wz-md', _('wz.e.mass'));
-  } else if ((v.m0 !== '' || v.isp !== '') && !(m0 > 0 && isp > 0)) return fail(3, v.m0 === '' || !(m0 > 0) ? 'wz-m0' : 'wz-isp', _('wz.e.mass2'));
+  const eg = wzEngCheck(4); if (eg) return eg;
   // the plan itself (the core's own refusals: escape, a burn below the surface)
   const { o0, o1 } = mvOrbits({ hp0: o.hp0, ha0: o.ha0, i0: o.i0, hp1: o.hp1, e1: o.e1, i1: o.i1, type: 'hohmann', rb: 0, plane: 'comb', k: 1 }, o.Re);
   const p = maneuverPlan(o.mu, o.R, o0, o1, { type: 'hohmann', plane: 'comb', k: 1 });
   if (p.error) return fail(2, '', _(p.error));
+  const E = wzEngE(), es = E && engSpecOf(E);
+  if (es && !es.error && es.type === 'sol') return fail(4, 'wz-eng', _('err.engSolidPlan', { kg: nf0.format(engNeed(p.burns[0].dv, es.md, es.isp)) }));
   return { err: '' };
 }
 function wzCheckGo() {
@@ -235,7 +268,19 @@ function wzCheckGo() {
   }
   const d = Date.parse(v.date + 'T00:00:00Z'), y = new Date(d).getUTCFullYear();
   if (!Number.isFinite(d) || y < EPHEM_YEARS[0] || y > EPHEM_YEARS[1] - 1) return fail(3, 'wz-date', _('wz.e.date', { a: EPHEM_YEARS[0], b: EPHEM_YEARS[1] - 1 }));
-  return { err: '' };
+  return wzEngCheck(4) || { err: '' };
+}
+// the engine step: the fields as numbers, the core's own refusals; finite burns need an engine (step: its index)
+function wzEngCheck(step) {
+  const v = WZV, strip = s => s.replace(/ \(.*\)$/, ''), fail = (id, err) => ({ err, step, id });
+  if (!v.eng) return WZ.path === 'orbit' && v.thr === 'fin' ? fail('wz-eng', _('wz.e.eng')) : null;
+  for (const [f, key] of [['emp', 'eng.mp'], ['emd', 'eng.md']]) {
+    const x = wzNum(v[f]);
+    if (!Number.isFinite(x)) return fail('wz-' + f, _('wz.e.num', { f: strip(_(key)) }));
+    if (!(x > 0)) return fail('wz-' + f, _('wz.e.pos', { f: strip(_(key)) }));
+  }
+  const s = engSpecOf(wzEngE());
+  return s && s.error ? fail('wz-eng', _(s.error)) : null;
 }
 function wzCheckShow() {
   const c = wzCheck(), st = wzEl('wzSteps');
@@ -252,11 +297,12 @@ wzEl('wzEx').addEventListener('click', e => {
   const b = e.target.closest('[data-ex]'); if (!b) return;
   if (WZ.path === 'free') { Object.assign(WZV, WZ_FEX[b.dataset.ex]); wzRender(); wzOpen(-1); wzCheckShow(); wzEl('wzGo').focus(); return; }
   if (WZ.path === 'go') { Object.assign(WZV, WZ_GEX[b.dataset.ex], { date: wzToday() }); wzRender(); wzOpen(-1); wzCheckShow(); wzEl('wzGo').focus(); return; }
-  Object.assign(WZV, { ...WZ_DEF, m0: WZV.m0, isp: WZV.isp, F: WZV.F, md: WZV.md, thr: WZV.thr, j2: WZV.j2 }, WZ_EX[b.dataset.ex]);
+  Object.assign(WZV, { ...WZ_DEF, eng: WZV.eng, emp: WZV.emp, emd: WZV.emd, thr: WZV.thr, j2: WZV.j2 }, WZ_EX[b.dataset.ex]);
   wzRender(); wzOpen(-1); wzCheckShow(); wzEl('wzGo').focus();
 });
 wzEl('wzSteps').addEventListener('click', e => {
   const h = e.target.closest('.wz-h'); if (h) { const i = +h.parentElement.dataset.i; wzOpen(WZ.step === i ? -1 : i); return; }
+  if (e.target.closest('#wz-engOpen')) { const E = wzEngE(); setWin('engine', { open: true, collapsed: false }); if (E) engOpenFrom(E); return; }
   if (e.target.closest('.wz-next')) { wzOpen(WZ.step + 1); const f = wzEl('wzSteps').querySelector('.wz-step.on input, .wz-step.on button:not(.wz-h)'); if (f) f.focus(); return; }
   const b = e.target.closest('.seg button, .wz-chips button'); if (!b) return;
   const g = b.parentElement.id.replace('wz-', '');
@@ -269,6 +315,7 @@ wzEl('wzSteps').addEventListener('input', e => {
   const t = e.target, f = t.id.replace('wz-', '');
   if (t.dataset.for) { if (t.value) { WZV[t.dataset.for] = t.value; wzRender(); wzCheckShow(); } return; }
   if (t.type === 'checkbox') WZV[f] = t.checked; else if (f in WZV) WZV[f] = t.value.trim();
+  if (f === 'eng') wzEngPick();
   wzSync(); wzCheckShow();
 });
 wzEl('wzSteps').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('input[type=text]')) { e.preventDefault(); wzGo(); } });
@@ -290,7 +337,7 @@ function wzRunFree() {
   if (MAP.on) setMap(false);
   Object.assign(S, { kind: 'man', model: 'real', frame: 'eq', scenario: '', follow: 'free' });
   S.M = { ...MV_DEF, body: o.k, t0: utcToDays(Math.floor(Date.now() / 60000) * 60000), hp0: o.hp0, ha0: o.ha0, i0: o.i0, O0: 0, hp1: o.hp0, e1: 0, i1: o.i0,
-    type: 'free', rb: 100000, plane: 'comb', k: 1, j2: false, thrust: 'imp', steer: 'local', m0: 1000, md: 300, isp: 320, F: 400, veh: '',
+    type: 'free', rb: 100000, plane: 'comb', k: 1, j2: false, thrust: 'imp', steer: 'local', ...wzEngM(), veh: '',
     fbAt: v.fbAt === 'apo' ? 1 : v.fbAt === 't' ? 't' : 0, fbT: wzNum(v.fbT) || 0, fbP: wzNum(v.fbP), fbR: wzNum(v.fbR), fbN: wzNum(v.fbN) };
   S.bodies = [bodyFromPreset(o.k)];
   $('#scenario').value = ''; $('#scNote').textContent = _('sc.mv.note');
@@ -317,8 +364,13 @@ function wzResultFree() {
     rows.push([_('res.mvPeriod'), fmtPeriod(2 * Math.PI * Math.sqrt(dn.a ** 3 / MAN.mu))]);
   }
   if (r.impact >= 0) rows.push([_('wz.r.impact'), _('chip.impact', { name })]);
-  html += `<table class="wr-burns"><tbody>${rows.map(([l, x]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(x)}</td></tr>`).join('')}</tbody></table>`;
+  html += `<table class="wr-burns"><tbody>${rows.map(([l, x]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(x)}</td></tr>`).join('')}</tbody></table>` + engCardHtml();
   box.innerHTML = html + `<div class="wr-act"><button type="button" class="btn sm" data-wr="replay">${esc(_('wz.r.replay'))}</button><button type="button" class="btn sm" data-wr="more">${esc(_('wz.r.more'))}</button></div>`;
+}
+// the engine for the maneuver state: the step's engine and the figures it gives (none: the form's defaults)
+function wzEngM() {
+  const E = wzEngE(), s = E && engSpecOf(E);
+  return s && !s.error ? { eng: E, F: s.F, isp: s.isp, m0: s.m0, md: s.md } : { eng: null, F: 400, isp: 320, m0: 1000, md: 300 };
 }
 // the maneuver state for the core (the full form's fields), the automatic method resolved here
 function wzRunOrbit() {
@@ -333,13 +385,12 @@ function wzRunOrbit() {
     WZ.auto = a;
   } else if (wzNum(v.i0) === wzNum(v.i1)) plane = 'comb';
   if (!Number.isFinite(rb) || !(rb > Math.max(o.ha0, o.ha1))) rb = Math.max(o.ha0, o.ha1) * 2 + 1000; // unused unless bi-elliptic
-  const m0 = wzNum(v.m0), isp = wzNum(v.isp), F = wzNum(v.F), md = wzNum(v.md);
   if (S.kind !== 'man') saveKind();
   if (MAP.on) setMap(false);
   Object.assign(S, { kind: 'man', model: 'real', frame: 'eq', scenario: '', follow: 'free' });
   S.M = { ...MV_DEF, body: o.k, t0: utcToDays(Math.floor(Date.now() / 60000) * 60000), hp0: o.hp0, ha0: o.ha0, i0: o.i0, O0: 0, hp1: o.hp1, e1: +o.e1.toFixed(9), i1: o.i1,
     type, rb, plane, k: 1, j2: !!v.j2, thrust: fin ? 'fin' : 'imp', steer: 'local',
-    m0: m0 > 0 ? m0 : 1000, isp: isp > 0 ? isp : 320, F: F > 0 ? F : 400, md: md > 0 && md < (m0 > 0 ? m0 : 1000) ? md : 0.3 * (m0 > 0 ? m0 : 1000), veh: '' };
+    ...wzEngM(), veh: '' };
   S.bodies = [bodyFromPreset(o.k)];
   $('#scenario').value = ''; $('#scNote').textContent = _('sc.mv.note');
   openRows.clear(); MAP.needFit = true;
@@ -364,7 +415,7 @@ async function wzRunGo() {
   if (MAP.on) setMap(false);
   Object.assign(S, { kind: 'transfer', model: 'real', scenario: '', follow: 'free', frame: pair ? 'rot' : 'inertial' });
   S.M = { ...sc, ...base, mode: v.mode, h0: wzNum(v.gh0), hB: wzNum(v.ghB), hRet: v.mode === 'free' ? wzNum(v.ghRet) : base.hRet || 60, side: 0, aero: false,
-    dep: 'burn', tof: 0, beta: 0, autoDur: true, t0: utcToDays(Date.parse(v.date + 'T00:00:00Z')) };
+    dep: 'burn', tof: 0, beta: 0, autoDur: true, t0: utcToDays(Date.parse(v.date + 'T00:00:00Z')), eng: wzEngM().eng };
   S.bodies = ch.keys.map(q => bodyFromPreset(q)); linkReal();
   $('#scenario').value = ''; $('#scNote').textContent = _('sc.pick.note');
   openRows.clear(); ovReveal(); MAP.needFit = true;
@@ -433,7 +484,7 @@ function wzResultGo() {
     if (M.mode === 'capture') rows.push([_('wz.r.capDv'), r.captured ? nf1.format(dv2) + ' m/s' : '—']);
     if (r.bPeri) rows.push([_('wz.r.peri', { peri: pnB }), nf0.format((r.bPeri.d - sys.R[1]) / 1e3) + ' km']);
     if (M.mode === 'free') rows.push([_('wz.r.ret', { peri: pnA }), r.aRet ? nf0.format((r.aRet.d - sys.R[0]) / 1e3) + ' km' : '—']);
-    html += `<table class="wr-burns"><tbody>${rows.map(([l, x]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(x)}</td></tr>`).join('')}</tbody></table>`;
+    html += `<table class="wr-burns"><tbody>${rows.map(([l, x]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(x)}</td></tr>`).join('')}</tbody></table>` + engCardHtml();
   }
   const pcB = wzSib(v.dep, v.tgt) ? `<button type="button" class="btn sm" data-wr="pc">${esc(_('wz.r.pcOpen'))}</button>` : '';
   box.innerHTML = html + `<div class="wr-act"><button type="button" class="btn sm" data-wr="replay">${esc(_('wz.r.replay'))}</button><button type="button" class="btn sm" data-wr="more">${esc(_('wz.r.more'))}</button>${pcB}</div>`;
@@ -462,14 +513,12 @@ function wzResult() {
   let html = head;
   if (busy) html += `<p class="wr-note">${esc(_('wz.r.busy', { p: nf0.format(MAN.prog || 0) }))}</p>`;
   html += `<div class="wr-big"><div><span>${esc(_('wz.r.total'))}</span><b>${esc(fmtSpeed(total))}</b></div><div><span>${esc(_('wz.r.tof'))}</span><b>${esc(wzSpan(tof))}</b></div></div>`;
-  const m0 = wzNum(v.m0), isp = wzNum(v.isp);
-  if (m0 > 0 && isp > 0) html += `<div class="wr-big"><div style="grid-column:1/-1"><span>${esc(_('wz.r.fuel', { m: kmTxt(m0), isp: kmTxt(isp) }))}</span><b>${esc(nf1.format(propMass(m0, total, isp)))} kg</b></div></div>`;
   html += `<table class="wr-burns"><caption class="sr">${esc(_('wz.r.burns'))}</caption><tbody>` + burns.map((b, j) => `<tr class="go" data-t="${b.t}"><th scope="row">${j + 1} · ${esc(cap1(where(b)))}<small>${esc(_('hud.tplus', { t: fmtDur(b.t - t0, true) }))}${b.len ? ' · ' + esc(_('sch.dur', { d: fmtBurn(b.len) })) : ''}</small></th><td>${esc(nf1.format(b.dv))} m/s</td></tr>`).join('') + '</tbody></table>';
   if (WZ.auto) {
     const a = WZ.auto, row = (key, x, on) => x ? `${on ? '<b>' : ''}${esc(_(key))}: ${esc(_('wz.r.cmpRow', { dv: fmtSpeed(x.dv), t: wzSpan(x.tof) }))}${on ? ' (' + esc(_('wz.r.pick')) + ')</b>' : ''}` : '';
     html += `<p class="wr-cmp">${esc(_('wz.r.cmp'))}: ${[row('wz.r.hoh', a.hoh, a.type === 'hohmann'), row('wz.r.bi', a.bi, a.type === 'bielliptic')].filter(Boolean).join(' · ')}</p>`;
   }
-  box.innerHTML = html + act;
+  box.innerHTML = html + engCardHtml() + act;
 }
 // called by app.js updateResults (a finished worker job, a rebuild): the card follows, once per frame. Only while the
 // mission is still the one the wizard set up (S.M the same object: the solver and the full form's edits keep it, a

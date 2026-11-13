@@ -1269,6 +1269,11 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   // mission: finite flights read the curve; a solid flies a single firing or the free burn; what is missing is said
   assert.ok(appJs.includes('fin: { F: M.F, isp: M.isp, m0: M.m0, md: M.md, steer: M.steer, eng },') && appJs.includes("_('err.engSolidPlan'") && has('err.engSolidPlan') && has('eng.short') && /\{kg\} kg itki maddesi eksik/.test(DICT['eng.short']), 'engine: the flight uses it, a solid\'s limits, the missing propellant in plain words');
   assert.ok(html.includes('data-i18n="ui.model11"') && has('ui.model11') && /CEA/.test(DICT['ui.model11']) && /Isp sabit/.test(DICT['ui.model11']), 'engine: the Model window states the assumptions');
+  // the wizard: an engine step on each path, the result cards list each burn's length, fuel and oxidizer; the expert
+  // form links the mission's engine
+  const wz = read('js/wizard.js');
+  assert.ok((wz.match(/\{ t: 'wz\.s\.engine', b: wzEngFields\(/g) || []).length === 3 && (wz.match(/engCardHtml\(\)/g) || []).length === 3 && wz.includes("fail('wz-eng', _('wz.e.eng'))") && has('wz.e.eng'), 'wizard: the engine step on every path, its lines in every result card');
+  assert.ok(html.includes('id="mvEng"') && has('mv.eng') && read('js/app.js').includes("engOpenFrom(S.M.eng || null)"), 'maneuver form: the engine and a way to the window');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

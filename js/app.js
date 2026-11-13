@@ -528,6 +528,7 @@ function applyVehicle(val) {
   syncMan(); rebuild({ resetU: true });
 }
 $('#mv-veh').addEventListener('change', e => applyVehicle(e.target.value));
+$('#mvEng').addEventListener('click', () => { setWin('engine', { open: true, collapsed: false }); engOpenFrom(S.M.eng || null); });
 $('#mvVehSave').addEventListener('click', () => {
   const name = ($('#mv-vname').value.trim() || _('mv.vauto', { n: SAVED_VEH.length + 1 })).slice(0, 40), q = { name };
   for (const f of VEH_F) q[f] = +S.M[f] || 0;
@@ -574,6 +575,7 @@ function syncMan() {
   $('#mvBurnBox').hidden = !burn; $('#mvTargetBox').hidden = burn || M.type === 'free'; // the free burn (the wizard's) has no target
   $('#mvAt0').textContent = pn; $('#mvAt1').textContent = an; setSeg('#mvAtSeg', String(M.at || 0)); $('#mv-dir').value = M.dir || 'pro';
   renderVehSel();
+  $('#mvEng').textContent = _('mv.eng', { name: M.eng ? engName(M.eng) : _('wz.engNone') }); // the mission's engine (js/engine-ui.js)
   $('#mv-j2').checked = !!M.j2;
   $('#lbl-hp0').textContent = $('#lbl-hp1').textContent = _('mv.hp', { peri: pn });
   $('#lbl-ha0').textContent = _('mv.ha', { apo: an }); $('#lbl-rb').textContent = _('mv.rb', { apo: an });
