@@ -331,6 +331,15 @@ Kararlar (2026-11-12): bi-eliptiğin rb sınırı etki küresinin yarısı; kay�
 - Araç: prosedürel dokular (tuvalde, dosyasız, token renklerinden): kriyojenik tanklarda kaynak halkalı beyaz köpük, depolanabilirde altın MLI, RP-1'de alüminyum, N2O ve hibrit gövdesinde karbon örgü, katıda gövde; sıvı lülede soğutma kanalları ve boğazda altın → mavi ısı rengi, koyu uzantı; hibrit/katıda ablatif lüle. Lüleler artık dış yüzleriyle çiziliyor (önceden iç yüz görünüyordu). 3B'de tank boyları hacimle orantılı (RL10'da LH2 tankı ≈ 3×). Hibrit kesitte oksitleyici seviyesi motor durumundan (yanma ortasında %52, port %67; core.test.js yanma ortası testi).
 - Testler: ui.test.js 42 (alev, renkler, dokular, tank boyları), 43 (yavaşlama eşlemesi, rampalar, büyük adımda yanma atlanmaz, kayıt payları ve yumuşaklığı, plume tutuşma/sönme); core.test.js hibrit yanma ortası. Ekran görüntüleri: RL10 ve örnek hibrit, yanma başı / ortası / sonu ve sönme anı, masaüstü 3B ve 2B.
 
+### Faz 18 düzeltmeleri, ikinci tur ✅ tamamlandı (2026-11-15)
+- Varsayılan motor: motor seçilmemiş transferler RL10 sınıfı üst kademe (RL10A-4-2, Centaur kuru kütlesi) + Mars Express kütlesinde araçla uçar, tüm yanmalar kademenin, itki maddesi gereği + %2. Yakalamayı aracın kendi motoruyla yapma denendi: Apollo CSM ile kalkış 24–30 dk, Mars Express Mars yakalamasını taşıyamıyor. Yanma süreleri: em_free 160 s; em_cap 191 + 31 s; em_sun 160 s; e_mars 314 + 94 s; moon_mars 108 + 96 s; e_venus 185 s; r_em_free 160 s; r_e_mars 323 + 97 s; r_gan_cal 57 + 42 s. Manevralar: LEO → GEO, Cape → GEO ve bi-eliptik artık Centaur (RL10): 438 + 168 s; 442 + 195 s; 525 + 71 + 7 s; GTO (400 N kendi motoru, 3 parça) 4850 / 4006 / 3302 s; SSO 358 + 334 s; spiral (elektrik) tüm uçuş.
+- Kesit gövdeye sabit (çerçevenin referans düzlemi normaline bakar); arka taraf sağlam.
+- Motor paneli: göstergenin solunda küçük panel (kesit, çubuklar, kalan Δv, itki, durum, sonraki yanma, iki düğme), katlanır; telefonda şerit.
+- Motor ve araç: tek sürekli lüle profili, enjektör kubbesi, gimbal, besleme hatları ve vanalar, turbopompa / helyum tüpleri; tank kaplaması üç seçenekten gümüşi gri kapitone; kesitte sıvı tank şeklinde ve hacme göre (3B ve 2B).
+- Yakın görünüm: ızgara ve yörünge çizgileri kameranın uzaklığıyla söner (2 km'de yok, 80 km'de tam), aracın yolu ince ve soluk; takipte titreme ölçülmedi (araç kare kare aynı pikselde).
+- Ses: ana sitede üretilmiş uzay uğultusu ve motor gürlemesi efekti, ilk jestte düşük seste, hoparlör düğmesi ve düzey, kaydedilir; kabinle çakışmaz.
+- Testler: core.test.js tank seviyesi; ui.test.js 44–48.
+
 ## Notlar
 - Hibrit OTV hazır aracı: itki, Isp, kütle ve tek ateşleme süresini birlikte veren yayımlanmış birincil bir kaynak bulununca eklenecek. Yayımlanmamış şirket verileri kullanılmayacak.
 
