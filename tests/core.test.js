@@ -1319,5 +1319,16 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   assert.ok(R.short === 0 && rel(R.need, 2243 * (Math.exp(3500 / L.ve) - 1)) < 1e-12, 'engine: what the burns need');
   const big = C.engBurns(L, [9000, 2000]);
   assert.ok(big.short > 0 && rel(big.short, 2243 * (Math.exp(11000 / L.ve) - 1) - 20830) < 1e-12 && big.burns[1].short, `engine: ${big.short.toFixed(0)} kg of propellant missing`);
+  // inside the engine (the cutaways): tanks full at the start and empty at the end, levels only fall; the hybrid's port
+  // grows to the grain's outer radius; a solid's web burns through; thrust only while it burns
+  for (const sp of [L, hyb('lox_paraffin', 2.5, 0.03), hyb('n2o_htpb', 6.5, 0.03), C.engineSpec({ type: 'sol', F: 68636.06, isp: 292.1, mp: 2009.96, md: 116.94, sol: { grain: 'bates' } }), H2]) {
+    const st = k => C.engState(sp, sp.tb * k), a0 = st(0), a1 = st(1), bi = sp.type === 'liq' || sp.type === 'hyb';
+    let mono = true, prev = a0;
+    for (let k = 1; k <= 20; k++) { const q = st(k / 20); if (q.fuel > prev.fuel + 1e-12 || q.ox > prev.ox + 1e-12 || (sp.type === 'hyb' && q.port < prev.port - 1e-12) || (sp.type === 'sol' && q.web < prev.web - 1e-12)) mono = false; prev = q; }
+    assert.ok(Math.abs(a0.fuel - 1) < 1e-12 && (!bi || Math.abs(a0.ox - 1) < 1e-12) && a1.fuel < 1e-9 && a1.ox < 1e-9 && mono, sp.type + ': the tanks go from full to empty, monotonically');
+    assert.ok(a0.on && a0.F > 0 && a0.Fk > 0 && a0.Fk <= 1 + 1e-12 && !a1.on && a1.F === 0 && !C.engState(sp, -1).on, sp.type + ': thrust only while it burns');
+    if (sp.type === 'hyb') assert.ok(Math.abs(a0.port - sp.r0 / sp.r1) < 1e-9 && Math.abs(a1.port - 1) < 1e-9, 'hybrid: the port grows to the grain\'s outer radius');
+    if (sp.type === 'sol') assert.ok(a0.web === 0 && a1.web === 1, 'solid: the web burns through');
+  }
   console.log('engines ok');
 }

@@ -1642,6 +1642,16 @@ function engTauAt(s, m) {
   for (let it = 0; it < 60; it++) { const mid = 0.5 * (lo + hi), u = engUsed(s, mid); if (u.fuel + u.ox < m) lo = mid; else hi = mid; }
   return 0.5 * (lo + hi);
 }
+// What the engine looks like inside at its clock τ (Phase 18b: the cutaway views): the share of fuel and of oxidizer
+// left in their tanks (0 … 1; a monopropellant or a solid: fuel only), the hybrid's port radius over the grain's outer
+// radius (r(τ)/r(tb): the web ends when the oxidizer does), the share of a solid's web burnt (0 … 1), the thrust now and
+// over the engine's peak, and whether it burns.
+function engState(s, tau) {
+  const t = Math.max(0, Math.min(s.tb, tau)), u = engUsed(s, t), on = tau >= 0 && tau < s.tb, c = s.curve;
+  const q = engAt(s, Math.min(t, s.tb * (1 - 1e-9))), peak = c ? Math.max(...c.F) : s.F;
+  return { fuel: s.mf > 0 ? Math.max(0, 1 - u.fuel / s.mf) : 0, ox: s.mox > 0 ? Math.max(0, 1 - u.ox / s.mox) : 0,
+    port: s.type === 'hyb' ? q.r / c.r[c.n - 1] : 0, web: s.type === 'sol' ? t / s.tb : 0, F: on ? q.F : 0, Fk: on ? q.F / peak : 0, on };
+}
 // propellant a Δv needs with this dry mass and Isp (kg; Tsiolkovsky with the burn's end at the dry mass)
 const engNeed = (dv, md, isp) => md * (Math.exp(dv / (isp * G0)) - 1);
 // Impulsive burns (Δv list, m/s) flown with the engine one after the other: each burn's propellant from the mass it
@@ -2167,5 +2177,5 @@ if (typeof module !== 'undefined') module.exports = {
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed, SOLVE_KM, missionMiss, solveMission,
   G0, visViva, burnDv, propMass, dvAvail, planeSplit, maneuverPlan, mvOrbits, rv2el, j2Rates, keplerStep, equatorFrame, orbitPoint, maneuverSim,
   mvImpulse, maneuverFlight, spiralEstimate, spiralFlight, maneuverRun, conicPoints, domBody, splitPlan, burnFor, KMAX, AUTO_GAIN, maneuverAuto, freeBurn,
-  ENG_TYPES, ENG_N, engineSpec, engineCurve, engAt, engUsed, engTauAt, engNeed, engBurns,
+  ENG_TYPES, ENG_N, engineSpec, engineCurve, engAt, engUsed, engTauAt, engNeed, engBurns, engState,
 };
