@@ -1321,8 +1321,8 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   // on a liquid's nozzle, ablative ones for hybrids and solids; outside faces textured and lit by the Sun with a soft
   // highlight, insides plain; a liquid's tanks as long as their volumes in 3D too
   const paint = v3.slice(v3.indexOf('const PAINT = {'), v3.indexOf('const TEXC = new Map();'));
-  assert.ok(['foam(', 'mli(', 'alu(', 'carbon(', 'case(', 'nozLiq(', 'nozAbl('].every(k => paint.includes(k)) && !/#[0-9a-f]{6}['"]/i.test(paint.replace(/'#ffffff'/g, '')) && v3.includes('new THREE.CanvasTexture(cv)') && v3.includes("document.createElement('canvas')"), 'craft textures: painted canvases from the theme\'s colours');
-  assert.ok(v3.includes("oxTank: T(cryo ? 'foam' : prop === 'n2o_htpb' ? 'carbon' : 'mli'), fuelTank: T(prop === 'lox_lh2' ? 'foam' : prop === 'lox_rp1' ? 'alu' : 'mli')") && v3.includes("caseC: T(ty === 'sol' ? 'case' : 'carbon')") && v3.includes('M.nozLiq') && v3.includes('M.nozAbl'), 'craft textures: finishes by propellant and type');
+  assert.ok(['foam(', 'quiltA(', 'alu(', 'carbon(', 'case(', 'nozLiq(', 'nozAbl('].every(k => paint.includes(k)) && !/#[0-9a-f]{6}['"]/i.test(paint.replace(/'#ffffff'/g, '')) && v3.includes('new THREE.CanvasTexture(cv)') && v3.includes("document.createElement('canvas')"), 'craft textures: painted canvases from the theme\'s colours');
+  assert.ok(v3.includes("oxTank: T(cryo ? 'foam' : prop === 'n2o_htpb' ? 'carbon' : fin), fuelTank: T(prop === 'lox_lh2' ? 'foam' : prop === 'lox_rp1' ? 'alu' : fin)") && v3.includes("caseC: T(ty === 'sol' ? 'case' : 'carbon')") && v3.includes('M.nozLiq') && v3.includes('M.nozAbl'), 'craft textures: finishes by propellant and type');
   assert.ok(v3.includes('uv.setY(k, rev ? 1 - cum[k % np] / tot : cum[k % np] / tot)') && v3.includes('gl_FrontFacing ? base * l + sp : uBack * 0.38') && v3.includes('pow(max(dot(n, H), 0.0), 28.0)'), 'craft textures: by length along the profile, outsides textured and lit, insides plain');
   assert.ok(m3.includes('engTanks(en.s, rho)') && m3.includes('fo = V ? V.ox / (V.ox + V.fuel) : 0.5') && v3.includes('const span = 0.67, lo = Math.max(0.15, Math.min(span - 0.15, span * (fo > 0 ? fo : 0.5)))'), 'craft: a liquid\'s tanks as long as their volumes in 3D');
   // the cutaway fixed to the body (2026-11-15): the cut faces the frame's reference-plane normal, never the camera; the
@@ -1413,6 +1413,21 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(css.includes('.eng-panel{pointer-events:auto;width:260px;') && css.includes('.ep-bar.ox i{background:var(--cyan)}') && css.includes('.ep-bar.fuel i{background:var(--burn)}') && css.includes('.eng-panel.fold .ep-body{display:none}'), 'engine panel: size, bar colours, folding');
   assert.ok(ui.includes('const on = !!(m && m.burns && m.burns.length);') && ui.includes("epFold(sv ? sv === '1' : VW.phone.matches, false)") && ui.includes("bar('epOx', bi,") && ui.includes("{ k: 0.55, mini: true }") && ui.includes('s.ve * Math.log((s.md + left) / s.md)'), 'engine panel: only with burns, folded on phones, one bar without oxidizer, the small cutaway, Δv left');
   assert.ok(app.includes('engPanelTick(tNowG, !!(C && simR && !MAP.on && !SCENE.on && !REC.busy));') && app.includes("$('#engPanel'), $('#timeline')") && app.includes("['#apprBtn', '#engAppr', '#epAppr']") && P.PREF_KEYS.engPanel, 'engine panel: per frame, an obstacle, its buttons, the saved fold');
+}
+// 46) The engine and the craft drawn closer to the real thing (2026-11-15): one continuous engine profile (injector dome,
+// chamber, a cosine convergent into the throat, the bell leaving it with zero slope; the nozzle texture's heat tint at
+// the profile's own throat), a gimbal block, feed lines with valves, a turbopump (cryogenic pairs) or pressurant
+// bottles (storables); the storables' tanks in silver-grey quilted insulation (A of three compared; no gold foil); the
+// cutaway's liquids the tank's own outline cut at the level by volume (core.js engTankLevel), in 3D and 2D; the 2D
+// nozzle one outline
+{
+  const v3 = read('js/view3d.js'), ui = read('js/engine-ui.js');
+  const prof = v3.slice(v3.indexOf('function engineProfile(o)'), v3.indexOf('// a tube along points'));
+  assert.ok(prof.includes('0.5 - 0.5 * Math.cos(Math.PI * f)') && prof.includes('f / (f + 0.04)') && prof.includes('vt: cum[it] / tot') && v3.includes("M.nozLiq = T('nozLiq', { vt: ep.vt, ve: ep.ve });") && v3.includes("M.nozAbl = T('nozAbl', { vt: ep.vt });"), 'engine: one continuous profile, the heat tint at its throat');
+  assert.ok(v3.includes('new THREE.TubeGeometry(') && v3.includes('// the gimbal block') && v3.includes('// helium bottles') && v3.includes('const pump = cryo') && v3.includes('// valves'), 'engine: gimbal, feed lines, valves, turbopump or pressurant bottles');
+  assert.ok(v3.includes("const TANK_FIN = 'quiltA';") && v3.includes('function quilt(') && !v3.includes('  mli(') && !v3.includes("'mli'"), 'tanks: silver-grey quilted insulation, no gold foil');
+  assert.ok(v3.includes('if (vY > uClip) discard;') && v3.includes('m.material.uniforms.uClip.value = f.y0 + f.r * engTankLevel(k, len / f.r, f.k);') && v3.includes('new THREE.ShapeGeometry(sh, 4)'), 'cutaway 3D: the liquid in the tank\'s outline, its level by volume');
+  assert.ok(ui.includes('r * engTankLevel(level, (x1 - x0) / r, 1)') && ui.includes('r * engTankLevel(st.fuel, 2, 1)') && ui.includes('// one continuous outline (2026-11-15)'), 'cutaway 2D: levels by volume, one nozzle outline');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

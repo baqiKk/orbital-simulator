@@ -380,7 +380,8 @@ function engSchematic(cv, s, st, E, phase, pl = st.Fk, o = {}) {
     const x0 = X(a), x1 = X(b), r = Math.min(half, (x1 - x0) / 2);
     const path = () => { x.beginPath(); x.moveTo(x0 + r, my - half); x.lineTo(x1 - r, my - half); x.arc(x1 - r, my, half, -Math.PI / 2, Math.PI / 2); x.lineTo(x0 + r, my + half); x.arc(x0 + r, my, half, Math.PI / 2, Math.PI * 1.5); x.closePath(); };
     x.save(); path(); x.clip();
-    x.fillStyle = c; x.globalAlpha = 0.85; x.fillRect(x1 - (x1 - x0) * level, my - half, (x1 - x0) * level, 2 * half); x.restore();
+    const fh = r > 0 ? r * engTankLevel(level, (x1 - x0) / r, 1) : 0; // the level by volume (round ends: hemispheres)
+    x.fillStyle = c; x.globalAlpha = 0.85; x.fillRect(x1 - fh, my - half, fh, 2 * half); x.restore();
     path(); x.strokeStyle = col.metal; x.stroke();
     label(name + ' ' + Math.round(level * 100) + '%', x0 + 2, my - half - 4);
   };
@@ -406,10 +407,20 @@ function engSchematic(cv, s, st, E, phase, pl = st.Fk, o = {}) {
   // the chamber (a to b, half height ch) and the nozzle (throat half height thr to the exit at c, half height e)
   const engine = (a, b, ch, c, thr, e) => {
     plume(X(c), e);
-    x.strokeStyle = col.metal;
-    if (b > a) { x.fillStyle = col.solid; x.fillRect(X(a), my - ch, X(b) - X(a), 2 * ch); x.strokeRect(X(a), my - ch, X(b) - X(a), 2 * ch); }
-    x.beginPath(); x.moveTo(X(b), my - thr); x.lineTo(X(c), my - e); x.lineTo(X(c), my + e); x.lineTo(X(b), my + thr); x.closePath();
+    // one continuous outline (2026-11-15): the chamber (a … b, half height ch; none for a hybrid or a solid, whose
+    // convergent part leaves the case at 2·thr), a smooth convergent curve into the throat, the bell out to the exit
+    const x0 = X(a), xb = X(b), xc = X(c), c0 = b > a ? ch : 2 * thr, xt = xb + Math.max(4, (xc - xb) * 0.18);
+    const half = sg => { // one side, sg = −1 above the axis, +1 below
+      x.lineTo(xb, my + sg * c0);
+      x.bezierCurveTo(xb + (xt - xb) * 0.55, my + sg * c0, xt - (xt - xb) * 0.35, my + sg * thr, xt, my + sg * thr);
+      x.bezierCurveTo(xt + (xc - xt) * 0.35, my + sg * thr, xc - (xc - xt) * 0.45, my + sg * e * 0.92, xc, my + sg * e);
+    };
+    x.beginPath(); x.moveTo(x0, my - c0); half(-1); x.lineTo(xc, my + e);
+    x.bezierCurveTo(xc - (xc - xt) * 0.45, my + e * 0.92, xt + (xc - xt) * 0.35, my + thr, xt, my + thr);
+    x.bezierCurveTo(xt - (xt - xb) * 0.35, my + thr, xb + (xt - xb) * 0.55, my + c0, xb, my + c0);
+    x.lineTo(x0, my + c0); x.closePath();
     x.fillStyle = hexA(col.metal, 0.75); x.fill(); x.strokeStyle = col.ink; x.globalAlpha = 0.55; x.stroke(); x.globalAlpha = 1;
+    if (b > a) { x.fillStyle = hexA(col.solid, 0.55); x.fillRect(x0 + 1, my - ch + 1, Math.max(0, xb - x0 - 2), 2 * ch - 2); } // the chamber darker
   };
   const bot = h - 8;
   if (E.type === 'liq') {
@@ -452,7 +463,7 @@ function engSchematic(cv, s, st, E, phase, pl = st.Fk, o = {}) {
     engine(0.8, 0.8, 0, 0.92, 8, 22);
   } else {
     const cx = X(0.16), r = 30;
-    x.save(); x.beginPath(); x.arc(cx, my, r, 0, 6.2832); x.clip(); x.fillStyle = col.fuel; x.globalAlpha = 0.85; x.fillRect(cx + r - 2 * r * st.fuel, my - r, 2 * r * st.fuel, 2 * r); x.restore();
+    x.save(); x.beginPath(); x.arc(cx, my, r, 0, 6.2832); x.clip(); x.fillStyle = col.fuel; x.globalAlpha = 0.85; const fh = r * engTankLevel(st.fuel, 2, 1); x.fillRect(cx + r - fh, my - r, fh, 2 * r); x.restore(); // a sphere: by volume
     x.strokeStyle = col.metal; x.beginPath(); x.arc(cx, my, r, 0, 6.2832); x.stroke();
     label(_('eng.sch.prop') + ' ' + Math.round(st.fuel * 100) + '%', cx - r, my - r - 4);
     feed([[0.16 + 30 / (w - 12), my], [0.56, my]], col.fuel);

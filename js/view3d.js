@@ -232,10 +232,11 @@ export const CRAFT_VS = /* glsl */`
 #include <logdepthbuf_pars_vertex>
 varying vec3 vN, vW;
 varying vec2 vUv;
+varying float vY;
 void main() {
   vN = normalize(mat3(modelMatrix) * normal);
   vec4 w = modelMatrix * vec4(position, 1.0);
-  vW = w.xyz; vUv = uv;
+  vW = w.xyz; vUv = uv; vY = position.y;
   gl_Position = projectionMatrix * viewMatrix * w;
   #include <logdepthbuf_vertex>
 }`;
@@ -243,12 +244,14 @@ export const CRAFT_FS = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_fragment>
 uniform vec3 uColor, uSun, uBack;
-uniform float uFlat, uTex, uSpec;
+uniform float uFlat, uTex, uSpec, uClip;
 uniform sampler2D uMap;
 varying vec3 vN, vW;
 varying vec2 vUv;
+varying float vY;
 void main() {
   #include <logdepthbuf_fragment>
+  if (vY > uClip) discard; // a liquid's surface (the cutaway's fills)
   vec3 n = normalize(vN) * (gl_FrontFacing ? 1.0 : -1.0);
   float d = dot(n, uSun), l = 0.3 + 0.7 * max(d, 0.0);
   vec3 base = uColor * (uTex > 0.5 && gl_FrontFacing ? texture2D(uMap, vUv).rgb : vec3(1.0));
@@ -276,18 +279,9 @@ const PAINT = {
     for (const v of [0.37, 0.62]) { x.beginPath(); x.moveTo(0, h * (1 - v)); x.lineTo(w, h * (1 - v)); x.stroke(); }
     for (const u of [0, 0.25, 0.5, 0.75]) { x.beginPath(); x.moveTo(u * w + 0.5, h * 0.13); x.lineTo(u * w + 0.5, h * 0.87); x.stroke(); }
   },
-  // gold foil (multi-layer insulation, storable propellants): crinkled facets of light and dark gold, taped seams
-  mli(x, w, h, C) {
-    const r = rnd(11), g = hx(C.accent, C.warn, 0.35); x.fillStyle = hx(g, C.solid, 0.2); x.fillRect(0, 0, w, h);
-    for (let i = 0; i < 900; i++) {
-      const cx = r() * w, cy = r() * h, s = 4 + 12 * r(), k = r();
-      x.fillStyle = k < 0.45 ? rgba(hx(g, '#ffffff', 0.35), 0.35 + 0.3 * r()) : k < 0.8 ? rgba(hx(g, C.solid, 0.45), 0.3 + 0.3 * r()) : rgba(C.burn, 0.12);
-      x.beginPath(); x.moveTo(cx, cy); x.lineTo(cx + s * (r() - 0.2), cy + s * r() * 0.6); x.lineTo(cx - s * r() * 0.5, cy + s * (0.4 + 0.6 * r())); x.closePath(); x.fill();
-    }
-    x.strokeStyle = rgba(hx(g, '#ffffff', 0.5), 0.55); x.lineWidth = 3;
-    for (const v of [0.12, 0.5, 0.88]) { x.beginPath(); x.moveTo(0, h * (1 - v)); x.lineTo(w, h * (1 - v)); x.stroke(); }
-    for (const u of [0.1, 0.6]) { x.beginPath(); x.moveTo(u * w, 0); x.lineTo(u * w, h); x.stroke(); }
-  },
+  // quilted blanket insulation (2026-11-15, instead of gold foil): stitched squares, each a little puffed (lighter in the
+  // middle), fine crinkles, taped seams; silver-grey
+  quiltA(x, w, h, C) { quilt(x, w, h, C, hx(C.dim, C.ink, 0.5)); },
   // bare aluminium (an RP-1 tank): brushed grey, weld rings
   alu(x, w, h, C) {
     const r = rnd(5), b = hx(C.dim, C.ink, 0.3); x.fillStyle = b; x.fillRect(0, 0, w, h);
@@ -319,25 +313,45 @@ const PAINT = {
   // a regeneratively cooled nozzle: from the throat (v = 0) the cooling channels in heat tint, gold at the throat
   // turning blue, then bare metal; the radiatively cooled extension (v > 0.45) dark metal
   nozLiq(x, w, h, C) {
-    const y = v => h * (1 - v), g = x.createLinearGradient(0, y(0), 0, y(0.45));
-    g.addColorStop(0, hx(C.accent, C.warn, 0.4)); g.addColorStop(0.25, hx(C.warn, C.burn, 0.25)); g.addColorStop(0.55, hx(C.orbit, C.bad, 0.25)); g.addColorStop(0.8, hx(C.orbit, C.dim, 0.5)); g.addColorStop(1, C.dim);
-    x.fillStyle = g; x.fillRect(0, y(0.45), w, h * 0.45);
-    for (let i = 0; i < w; i += 4) { x.fillStyle = rgba(C.solid, 0.35); x.fillRect(i, y(0.45), 1, h * 0.45); x.fillStyle = rgba('#ffffff', 0.12); x.fillRect(i + 2, y(0.45), 1, h * 0.45); }
-    const e = x.createLinearGradient(0, y(0.45), 0, 0); e.addColorStop(0, hx(C.solid, C.faint, 0.55)); e.addColorStop(1, hx(C.solid, C.faint, 0.3));
-    x.fillStyle = e; x.fillRect(0, 0, w, y(0.45));
-    x.fillStyle = rgba(C.dim, 0.8); x.fillRect(0, y(0.45) - 2, w, 3);
+    // v = 0 at the chamber's top: the chamber and the convergent part in plain channelled metal, the heat tint about the
+    // throat (C.vt), the channels to the extension's joint (C.ve)
+    const y = v => h * (1 - v), vt = C.vt, ve = C.ve, g = x.createLinearGradient(0, y(0), 0, y(ve));
+    const at = v => Math.max(0, Math.min(1, v / ve));
+    g.addColorStop(0, C.dim); g.addColorStop(at(vt - 0.12), hx(C.dim, C.orbit, 0.35)); g.addColorStop(at(vt - 0.04), hx(C.accent, C.warn, 0.4)); g.addColorStop(at(vt + 0.03), hx(C.warn, C.burn, 0.25)); g.addColorStop(at(vt + 0.1), hx(C.orbit, C.bad, 0.25)); g.addColorStop(at(vt + 0.2), hx(C.orbit, C.dim, 0.5)); g.addColorStop(1, C.dim);
+    x.fillStyle = g; x.fillRect(0, y(ve), w, h * ve);
+    for (let i = 0; i < w; i += 4) { x.fillStyle = rgba(C.solid, 0.35); x.fillRect(i, y(ve), 1, h * ve); x.fillStyle = rgba('#ffffff', 0.12); x.fillRect(i + 2, y(ve), 1, h * ve); }
+    const e = x.createLinearGradient(0, y(ve), 0, 0); e.addColorStop(0, hx(C.solid, C.faint, 0.55)); e.addColorStop(1, hx(C.solid, C.faint, 0.3));
+    x.fillStyle = e; x.fillRect(0, 0, w, y(ve));
+    x.fillStyle = rgba(C.dim, 0.8); x.fillRect(0, y(ve) - 2, w, 3);
     x.strokeStyle = rgba(C.faint, 0.25); x.lineWidth = 1;
-    for (let v = 0.55; v < 1; v += 0.09) { x.beginPath(); x.moveTo(0, y(v)); x.lineTo(w, y(v)); x.stroke(); }
+    for (let v = ve + 0.08; v < 1; v += 0.09) { x.beginPath(); x.moveTo(0, y(v)); x.lineTo(w, y(v)); x.stroke(); }
   },
   // an ablative nozzle (hybrid, solid): dark carbon-phenolic in wrapped bands, the graphite throat a little lighter
   nozAbl(x, w, h, C) {
-    const y = v => h * (1 - v), g = x.createLinearGradient(0, y(0), 0, y(1));
-    g.addColorStop(0, hx(C.faint, C.dim, 0.3)); g.addColorStop(0.15, hx(C.solid, C.faint, 0.5)); g.addColorStop(1, hx(C.solid, C.faint, 0.35));
+    const y = v => h * (1 - v), g = x.createLinearGradient(0, y(0), 0, y(1)), vt = C.vt;
+    g.addColorStop(0, hx(C.solid, C.faint, 0.45)); g.addColorStop(vt, hx(C.faint, C.dim, 0.35)); g.addColorStop(Math.min(1, vt + 0.15), hx(C.solid, C.faint, 0.5)); g.addColorStop(1, hx(C.solid, C.faint, 0.35));
     x.fillStyle = g; x.fillRect(0, 0, w, h);
     const r = rnd(3);
     for (let v = 0.05; v < 1; v += 0.035 + 0.02 * r()) { x.fillStyle = rgba(r() < 0.5 ? C.solid : C.dim, 0.18); x.fillRect(0, y(v), w, 2); }
   },
 };
+function quilt(x, w, h, C, base) {
+  const r = rnd(13), n = 8, cw = w / n, ch = h / (n * 1.6);
+  x.fillStyle = base; x.fillRect(0, 0, w, h);
+  for (let i = 0; i < n; i++) for (let j = 0; j < n * 1.6; j++) {
+    const cx = (i + 0.5) * cw, cy = (j + 0.5) * ch, g = x.createRadialGradient(cx, cy, 0, cx, cy, Math.max(cw, ch) * 0.7);
+    g.addColorStop(0, rgba('#ffffff', 0.18 + 0.06 * r())); g.addColorStop(0.7, rgba('#ffffff', 0)); g.addColorStop(1, rgba(C.solid, 0.22));
+    x.fillStyle = g; x.fillRect(i * cw, j * ch, cw, ch);
+  }
+  for (let i = 0; i < 1400; i++) { x.fillStyle = rgba(r() < 0.5 ? C.solid : '#ffffff', 0.06 * r()); x.fillRect(r() * w, r() * h, 1 + 2 * r(), 1); }
+  x.strokeStyle = rgba(C.solid, 0.35); x.lineWidth = 1; x.setLineDash([2, 2]);
+  for (let i = 0; i <= n; i++) { x.beginPath(); x.moveTo(i * cw, 0); x.lineTo(i * cw, h); x.stroke(); }
+  for (let j = 0; j <= n * 1.6; j++) { x.beginPath(); x.moveTo(0, j * ch); x.lineTo(w, j * ch); x.stroke(); }
+  x.setLineDash([]); x.strokeStyle = rgba(hx(base, '#ffffff', 0.4), 0.7); x.lineWidth = 3;
+  for (const v of [0.12, 0.88]) { x.beginPath(); x.moveTo(0, h * (1 - v)); x.lineTo(w, h * (1 - v)); x.stroke(); }
+}
+// the storables' tank finish: A of three compared (silver-grey quilted, white-grey quilted, painted aluminium; 2026-11-15)
+const TANK_FIN = 'quiltA';
 const TEXC = new Map();
 function craftTex(kind, C) {
   const key = kind + '|' + Object.values(C).join(',');
@@ -709,13 +723,34 @@ export function create(canvas, opts) {
   // a capsule tank: radius r from y0 to y1, domes of height k·r
   const tankPts = (r, y0, y1, k = 0.5) => { const p = []; for (let i = 0; i <= 6; i++) { const a = i / 6 * Math.PI / 2; p.push([r * Math.sin(a), y0 + k * r * (1 - Math.cos(a))]); } for (let i = 6; i >= 0; i--) { const a = i / 6 * Math.PI / 2; p.push([r * Math.sin(a), y1 - k * r * (1 - Math.cos(a))]); } return p; };
   const bellPts = (r0, r1, y0, y1) => { const p = []; for (let i = 0; i <= 8; i++) { const f = i / 8; p.push([r0 + (r1 - r0) * Math.sqrt(f), y0 - (y0 - y1) * f]); } return p; };
+  // One continuous engine profile (2026-11-15), top to exit [r, y]: an injector dome (liquids), the cylindrical chamber
+  // (rc from yc0), a rounded convergent part into the throat (rt) through a circular fillet, then the bell to the exit
+  // (re at -0.5): no kinks or gaps where they meet. Returns the points and the throat's and the extension joint's share
+  // of the profile's length (the nozzle texture's heat tint and channels).
+  function engineProfile(o) {
+    const { rc, rt, re, yc0, Lc, Lv, dome } = o, pts = [];
+    if (dome) for (let i = 0; i <= 6; i++) { const a = i / 6 * Math.PI / 2; pts.push([rc * Math.sin(a), yc0 + dome * Math.cos(a)]); }
+    else pts.push([rc, yc0]);
+    const yc1 = yc0 - Lc, yt = yc1 - Lv; // chamber end, throat
+    for (let i = 1; i <= 4; i++) pts.push([rc, yc0 - Lc * i / 4]);
+    // convergent + throat fillet: a cosine blend from rc to rt (zero slope at both ends: smooth into the chamber and the throat)
+    for (let i = 1; i <= 10; i++) { const f = i / 10, b = 0.5 - 0.5 * Math.cos(Math.PI * f); pts.push([rc + (rt - rc) * b, yc1 - Lv * f]); }
+    // the bell: leaves the throat with zero slope (f/(f + 0.04)), opens quickly and flattens towards the exit
+    const Lb = yt + 0.5;
+    for (let i = 1; i <= 18; i++) { const f = i / 18, q = (1 - Math.pow(1 - f, 2.4)) * f / (f + 0.04) * 1.04; pts.push([rt + (re - rt) * q, yt - Lb * f]); }
+    const cum = [0]; for (let j = 1; j < pts.length; j++) cum.push(cum[j - 1] + Math.hypot(pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1]));
+    const tot = cum[cum.length - 1], it = (dome ? 7 : 1) + 4 + 10 - 1;
+    return { pts, vt: cum[it] / tot, ve: (cum[it] + 0.45 * (tot - cum[it])) / tot, yt };
+  }
+  // a tube along points (feed lines)
+  const tube = (P, r, mat) => new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(P.map(p => new THREE.Vector3(...p))), 24, r, 8, false), mat);
   const quad = new THREE.PlaneGeometry(1, 1).rotateY(Math.PI / 2), halfCyl = new THREE.CylinderGeometry(1, 1, 1, 24, 1, true, Math.PI, Math.PI);
   // a material: a flat colour, or (tex: a PAINT kind) a textured outer surface whose inside stays the plain colour;
   // spec: the Sun's highlight
   function craftMat(color, flat, tex, C, spec = 0.12) {
     return new THREE.ShaderMaterial({ vertexShader: CRAFT_VS, fragmentShader: CRAFT_FS, side: THREE.DoubleSide, toneMapped: false,
       uniforms: { uColor: { value: new THREE.Color(tex ? '#ffffff' : color) }, uBack: { value: new THREE.Color(color) }, uSun: { value: new THREE.Vector3(1, 0, 0) }, uFlat: { value: flat ? 1 : 0 },
-        uTex: { value: tex ? 1 : 0 }, uMap: { value: tex ? craftTex(tex, C) : null }, uSpec: { value: flat ? 0 : spec } } });
+        uTex: { value: tex ? 1 : 0 }, uMap: { value: tex ? craftTex(tex, C) : null }, uSpec: { value: flat ? 0 : spec }, uClip: { value: 1e9 } } });
   }
   // a plume: the flame quad (placed at the nozzle exit, its axis −y of the model) and, for a main engine, the nozzle glow;
   // additive: blending ONE, ONE (premultiplied), no depth writes, drawn after the model
@@ -738,33 +773,66 @@ export function create(canvas, opts) {
   function craftBuild(ty, grain, col, prop, fo) {
     if (craftG.group) { roots.sim.remove(craftG.group); craftG.group.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry && ![quad, halfCyl, flameQuad, glowQuad].includes(o.geometry)) o.geometry.dispose(); }); }
     const g = new THREE.Group(); g.visible = false;
-    const C = col.tex, cryo = /^lox/.test(prop || ''), T = k => craftMat(col.metal, false, k, C, k === 'mli' ? 0.5 : k === 'foam' ? 0.06 : 0.25);
+    const C = col.tex, cryo = /^lox/.test(prop || ''), T = (k, o) => craftMat(col.metal, false, k, o ? { ...C, ...o } : C, k === 'foam' ? 0.06 : k.startsWith('quilt') ? 0.18 : 0.25);
+    const fin = TANK_FIN;
     const M = { metal: craftMat(col.metal), nozzle: craftMat(col.nozzle), fuel: craftMat(col.fuel, true), ox: craftMat(col.ox, true), wall: craftMat(col.fuel),
-      oxTank: T(cryo ? 'foam' : prop === 'n2o_htpb' ? 'carbon' : 'mli'), fuelTank: T(prop === 'lox_lh2' ? 'foam' : prop === 'lox_rp1' ? 'alu' : 'mli'),
-      nozLiq: T('nozLiq'), nozAbl: T('nozAbl'), caseC: T(ty === 'sol' ? 'case' : 'carbon') };
+      fuelL: craftMat(col.fuel, true), oxL: craftMat(col.ox, true), line: craftMat(col.tex.ink), valve: craftMat(col.nozzle),
+      oxTank: T(cryo ? 'foam' : prop === 'n2o_htpb' ? 'carbon' : fin), fuelTank: T(prop === 'lox_lh2' ? 'foam' : prop === 'lox_rp1' ? 'alu' : fin),
+      caseC: T(ty === 'sol' ? 'case' : 'carbon') };
     M.wall.uniforms.uColor.value.multiplyScalar(0.4); // the port's burning wall, darker than the grain's cut face
+    M.line.uniforms.uSpec.value = 0.5; M.valve.uniforms.uColor.value.multiplyScalar(0.8);
     const shells = [], fills = {}, ports = [], plumes = [];
     const shell = (pts, mat) => { const a = new THREE.Mesh(lathe(pts, false), mat), b = new THREE.Mesh(lathe(pts, true), mat); b.visible = false; g.add(a, b); shells.push([a, b]); };
     const fill = (name, mat, r, y0, y1) => { const m = new THREE.Mesh(quad, mat); m.visible = false; g.add(m); fills[name] = { m, r, y0, y1 }; };
+    // a liquid in the cut plane: the tank's inside outline (shell radius r, domes k·r high), filled from the aft end
+    // (y0) to its level by volume (core.js engTankLevel), the surface a clip height in the shader
+    const liquid = (name, mat, r, y0, y1, k) => {
+      const ri = r - 0.005, a0 = y0 + 0.005, a1 = y1 - 0.005, ki = (k * r - 0.005) / ri, P = tankPts(ri, a0, a1, ki), sh = new THREE.Shape();
+      P.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y))); for (let i = P.length - 1; i >= 0; i--) sh.lineTo(-P[i][0], P[i][1]);
+      const m = new THREE.Mesh(new THREE.ShapeGeometry(sh, 4).rotateY(-Math.PI / 2), mat); m.position.x = 0.001; m.visible = false; g.add(m);
+      fills[name] = { m, liq: true, r: ri, y0: a0, y1: a1, k: ki };
+    };
     const port = (name, r, y0, y1) => { const m = new THREE.Mesh(halfCyl, M.wall); m.visible = false; g.add(m); ports.push(m); fills[name] = { m, r, y0, y1, wall: true }; };
+    const add = (m, x = 0, y = 0, z = 0) => { m.position.set(x, y, z); g.add(m); return m; };
+    let exitR = 0.095;
     if (ty === 'liq') {
       // the two tanks share 0.48 … −0.22 (less a gap) in proportion to their volumes, each at least 0.15 long
       const span = 0.67, lo = Math.max(0.15, Math.min(span - 0.15, span * (fo > 0 ? fo : 0.5))), y0 = 0.48 - lo, y1 = y0 - 0.03;
-      shell(tankPts(0.12, y0, 0.48), M.oxTank); fill('ox', M.ox, 0.115, y0 + 0.03, 0.45);
-      shell(tankPts(0.12, -0.22, y1), M.fuelTank); fill('fuel', M.fuel, 0.115, -0.19, y1 - 0.03);
-      shell([[0.1, -0.22], [0.05, -0.27]], M.metal); shell([[0.04, -0.27], [0.04, -0.31]], M.nozLiq); shell(bellPts(0.035, 0.1, -0.31, -0.5), M.nozLiq);
+      shell(tankPts(0.12, y0, 0.48), M.oxTank); liquid('ox', M.oxL, 0.12, y0, 0.48, 0.5);
+      shell(tankPts(0.12, -0.22, y1), M.fuelTank); liquid('fuel', M.fuelL, 0.12, -0.22, y1, 0.5);
+      // the engine (proportions after an RL10 under a Centaur-sized tank): thrust cone, gimbal block, injector dome,
+      // chamber, nozzle in one profile; feed lines with valves; a turbopump (cryogenic pairs) or pressurant bottles
+      shell([[0.105, -0.205], [0.03, -0.275]], M.metal); // the thrust cone under the tank
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.018, 0.016, 16), M.valve), 0, -0.283, 0); // the gimbal block
+      add(new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.003, 6, 20).rotateX(Math.PI / 2), M.metal), 0, -0.29, 0);
+      const ep = engineProfile({ rc: 0.024, rt: 0.0115, re: 0.062, yc0: -0.302, Lc: 0.03, Lv: 0.022, dome: 0.01 });
+      M.nozLiq = T('nozLiq', { vt: ep.vt, ve: ep.ve });
+      shell(ep.pts, M.nozLiq); exitR = 0.062;
+      const pump = cryo, ps = pump ? [0.045, -0.305, 0.02] : null;
+      // the fuel line from the fuel tank's aft dome; the oxidizer line down the outside of the fuel tank
+      g.add(tube([[0.03, -0.205, 0.05], [0.04, -0.25, 0.05], pump ? [0.045, -0.29, 0.03] : [0.03, -0.3, 0.03], [0.026, -0.31, 0.015]], 0.0045, M.line));
+      g.add(tube([[0.0, y0 - 0.0, -0.118], [0.0, (y0 + y1) / 2 - 0.15, -0.126], [0.0, -0.19, -0.126], [-0.02, -0.25, -0.07], [-0.025, -0.3, -0.025]], 0.0045, M.line));
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.014, 12), M.valve), 0.04, -0.255, 0.05); // valves
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.014, 12), M.valve), -0.02, -0.255, -0.068);
+      if (pump) { add(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.035, 14), M.metal), ...ps); add(new THREE.Mesh(new THREE.SphereGeometry(0.014, 14, 10), M.valve), ps[0], ps[1] - 0.02, ps[2]); }
+      else for (const z of [0.075, -0.075]) add(new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 12), M.line), 0.07, -0.245, z); // helium bottles
     } else if (ty === 'hyb') {
-      shell(tankPts(0.12, 0.1, 0.48), M.oxTank); fill('ox', M.ox, 0.115, 0.13, 0.45);
+      shell(tankPts(0.12, 0.1, 0.48), M.oxTank); liquid('ox', M.oxL, 0.12, 0.1, 0.48, 0.5);
       shell(tankPts(0.125, -0.36, 0.07, 0.25), M.caseC); fill('grainA', M.fuel, 0.115, -0.33, 0.04); fill('grainB', M.fuel, 0.115, -0.33, 0.04); port('port', 0.115, -0.33, 0.04);
-      shell(bellPts(0.03, 0.095, -0.36, -0.5), M.nozAbl);
+      g.add(tube([[0.0, 0.1, 0.0], [0.0, 0.085, 0.0], [0.0, 0.075, 0.0]], 0.01, M.line)); // the oxidizer feed and its valve
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.02, 14), M.valve), 0, 0.087, 0);
+      const ep = engineProfile({ rc: 0.06, rt: 0.022, re: 0.085, yc0: -0.352, Lc: 0.004, Lv: 0.03 });
+      M.nozAbl = T('nozAbl', { vt: ep.vt }); shell(ep.pts, M.nozAbl); exitR = 0.085;
     } else if (ty === 'sol') {
       shell(tankPts(0.15, -0.38, 0.45, 0.6), M.caseC); fill('grainA', M.fuel, 0.14, -0.3, 0.38); fill('grainB', M.fuel, 0.14, -0.3, 0.38); port('port', 0.14, -0.3, 0.38);
-      shell(bellPts(0.035, 0.1, -0.38, -0.5), M.nozAbl);
+      const ep = engineProfile({ rc: 0.07, rt: 0.025, re: 0.095, yc0: -0.37, Lc: 0.004, Lv: 0.035 });
+      M.nozAbl = T('nozAbl', { vt: ep.vt }); shell(ep.pts, M.nozAbl); exitR = 0.095;
     } else {
-      shell(tankPts(0.2, -0.05, 0.37, 1), M.oxTank); fill('fuel', M.fuel, 0.15, 0.0, 0.32);
+      shell(tankPts(0.2, -0.05, 0.37, 1), M.oxTank); liquid('fuel', M.fuelL, 0.2, -0.05, 0.37, 1);
       shell([[0.16, -0.25], [0.16, -0.05]], M.metal);
       for (const [x, z] of [[0.12, 0.12], [-0.12, 0.12], [0.12, -0.12], [-0.12, -0.12]]) { const t = new THREE.Mesh(lathe(bellPts(0.012, 0.03, -0.25, -0.33), false), M.nozzle); t.position.set(x, 0, z); g.add(t); }
     }
+    craftG.exitR = exitR;
     const nPl = ty === 'mono' ? 4 : 1;
     for (let i = 0; i < nPl; i++) { const p = plumeMesh(nPl === 1); g.add(p); if (p.userData.glow) g.add(p.userData.glow); plumes.push(p); }
     roots.sim.add(g);
@@ -794,7 +862,10 @@ export function create(canvas, opts) {
       const m = f.m; m.visible = !!o.cut;
       if (!o.cut) continue;
       const len = f.y1 - f.y0;
-      if (name === 'fuel' || name === 'ox') { const k = Math.max(0, Math.min(1, name === 'ox' ? st.ox : st.fuel)); m.visible = k > 0.002; m.scale.set(1, len * k, 2 * f.r); m.position.set(0.001, f.y0 + len * k / 2, 0); continue; }
+      if (f.liq) { // the level by volume in the domed tank: the shader cuts the outline at the surface
+        const k = Math.max(0, Math.min(1, name === 'ox' ? st.ox : st.fuel)); m.visible = k > 0.002;
+        m.material.uniforms.uClip.value = f.y0 + f.r * engTankLevel(k, len / f.r, f.k); continue;
+      }
       // grains: the hybrid's port (st.port of the outer radius) and a solid's web (core.js SOL_GRAIN shapes)
       let ri, ro;
       if (craftG.ty === 'hyb') { ri = st.port || 0; ro = 1; } else if (craftG.grain === 'rod') { ri = 0; ro = 1 - 0.6 * (st.web || 0); } else { ri = 0.5 + 0.5 * (st.web || 0); ro = 1; }
@@ -812,7 +883,7 @@ export function create(canvas, opts) {
       const gl = p.userData.glow;
       p.visible = on; if (gl) gl.visible = on;
       if (!on) return;
-      const U = p.material.uniforms, len = mono ? pl.len * 0.3 : pl.len, r0 = mono ? 0.03 : 0.095;
+      const U = p.material.uniforms, len = mono ? pl.len * 0.3 : pl.len, r0 = mono ? 0.03 : craftG.exitR || 0.095;
       U.uCore.value.set(pl.core); U.uBody.value.set(pl.body); U.uI.value = pl.I; U.uT.value = pl.t || 0; U.uSimple.value = pl.simple ? 1 : 0;
       U.uLen.value = len; U.uR0.value = r0; U.uR1.value = r0 + len * 0.28;
       if (mono) { const s = [[0.12, 0.12], [-0.12, 0.12], [0.12, -0.12], [-0.12, -0.12]][i]; p.position.set(s[0], -0.33, s[1]); } else p.position.set(0, -0.5, 0);

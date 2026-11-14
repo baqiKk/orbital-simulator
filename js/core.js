@@ -1679,6 +1679,26 @@ function engChecks(s, pr) {
   if (s.a0 / G0 < 0.05) out.push({ key: 'warn.engTW', p: { tw: s.a0 / G0, t: s.tb } });
   return out;
 }
+// A domed tank's liquid level (2026-11-15, the cutaways): a tank of radius 1 and length Lr (its domes included), each
+// dome an ellipsoidal cap k high (k = 1: a hemisphere; at most Lr/2), filled from one end to the volume share f (0 … 1):
+// the height of the surface from that end. The volume below height h: a dome's cap π(z − (k³ − (k − z)³)/(3k²)), the
+// cylinder π per unit length; inverted by bisection (in a dome the height is not linear in the volume).
+function tankVol(h, Lr, k) {
+  const cap = z => Math.PI * (z - (k ** 3 - (k - z) ** 3) / (3 * k * k)), c = Math.max(0, Lr - 2 * k), dome = cap(k);
+  if (h <= 0) return 0;
+  if (h <= k) return cap(h);
+  if (h <= k + c) return dome + Math.PI * (h - k);
+  return 2 * dome + Math.PI * c - cap(Math.max(0, Lr - h));
+}
+function engTankLevel(f, Lr, k) {
+  k = Math.min(k, Lr / 2);
+  if (!(f > 0)) return 0;
+  if (f >= 1) return Lr;
+  const V = f * tankVol(Lr, Lr, k);
+  let lo = 0, hi = Lr;
+  for (let i = 0; i < 50; i++) { const m = 0.5 * (lo + hi); if (tankVol(m, Lr, k) < V) lo = m; else hi = m; }
+  return 0.5 * (lo + hi);
+}
 // the tanks' volumes (m³) of a liquid engine from its loads and the propellants' densities (rho: { ox, fuel } kg/m³)
 const engTanks = (s, rho) => ({ ox: s.mox / rho.ox, fuel: s.mf / rho.fuel });
 // propellant a Δv needs with this dry mass and Isp (kg; Tsiolkovsky with the burn's end at the dry mass)
@@ -2206,5 +2226,5 @@ if (typeof module !== 'undefined') module.exports = {
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed, SOLVE_KM, missionMiss, solveMission,
   G0, visViva, burnDv, propMass, dvAvail, planeSplit, maneuverPlan, mvOrbits, rv2el, j2Rates, keplerStep, equatorFrame, orbitPoint, maneuverSim,
   mvImpulse, maneuverFlight, spiralEstimate, spiralFlight, maneuverRun, conicPoints, domBody, splitPlan, burnFor, KMAX, AUTO_GAIN, maneuverAuto, freeBurn,
-  ENG_TYPES, ENG_N, engineSpec, engineCurve, engAt, engUsed, engTauAt, engNeed, engBurns, engState, engCea, engChecks, engTanks,
+  ENG_TYPES, ENG_N, engineSpec, engineCurve, engAt, engUsed, engTauAt, engNeed, engBurns, engState, engCea, engChecks, engTanks, engTankLevel, tankVol,
 };

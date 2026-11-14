@@ -1333,6 +1333,16 @@ const sEM = realSys(['earth', 'mars', 'sun']);
     if (sp.type === 'hyb') { const m = st(0.5); assert.ok(Math.abs(m.ox - 0.5) < 0.01 && m.port > a0.port + 0.05 && m.port < 1 - 0.05 && m.fuel > 0.1 && m.fuel < 0.9, `hybrid: mid-burn oxidizer ${(m.ox * 100).toFixed(1)} %, port ${(m.port * 100).toFixed(0)} %`); }
     if (sp.type === 'sol') assert.ok(a0.web === 0 && a1.web === 1, 'solid: the web burns through');
   }
+  // a domed tank's liquid level by volume (the cutaways, 2026-11-15): a sphere's cap formula, a cylinder linear, both
+  // ends, monotonic, and not linear in a dome (10 % of a sphere stands 0.39 r high, not 0.2 r)
+  {
+    const lv = C.engTankLevel, cap = h => Math.PI * h * h * (3 - h) / 3;
+    for (const f of [0.05, 0.1, 0.3, 0.5, 0.8]) { const h = lv(f, 2, 1); assert.ok(Math.abs(cap(h) / (4 / 3 * Math.PI) - f) < 1e-9, 'tank level: a sphere by its cap, ' + f); }
+    assert.ok(Math.abs(lv(0.5, 6, 1) - 3) < 1e-9 && lv(0, 4, 0.5) === 0 && lv(1, 4, 0.5) === 4 && Math.abs(lv(0.1, 2, 1) - 0.3916) < 1e-3, 'tank level: half way, empty, full, a dome is not linear');
+    let prev = -1, mono = true; for (let i = 0; i <= 100; i++) { const h = lv(i / 100, 5, 0.5); if (h < prev) mono = false; prev = h; }
+    const mid = (lv(0.6, 5, 0.5) - lv(0.4, 5, 0.5)) / 0.2, cyl = 0.2 * C.tankVol(5, 5, 0.5) / Math.PI / 0.2; // in the cylinder dh/df = V/π
+    assert.ok(mono && Math.abs(mid - cyl) < 1e-6, 'tank level: monotonic, linear in the cylinder');
+  }
   // the engine window's checks: a CEA table's reasonable O/F range (Ivac at ε = 50 at least 90 % of its peak, by hand
   // on a made-up table) and its theoretical vacuum Isp; the warnings each fire only when they should; tank volumes
   {
