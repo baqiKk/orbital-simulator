@@ -473,7 +473,59 @@ const sEM = realSys(['earth', 'mars', 'sun']);
     if (Ms.mode === 'free') assert.ok(r2.aRet && Math.abs((r2.aRet.d - sy.R[0]) / 1e3 - Ms.hRet) < 5, `${sc.id}: return ≈ ${Ms.hRet} km`);
     if (Ms.mode === 'capture') assert.ok(r2.captured, `${sc.id}: captured`);
   }
-  console.log('OK — all core tests passed');
+  // Free flight (Phase 19a): the universal-variable Kepler step (any conic), the node frame, the live advance (on rails and
+// in the N-body field, with thrust; a burn cut into frame-sized pieces at a high warp lands where one careful run does),
+// the burn-time warp limit, the patched-conic prediction (spheres, periapsis, nodes) and the closest approach
+{
+  const mu = BODIES.earth.gm * 1e9, Re = BODIES.earth.radius * 1e3, o1 = new Float64Array(6), o2 = new Float64Array(6), back = new Float64Array(6);
+  const r0 = [7e6, 0, 0], v0 = [0, 8500, 500];
+  C.uniStep(mu, r0, v0, 3000, o1); C.keplerStep(mu, r0, v0, 3000, null, o2);
+  assert.ok(Math.hypot(o1[0] - o2[0], o1[1] - o2[1], o1[2] - o2[2]) < 1e-3, 'free flight: the universal step on an ellipse as the Kepler step');
+  const vh = [0, 12000, 0], E = v => (v[3] ** 2 + v[4] ** 2 + v[5] ** 2) / 2 - mu / Math.hypot(v[0], v[1], v[2]);
+  C.uniStep(mu, r0, vh, 20000, o1); C.uniStep(mu, [o1[0], o1[1], o1[2]], [o1[3], o1[4], o1[5]], -20000, back);
+  assert.ok(Math.abs(E(o1) / E([...r0, ...vh]) - 1) < 1e-10 && Math.hypot(back[0] - 7e6, back[1], back[2]) < 1e-3, 'free flight: a hyperbola keeps its energy, forth and back');
+  const F = C.nodeFrame(r0, v0), dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], loc = C.dvLocal(r0, v0, C.nodeDv(r0, v0, [12, -5, 7]));
+  assert.ok(Math.abs(dot(F.pro, F.rad)) < 1e-12 && Math.abs(dot(F.pro, F.nor)) < 1e-12 && Math.abs(dot(F.rad, r0)) > 0 && dot(F.rad, r0) > 0 && Math.hypot(loc[0] - 12, loc[1] + 5, loc[2] - 7) < 1e-9, 'free flight: the node frame (radial outwards), local ⇄ inertial');
+  assert.ok(C.flyWarpMax(30) === 10 && C.flyWarpMax(600) === 20 && C.flyWarpMax(7200) === 100, 'free flight: the warp while burning by the burn\'s length');
+  // the real Earth–Moon system on 2026-11-15
+  const sy = realSys(['earth', 'moon']); sy.P = new Float64Array(3 * sy.N); sy.V = new Float64Array(3 * sy.N);
+  const t0 = 9814.5 * DAY, P = new Float64Array(6), V = new Float64Array(6); C.states(sy, t0, P, V);
+  const rc = Re + 300e3, vc = Math.sqrt(mu / rc), R = [P[0] + rc, P[1], P[2]], Vv = [V[0], V[1] + vc, V[2]];
+  // a prograde node of 100 m/s: the apoapsis where vis-viva puts it
+  const pr = C.flyPredict(sy, t0, R, Vv, { nodes: [{ t: t0 + 600, d: [100, 0, 0] }], revs: 1 }), ap = pr.events.find(e => e.type === 'ap' && e.t > t0 + 600);
+  const v1 = vc + 100, ra = 1 / (2 / rc - v1 * v1 / mu) * 2 - rc;
+  assert.ok(pr.events.some(e => e.type === 'node') && ap && Math.abs(ap.r - ra) < 5e3, `free flight: a prograde node raises the apoapsis (${(ap.r / 1e3).toFixed(0)} km, vis-viva ${(ra / 1e3).toFixed(0)} km)`);
+  // on rails and in the field agree over a revolution (the Moon's pull only in the field)
+  const per = 2 * Math.PI * Math.sqrt(rc ** 3 / mu), a = { t: t0, r: [...R], v: [...Vv], m: 1000 }, b = { t: t0, r: [...R], v: [...Vv], m: 1000 };
+  C.flyAdvance(sy, a, per, { rails: true }); C.flyAdvance(sy, b, per, {});
+  assert.ok(Math.hypot(a.r[0] - b.r[0], a.r[1] - b.r[1], a.r[2] - b.r[2]) < 300 && Math.abs(a.t - b.t) < 1e-3, `free flight: rails and field agree (${Math.hypot(a.r[0] - b.r[0], a.r[1] - b.r[1], a.r[2] - b.r[2]).toFixed(1)} m in a revolution)`);
+  // a 300 s burn, once carefully and in pieces of a 20× warp's frame (1/3 s): the same place, mass and Δv
+  const Fth = 99200, mdot = Fth / (450.5 * C.G0), pro = (t, y) => { const l = Math.hypot(y[3], y[4], y[5]); return [y[3] / l, y[4] / l, y[5] / l]; };
+  const th = { F: Fth, mdot, dir: pro, mDry: 2243 }, A = { t: t0, r: [...R], v: [...Vv], m: 23073 }, B = { t: t0, r: [...R], v: [...Vv], m: 23073 };
+  C.flyAdvance(sy, A, 300, { thrust: th, tol: 1e-13 });
+  for (let k = 0; k < 900; k++) C.flyAdvance(sy, B, 300 / 900, { thrust: th });
+  const dr = Math.hypot(A.r[0] - B.r[0], A.r[1] - B.r[1], A.r[2] - B.r[2]), dm = Math.abs(A.m - B.m);
+  assert.ok(dr < 1 && dm < 1e-6 && Math.abs(A.m - (23073 - 300 * mdot)) < 1e-6, `free flight: a burn cut into warp frames lands where one careful run does (${dr.toFixed(4)} m)`);
+  const C2 = { t: t0, r: [...R], v: [...Vv], m: 2300 }, rr = C.flyAdvance(sy, C2, 300, { thrust: th });
+  assert.ok(rr.out && Math.abs(C2.m - 2243) < 1e-6 && rr.done < 10, 'free flight: the burn stops when the propellant runs out');
+  // the free return: the field reproduces simulate's lunar periapsis; the patched conics see the Moon's sphere, the
+  // periapsis and the exit, the closest approach within patched-conic accuracy
+  const sf = SCENARIOS.find(q => q.id === 'r_em_free'), sy2 = realSys(sf.bodies.map(q => q.k)), Mf = { ...sf.M };
+  sy2.P = new Float64Array(3 * sy2.N); sy2.V = new Float64Array(3 * sy2.N);
+  Mf.duration = C.autoDuration(C.hohmannGuess(sy2, Mf), Mf.mode);
+  const sim = C.simulate(sy2, Mf, {}), pe = sim.events.find(e => e.type === 'peri' && e.body === 1), T0 = Mf.t0 * DAY, i = 2;
+  const st = { t: T0 + sim.t[i], r: [sim.x[i], sim.y[i], sim.z[i]], v: [sim.vx[i], sim.vy[i], sim.vz[i]], m: 1000 };
+  const pp = C.flyPredict(sy2, st.t, st.r, st.v, { T: 6 * DAY });
+  C.flyAdvance(sy2, st, T0 + pe.t - st.t, { tol: 1e-11 });
+  const Q = new Float64Array(6), W = new Float64Array(6); C.states(sy2, st.t, Q, W);
+  const alt = Math.hypot(st.r[0] - Q[3], st.r[1] - Q[4], st.r[2] - Q[5]) - sy2.R[1];
+  assert.ok(Math.abs(alt - pe.alt) < 1e3, `free flight: the field flies simulate's free return (periapsis ${(alt / 1e3).toFixed(2)} km)`);
+  const kinds = pp.events.map(e => e.type + e.b), ca = C.flyClosest(sy2, pp, 1);
+  assert.ok(kinds.includes('soiIn1') && kinds.includes('pe1') && kinds.includes('soiOut1') && Math.abs(ca.d - sy2.R[1] - pe.alt) < 1500e3 && Math.abs(ca.t - T0 - pe.t) < 3 * 3600, `free flight: patched conics through the Moon's sphere (closest ${((ca.d - sy2.R[1]) / 1e3).toFixed(0)} km, the field ${(pe.alt / 1e3).toFixed(0)} km)`);
+  console.log('free flight ok');
+}
+
+console.log('OK — all core tests passed');
 })();
 
 // ===== Aerocapture altitudes: AMAT values are kept as is and converted to our radius =====

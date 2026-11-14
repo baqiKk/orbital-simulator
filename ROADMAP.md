@@ -340,6 +340,15 @@ Kararlar (2026-11-12): bi-eliptiğin rb sınırı etki küresinin yarısı; kay�
 - Ses: ana sitede üretilmiş uzay uğultusu ve motor gürlemesi efekti, ilk jestte düşük seste, hoparlör düğmesi ve düzey, kaydedilir; kabinle çakışmaz.
 - Testler: core.test.js tank seviyesi; ui.test.js 44–48.
 
+## Faz 19 — Serbest uçuş (onaylandı 2026-11-15)
+Kararlar: gerçek model, gezegenler arası dahil (19e), basit model sonra; uçuş oturumu sessionStorage'da tek anlık görüntü; yanmada da hızlandırma (üst sınır yanma süresine göre: kısa yanmada 10–20×, saatlerce süren düşük itkide 50–100×; entegratör adımları böler, yanma başına hata testi; hız seçicide yanmada izin verilen en yüksek değer görünür); serbest uçuşta da motor paneli; kısayollar: gaz W/S, ince Δv Shift (×10), geri alma U ve ↶.
+- 19a Çekirdek ✅ (2026-11-15): `uniStep`, `nodeFrame` / `nodeDv` / `dvLocal`, `flyAdvance` (raylarda konik / N-cisim + itki), `flyWarpMax`, `flyPredict` (patched-conic, küre geçişleri, çarpma, düğümler), `flyClosest`. Testler: evrensel adım = Kepler adımı (elips), hiperbolde enerji ve ileri-geri; düğüm çerçevesi; prograd düğüm apoapsisi vis-viva'ya göre yükseltir; raylar ile N-cisim bir turda 5 m; 300 s'lik yanma 20× hızın kare parçalarında tek dikkatli koşuyla < 1 m; itki maddesi bitince durur; serbest dönüşte N-cisim `simulate`'in Ay periapsisini 1 km içinde verir, patched-conic Ay küresine girip çıkar, en yakın geçiş patched-conic doğruluğunda (≈ 550 km).
+- 19b Kip, girişler, hız şeridi, canlı durum, 2B/3B çizim.
+- 19c Düğümler: yerleştirme, tutamaçlar, sayı alanları, geri alma, tahmin çizimi, worker inceltmesi.
+- 19d Motor: düğüme hızlandır, otomatik ateşle, bütçe ve uyarılar, elle kontrol (yön kilitleri, gaz W/S).
+- 19e Hedef ve transfer penceresi (gezegenler arası).
+- 19f Telefon, kayıt uyumu, docs, duman testi.
+
 ## Notlar
 - Hibrit OTV hazır aracı: itki, Isp, kütle ve tek ateşleme süresini birlikte veren yayımlanmış birincil bir kaynak bulununca eklenecek. Yayımlanmamış şirket verileri kullanılmayacak.
 

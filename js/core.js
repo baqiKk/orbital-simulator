@@ -2220,7 +2220,202 @@ function maneuverRun(job, onProgress) {
   return { sim, split };
 }
 
+// ===================== Free flight (Phase 19a) =====================
+// The craft flown live in the real model's restricted N-body field (the bodies' analytic states, the craft pulls
+// nothing), with maneuver nodes predicted by patched conics. DOM-free like the rest of the file.
+
+// Stumpff functions C(z), S(z) of the universal variable (all conics)
+function stumpff(z) {
+  if (z > 1e-6) { const s = Math.sqrt(z); return [(1 - Math.cos(s)) / z, (s - Math.sin(s)) / (s * z)]; }
+  if (z < -1e-6) { const s = Math.sqrt(-z); return [(Math.cosh(s) - 1) / -z, (Math.sinh(s) - s) / (s * -z)]; }
+  return [1 / 2 - z / 24 + z * z / 720, 1 / 6 - z / 120 + z * z / 5040];
+}
+// Two-body state dt after (r0, v0), any conic (ellipse, parabola, hyperbola): universal variable χ by Newton
+// (Curtis ch. 3.7, Vallado alg. 8), then the Lagrange f, g. Writes position and velocity to out[0..5].
+function uniStep(mu, r0, v0, dt, out) {
+  const rn = Math.hypot(r0[0], r0[1], r0[2]), vr = (r0[0] * v0[0] + r0[1] * v0[1] + r0[2] * v0[2]) / rn, v2 = v0[0] * v0[0] + v0[1] * v0[1] + v0[2] * v0[2];
+  const alpha = 2 / rn - v2 / mu, sm = Math.sqrt(mu);
+  let x = alpha > 1e-12 ? sm * alpha * dt : Math.sign(dt) * Math.sqrt(mu) * Math.abs(dt) / rn;
+  for (let it = 0; it < 80; it++) {
+    const z = alpha * x * x, [C, S] = stumpff(z);
+    const F = rn * vr / sm * x * x * C + (1 - alpha * rn) * x * x * x * S + rn * x - sm * dt;
+    const dF = rn * vr / sm * x * (1 - z * S) + (1 - alpha * rn) * x * x * C + rn;
+    const d = F / dF; x -= d;
+    if (Math.abs(d) < 1e-10 * Math.max(1, Math.abs(x))) break;
+  }
+  const z = alpha * x * x, [C, S] = stumpff(z), f = 1 - x * x / rn * C, g = dt - x * x * x / sm * S;
+  const p = [0, 1, 2].map(j => f * r0[j] + g * v0[j]), r = Math.hypot(p[0], p[1], p[2]);
+  const fd = sm / (r * rn) * (alpha * x * x * x * S - x), gd = 1 - x * x / r * C;
+  for (let j = 0; j < 3; j++) { out[j] = p[j]; out[3 + j] = fd * r0[j] + gd * v0[j]; }
+  return out;
+}
+
+// A maneuver node's frame at (r, v) relative to the body: prograde along v, normal along h = r × v, radial out = v̂ × ĥ
+// (as freeBurn). nodeDv: the inertial Δv of local [prograde, radial, normal] (m/s); dvLocal: the inverse.
+function nodeFrame(r, v) {
+  const vl = Math.hypot(v[0], v[1], v[2]), pro = v.map(q => q / vl);
+  const h = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]], hl = Math.hypot(h[0], h[1], h[2]), nor = h.map(q => q / hl);
+  const rad = [pro[1] * nor[2] - pro[2] * nor[1], pro[2] * nor[0] - pro[0] * nor[2], pro[0] * nor[1] - pro[1] * nor[0]];
+  return { pro, rad, nor };
+}
+const nodeDv = (r, v, d) => { const F = nodeFrame(r, v); return [0, 1, 2].map(j => d[0] * F.pro[j] + d[1] * F.rad[j] + d[2] * F.nor[j]); };
+const dvLocal = (r, v, dv) => { const F = nodeFrame(r, v), dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; return [dot(dv, F.pro), dot(dv, F.rad), dot(dv, F.nor)]; };
+
+// The highest time warp allowed while the engine fires, by the burn's length T (s): a short burn 10×, a long one up to
+// 100× (a thirtieth of its length per screen second: 10 min → 20×, an hour or more → 100×), on the warp steps
+const FLY_WARPS = [1, 2, 5, 10, 20, 50, 100, 1e3, 1e4, 1e5, 1e6];
+function flyWarpMax(T) {
+  const cap = Math.max(10, Math.min(100, T / 30));
+  let w = 10; for (const q of FLY_WARPS) if (q <= cap) w = q;
+  return w;
+}
+
+// The craft's acceleration in the restricted field at absolute time t (s since J2000 TDB) and position y[0..2], plus
+// the thrust F (N) along unit dir over mass y[6]; mass flow −mdot. y = [r, v, m] (7 components).
+function flyDeriv(s, t, y, th, out) {
+  states(s, t, s.P, s.V);
+  const P = s.P; let ax = 0, ay = 0, az = 0;
+  for (let i = 0; i < s.N; i++) {
+    const dx = y[0] - P[3 * i], dy = y[1] - P[3 * i + 1], dz = y[2] - P[3 * i + 2], r2 = dx * dx + dy * dy + dz * dz, r = Math.sqrt(r2), k = s.mu[i] / (r2 * r);
+    ax -= k * dx; ay -= k * dy; az -= k * dz;
+  }
+  let md = 0;
+  if (th) { const d = th.dir(t, y), a = th.F / y[6]; ax += a * d[0]; ay += a * d[1]; az += a * d[2]; md = -th.mdot; }
+  out[0] = y[3]; out[1] = y[4]; out[2] = y[5]; out[3] = ax; out[4] = ay; out[5] = az; out[6] = md;
+}
+const FK = Array.from({ length: 7 }, () => new Float64Array(7)), FYT = new Float64Array(7), FY5 = new Float64Array(7), FER = new Float64Array(7);
+// Advance the craft by dt (s). st: { t (absolute s), r, v (m, m/s, the root's axes), m (kg), h (the last step, s) }.
+// opt.thrust: null or { F, mdot, dir(t, y) → unit, mDry } (stops when the mass reaches mDry: returns out: true);
+// opt.rails (no thrust): the patched conic about the dominant body (uniStep in pieces of at most an eightieth of its
+// period, the body re-chosen at each piece: fast for high warps, exact two-body within each sphere); else DP5(4) in
+// the N-body field, adaptive (relative error opt.tol, default 1e-10 per step), however many steps dt needs (at most
+// opt.maxSteps: then it stops early, done < dt). Returns { done (s advanced), steps, out (propellant spent) }.
+function flyAdvance(s, st, dt, opt = {}) {
+  const th = opt.thrust || null, tol = opt.tol || 1e-10, maxSteps = opt.maxSteps || 20000;
+  if (!th && opt.rails) {
+    let done = 0, steps = 0; const RV = new Float64Array(6);
+    while (done < dt - 1e-9 && steps < maxSteps) {
+      states(s, st.t, s.P, s.V);
+      const b = domBody(s, s.P, st.r[0], st.r[1], st.r[2]), rel = [0, 1, 2].map(j => st.r[j] - s.P[3 * b + j]), vrel = [0, 1, 2].map(j => st.v[j] - s.V[3 * b + j]);
+      const el = rv2el(s.mu[b], rel, vrel), per = el.a > 0 ? 2 * Math.PI * Math.sqrt(el.a ** 3 / s.mu[b]) : 2 * Math.PI * Math.sqrt(Math.hypot(...rel) ** 3 / s.mu[b]);
+      const h = Math.min(dt - done, per / 80);
+      uniStep(s.mu[b], rel, vrel, h, RV);
+      states(s, st.t + h, s.P, s.V);
+      for (let j = 0; j < 3; j++) { st.r[j] = RV[j] + s.P[3 * b + j]; st.v[j] = RV[3 + j] + s.V[3 * b + j]; }
+      st.t += h; done += h; steps++;
+    }
+    return { done, steps, out: false };
+  }
+  const y = new Float64Array(7); for (let j = 0; j < 3; j++) { y[j] = st.r[j]; y[3 + j] = st.v[j]; } y[6] = st.m;
+  let done = 0, steps = 0, h = Math.min(st.h || 10, dt), out = false;
+  while (done < dt - 1e-9 && steps < maxSteps) {
+    h = Math.min(h, dt - done);
+    if (th) { const left = (y[6] - th.mDry) / th.mdot; if (left <= 1e-9) { out = true; break; } h = Math.min(h, left); }
+    flyDeriv(s, st.t, y, th, FK[0]);
+    for (let q = 1; q < 7; q++) {
+      const row = DP.a[q];
+      for (let j = 0; j < 7; j++) { let a = y[j]; for (let p = 0; p < q; p++) a += h * row[p] * FK[p][j]; FYT[j] = a; }
+      flyDeriv(s, st.t + DP.c[q] * h, FYT, th, FK[q]);
+    }
+    let err = 0;
+    for (let j = 0; j < 6; j++) { let e = 0; for (let q = 0; q < 7; q++) e += DP.e[q] * FK[q][j]; const sc = j < 3 ? Math.hypot(y[0], y[1], y[2]) : Math.hypot(y[3], y[4], y[5]); err = Math.max(err, Math.abs(h * e) / (tol * Math.max(sc, 1))); }
+    if (err <= 1 || h < 1e-6) {
+      for (let j = 0; j < 7; j++) y[j] = FYT[j];
+      st.t += h; done += h; steps++;
+      h *= Math.min(5, Math.max(0.2, 0.9 * Math.pow(Math.max(err, 1e-12), -0.2)));
+    } else h *= Math.max(0.1, 0.9 * Math.pow(err, -0.25));
+  }
+  for (let j = 0; j < 3; j++) { st.r[j] = y[j]; st.v[j] = y[3 + j]; } st.m = y[6]; st.h = h;
+  return { done, steps, out };
+}
+
+// Patched-conic prediction from an absolute state (t0, r0, v0; opt.nodes: impulsive Δv [{ t, d: [pro, rad, nor] }]
+// applied on the way, each in its body's frame at that moment): conics about the dominant body, switching at sphere
+// exits (to the parent) and entries (into a child's sphere, found against the child's analytic motion), ending at an
+// impact (the body's radius) or after opt.revs revolutions of a closed orbit with nothing ahead (default 1), or opt.T
+// seconds. Each segment: { b, t0, t1, r0, v0 (relative), el, end ('soiOut' | 'soiIn' | 'impact' | 'node' | 'horizon'),
+// n points (relative, Float64Array 3n) and their times ts }; events at the ends and the periapsis / apoapsis on
+// the way ({ type: 'pe' | 'ap' | 'soiOut' | 'soiIn' | 'impact' | 'node', t, b, r (relative) }).
+function flyPredict(s, t0, r0, v0, opt = {}) {
+  const segs = [], events = [], maxSeg = opt.maxSeg || 6, K = opt.K || 160, nodes = (opt.nodes || []).filter(q => q.t >= t0).sort((a, b) => a.t - b.t);
+  let t = t0, R = [...r0], V = [...v0], ni = 0;
+  const Tend = t0 + (opt.T || Infinity), RV = new Float64Array(6), rel = new Float64Array(6);
+  const relAt = (b, tt) => { states(s, tt, s.P, s.V); return [s.P[3 * b], s.P[3 * b + 1], s.P[3 * b + 2], s.V[3 * b], s.V[3 * b + 1], s.V[3 * b + 2]]; };
+  for (let k = 0; k < maxSeg && t < Tend; k++) {
+    states(s, t, s.P, s.V);
+    const b = domBody(s, s.P, R[0], R[1], R[2]), B = relAt(b, t);
+    const r1 = [R[0] - B[0], R[1] - B[1], R[2] - B[2]], v1 = [V[0] - B[3], V[1] - B[4], V[2] - B[5]], mu = s.mu[b], el = rv2el(mu, r1, v1);
+    const per = el.a > 0 ? 2 * Math.PI * Math.sqrt(el.a ** 3 / mu) : 0, soi = Number.isFinite(s.soi[b]) ? s.soi[b] : Infinity;
+    const kids = []; for (let c = 0; c < s.N; c++) if (s.parent[c] === b) kids.push(c);
+    // this segment's horizon: the next node, the revolutions asked for (closed and inside its sphere), or a long time
+    const nodeT = ni < nodes.length ? nodes[ni].t : Infinity, closed = el.e < 1 && el.ra < soi;
+    let tEnd = Math.min(Tend, nodeT, closed ? t + (opt.revs || 1) * per : t + (opt.T || 400 * 86400));
+    // march, then bisect the first crossing
+    const step = closed ? per / K : Math.max(60, (tEnd - t) / (4 * K));
+    const at = tt => { uniStep(mu, r1, v1, tt - t, rel); return rel; };
+    const hit = tt => {
+      const q = at(tt), rr = Math.hypot(q[0], q[1], q[2]);
+      if (rr < s.R[b]) return { type: 'impact' };
+      if (rr > soi) return { type: 'soiOut' };
+      if (kids.length) {
+        const Bt = relAt(b, tt);
+        for (const c of kids) { const C = relAt(c, tt); if (Math.hypot(q[0] + Bt[0] - C[0], q[1] + Bt[1] - C[1], q[2] + Bt[2] - C[2]) < s.soi[c]) return { type: 'soiIn', c }; }
+      }
+      return null;
+    };
+    const pts = [], ts = [];
+    let tt = t, ev = null;
+    while (tt < tEnd) {
+      const tn = Math.min(tEnd, tt + step), e = hit(tn);
+      const q = at(tt); pts.push(q[0], q[1], q[2]); ts.push(tt);
+      if (e) { let lo = tt, hi = tn; for (let i = 0; i < 50; i++) { const m = 0.5 * (lo + hi); if (hit(m)) hi = m; else lo = m; } ev = { ...e, t: hi }; break; }
+      tt = tn;
+    }
+    const t1 = ev ? ev.t : tEnd, q1 = at(t1); pts.push(q1[0], q1[1], q1[2]); ts.push(t1);
+    // periapsis / apoapsis passages on the way (the radial speed changing sign)
+    for (let i = 1; i + 1 < ts.length; i++) {
+      const rA = Math.hypot(pts[3 * i - 3], pts[3 * i - 2], pts[3 * i - 1]), rB = Math.hypot(pts[3 * i], pts[3 * i + 1], pts[3 * i + 2]), rC = Math.hypot(pts[3 * i + 3], pts[3 * i + 4], pts[3 * i + 5]);
+      if (rB <= rA && rB < rC) events.push({ type: 'pe', t: ts[i], b, r: Math.hypot(pts[3 * i], pts[3 * i + 1], pts[3 * i + 2]) });
+      if (rB >= rA && rB > rC && closed) events.push({ type: 'ap', t: ts[i], b, r: rB });
+    }
+    const end = ev ? ev.type : t1 >= nodeT - 1e-6 ? 'node' : 'horizon';
+    segs.push({ b, t0: t, t1, r0: r1, v0: v1, el, end, n: ts.length, pts: Float64Array.from(pts), ts: Float64Array.from(ts) });
+    // on to the next segment: back to absolute at t1
+    uniStep(mu, r1, v1, t1 - t, RV); const Bt = relAt(b, t1);
+    R = [RV[0] + Bt[0], RV[1] + Bt[1], RV[2] + Bt[2]]; V = [RV[3] + Bt[3], RV[4] + Bt[4], RV[5] + Bt[5]]; t = t1;
+    if (end === 'impact') { events.push({ type: 'impact', t: t1, b, r: s.R[b] }); break; }
+    if (end === 'soiOut' || end === 'soiIn') {
+      events.push({ type: end, t: t1, b: end === 'soiIn' ? ev.c : b, r: Math.hypot(RV[0], RV[1], RV[2]) });
+      // step just across the boundary so the next segment's dominant body is the new one
+      const nudge = Math.max(1, 1e-6 * (end === 'soiIn' ? s.soi[ev.c] : soi) / Math.max(1, Math.hypot(RV[3], RV[4], RV[5])));
+      for (let j = 0; j < 3; j++) R[j] += V[j] * nudge; t += nudge;
+      continue;
+    }
+    if (end === 'node') { const nd = nodes[ni++], dv = nodeDv([RV[0], RV[1], RV[2]], [RV[3], RV[4], RV[5]], nd.d); for (let j = 0; j < 3; j++) V[j] += dv[j]; events.push({ type: 'node', t: t1, b, r: Math.hypot(RV[0], RV[1], RV[2]) }); continue; }
+    break;
+  }
+  return { segs, events };
+}
+
+// The closest approach of a prediction to body c: per segment, its times sampled against c's analytic motion, the
+// least distance refined by golden-section search. Returns { d (m, centre to centre), t } or null.
+function flyClosest(s, pred, c) {
+  let best = null;
+  for (const g of pred.segs) {
+    const dAt = tt => { const q = new Float64Array(6); uniStep(s.mu[g.b], g.r0, g.v0, tt - g.t0, q); states(s, tt, s.P, s.V); return Math.hypot(q[0] + s.P[3 * g.b] - s.P[3 * c], q[1] + s.P[3 * g.b + 1] - s.P[3 * c + 1], q[2] + s.P[3 * g.b + 2] - s.P[3 * c + 2]); };
+    const n = 240; let bi = 0, bd = Infinity;
+    for (let i = 0; i <= n; i++) { const d = dAt(g.t0 + (g.t1 - g.t0) * i / n); if (d < bd) { bd = d; bi = i; } }
+    let lo = g.t0 + (g.t1 - g.t0) * Math.max(0, bi - 1) / n, hi = g.t0 + (g.t1 - g.t0) * Math.min(n, bi + 1) / n;
+    const gr = (Math.sqrt(5) - 1) / 2;
+    for (let i = 0; i < 60; i++) { const a = hi - gr * (hi - lo), b = lo + gr * (hi - lo); if (dAt(a) < dAt(b)) hi = b; else lo = a; }
+    const tm = 0.5 * (lo + hi), dm = dAt(tm);
+    if (!best || dm < best.d) best = { d: dm, t: tm };
+  }
+  return best;
+}
+
 if (typeof module !== 'undefined') module.exports = {
+  stumpff, uniStep, nodeFrame, nodeDv, dvLocal, FLY_WARPS, flyWarpMax, flyDeriv, flyAdvance, flyPredict, flyClosest,
   G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, clockAt, clockSet, keplerE, laplaceFrame, bodyFrame, orbitElements, orbitState, orbitPath,
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed, SOLVE_KM, missionMiss, solveMission,
