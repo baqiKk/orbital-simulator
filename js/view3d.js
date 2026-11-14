@@ -508,7 +508,7 @@ export function create(canvas, opts) {
       milky.material.uniforms.uGain.value = SKY_GAIN * k; stars.material.uniforms.uGain.value = k;
     }
     const rel = (p, o) => o.set((p[0] - T[0]) * KM, (p[1] - T[1]) * KM, (p[2] - T[2]) * KM);
-    for (const b of sets[active]) {
+    for (const b of sets[active] || []) { // active 'none': no set (the sky alone)
       if (!b.mesh.visible) continue;
       rel(b.p, b.mesh.position); b.mesh.scale.set(b.r * KM * b.ax[0], b.r * KM * b.ax[1], b.r * KM * b.ax[2]);
       // Sun and camera in the body's axes (camera in body radii)
@@ -521,8 +521,8 @@ export function create(canvas, opts) {
         b.haze.material.uniforms.uInside.value = u.uCam.value.length() < 1 + b.hazeTop ? 1 : 0;
       }
     }
-    for (const h of lines[active].values()) if (h.show) rel(h.anchor, h.group.position);
-    for (const d of dyns[active].values()) if (d.line.visible) rel(d.o, d.line.position);
+    if (lines[active]) for (const h of lines[active].values()) if (h.show) rel(h.anchor, h.group.position);
+    if (dyns[active]) for (const d of dyns[active].values()) if (d.line.visible) rel(d.o, d.line.position);
     const gs = [grid.a, grid.b];
     gs.forEach((l, j) => {
       const s = grid.s * (j ? 10 : 1), a = grid.alpha[j];
