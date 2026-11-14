@@ -162,6 +162,64 @@ function bestRect(rects) {
   return best;
 }
 
+// Burns in slow motion (2026-11-14): one time warp for the playback and the recording. A burn of T s shows on screen for
+// burnShow(T) = min(T, max(3 s, T/4), 150 s): never faster than four times real time once it lasts 12 s, never slower
+// than real time, a burn over 10 min squeezed into 2.5 min. Inside a burn the rate is c = T / burnShow(T) (mission s per
+// screen s; the base rate if that is slower); before and after it a ramp: over ramp s of screen the rate's logarithm
+// moves from c to the base rate r0 along a smoothstep (no kink at either end), so slowing in and out looks the same at
+// any base rate. Between burns the base rate. In the recording the burns' screen times are scaled to the film (record.js
+// recSchedule, with these ramps).
+const SLOW_W = { min: 3, k: 4, max: 150, ramp: 0.6, fade: 0.3, n: 48 };
+const burnShow = T => Math.min(T, Math.max(SLOW_W.min, T / SLOW_W.k), SLOW_W.max);
+// windows [{ a, b, … }] (mission s) → the same with c (mission s per screen s inside)
+function slowFires(list) {
+  return (list || []).filter(f => f.b > f.a).map(f => { const T = f.b - f.a; return { ...f, c: T / burnShow(T) }; });
+}
+// The ramp of a burn of rate c into a base rate r0 over R s of screen: x = σ/R (σ: screen time from the burn's edge),
+// rate = c·(r0/c)^s(x), s the smoothstep; the mission time covered by x is R·c·I(x), I(x) = ∫₀ˣ (r0/c)^s. rampTab: I at
+// n + 1 points (trapezoids); rampLen: the mission time the whole ramp takes; rampRate: the rate d mission seconds from
+// the edge (r0 past the ramp).
+const smooth3 = x => x * x * (3 - 2 * x);
+function rampTab(q) {
+  const n = SLOW_W.n, I = new Float64Array(n + 1);
+  let prev = 1;
+  for (let i = 1; i <= n; i++) { const e = Math.exp(q * smooth3(i / n)); I[i] = I[i - 1] + 0.5 * (prev + e) / n; prev = e; }
+  return I;
+}
+const rampLen = (c, r0, R = SLOW_W.ramp) => (r0 > c ? R * c * rampTab(Math.log(r0 / c))[SLOW_W.n] : 0);
+function rampRate(d, c, r0, R = SLOW_W.ramp) {
+  if (!(r0 > c)) return r0;
+  const q = Math.log(r0 / c), I = rampTab(q), n = SLOW_W.n, y = d / (R * c);
+  if (y >= I[n]) return r0;
+  let i = 0; while (i < n - 1 && I[i + 1] < y) i++;
+  const x = (i + (y - I[i]) / (I[i + 1] - I[i])) / n;
+  return c * Math.exp(q * smooth3(x));
+}
+// screen seconds per mission second at t for the base rate r0 (mission s per screen s): the slowest of the base, the
+// burns under way and the ramps around them
+function slowRho(t, r0, fires) {
+  let rho = 1 / r0;
+  for (const f of fires) {
+    const d = t < f.a ? f.a - t : t > f.b ? t - f.b : 0;
+    const r = d === 0 ? Math.min(f.c, r0) : rampRate(d, f.c, r0);
+    if (1 / r > rho) rho = 1 / r;
+  }
+  return rho;
+}
+// the mission time after dt screen seconds from t0 (at most tEnd): steps of at most 1/60 s through the warp, never
+// across a burn's edge in one step (each step at most half the way to the next edge, or 1/120 s of the burn's rate)
+function slowAdvance(t0, dt, r0, fires, tEnd = Infinity) {
+  let t = t0, rem = dt;
+  for (let it = 0; rem > 1e-9 && t < tEnd && it < 800; it++) {
+    const rho = slowRho(t, r0, fires), h = Math.min(rem, 1 / 60);
+    let dtau = h / rho, lim = Infinity;
+    for (const f of fires) { if (f.b <= t) continue; const e = t < f.a ? f.a : f.b; lim = Math.min(lim, Math.max(0.5 * (e - t), f.c / 120)); }
+    if (dtau > lim) { dtau = lim; rem -= dtau * rho; } else rem -= h;
+    t += dtau;
+  }
+  return Math.min(t, tEnd);
+}
+
 // Opacity of the orbit trail by age in revolutions: the last keep revolutions are drawn; with fade the
 // oldest fade revolutions of them thin out towards zero, without it older ones are simply cut.
 const TRAIL_REVS = 10, TRAIL_FADE = 3;
@@ -514,4 +572,4 @@ function saturnShot(sat, sun, pole, box, o = {}) {
     side: [c.g, c.k], phase: ang(e, s), lit: c.lit, milky: c.mw, sway: { k: K, ke: KE, az: A * K, el: sw.el * KE, dist: o.sway ? sw.dist : 0 }, fit: [K, KE, yk0] };
 }
 
-if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, auto3dFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, parseEngines, ENG_KINDS, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha };
+if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, auto3dFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, parseEngines, ENG_KINDS, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha, SLOW_W, burnShow, slowFires, slowRho, slowAdvance, rampLen, rampRate };

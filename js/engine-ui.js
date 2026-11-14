@@ -54,7 +54,7 @@ function engMission(E = S.M && S.M.eng) {
   let burns = [], dvs = [];
   if (S.kind === 'man') {
     const bs = simR.burns || [];
-    if (fin) burns = bs.map(b => { const u0 = engUsed(s, b.tau0), u1 = engUsed(s, b.tau1); return { t: b.t0, t1: b.t1, len: b.t1 - b.t0, dv: b.dv, fuel: u1.fuel - u0.fuel, ox: u1.ox - u0.ox, tau0: b.tau0, tau1: b.tau1, out: b.fuelOut }; });
+    if (fin) burns = bs.map(b => { const u0 = engUsed(s, b.tau0), u1 = engUsed(s, b.tau1); return { t: b.t0, t1: b.t1, len: b.t1 - b.t0, dv: b.dv, fuel: u1.fuel - u0.fuel, ox: u1.ox - u0.ox, tau0: b.tau0, tau1: b.tau1, out: b.fuelOut, sp: !!b.spiral }; });
     dvs = MAN && MAN.plan && MAN.plan.burns ? MAN.plan.burns.map(b => b.dv) : bs.map(b => b.dv);
     if (MAN && MAN.free && bs[0]) dvs = [bs[0].dv];
     if (!fin) { const at = bs.map(b => (b.t0 != null ? b.t0 : b.t)); burns = engBurns(s, bs.map(b => b.dv)).burns.map((q, j) => ({ ...q, t: at[j], t1: at[j], len: q.t })); }
@@ -201,38 +201,81 @@ function engChart(s, m) {
   ENGW.st = { L, W, tb, top, H: rows.length * RH, dpr, m, col: tok('--ink') };
   engTick(true);
 }
-// the playhead: the mission's moment on the engine's clock (still between burns: "motor kapalı"); an impulsive burn
-// burns for its own length from its moment on (t1 = t), a finite one from t to t1
+// A burn's window on the mission clock [a, b] (s): a finite burn from t to t1; an impulsive one burns for its own
+// length centred on its moment (2026-11-14; before, from its moment on), within the mission (a departure at t = 0 from 0)
+function engWin(b) {
+  if (b.t1 > b.t) return [b.t, b.t1];
+  const L = Math.max(0, b.len || 0), T = simR ? simR.t[simR.t.length - 1] : Infinity;
+  const a = Math.max(0, Math.min(b.t - L / 2, T - L));
+  return [a, a + L];
+}
+// the playhead: the mission's moment on the engine's clock (still between burns: "motor kapalı"); on: the engine fires
+// now; j: the burn (the last one begun); e: how far past its end (s, between burns)
 function engTau(m, t) {
-  let tau = 0, on = false, j = -1;
+  let tau = 0, on = false, j = -1, e = Infinity;
   for (let k = 0; k < m.burns.length; k++) {
-    const b = m.burns[k], e = b.t1 > b.t ? b.t1 : b.t + b.len;
-    if (t < b.t) break;
-    if (t <= e && e > b.t) { tau = b.tau0 + (b.tau1 - b.tau0) * (t - b.t) / (e - b.t); on = t < e; j = k; break; }
-    tau = b.tau1;
+    const b = m.burns[k], [a, z] = engWin(b);
+    if (t < a) break;
+    j = k;
+    if (t <= z && z > a) { tau = b.tau0 + (b.tau1 - b.tau0) * (t - a) / (z - a); on = t < z; e = on ? Infinity : 0; break; }
+    tau = b.tau1; e = t - z;
   }
-  return { tau, on, j };
+  return { tau, on, j, e };
+}
+// engState with the firing taken from the mission (or the window's run): between burns the engine is off — no thrust,
+// no plume, no flow in the lines — whatever propellant is left (engState's own on only says the load is not spent)
+function engStOf(s, tau, on) {
+  const st = engState(s, on ? tau : Math.min(tau, s.tb));
+  if (!on) { st.on = false; st.F = 0; st.Fk = 0; }
+  return st;
+}
+// the engine's windows for the playback's slow motion: [{ a, b, j }], spirals left out (the whole flight burns)
+function engFires() {
+  engCache();
+  const m = ENGM.m && !ENGM.m.error ? ENGM.m : null;
+  if (!m) return null;
+  if (ENGM.fires) return ENGM.fires;
+  return (ENGM.fires = m.burns.map((b, j) => { const [a, z] = engWin(b); return { a, b: z, j, sp: b.sp }; }).filter(f => !f.sp && f.b > f.a));
 }
 // The engine the craft shows (the 3D model, the cutaways): the mission's, or one standing for a maneuver's own figures
 // (a liquid N2O4/MMH engine with its thrust, Isp and masses), else the default
 function engCraftE() {
   const M = S.M || {};
   if (M.eng) return M.eng;
-  if (S.kind === 'man' && M.m0 > M.md && M.md > 0 && M.F > 0 && M.isp > 0) return { ...ENG_DEF, F: M.F, isp: M.isp, pm: 'tot', mp: M.m0 - M.md, md: M.md };
+  if (S.kind === 'man' && M.m0 > M.md && M.md > 0 && M.F > 0 && M.isp > 0) {
+    const k = [M.F, M.isp, M.m0, M.md].join('|'); // the same object while the figures stay (engNow's cache holds)
+    if (CRAFT_E.k !== k) { CRAFT_E.k = k; CRAFT_E.E = { ...ENG_DEF, F: M.F, isp: M.isp, pm: 'tot', mp: M.m0 - M.md, md: M.md }; }
+    return CRAFT_E.E;
+  }
   return ENG_DEF;
 }
+const CRAFT_E = { k: '', E: null };
 // the craft's engine at mission time t: its spec, the burns (engMission), the engine's clock, whether it burns, and
 // what it looks like inside (core.js engState). Cached per result and engine: per frame only the clock is looked up.
-const ENGM = { simR: null, E: null, m: null, s: null };
-function engNow(t) {
+// pl (0 … 1, 2026-11-14): the plume's strength, the thrust over the peak eased in at ignition and out after the cut
+// over SLOW_W.fade s of screen (app.js burnRate: mission seconds per screen second of that burn, the recording's own)
+const ENGM = { simR: null, E: null, m: null, s: null, fires: null, end: [] };
+function engCache() {
   const E = engCraftE();
   if (ENGM.simR !== simR || ENGM.E !== E) {
-    ENGM.simR = simR; ENGM.E = E; ENGM.s = engSpecOf(E);
+    ENGM.simR = simR; ENGM.E = E; ENGM.s = engSpecOf(E); ENGM.fires = null;
     if (ENGM.s && ENGM.s.error) ENGM.s = engSpecOf(ENG_DEF);
     ENGM.m = simR ? engMission(E) : null;
+    const m = ENGM.m && !ENGM.m.error ? ENGM.m : null, s = ENGM.s;
+    ENGM.end = m ? m.burns.map(b => engState(s, Math.max(b.tau0, b.tau1 - s.tb * 1e-6)).Fk) : []; // thrust at each cut
   }
-  const s = ENGM.s, m = ENGM.m && !ENGM.m.error ? ENGM.m : null, q = m ? engTau(m, t) : { tau: 0, on: false, j: -1 };
-  return { s, E, m, tau: q.tau, on: q.on, j: q.j, st: engState(s, q.on ? q.tau : Math.min(q.tau, s.tb)), plume: (PROPS[E.prop] || {}).plume || 'amber' };
+  return E;
+}
+function engNow(t) {
+  const E = engCache(), s = ENGM.s, m = ENGM.m && !ENGM.m.error ? ENGM.m : null, q = m ? engTau(m, t) : { tau: 0, on: false, j: -1, e: Infinity };
+  const st = engStOf(s, q.tau, q.on);
+  let pl = 0;
+  if (q.j >= 0 && m) {
+    const b = m.burns[q.j], [a] = engWin(b), w = SLOW_W.fade * burnRate(q.j);
+    if (q.on) pl = st.Fk * Math.min(1, (t - a) / Math.max(w, 1e-9));
+    else if (q.e < w) pl = ENGM.end[q.j] * (1 - q.e / w);
+  }
+  return { s, E, m, tau: q.tau, on: q.on, j: q.j, st, pl, plume: (PROPS[E.prop] || {}).plume || 'amber' };
 }
 // The craft in the views (Phase 18b): its length on screen comes from its mass (a plain model, about 4 m per tonne^⅓,
 // 1.5 … 30 m); cut: the 3D cutaway on; L: this frame's length (m, mode3d.js minDist3 keeps the camera outside it)
@@ -356,11 +399,11 @@ function engTick(force) {
     const D = Math.min(8000, Math.max(4000, s.tb * 1000)), f = (now - ENGW.play) / D;
     if (f >= 1) { ENGW.play = 0; engEl('engPlay').setAttribute('aria-pressed', 'false'); } else { tau = f * s.tb; on = true; }
   }
-  if (!ENGW.play && ENGW.st && ENGW.st.m && C) { const q = engTau(ENGW.st.m, uToT(S.u)); tau = q.tau; on = q.on; }
+  if (!ENGW.play && ENGW.st && ENGW.st.m && C) { const q = engTau(ENGW.st.m, tNowG); tau = q.tau; on = q.on; }
   const moving = on || ENGW.play;
   if (!force && !moving && Math.abs(tau - ENGW.tau) < s.tb / 2000 && on === ENGW.on) return;
   ENGW.tau = tau; ENGW.on = on;
-  engSchematic(engEl('engSch'), s, engState(s, on ? tau : Math.min(tau, s.tb)), E, now / 1000);
+  engSchematic(engEl('engSch'), s, engStOf(s, tau, on), E, now / 1000);
   const st = ENGW.st; if (!st) return;
   const pv = engEl('engCvP'), x = pv.getContext('2d');
   x.setTransform(st.dpr, 0, 0, st.dpr, 0, 0); x.clearRect(0, 0, pv.width, pv.height);

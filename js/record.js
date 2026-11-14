@@ -21,30 +21,64 @@ const SITE_URL = 'baqikk.github.io/orbital-simulator';
 // the recording's size (supersampling; ssPx: the most pixels that may take), scaled down smoothly; the virtual screen is
 // the recording's width / vk CSS px wide (at least vMin): lines, bodies and labels keep their share of the picture (a
 // 1080 px film draws as a 720 px screen at 1.5×). aspect: the height / width kept within these.
-const REC_OPT = { fps: 24, fpsList: [15, 24, 30], base: 12, perEvent: 0.8, min: 10, max: 20, hold: 1.5, slow: 2.5, width: 0.012, maxGif: 8e6, widths: [480, 720, 1080],
+const REC_OPT = { fps: 24, fpsList: [15, 24, 30], base: 12, perEvent: 0.8, min: 10, max: 20, hold: 1.5, slow: 2.5, width: 0.012, burnShare: 0.4, burnAdd: 4, ramp: 0.4, maxGif: 8e6, widths: [480, 720, 1080],
   ss: 2, ssPx: 16e6, vk: 1.5, vMin: 480, aspect: [9 / 16, 16 / 9] };
 // the frames: the u of each (0 … 1) and how long each shows (ms; GIF delays are in hundredths, the rounding carried so
-// the film keeps its length), the last one held. evU: the events' u.
+// the film keeps its length), the last one held. evU: the events' u. o.fires (2026-11-14, the playback's slow motion):
+// the burns [{ ua, ub (u), T (mission s), show (screen s on playback, prefs.js burnShow) }]: each keeps its share of
+// the playback's screen time, the burns together at most burnShare of the film (which grows by up to burnAdd s); o.ease
+// { rate, len } (prefs.js rampRate / rampLen): the rate eases in and out over ramp s as on screen (without it, none).
+// fireC: per burn, mission seconds per film second (the plume's ignition and cut).
 function recSchedule(evU, o = {}) {
   const P = { ...REC_OPT, ...o }, ev = (evU || []).filter(u => u >= 0 && u <= 1);
-  const T = Math.min(P.max, Math.max(P.min, P.base + P.perEvent * ev.length)), N = Math.max(2, Math.round(T * P.fps));
-  const G = 4000, cum = new Float64Array(G + 1);
-  for (let i = 1; i <= G; i++) {
-    const u = (i - 0.5) / G; let d = 1;
-    for (const e of ev) { const x = (u - e) / P.width; d += P.slow * Math.exp(-x * x); }
-    cum[i] = cum[i - 1] + d;
+  const fires = (o.fires || []).filter(q => q.ub > q.ua && q.T > 0 && q.show > 0), showSum = fires.reduce((a, q) => a + q.show, 0);
+  let T = Math.min(P.max, Math.max(P.min, P.base + P.perEvent * ev.length));
+  if (fires.length) T = Math.min(P.max, T + Math.min(P.burnAdd, showSum));
+  const burnSec = Math.min(showSum, P.burnShare * T), N = Math.max(2, Math.round(T * P.fps));
+  const base = u => { let d = 1; for (const e of ev) { const x = (u - e) / P.width; d += P.slow * Math.exp(-x * x); } return d; };
+  // the cells: a uniform grid, finer over each burn and its ramps
+  const G = 4000, edges = [];
+  for (let i = 0; i <= G; i++) edges.push(i / G);
+  let bInt = 0; for (let i = 0; i < G; i++) bInt += base((i + 0.5) / G) / G;
+  const kb = (T - burnSec) / bInt, R = o.ease, r0At = u => 1 / (kb * base(u)); // the base rate, u per film second
+  const F = fires.map(q => {
+    const S = burnSec * q.show / showSum, L = S / (q.ub - q.ua), c = 1 / L;
+    return { ...q, S, L, c, la: R ? R.len(c, r0At(q.ua), P.ramp) : 0, lb: R ? R.len(c, r0At(q.ub), P.ramp) : 0 };
+  });
+  for (const q of F) {
+    const a = Math.max(0, q.ua - 1.05 * q.la), b = Math.min(1, q.ub + 1.05 * q.lb), k = 600;
+    for (let i = 0; i <= k; i++) edges.push(a + (b - a) * i / k);
+    edges.push(q.ua, q.ub);
   }
+  edges.sort((a, b) => a - b);
+  const E = edges.filter((u, i) => !i || u - edges[i - 1] > 1e-12), n = E.length - 1;
+  const cell = new Float64Array(n);
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    const u0 = E[i], u1 = E[i + 1];
+    const um = 0.5 * (u0 + u1), r0 = r0At(um);
+    let rate = r0; // the slowest of the base, a burn and the ramps (as prefs.js slowRho)
+    for (const q of F) {
+      const d = um < q.ua ? q.ua - um : um > q.ub ? um - q.ub : 0;
+      rate = Math.min(rate, d === 0 ? Math.min(q.c, r0) : R ? R.rate(d, q.c, r0, P.ramp) : r0);
+    }
+    cell[i] = (u1 - u0) / rate;
+    sum += cell[i];
+  }
+  const scale = T / sum, cum = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) cum[i + 1] = cum[i] + cell[i];
   const u = new Float64Array(N);
   for (let k = 0, j = 0; k < N; k++) {
-    const c = cum[G] * k / (N - 1);
-    while (j < G && cum[j + 1] < c) j++;
-    u[k] = j >= G ? 1 : (j + (c - cum[j]) / (cum[j + 1] - cum[j] || 1)) / G;
+    const c = cum[n] * k / (N - 1);
+    while (j < n - 1 && cum[j + 1] < c) j++;
+    u[k] = E[j] + (E[j + 1] - E[j]) * Math.min(1, Math.max(0, (c - cum[j]) / (cum[j + 1] - cum[j] || 1)));
   }
   u[0] = 0; u[N - 1] = 1;
+  for (let k = 1; k < N; k++) if (u[k] < u[k - 1]) u[k] = u[k - 1];
   const delay = [];
   for (let k = 0; k < N; k++) delay.push((Math.round((k + 1) * 100 / P.fps) - Math.round(k * 100 / P.fps)) * 10);
   delay[N - 1] += Math.round(P.hold * 100) * 10;
-  return { u, delay, fps: P.fps, T };
+  return { u, delay, fps: P.fps, T, fireC: F.map(q => q.T / (q.S * scale)) };
 }
 // the recording's size from the screen's (CSS px; only its shape counts: the frame is drawn anew, not copied): w as
 // asked, h by the screen's aspect (within REC_OPT.aspect), even numbers (video encoders want them); the virtual screen
@@ -193,6 +227,14 @@ if (typeof document !== 'undefined' && typeof S !== 'undefined') (() => {
     return S.M.dv + (S.M.mode === 'capture' && simR.captured ? simR.captured.dv : 0);
   }
   // the events where the film slows down: the markers' times (duplicates within a frame's step dropped)
+  // the burns for the schedule (with the slow motion switched on): the playback's windows in u
+  function firesU() {
+    if (!S.slow) return [];
+    return slowFireList().map(q => ({ ua: tToU(q.a), ub: tToU(q.b), T: q.b - q.a, show: burnShow(q.b - q.a), j: q.j }));
+  }
+  const RAMP = { rate: rampRate, len: rampLen };
+  // the plume's ignition and cut at the film's own rates (app.js burnRate)
+  function fireRates(sc) { const fu = firesU(), o = { base: C.T / sc.T }; fu.forEach((q, i) => { if (q.j != null) o[q.j] = sc.fireC[i]; }); REC.fireC = o; }
   function eventsU() {
     const us = (C.markers || []).map(m => tToU(m.t)).filter(u => u > 0.001 && u < 0.999).sort((a, b) => a - b);
     return us.filter((u, i) => !i || u - us[i - 1] > 0.004);
@@ -262,7 +304,7 @@ if (typeof document !== 'undefined' && typeof S !== 'undefined') (() => {
   function finish() {
     if (worker) { worker.terminate(); worker = null; }
     if (R.keep) { S.u = R.keep.u; S.ext = R.keep.ext; S.playing = R.keep.playing; R.keep = null; setPlayIcon(); }
-    REC.full = false; REC.busy = false; recView(null); halves.length = 0; btn.disabled = false; last = performance.now();
+    REC.full = false; REC.busy = false; REC.fireC = null; recView(null); halves.length = 0; btn.disabled = false; last = performance.now();
   }
   function deliver() {
     const f = R.file; if (!f) return;
@@ -279,7 +321,8 @@ if (typeof document !== 'undefined' && typeof S !== 'undefined') (() => {
     let pick = null, est = 0, samples = null;
     const fixed = fixedCols();
     for (const cfg of recLadder(R.set.w, R.set.fps)) {
-      const sz = recSize(W0css.w, W0css.h, cfg.w, maxPx()), sc = recSchedule(ev, { fps: cfg.fps }), n = sc.u.length;
+      const sz = recSize(W0css.w, W0css.h, cfg.w, maxPx()), sc = recSchedule(ev, { fps: cfg.fps, fires: firesU(), ease: RAMP }), n = sc.u.length;
+      fireRates(sc);
       canvasOf(sz);
       const pairs = [];
       for (const f of [0.08, 0.3, 0.5, 0.7, 0.92]) {
@@ -325,7 +368,8 @@ if (typeof document !== 'undefined' && typeof S !== 'undefined') (() => {
     return null;
   }
   async function recVideo(ev, notes) {
-    const sz = recSize(W0css.w, W0css.h, R.set.w, maxPx()), sc = recSchedule(ev, { fps: R.set.fps }), fps = sc.fps;
+    const sz = recSize(W0css.w, W0css.h, R.set.w, maxPx()), sc = recSchedule(ev, { fps: R.set.fps, fires: firesU(), ease: RAMP }), fps = sc.fps;
+    fireRates(sc);
     const v = await videoCfg(sz.w, sz.h, fps);
     if (!v) throw new Error(_('rec.noVideo'));
     const lib = await import(new URL(v.box === 'mp4' ? 'vendor/mp4-muxer/mp4-muxer.mjs' : 'vendor/webm-muxer/webm-muxer.mjs', document.baseURI).href);

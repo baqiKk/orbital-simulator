@@ -1221,7 +1221,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   // starry one on request ("Yıldızlı arka plan")
   const m3 = read('js/mode3d.js');
   assert.ok(rj.includes("const W0 = { fmt: 'gif', w: 1080, fps: 24, title: true, sky: false, dither: null, q: 'high' }") && rj.includes('R.set.dither == null ? !!R.set.sky') && rj.includes('REC.sky = !!R.set.sky;') && html.includes('id="recSky"') && has('rec.sky') && has('rec.skyTip'), 'recording: the starry background is an option, off by default');
-  assert.ok(app.includes('const REC = { busy: false, full: false, sky: false, view: null };') && app.includes('const skyRec = () => REC.busy && !REC.sky;'), 'recording: the sky is left out only while a recording draws');
+  assert.ok(app.includes('const REC = { busy: false, full: false, sky: false, view: null, fireC: null };') && app.includes('const skyRec = () => REC.busy && !REC.sky;'), 'recording: the sky is left out only while a recording draws');
   assert.ok(app.includes('if (stars && !skyRec())') && app.includes('if (!FXON.glare || skyRec()) return;') && app.includes('V3.render({ stars: Q.stars && !skyRec(), skyGain: skyGain() });'), 'recording: 2D stars and glare left out');
   assert.strictEqual((m3.match(/V3\.render\(\{ stars: Q\.stars && !skyRec\(\)/g) || []).length, (m3.match(/V3\.render\(/g) || []).length, 'recording: every 3D render leaves the sky out');
   assert.ok(m3.includes('if (!Q.glow || lowQ || !FXON.glare || skyRec()) return null;'), 'recording: no 3D glare');
@@ -1320,6 +1320,45 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(ui.includes('engChecks(s, { cea: pr.cea && CEA[pr.cea] ? engCea(CEA[pr.cea]) : null })') && html.includes('id="engWarn"') && ['warn.engOF', 'warn.engIsp', 'warn.engPort', 'warn.engLD', 'warn.engTW'].every(has), 'engine window: warnings (O/F, Isp, grain, T/W) in words');
   const sch = ui.slice(ui.indexOf('function engSchematic('), ui.indexOf('const SOL_GRAIN_VIEW'));
   assert.ok(sch.includes('engTanks(s, rho)') && sch.includes("_('eng.sch.end')") && has('eng.sch.end') && sch.includes('still = low || reduceMotion') && sch.includes('const fl = still ? 1 :') && sch.includes('x.createLinearGradient(px, 0, px + L, 0)') && sch.indexOf('plume(X(c), e);') < sch.indexOf("x.fillStyle = hexA(col.metal, 0.75)"), 'cutaway: tanks by volume, the end view, the plume cone (flicker only when allowed), the nozzle over it in metal');
+}
+// 43) Burns in slow motion (2026-11-14, prefs.js burnShow / slowRho / slowAdvance, record.js recSchedule fires): a burn
+// shows for at least a quarter of its length and at most its length (a 2 min burn 30 s, a 3 s burn 3 s, an 81 min
+// burn 150 s), played at 60 frames/s from a fast base rate; the rate eases in and out (no step larger than about
+// twice the last within a frame), a big frame step does not jump over a burn, a slow base rate is not sped up; impulsive
+// burns burn for their own length centred on their moment (from 0 at the start); between burns the engine is off (no
+// thrust, no plume: engStOf); the plume eases in and out over SLOW_W.fade s; the recording gives each burn its share,
+// rates for the plume, and keeps the film's length; the rate shows by the clock.
+{
+  assert.ok(P.burnShow(120) === 30 && P.burnShow(3) === 3 && P.burnShow(8) === 3 && Math.abs(P.burnShow(4851) - 150) < 1e-9 && P.burnShow(2) === 2 && P.burnShow(600) === 150, 'slow motion: screen time by burn length');
+  for (const [T, r0] of [[120, 3000], [4851, 600], [8, 1e5], [2, 100]]) {
+    const f = P.slowFires([{ a: 1000, b: 1000 + T }]), dt = 1 / 60, rl = P.rampLen(f[0].c, r0);
+    let t = 0, sin = 0, last = null, jump = 1;
+    for (let k = 0; k < 4e5 && t < 1000 + T + 20 * r0; k++) {
+      const t1 = P.slowAdvance(t, dt, r0, f);
+      if (t >= 1000 && t1 <= 1000 + T) sin += dt;
+      if (last && t > 1000 - 2 * rl && t < 1000 + T + 2 * rl) jump = Math.max(jump, (t1 - t) / last, last / (t1 - t));
+      last = t1 - t; t = t1;
+    }
+    const show = P.burnShow(T);
+    assert.ok(Math.abs(sin - show) < 0.05 * show + 2 * dt && sin >= Math.min(T / 4, 150) - 2 * dt && sin <= T + 2 * dt, `slow motion: a ${T} s burn shows ${sin.toFixed(2)} s (${show.toFixed(1)} s)`);
+    assert.ok(jump < 2.2, `slow motion: the rate eases (largest change per frame ×${jump.toFixed(2)})`);
+  }
+  const f1 = P.slowFires([{ a: 1000, b: 1120 }]);
+  assert.ok(P.slowAdvance(0, 0.5, 1e7, f1) < 1001, 'slow motion: a big frame step stops at the burn');
+  assert.ok(Math.abs(P.slowAdvance(1030, 1, 2, f1) - 1032) < 0.6, 'slow motion: a slower base rate is kept');
+  const ui = read('js/engine-ui.js'), app = read('js/app.js'), rj = read('js/record.js');
+  assert.ok(ui.includes('const a = Math.max(0, Math.min(b.t - L / 2, T - L));') && ui.includes('function engStOf(s, tau, on) {') && ui.includes('if (!on) { st.on = false; st.F = 0; st.Fk = 0; }'), 'engine: impulsive burns centred on their moment; off between burns');
+  assert.ok((ui + app).split('engState(s, on ? tau').length === 2 && !(ui + app).includes('engState(s, q.on'), 'engine: the firing comes from the mission, never from the load left');
+  assert.ok(ui.includes('w = SLOW_W.fade * burnRate(q.j)') && ui.includes('pl = st.Fk * Math.min(1, (t - a) / Math.max(w, 1e-9))') && ui.includes('pl = ENGM.end[q.j] * (1 - q.e / w)') && P.SLOW_W.fade === 0.3, 'plume: lights and dies over 0.3 s of screen');
+  assert.ok(app.includes('t1 = slowAdvance(t0, dt, r0, fs, C.T)') && app.includes("_(slow ? 'tl.rateSlow' : 'tl.rate', { r: fmtRate(rate) })") && has('tl.rate') && has('tl.rateSlow') && DICT['ui.slow'] === 'Yanmalarda yavaşla', 'slow motion: the playback runs through the warp, its rate by the clock');
+  const Rc = require('../js/record.js'), base = Rc.recSchedule([0.3, 0.7]);
+  const sc = Rc.recSchedule([0.3, 0.7], { fires: [{ ua: 0.3, ub: 0.3005, T: 120, show: 30 }, { ua: 0.7, ub: 0.72, T: 4851, show: 150 }], ease: { rate: P.rampRate, len: P.rampLen } }), n = sc.u.length;
+  let rj2 = 1; for (let k = 2; k < n; k++) { const a = sc.u[k - 1] - sc.u[k - 2], b = sc.u[k] - sc.u[k - 1]; if (a > 0 && b > 0) rj2 = Math.max(rj2, a / b, b / a); }
+  assert.ok(rj2 < 2.2, `recording: the rate eases into and out of the burns (×${rj2.toFixed(2)} per frame at most)`);
+  const inF = (a, b) => sc.u.filter(u => u >= a && u <= b).length / sc.fps, b1 = inF(0.3, 0.3005), b2 = inF(0.7, 0.72);
+  assert.ok(sc.T > base.T && sc.T <= Rc.REC_OPT.max && b1 > 0.8 && b2 > b1 * 3 && b1 + b2 <= Rc.REC_OPT.burnShare * sc.T + 0.2, `recording: burns get their share (${b1.toFixed(2)} s, ${b2.toFixed(2)} s of ${sc.T} s)`);
+  assert.ok(sc.u[0] === 0 && sc.u[n - 1] === 1 && sc.u.every((u, k) => !k || u >= sc.u[k - 1]) && sc.fireC.length === 2 && sc.fireC.every(c => c > 0), 'recording: u grows, rates for the plume');
+  assert.ok(rj.includes('fires: firesU(), ease: RAMP })') && rj.includes('REC.fireC = o;') && app.includes('if (REC.busy && REC.fireC) return REC.fireC[j]'), 'recording: the same mapping, the plume at the film\'s rates');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

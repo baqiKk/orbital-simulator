@@ -110,7 +110,8 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-conten
 .play svg{width:14px;height:14px}
 .tl-time{display:flex;flex-direction:column;gap:2px;font:500 12.5px/1.1 var(--f-mono);font-variant-numeric:tabular-nums;min-width:128px}
 .tl-time span:nth-child(2){color:var(--faint);font-size:11px}
-.tl-time .slowtag{color:var(--burn);font-size:10.5px;letter-spacing:.03em}
+.tl-time .slowtag{color:var(--dim);font-size:10.5px;letter-spacing:.03em;font-variant-numeric:tabular-nums}
+.tl-time .slowtag.slow{color:var(--burn)}
 .scrub{position:relative;flex:1;min-width:160px;height:28px;display:flex;align-items:center}
 .scrub input{position:relative;z-index:2}
 .ticks{position:absolute;left:8px;right:8px;top:0;bottom:0;pointer-events:none;z-index:3}

@@ -1628,16 +1628,18 @@ const ease3 = x => x * x * (3 - 2 * x);
 function oscFrame(tNow, craft, ext) {
   states(sys, S.M.t0 * DAY + tNow, SPo, SVo);
   const m = SLOW.morph;
-  let b;
+  let b, turn = null;
   if (ext) { b = C.orbit.body; C.orbit.rel(tNow - C.T, RELo); for (let j = 0; j < 3; j++) { OSC_R[j] = RELo[j]; OSC_V[j] = RELo[3 + j]; } }
   else {
     // standing on an impulsive burn not yet shown (a jump to it, a pause): the orbit before it
-    const pend = !m && slowOn() ? (C.imp || []).find(e => e.t > SLOW.last && Math.abs(e.t - tNow) < 1e-6) : null;
+    const pend = !m && slowOn() ? (C.imp || []).find(e => !impWin(e) && e.t > SLOW.last && Math.abs(e.t - tNow) < 1e-6) : null;
+    turn = !m && !pend ? impTurn(tNow) : null;
     b = m ? m.b : pend ? pend.b : S.kind === 'man' ? 0 : domBody(sys, SPo, craft[0], craft[1], craft[2]);
     let v;
     if (pend) v = pend.va;
     else if (m) { const f = ease3(clamp(m.age / SLOW_MS, 0, 1)); v = [0, 1, 2].map(j => m.va[j] + (m.vb[j] - m.va[j]) * f); }
     else { const i = segAtTime(tNow), h = simR.t[i + 1] - simR.t[i]; v = h > 0 ? hermV(i, clamp((tNow - simR.t[i]) / h, 0, 1), [0, 0, 0]) : [simR.vx[i + 1], simR.vy[i + 1], simR.vz[i + 1]]; }
+    if (turn) { const e = turn.e, k = turn.f - (tNow >= e.t ? 1 : 0); v = v.map((q, j) => q + k * (e.vb[j] - e.va[j])); b = e.b; }
     for (let j = 0; j < 3; j++) { OSC_R[j] = craft[j] - SPo[3 * b + j]; OSC_V[j] = v[j] - SVo[3 * b + j]; }
   }
   const rn = Math.hypot(...OSC_R), rMax = Number.isFinite(sys.soi[b]) ? sys.soi[b] : Math.max(4 * rn, ...Array.from(sys.a).map(a => 2 * a));
@@ -1645,7 +1647,7 @@ function oscFrame(tNow, craft, ext) {
   if (!c) return null;
   if (!c.closed) CAPTION.push(_('osc.escape', { body: S.bodies[b].name, v: nf2.format(c.vinf / 1e3) }));
   else if (S.kind !== 'man' && sys.N > 1) CAPTION.push(_('osc.about', { body: S.bodies[b].name }));
-  if (m) CAPTION.push(_('osc.morph'));
+  if (m || turn) CAPTION.push(_('osc.morph'));
   return { b, c, pts: OSC_PTS };
 }
 // 2D: about body b's screen position (bpos: frame coordinates of the bodies)
@@ -1659,41 +1661,70 @@ function drawOsc2(o, bpos) {
   if (o.c.closed) ctx.closePath();
   ctx.stroke();
 }
-// Slow motion. Finite burns: while the engine burns (and from half a second of playback before), time runs at most at
-// a third of the burn per second, so every burn lasts ≥ 3 s on screen; the change eases in and out (SLOW.k). Impulsive
-// burns: playback stops at the burn for SLOW_MS while the osculating orbit turns from the one before into the one after
-// (the velocity eased between them) — a visual aid only, the burn itself is instantaneous. Neither in the low-resource
-// mode or with reduced motion; switch #slow, saved.
-const SLOW = { k: 0, last: -1, prev: 0, morph: null }, SLOW_MS = 1.2;
+// Slow motion (2026-11-14). While the engine fires (a finite burn; an impulsive burn's own length on the engine,
+// centred on its moment: engine-ui.js engFires) time runs through one warp (prefs.js slowRho): a burn of T s lasts
+// burnShow(T) on screen (≥ T/4, ≤ T, ≤ 150 s), the rate easing down before it and up after it over about half a second;
+// the coasts between run at the chosen speed. An impulsive burn's osculating orbit turns from the one before into the
+// one after across its window (impTurn; a visual aid only, the burn itself is instantaneous); one with no length (an
+// aerobraking pass) holds playback for SLOW_MS instead. The rate now shows by the clock (#slowTag: "×4 · yanma").
+// Neither in the low-resource mode or with reduced motion; switch #slow ("Yanmalarda yavaşla"), saved.
+const SLOW = { last: -1, prev: 0, morph: null, fires: null, src: null, r0: 1, rate: 1 }, SLOW_MS = 1.2;
 const slowOn = () => S.slow && Q.glow && !lowQ && !reduceMotion;
+// the burns' windows with their rates (cached per result): the engine's, else the finite burns' spans
+function slowFireList() {
+  const ef = engFires(), src = ef || C.spans;
+  if (SLOW.src !== src) { SLOW.src = src; SLOW.fires = slowFires(ef ? ef : (C.spans || []).filter(q => !q[2]).map(([a, b]) => ({ a, b }))); }
+  return SLOW.fires;
+}
+// mission seconds per screen second while burn j fires (the plume's ignition and cut, engine-ui.js engNow): the
+// recording's own (REC.fireC), else the slow motion's, else this moment's playback rate
+function burnRate(j) {
+  if (REC.busy && REC.fireC) return REC.fireC[j] || REC.fireC.base || 1;
+  const q = slowOn() && C ? slowFireList().find(x => x.j === j) : null;
+  return q ? Math.min(q.c, SLOW.r0) : SLOW.r0;
+}
+// an impulsive burn's window, if it has one on the engine (by its moment)
+function impWin(e) {
+  const m = engNow(e.t).m; if (!m || m.error) return null;
+  const b = m.burns.find(q => !(q.t1 > q.t) && Math.abs(q.t - e.t) < 1e-6);
+  if (!b || !(b.len > 0)) return null;
+  const [a, z] = engWin(b); return z > a ? [a, z] : null;
+}
+// the turn of an impulsive burn under way at t: { e, f (0 … 1 eased) } — v = v(t) + (f − [t ≥ e.t])·(vb − va)
+function impTurn(t) {
+  if (!slowOn()) return null;
+  for (const e of C.imp || []) { const w = e.win === undefined ? (e.win = impWin(e)) : e.win; if (w && t >= w[0] && t <= w[1]) return { e, f: ease3((t - w[0]) / (w[1] - w[0])) }; }
+  return null;
+}
 // after a jump (scrub, tick, schedule row) a burn exactly at the new time still gets its turn; earlier ones do not
 function slowJump() { if (C && simR) { SLOW.last = uToT(S.u) - 1e-6; SLOW.prev = SLOW.last; } SLOW.morph = null; }
+const fmtRate = r => (r >= 86400 ? nf1.format(r / 86400) + ' ' + _('unit.d') : r >= 3600 ? nf1.format(r / 3600) + ' ' + _('unit.h') : r >= 60 ? nf1.format(r / 60) + ' ' + _('unit.min') : NF(r < 10 ? 1 : 0).format(r) + ' ' + _('unit.s'));
 // playback advance for this frame (dt real seconds), u < 1: the next u
 function playStep(dt) {
   const t0 = uToT(S.u);
   if (t0 < SLOW.prev - 1e-6) SLOW.last = t0 - 1e-6; // time went back (loop, reset): its burns come again
   SLOW.prev = t0;
-  if (SLOW.morph) { // holding at an impulsive burn
+  const tag = $('#slowTag');
+  if (SLOW.morph) { // holding at an impulsive burn with no window
     SLOW.morph.age += dt;
     if (SLOW.morph.age < SLOW_MS) return S.u;
     SLOW.morph = null;
   }
   let t1 = S.rate ? t0 + dt * S.rate : uToT(Math.min(1, S.u + dt * S.speed / 30));
-  const rate0 = (t1 - t0) / Math.max(dt, 1e-6);
-  let eff = rate0, cap = Infinity;
+  const r0 = SLOW.r0 = Math.max(1e-6, (t1 - t0) / Math.max(dt, 1e-6));
+  let rate = r0;
   if (slowOn()) {
-    // the burn under way or starting within half a second of playback
-    for (const [a, b, sp] of C.spans || []) if (!sp && b > t0 && a <= t0 + rate0 * 0.5) { cap = Math.min(cap, (b - a) / 3); break; }
-    SLOW.k += ((cap < rate0 ? 1 : 0) - SLOW.k) * (1 - Math.exp(-dt / 0.25));
-    if (cap < rate0) eff = rate0 + (cap - rate0) * SLOW.k;
-    else if (SLOW.k > 0.01 && SLOW.cap < rate0) eff = rate0 + (SLOW.cap - rate0) * SLOW.k; // easing out after the burn
-    if (cap < Infinity) SLOW.cap = cap;
-    t1 = t0 + eff * dt;
-    // an impulsive burn in this step: stop at it, start the turn
-    for (const e of C.imp || []) if (e.t > SLOW.last && e.t >= t0 - 1e-9 && e.t <= t1) { t1 = e.t; SLOW.last = e.t; SLOW.morph = { ...e, age: 0 }; break; }
-  } else SLOW.k = 0;
-  const tag = $('#slowTag'), slow = rate0 / Math.max(eff, 1e-9);
-  if (!SLOW.morph && slow > 1.15) { tag.hidden = false; setT('#slowTag', _('tl.slow', { k: nf0.format(slow) })); } else if (!tag.hidden) tag.hidden = true;
+    const fs = slowFireList();
+    if (fs.length) { t1 = slowAdvance(t0, dt, r0, fs, C.T); rate = 1 / slowRho(t0, r0, fs); }
+    // an impulsive burn with no window in this step: stop at it, start the turn
+    for (const e of C.imp || []) {
+      if (e.win === undefined) e.win = impWin(e);
+      if (!e.win && e.t > SLOW.last && e.t >= t0 - 1e-9 && e.t <= t1) { t1 = e.t; SLOW.last = e.t; SLOW.morph = { ...e, age: 0 }; break; }
+    }
+  }
+  SLOW.rate = rate;
+  const slow = rate < r0 / 1.15, txt = _(slow ? 'tl.rateSlow' : 'tl.rate', { r: fmtRate(rate) });
+  if (SLOW.morph) { if (!tag.hidden) tag.hidden = true; } else { if (tag.hidden) tag.hidden = false; tag.classList.toggle('slow', slow); setT('#slowTag', txt); }
   return t1 >= C.T ? 1 : Math.max(S.u, tToU(t1));
 }
 
@@ -3068,7 +3099,7 @@ function drawTrail(ext, cpos) {
 }
 // the mission recording (js/record.js): busy while it draws its frames; full: the free area is the whole canvas; sky:
 // the starry background goes into the recording too (off by default: plain void, no Milky Way, stars or glare)
-const REC = { busy: false, full: false, sky: false, view: null };
+const REC = { busy: false, full: false, sky: false, view: null, fireC: null };
 // a recording's own canvas size (js/record.js): v = { cw, ch: the virtual screen in CSS px, dpr: device px per CSS px
 // (the film's scale × its supersampling) }, or null: the screen's again. Lines, bodies and labels are drawn in CSS px,
 // so they keep their share of the film at any width; the screen shows the frames meanwhile (same shape, scaled).
