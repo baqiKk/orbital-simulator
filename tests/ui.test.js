@@ -1429,6 +1429,16 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(v3.includes('if (vY > uClip) discard;') && v3.includes('m.material.uniforms.uClip.value = f.y0 + f.r * engTankLevel(k, len / f.r, f.k);') && v3.includes('new THREE.ShapeGeometry(sh, 4)'), 'cutaway 3D: the liquid in the tank\'s outline, its level by volume');
   assert.ok(ui.includes('r * engTankLevel(level, (x1 - x0) / r, 1)') && ui.includes('r * engTankLevel(st.fuel, 2, 1)') && ui.includes('// one continuous outline (2026-11-15)'), 'cutaway 2D: levels by volume, one nozzle outline');
 }
+// 47) Close to the craft (2026-11-15): the grid, the bodies' orbits and tracks fade out with the camera's distance
+// (gone within 2 km, back by 80 km, smooth in its logarithm), the craft's own path down to a faint thin line; bodies,
+// Sun and sky stay; on top of each line's own opacity
+{
+  const m3 = read('js/mode3d.js'), v3 = read('js/view3d.js'), ctx = {};
+  require('vm').runInNewContext(m3.slice(m3.indexOf('const NEAR3 = '), m3.indexOf('// grid spacing for the camera distance')) + ';this.f = nearFade3;', ctx);
+  assert.ok(ctx.f(100) === 0 && ctx.f(2e3) === 0 && ctx.f(8e4) === 1 && ctx.f(1e7) === 1 && ctx.f(1e4) > 0 && ctx.f(1e4) < ctx.f(3e4), 'close view: the fade by distance');
+  assert.ok(m3.includes("const nk = S.follow === 'craft' ? nearFade3(c.dist) : 1;") && m3.includes("V3.fadeSet('sim', nk, OWN3, 0.1 + 0.9 * nk);") && m3.includes('grid3(c, V3S.grid, nk);') && m3.includes("OWN3 = new Set(['path', 'pathB', 'osc', 'conn', 'trail', 'park'])"), 'close view: lines and grid fade, the own path faint');
+  assert.ok(v3.includes('m.opacity = m.userData.base * f;') && v3.includes("h.mats[0].userData.base = opacity; fadeApply(set, id, h.mats[0]);"), 'close view: on top of each line\'s opacity');
+}
 // the encoder itself (an ES module): a real GIF
 (async () => {
   const G = await import(require('url').pathToFileURL(path.join(__dirname, '..', 'js', 'rec-worker.mjs')).href);

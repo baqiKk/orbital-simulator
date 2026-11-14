@@ -591,7 +591,22 @@ export function create(canvas, opts) {
   function material(color, opacity, width, opts) {
     const m = new LineMaterial({ color: new THREE.Color(color), linewidth: width, transparent: true, opacity, depthWrite: false, vertexColors: !!opts.vertexColors, toneMapped: false });
     if (opts.additive) m.blending = THREE.AdditiveBlending;
+    m.userData.base = opacity; m.userData.w = width;
     m.resolution.set(W, H); mats.add(m); return m;
+  }
+  // Close to the craft (2026-11-15): the lines flow past the camera at orbital speed. fadeSet scales every line of a set
+  // (k: 0 hides them; the ids in own, the craft's own path, by kOwn and thinner) on top of each material's own opacity.
+  const FADE = { sim: { k: 1, own: new Set(), kOwn: 1 }, map: { k: 1, own: new Set(), kOwn: 1 } };
+  function fadeApply(set, id, m) {
+    const F = FADE[set], own = F.own.has(id), f = own ? F.kOwn : F.k;
+    m.opacity = m.userData.base * f; m.linewidth = m.userData.w * (own ? 0.55 + 0.45 * F.kOwn : 1); m.visible = f > 0.004;
+  }
+  function fadeSet(set, k, own, kOwn) {
+    const F = FADE[set];
+    if (F.k === k && F.kOwn === kOwn && F.own === own) return;
+    F.k = k; F.own = own; F.kOwn = kOwn;
+    for (const [id, h] of lines[set]) for (const m of h.mats) fadeApply(set, id, m);
+    for (const [id, d] of dyns[set]) fadeApply(set, id, d.mat);
   }
   function chunkLine(h, pts, n, opts) {
     const closed = !!opts.closed, N = closed ? n + 1 : n, at = i => (i % n) * 3;
@@ -646,7 +661,7 @@ export function create(canvas, opts) {
     h.show = show; h.group.visible = show;
     if (rot) h.group.quaternion.setFromRotationMatrix(new THREE.Matrix4().set(rot[0], rot[1], rot[2], 0, rot[3], rot[4], rot[5], 0, rot[6], rot[7], rot[8], 0, 0, 0, 0, 1));
   }
-  function lineOpacity(set, id, opacity) { const h = lines[set].get(id); if (h) h.mats[0].opacity = opacity; }
+  function lineOpacity(set, id, opacity) { const h = lines[set].get(id); if (h) { h.mats[0].userData.base = opacity; fadeApply(set, id, h.mats[0]); } }
   function lineGlow(set, id, on) { const h = lines[set].get(id); if (h && h.mats[1]) for (const c of h.chunks) c.lines[1].visible = on && c.lines[0].visible; }
 
   // Dynamic line (trail, the bit up to the craft): one chunk with a fixed capacity, rewritten in place.
@@ -661,7 +676,7 @@ export function create(canvas, opts) {
     const l = new LineSegments2(geo, mat); l.frustumCulled = false; l.visible = false;
     roots[set].add(l);
     d = { cap, geo, mat, line: l, o: [0, 0, 0] };
-    dyns[set].set(id, d);
+    dyns[set].set(id, d); fadeApply(set, id, mat);
     return d;
   }
   // pts: metres, 3 per point (n points); colors: linear RGB per point or null
@@ -963,6 +978,6 @@ export function create(canvas, opts) {
   }
   function dispose() { renderer.dispose(); }
 
-  return { size, view, setActive, render, bodies, body, skySet, line, lineDrop, lineDropAll, lineUpTo, lineSet, lineOpacity, lineGlow, dyn, dynSet, dynHide, gridSet, craft, dispose,
+  return { size, view, setActive, render, bodies, body, skySet, line, lineDrop, lineDropAll, lineUpTo, lineSet, lineOpacity, lineGlow, fadeSet, dyn, dynSet, dynHide, gridSet, craft, dispose,
     get gl() { return renderer.getContext(); }, renderer };
 }

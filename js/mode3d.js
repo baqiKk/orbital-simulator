@@ -266,10 +266,12 @@ function linRGB(hex) {
   return [f(n >> 16 & 255), f(n >> 8 & 255), f(n & 255)];
 }
 
+const NEAR3 = [2e3, 8e4], OWN3 = new Set(['path', 'pathB', 'osc', 'conn', 'trail', 'park']);
+const nearFade3 = d => { const x = Math.max(0, Math.min(1, Math.log(d / NEAR3[0]) / Math.log(NEAR3[1] / NEAR3[0]))); return x * x * (3 - 2 * x); };
 // grid spacing for the camera distance: two lattices (s, 10 s) cross-fading with the zoom
-function grid3(c, on) {
-  if (!on) { V3.gridSet(false); return; }
-  const L = Math.log10(c.dist * 0.35), s = Math.pow(10, Math.floor(L)), f = L - Math.floor(L), A = 0.13;
+function grid3(c, on, k = 1) {
+  if (!on || !(k > 0.004)) { V3.gridSet(false); return; }
+  const L = Math.log10(c.dist * 0.35), s = Math.pow(10, Math.floor(L)), f = L - Math.floor(L), A = 0.13 * k;
   V3.gridSet(true, [c.t[0], c.t[1], 0], s, A * (1 - f), A * f);
 }
 
@@ -375,7 +377,12 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   V3.lineSet('sim', 'gamma', null, V3S.grid);
   if (ext) trail3(); else V3.dynHide('sim', 'trail');
   osc3();
-  grid3(c, V3S.grid);
+  // Close to the craft (2026-11-15): the grid, the bodies' orbits and tracks fade out with the camera's distance (fully
+  // gone within NEAR3[0] m, back by NEAR3[1] m, smooth in its logarithm), the craft's own path down to a faint thin line;
+  // the bodies, the Sun and the sky stay. Zooming out brings everything back the same way.
+  const nk = S.follow === 'craft' ? nearFade3(c.dist) : 1;
+  V3.fadeSet('sim', nk, OWN3, 0.1 + 0.9 * nk);
+  grid3(c, V3S.grid, nk);
   // the Sun: in the mission, or (real model) far away along its direction from the first body
   const gl3 = sunIdx >= 0 ? glare3([BP3[3 * sunIdx], BP3[3 * sunIdx + 1], BP3[3 * sunIdx + 2]], false, rpx[sunIdx], sunIdx)
     : S.model === 'real' ? glare3(SUN3, true, CB.f * sunAngOf(S.bodies[0].key), -1) : null;
