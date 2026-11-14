@@ -290,7 +290,7 @@ const engTok = k => getComputedStyle(document.documentElement).getPropertyValue(
 // A liquid engine's tanks are as long as their volumes (core.js engTanks, js/engines.js densities: a hydrogen tank is
 // far larger); a hybrid also shows its grain end on (the port hole and the web). Any mode (2D, the low-resource mode,
 // phones): plain shapes, the plume's gradient and flicker only outside the low mode (no flicker with reduced motion).
-function engSchematic(cv, s, st, E, phase) {
+function engSchematic(cv, s, st, E, phase, pl = st.Fk) {
   const w = Math.max(160, cv.parentElement.clientWidth), h = 118, dpr = Math.min(2, window.devicePixelRatio || 1);
   if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + 'px'; }
   const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, w, h);
@@ -319,16 +319,17 @@ function engSchematic(cv, s, st, E, phase) {
   // a brighter core along the axis; length and brightness by thrust; a slight flicker (none in the low mode or with
   // reduced motion); colour by propellant. Drawn before the nozzle, which stays a clear metal shape over it.
   const plume = (px, e) => {
-    if (!st.on || !(st.Fk > 0)) return;
+    if (!(pl > 0.004)) return;
     const fl = still ? 1 : 1 + 0.035 * Math.sin(phase * 31.4) + 0.025 * Math.sin(phase * 57.3 + 1.3), k = E.type === 'mono' ? 0.35 : 1;
-    const L = (w - px - 4) * (0.45 + 0.55 * st.Fk) * fl, sp = e + L * 0.5;
+    const L = (w - px - 4) * (0.45 + 0.55 * pl) * fl, sp = e + L * 0.5;
     const cone = (h0, h1, a) => {
       if (low) x.fillStyle = col.plume; else { const g = x.createLinearGradient(px, 0, px + L, 0); g.addColorStop(0, col.plume); g.addColorStop(0.55, hexA(col.plume, 0.35)); g.addColorStop(1, hexA(col.plume, 0)); x.fillStyle = g; }
       x.globalAlpha = a; x.beginPath(); x.moveTo(px, my - h0); x.lineTo(px + L * 0.92, my - h1); x.quadraticCurveTo(px + L * 1.04, my, px + L * 0.92, my + h1); x.lineTo(px, my + h0); x.closePath(); x.fill();
     };
     x.save();
-    cone(e * 0.95, sp, (low ? 0.3 : 0.55) * k * (0.45 + 0.55 * st.Fk) * fl);
-    if (!low) cone(e * 0.5, e * 0.5 + L * 0.16, 0.6 * k * (0.45 + 0.55 * st.Fk));
+    const g = Math.min(1, 3 * pl);
+    cone(e * 0.95, sp, (low ? 0.3 : 0.55) * k * (0.45 + 0.55 * pl) * fl * g);
+    if (!low) cone(e * 0.5, e * 0.5 + L * 0.16, 0.6 * k * (0.45 + 0.55 * pl) * g);
     x.restore();
   };
   // the chamber (a to b, half height ch) and the nozzle (throat half height thr to the exit at c, half height e)
@@ -394,16 +395,23 @@ const SOL_GRAIN_VIEW = { bates: w => [0.5 + 0.5 * w, 1], tube: w => [0.5 + 0.5 *
 function engTick(force) {
   if (engEl('w-engine').hidden || !ENGW.s || ENGW.s.error) return;
   const s = ENGW.s, now = performance.now(), E = ENGW.E;
-  let tau = 0, on = false;
-  if (ENGW.play) {
-    const D = Math.min(8000, Math.max(4000, s.tb * 1000)), f = (now - ENGW.play) / D;
-    if (f >= 1) { ENGW.play = 0; engEl('engPlay').setAttribute('aria-pressed', 'false'); } else { tau = f * s.tb; on = true; }
+  let tau = 0, on = false, pl = -1;
+  if (ENGW.play) { // the run: lit over the first SLOW_W.fade s, dying over as long after the cut
+    const D = Math.min(8000, Math.max(4000, s.tb * 1000)), ms = now - ENGW.play, f = ms / D, fd = SLOW_W.fade * 1000;
+    if (ms >= D + fd) { ENGW.play = 0; engEl('engPlay').setAttribute('aria-pressed', 'false'); }
+    else if (f < 1) { tau = f * s.tb; on = true; pl = engState(s, tau).Fk * Math.min(1, ms / fd); }
+    else { tau = s.tb; pl = engState(s, s.tb * (1 - 1e-6)).Fk * (1 - (ms - D) / fd); }
   }
-  if (!ENGW.play && ENGW.st && ENGW.st.m && C) { const q = engTau(ENGW.st.m, tNowG); tau = q.tau; on = q.on; }
-  const moving = on || ENGW.play;
+  if (!ENGW.play && ENGW.st && ENGW.st.m && C) {
+    const q = engTau(ENGW.st.m, tNowG); tau = q.tau; on = q.on;
+    if (ENGW.linked) pl = engNow(tNowG).pl; // the craft's own engine: its plume as in the views
+  }
+  const cs = engStOf(s, tau, on);
+  if (pl < 0) pl = cs.Fk;
+  const moving = on || ENGW.play || pl > 0;
   if (!force && !moving && Math.abs(tau - ENGW.tau) < s.tb / 2000 && on === ENGW.on) return;
   ENGW.tau = tau; ENGW.on = on;
-  engSchematic(engEl('engSch'), s, engStOf(s, tau, on), E, now / 1000);
+  engSchematic(engEl('engSch'), s, cs, E, now / 1000, pl);
   const st = ENGW.st; if (!st) return;
   const pv = engEl('engCvP'), x = pv.getContext('2d');
   x.setTransform(st.dpr, 0, 0, st.dpr, 0, 0); x.clearRect(0, 0, pv.width, pv.height);

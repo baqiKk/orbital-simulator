@@ -613,8 +613,8 @@ export function create(canvas, opts) {
       m.position.set(0.001, (f.y0 + f.y1) / 2, zc);
       if (name === 'grainB' && craftG.grain === 'rod' && craftG.ty === 'sol') m.visible = false;
     }
-    // the plume(s): only while the engine burns, length and brightness by thrust
-    const pl = o.plume || { a: 0 }, on = st.on && pl.a > 0.002;
+    // the plume(s): while the engine burns and the moment after its cut (o.plume.a goes to 0), length and brightness by thrust
+    const pl = o.plume || { a: 0 }, on = pl.a > 0.002;
     craftG.plumes.forEach((p, i) => {
       p.visible = on; if (!on) return;
       const mono = craftG.plumes.length > 1, len = mono ? pl.len * 0.3 : pl.len, r1 = (mono ? 0.03 : 0.1) + len * 0.45;

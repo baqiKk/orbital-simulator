@@ -461,15 +461,15 @@ function craft3(tNow, craft, ext, sunIdx) {
   proj3(CR3, PJ);
   const lpx = PJ[2] > 0 ? L * CB.f / PJ[2] : 0;
   if (!(lpx > 6)) { V3.craft({ show: false }); return lpx; }
-  const td = en.on && !ext ? thrustNow(tNow, craft) : null, X = FP.X, Y = FP.Y, Z = FP.Z;
+  const td = !ext ? plumeTd(tNow, craft, en) : null, X = FP.X, Y = FP.Y, Z = FP.Z;
   let ax = td ? [td[0] * X[0] + td[1] * X[1] + td[2] * X[2], td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2], td[0] * Z[0] + td[1] * Z[1] + td[2] * Z[2]] : [CR3b[0] - CR3[0], CR3b[1] - CR3[1], CR3b[2] - CR3[2]];
   if (!(Math.hypot(...ax) > 0)) ax = [0, 0, 1];
   let sun = SUN3;
   if (sunIdx >= 0) { const v = [BP3[3 * sunIdx] - CR3[0], BP3[3 * sunIdx + 1] - CR3[1], BP3[3 * sunIdx + 2] - CR3[2]], l = Math.hypot(...v) || 1; sun = v.map(q => q / l); }
-  const faint = en.plume === 'faint', k = en.st.Fk;
+  const faint = en.plume === 'faint', k = ext ? 0 : en.pl; // the plume: the thrust, eased in at ignition and out after the cut
   V3.craft({ show: true, p: CR3, axis: ax, L, sun, cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, st: en.st,
     col: { metal: COL.dim, nozzle: COL.faint, fuel: COL.burn, ox: COL.cyan }, // fuel and oxidizer as the engine window's charts
-    plume: { color: COL[PLUME_TOK[en.plume] || 'accent'], a: (faint ? 0.12 : 0.45) * (0.35 + 0.65 * k), len: 0.55 + 0.95 * k } });
+    plume: { color: COL[PLUME_TOK[en.plume] || 'accent'], a: k > 0.004 ? (faint ? 0.12 : 0.45) * (0.35 + 0.65 * k) * Math.min(1, 3 * k) : 0, len: 0.55 + 0.95 * k } });
   return lpx;
 }
 // the trail after capture (fading oldest revolutions), up to the craft

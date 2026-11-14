@@ -1304,14 +1304,14 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   for (const ty of ["ty === 'liq'", "ty === 'hyb'", "ty === 'sol'"]) assert.ok(v3.includes(ty), 'craft: a model for ' + ty);
   assert.ok(m3.includes("col: { metal: COL.dim, nozzle: COL.faint, fuel: COL.burn, ox: COL.cyan }") && ui.includes("fuel: tok('--burn'), ox: tok('--cyan')") && ui.includes("fuel: engTok('--burn'), ox: engTok('--cyan')"), 'cutaway: fuel and oxidizer in the charts\' tokens, in 3D and 2D');
   assert.ok(/const PLUME_TOK = \{ blue: 'cyan', orange: 'burn', white: 'ink', faint: 'ink', amber: 'accent' \}/.test(m3) && /const ENG_PLUME = \{ blue: '--cyan', orange: '--burn', white: '--ink', faint: '--ink', amber: '--accent' \}/.test(ui), 'plume: colour by propellant from the tokens');
-  assert.ok(m3.includes('const td = en.on && !ext ? thrustNow(tNow, craft) : null') && m3.includes("if (S.follow === 'craft') return CRAFT.L * 0.9;"), 'craft: the nose along the thrust while burning; the camera kept outside it');
+  assert.ok(m3.includes('const td = !ext ? plumeTd(tNow, craft, en) : null') && m3.includes("if (S.follow === 'craft') return CRAFT.L * 0.9;"), 'craft: the nose along the thrust while burning (and through the plume fading); the camera kept outside it');
   // approaching the craft
   assert.ok(html.includes('id="apprBtn"') && html.includes('id="cutBtn"') && html.includes('id="engAppr"') && html.includes('id="engCut"') && html.includes('id="apprTip"') && ['appr.btn', 'appr.tip', 'appr.hint', 'appr.hintTouch', 'cut.btn', 'cut.tip', 'eng.play'].every(has), 'approach: the buttons, the hint, the words');
   assert.ok(app.includes("if (dbl && !MAP.on && C && ((tgt && tgt.kind === 'c') || onPath)) { sceneTouch(); apprSet(true); return; }") && app.includes('if (dbl && !tgt && APPR.on) { apprSet(false); return; }') && app.includes("if (e.key === 'a' || e.key === 'A') apprSet(!APPR.on);") && app.includes("e.key === 'Escape' && APPR.on"), 'approach: double tap on the craft or its path, empty space back, A, Esc');
   assert.ok(P.PREF_KEYS.apprTip && app.includes('writePref(LS, PREF_KEYS.apprTip, \'1\')'), 'approach: the hint once');
   // the 2D cutaway and the 2D plume
   assert.ok(ui.includes("low = lowQ || MODE === 'low'") && ui.includes('function engSchematic(') && html.includes('id="engSch"') && html.includes('id="engPlay"'), 'cutaway 2D: in the engine window, plain in the low mode, "Oynat"');
-  assert.ok(app.includes('plume2d(x, y, tNow, td, sx(cpos2[0]) - x, sy(cpos2[1]) - y, ext);') && app.includes('if (Q.glow) { const g = ctx.createLinearGradient(x, y, x + ux * L, y + uy * L);'), '2D view: a small plume, flat without glow');
+  assert.ok(app.includes('plume2d(x, y, tNow, craft, sx(cpos2[0]) - x, sy(cpos2[1]) - y, ext);') && app.includes('if (Q.glow) { const g = ctx.createLinearGradient(x, y, x + ux * L, y + uy * L);'), '2D view: a small plume, flat without glow');
   assert.ok(html.includes('<path d="M7 1.5h6v3.1l-1.7 2.3v.3C12.5 8.5 14.9 11 15.4 14.6H4.6C5.1 11 7.5 8.5 8.7 7.2v-.3L7 4.6z"/><path class="acc" d="M6.8 15.6h6.4L10 19.6z"/>'), 'rail: the engine window\'s icon');
   // the engine window's fixes: a type brings its default engine (asked first after hand edits); warnings from the core;
   // the cutaway: liquid tanks by volume, the hybrid's end view, a fading, flickering cone (still in the low mode and with
