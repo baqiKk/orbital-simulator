@@ -94,8 +94,18 @@ function watch(page, errs) {
       if (!(await appr())) throw new Error('the double click did not approach');
     });
     await step('double click on empty space', async () => {
-      const p = await page.evaluate(() => { const r = document.querySelector('#cv').getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height * 0.4 }; });
-      await page.waitForTimeout(500); await page.mouse.dblclick(p.x, p.y); await page.waitForTimeout(300);
+      await page.waitForTimeout(500);
+      // a point with nothing under it: no body, not the craft, not its path, not a window (the path crosses the close view)
+      const p = await page.evaluate(() => {
+        const cv = document.querySelector('#cv'), r = cv.getBoundingClientRect();
+        for (const fy of [0.15, 0.3, 0.5, 0.7, 0.85]) for (const fx of [0.08, 0.25, 0.75, 0.92]) {
+          const x = r.width * fx, y = r.height * fy;
+          if (!hitAt(x, y, 24) && !pathHit(x, y, 24) && document.elementFromPoint(r.left + x, r.top + y) === cv) return { x: r.left + x, y: r.top + y };
+        }
+        return null;
+      });
+      if (!p) throw new Error('no empty point on screen');
+      await page.mouse.dblclick(p.x, p.y); await page.waitForTimeout(300);
       if (await appr()) throw new Error('still close after a double click on empty space');
     });
     await step('the cutaway in the engine window plays', async () => { await page.click('.rail [data-win="engine"]'); await page.click('#engPlay'); await page.waitForTimeout(1500); const w = await page.evaluate(() => document.querySelector('#engSch').width); if (!(w > 0)) throw new Error('no cutaway drawn'); });
