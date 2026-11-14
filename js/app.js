@@ -1203,7 +1203,7 @@ function measureFree() {
   const sr = stage.getBoundingClientRect(), gap = 12;
   const rel = el => { const r = el.getBoundingClientRect(); return { x0: r.left - sr.left, x1: r.right - sr.left, y0: r.top - sr.top, y1: r.bottom - sr.top }; };
   const shown = el => !el.hidden && el.getClientRects().length > 0;
-  const hud = [...$('#ctrls').children, $('#readout'), $('#timeline'), $('#caption'), $('#modeChip'), $('#liveBar')].filter(shown).map(rel);
+  const hud = [...$('#ctrls').children, $('#readout'), $('#engPanel'), $('#timeline'), $('#caption'), $('#modeChip'), $('#liveBar')].filter(shown).map(rel);
   const wins = floating() ? [...document.querySelectorAll('.win:not([hidden])')].filter(shown).map(rel) : [];
   const rects = freeRects(W, H, [...hud, ...wins], gap);
   // too little room left between the windows: let them overlap the plot instead (HUD still counts)
@@ -1356,10 +1356,11 @@ function apprSet(on) {
   }
   APPR.on = on; flyTo(a); apprSync();
 }
-function apprSync() { for (const id of ['#apprBtn', '#engAppr']) $(id).setAttribute('aria-pressed', String(APPR.on)); for (const id of ['#cutBtn', '#engCut']) $(id).setAttribute('aria-pressed', String(CRAFT.cut)); }
-function cutToggle() { CRAFT.cut = !CRAFT.cut; apprSync(); if (CRAFT.cut && !is3d()) setWin('engine', { open: true, collapsed: false }); }
-for (const id of ['#apprBtn', '#engAppr']) $(id).addEventListener('click', () => apprSet(!APPR.on));
-for (const id of ['#cutBtn', '#engCut']) $(id).addEventListener('click', cutToggle);
+function apprSync() { for (const id of ['#apprBtn', '#engAppr', '#epAppr']) $(id).setAttribute('aria-pressed', String(APPR.on)); for (const id of ['#cutBtn', '#engCut', '#epCut']) $(id).setAttribute('aria-pressed', String(CRAFT.cut)); }
+// 2D: the cutaway is the engine panel's (unfolded), else the engine window's
+function cutToggle() { CRAFT.cut = !CRAFT.cut; apprSync(); if (CRAFT.cut && !is3d()) { if (!$('#engPanel').hidden) epFold(false, true); else setWin('engine', { open: true, collapsed: false }); } }
+for (const id of ['#apprBtn', '#engAppr', '#epAppr']) $(id).addEventListener('click', () => apprSet(!APPR.on));
+for (const id of ['#cutBtn', '#engCut', '#epCut']) $(id).addEventListener('click', cutToggle);
 // the craft's path under a screen point (within r px): its drawn points, segment by segment (a double tap only)
 function pathHit(px, py, r) {
   if (!C || !C.pt) return false;
@@ -1514,6 +1515,7 @@ function focusName() {
 function frameEnd() {
   setCaption(); liveTick(); apprTip(performance.now());
   engTick(); // the engine charts' playhead (O(1); js/engine-ui.js, loaded before this file)
+  engPanelTick(tNowG, !!(C && simR && !MAP.on && !SCENE.on && !REC.busy)); // the engine panel (shown only with engine burns)
   const n = focusName();
   if (n !== focusTxt) { focusTxt = n; $('#focusName').textContent = n; $('#focusTag').hidden = !n; $('#followTxt').textContent = _('vw.followOn', { name: n || _('fo.free') }); $('#followX').hidden = !n; INS = null; }
   const h = hoverPt && !ptrs.size ? hitAt(hoverPt.x, hoverPt.y, HIT_PX.mouse) : null;

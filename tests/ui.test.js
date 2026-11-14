@@ -1402,6 +1402,18 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   for (const id of ['mv_leo_geo', 'mv_cape_geo', 'mv_bielliptic']) { const M = SC.find(q => q.id === id).M; assert.ok(M.veh === 'p:centaur' && M.F === 99200 && M.m0 === 23073, id + ': the Centaur'); }
   assert.ok(app.includes("if (S.kind === 'man' && S.M.veh && S.M.veh.startsWith('p:')) S.M.eng = engOfVehicle(S.M.veh.slice(2));"), 'a ready-made vehicle brings its engine');
 }
+// 45) The engine panel (2026-11-15): by the readout, ≈ 260 px wide, folds to its header (saved; phones folded by default:
+// a strip with the bars and the two buttons); a small live cutaway (no labels), fuel and oxidizer bars in the charts'
+// colours (one bar without an oxidizer), Δv left, thrust, firing / coasting and the time to the next burn; "Araca
+// yaklaş" and "Kesit"; shown only when the mission's craft fires its engine, not on the map, in the scene or recording;
+// an obstacle of the free plot area
+{
+  const ui = read('js/engine-ui.js'), app = read('js/app.js'), css = read('css/style.css');
+  assert.ok(['engPanel', 'epTog', 'epState', 'epNext', 'epSch', 'epDv', 'epF', 'epOx', 'epFuel', 'epAppr', 'epCut'].every(id => html.includes('id="' + id + '"')) && ['ep.aria', 'ep.burn', 'ep.coast', 'ep.next', 'ep.left', 'ep.done', 'ep.dv', 'ep.F', 'ep.ox', 'ep.fuel', 'ep.prop', 'ep.fold', 'ep.unfold'].every(has), 'engine panel: its parts and words');
+  assert.ok(css.includes('.eng-panel{pointer-events:auto;width:260px;') && css.includes('.ep-bar.ox i{background:var(--cyan)}') && css.includes('.ep-bar.fuel i{background:var(--burn)}') && css.includes('.eng-panel.fold .ep-body{display:none}'), 'engine panel: size, bar colours, folding');
+  assert.ok(ui.includes('const on = !!(m && m.burns && m.burns.length);') && ui.includes("epFold(sv ? sv === '1' : VW.phone.matches, false)") && ui.includes("bar('epOx', bi,") && ui.includes("{ k: 0.55, mini: true }") && ui.includes('s.ve * Math.log((s.md + left) / s.md)'), 'engine panel: only with burns, folded on phones, one bar without oxidizer, the small cutaway, Δv left');
+  assert.ok(app.includes('engPanelTick(tNowG, !!(C && simR && !MAP.on && !SCENE.on && !REC.busy));') && app.includes("$('#engPanel'), $('#timeline')") && app.includes("['#apprBtn', '#engAppr', '#epAppr']") && P.PREF_KEYS.engPanel, 'engine panel: per frame, an obstacle, its buttons, the saved fold');
+}
 // the encoder itself (an ES module): a real GIF
 (async () => {
   const G = await import(require('url').pathToFileURL(path.join(__dirname, '..', 'js', 'rec-worker.mjs')).href);

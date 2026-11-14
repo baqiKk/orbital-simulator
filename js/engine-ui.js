@@ -365,15 +365,16 @@ function plumeCols(cls) {
 // A liquid engine's tanks are as long as their volumes (core.js engTanks, js/engines.js densities: a hydrogen tank is
 // far larger); a hybrid also shows its grain end on (the port hole and the web). Any mode (2D, the low-resource mode,
 // phones): plain shapes, the plume's gradient and flicker only outside the low mode (no flicker with reduced motion).
-function engSchematic(cv, s, st, E, phase, pl = st.Fk) {
-  const w = Math.max(160, cv.parentElement.clientWidth), h = 118, dpr = Math.min(2, window.devicePixelRatio || 1);
-  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + 'px'; }
-  const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, w, h);
+// o.k: drawn at k of its size (the engine panel's 0.55); o.mini: no labels (the panel's bars give the levels)
+function engSchematic(cv, s, st, E, phase, pl = st.Fk, o = {}) {
+  const k = o.k || 1, W = Math.max(160 * k, cv.parentElement.clientWidth), w = W / k, h = 118, dpr = Math.min(2, window.devicePixelRatio || 1);
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(h * k * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(h * k * dpr); cv.style.height = h * k + 'px'; }
+  const x = cv.getContext('2d'); x.setTransform(dpr * k, 0, 0, dpr * k, 0, 0); x.clearRect(0, 0, w, h);
   const col = { metal: engTok('--dim'), line: engTok('--line2'), fuel: engTok('--burn'), ox: engTok('--cyan'), ink: engTok('--ink'), faint: engTok('--faint'), flame: engTok('--accent'),
     plume: plumeCols((PROPS[E.prop] || {}).plume || 'amber'), solid: engTok('--solid') };
   const X = f => 6 + (w - 12) * f, my = h / 2 - 4, low = lowQ || MODE === 'low', still = low || reduceMotion;
   x.lineWidth = 1.2; x.font = '10px ' + engTok('--f-mono'); x.textBaseline = 'alphabetic';
-  const label = (t, px, py) => { x.fillStyle = col.ink; x.globalAlpha = 0.8; x.textAlign = 'left'; x.fillText(t, px, py); x.globalAlpha = 1; };
+  const label = (t, px, py) => { if (o.mini) return; x.fillStyle = col.ink; x.globalAlpha = 0.8; x.textAlign = 'left'; x.fillText(t, px, py); x.globalAlpha = 1; };
   // a tank: rounded body from fraction a to b, filled from its aft (right) end by the level
   const tank = (a, b, half, level, c, name) => {
     const x0 = X(a), x1 = X(b), r = Math.min(half, (x1 - x0) / 2);
@@ -425,7 +426,7 @@ function engSchematic(cv, s, st, E, phase, pl = st.Fk) {
     x.fillStyle = col.solid; x.beginPath(); x.arc(cx, my, R, 0, 6.2832); x.fill(); x.strokeStyle = col.metal; x.stroke();
     x.fillStyle = col.fuel; x.globalAlpha = 0.85; x.beginPath(); x.arc(cx, my, R - 3, 0, 6.2832); x.arc(cx, my, p, 0, 6.2832, true); x.fill('evenodd'); x.globalAlpha = 1;
     if (st.on) { x.fillStyle = col.flame; x.globalAlpha = 0.3 + 0.35 * st.Fk; x.beginPath(); x.arc(cx, my, p, 0, 6.2832); x.fill(); x.globalAlpha = 1; }
-    x.textAlign = 'center'; x.fillStyle = col.ink; x.globalAlpha = 0.8; x.fillText(_('eng.sch.end'), cx, my + R + 13); x.globalAlpha = 1; // under the circle (the tank's label is above)
+    if (!o.mini) { x.textAlign = 'center'; x.fillStyle = col.ink; x.globalAlpha = 0.8; x.fillText(_('eng.sch.end'), cx, my + R + 13); x.globalAlpha = 1; } // under the circle (the tank's label is above)
     x.strokeStyle = col.line; x.setLineDash([2, 3]); x.beginPath(); x.moveTo(cx + R + 6, 6); x.lineTo(cx + R + 6, h - 6); x.stroke(); x.setLineDash([]);
     const t0 = (cx + R + 12 - 6) / (w - 12);
     tank(t0, t0 + 0.2, 24, st.ox, col.ox, _('eng.sch.ox')); feed([[t0 + 0.2, my], [t0 + 0.25, my]], col.ox);
@@ -490,6 +491,50 @@ function engTick(force) {
   x.strokeStyle = st.col; x.globalAlpha = on ? 0.9 : 0.4; x.lineWidth = 1; x.beginPath(); x.moveTo(px + 0.5, st.top); x.lineTo(px + 0.5, st.top + st.H); x.stroke(); x.globalAlpha = 1;
   engEl('engChartNote').textContent = on ? _('eng.on', { t: fmtBurn(tau) }) : _('eng.off');
 }
+
+// ----- the engine panel (2026-11-15): by the readout in missions whose craft fires its engine (and in free flight):
+// a small live cutaway, the fuel and oxidizer bars (one bar for a monopropellant or a solid) in the charts' colours, the
+// Δv left, the thrust now, firing or coasting and the time to the next burn, "Araca yaklaş" and "Kesit". Folds to its
+// header (phones: folded by default, a strip with the bars and the buttons). Text written only when it changes; the
+// cutaway redrawn while the engine burns or its state moves.
+const EP = { key: '', txt: {}, fold: null, drawn: -1 };
+const epSet = (id, v) => { if (EP.txt[id] !== v) { EP.txt[id] = v; engEl(id).textContent = v; } };
+const fmtIn = s => (s >= 86400 ? Math.floor(s / 86400) + _('unit.d') + ' ' + Math.floor(s % 86400 / 3600) + _('unit.h') : s >= 3600 ? Math.floor(s / 3600) + _('unit.h') + ' ' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') + _('unit.min') : String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(Math.floor(s % 60)).padStart(2, '0'));
+function epFold(f, save) {
+  EP.fold = f; const p = engEl('engPanel'); p.classList.toggle('fold', f);
+  engEl('epTog').setAttribute('aria-expanded', String(!f)); engEl('epTog').title = _(f ? 'ep.unfold' : 'ep.fold');
+  if (save) writePref(ENG_LS, PREF_KEYS.engPanel, f ? '1' : '0');
+  INS = null;
+}
+engEl('epTog').addEventListener('click', () => epFold(!EP.fold, true));
+function engPanelTick(t, show) {
+  const p = engEl('engPanel'), en = show ? engNow(t) : null, m = en && en.m;
+  const on = !!(m && m.burns && m.burns.length);
+  if (p.hidden === on) { p.hidden = !on; INS = null; }
+  if (!on) return;
+  if (EP.fold == null) { const sv = readPref(ENG_LS, PREF_KEYS.engPanel); epFold(sv ? sv === '1' : VW.phone.matches, false); }
+  const s = en.s, st = en.st, bi = s.mox > 0;
+  // firing or coasting, the next burn
+  const el = engEl('epState'); el.classList.toggle('on', en.on); epSet('epState', _(en.on ? 'ep.burn' : 'ep.coast'));
+  let next = Infinity; for (const b of m.burns) { const a = engWin(b)[0]; if (a > t && a < next) next = a; }
+  epSet('epNext', en.on ? _('ep.left', { t: fmtIn(Math.max(0, engWin(m.burns[en.j])[1] - t)) }) : next < Infinity ? _('ep.next', { t: fmtIn(next - t) }) : _('ep.done'));
+  // bars
+  const bar = (id, show2, lab, v) => {
+    const b = engEl(id); if (b.hidden === show2) b.hidden = !show2; if (!show2) return;
+    epSet(id + 'L', lab); const pc = Math.round(v * 100) + '%';
+    if (EP.txt[id] !== pc) { EP.txt[id] = pc; b.querySelector('b').textContent = pc; b.querySelector('i').style.width = (v * 100).toFixed(1) + '%'; }
+  };
+  bar('epOx', bi, _('ep.ox'), st.ox); bar('epFuel', true, _(bi ? 'ep.fuel' : 'ep.prop'), st.fuel);
+  // Δv left (Tsiolkovsky on what is left), the thrust now
+  const u = engUsed(s, Math.min(en.tau, s.tb)), left = Math.max(0, s.mp - u.fuel - u.ox);
+  epSet('epDv', fmtSpeed(s.ve * Math.log((s.md + left) / s.md))); epSet('epF', en.on ? fmtF(st.F) : '0 N');
+  // the small cutaway: while it burns, or when its state moved
+  const key = [s.tb, E2K(en.E), Math.round(en.tau / s.tb * 400), en.on, EP.fold].join('|');
+  if (!EP.fold && (en.on || en.pl > 0 || key !== EP.key)) { EP.key = key; engSchematic(engEl('epSch'), s, st, en.E, performance.now() / 1000, en.pl, { k: 0.55, mini: true }); }
+}
+const E2K = E => [E.type, E.prop, E.F, E.isp, E.grain].join(',');
+// the label spans of the bars (written by epSet under their own ids)
+for (const id of ['epOx', 'epFuel']) engEl(id).querySelector('.ep-l').id = id + 'L';
 
 // ----- events -----
 function engEdit() { ENGW.E.id = ''; ENGW.dirty = true; engRenderPre(); engCompute(); }

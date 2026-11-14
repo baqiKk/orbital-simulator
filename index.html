@@ -109,6 +109,13 @@
     <div class="hud-bot" id="hudBot">
       <div class="hud-row">
       <div class="caption" id="caption" hidden></div>
+      <section class="glass eng-panel" id="engPanel" data-i18n-aria-label="ep.aria" hidden>
+        <button type="button" class="ep-h" id="epTog" aria-expanded="true" aria-controls="epBody"><span class="ep-st" id="epState"></span><span class="ep-next" id="epNext"></span><svg class="ep-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5 5 3.5 8 6.5"/></svg></button>
+        <div class="ep-body" id="epBody"><canvas class="ep-sch" id="epSch" aria-hidden="true"></canvas>
+          <dl class="ep-stats"><div><dt data-i18n="ep.dv"></dt><dd id="epDv">—</dd></div><div><dt data-i18n="ep.F"></dt><dd id="epF">—</dd></div></dl></div>
+        <div class="ep-bars"><div class="ep-bar ox" id="epOx"><span class="ep-l"></span><span class="ep-t"><i></i></span><b></b></div><div class="ep-bar fuel" id="epFuel"><span class="ep-l"></span><span class="ep-t"><i></i></span><b></b></div></div>
+        <div class="ep-btns"><button type="button" class="ghost" id="epAppr" aria-pressed="false" data-i18n="appr.btn" data-i18n-title="appr.tip"></button><button type="button" class="ghost" id="epCut" aria-pressed="false" data-i18n="cut.btn" data-i18n-title="cut.tip"></button></div>
+      </section>
       <div class="glass readout" id="readout">
         <div class="big" id="r-t" data-i18n="ui.tplusInit"></div>
         <div class="date" id="r-date" hidden></div>
