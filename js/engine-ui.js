@@ -44,9 +44,10 @@ function engSummary(E, s) {
 // ----- the mission's engine and its burns -----
 // the burns flown (or planned) with the mission's engine: each one's length, Δv, fuel and oxidizer (finite flights:
 // from the engine's clock τ at the start and the end; impulsive: Tsiolkovsky one after the other, core.js engBurns);
-// short: the propellant missing for the impulsive plan (kg)
-function engMission() {
-  const E = S.M && S.M.eng, s = engSpecOf(E);
+// short: the propellant missing for the impulsive plan (kg). E: the engine (the mission's by default; the craft's stand-in
+// for engNow)
+function engMission(E = S.M && S.M.eng) {
+  const s = engSpecOf(E);
   if (!s || s.error || !simR) return s && s.error ? { error: s.error } : null;
   const fin = S.kind === 'man' && MAN && MAN.res && simR.burns && simR.burns.some(b => b.tau1 != null);
   let burns = [], dvs = [];
@@ -87,7 +88,7 @@ function engResRows() {
 }
 
 // ----- the window -----
-const ENGW = { E: { ...ENG_DEF }, linked: false, s: null, tau: -1, st: null };
+const ENGW = { E: { ...ENG_DEF }, linked: false, s: null, tau: -1, st: null, play: 0 };
 const engEl = id => document.getElementById(id);
 function engOpenFrom(E) { ENGW.E = { ...(E || ENGW.E) }; ENGW.linked = !!E && S.M && S.M.eng === E; engRender(); }
 function engRenderPre() {
@@ -119,7 +120,7 @@ function engCompute() {
   err.textContent = s.error ? _(s.error) : ''; err.hidden = !s.error;
   engEl('engApply').disabled = !!s.error;
   engEl('engNote').textContent = ENGW.linked ? _('eng.linked') : S.M && S.M.eng ? _('eng.unlinked') : '';
-  if (s.error) { out.innerHTML = ''; engChart(null); engEl('engBurns').innerHTML = ''; return; }
+  if (s.error) { out.innerHTML = ''; engChart(null); engEl('engBurns').innerHTML = ''; engSchematic(engEl('engSch'), engSpecOf(ENG_DEF), engState(engSpecOf(ENG_DEF), 0), ENG_DEF, 0); return; }
   const bi = s.type === 'liq' || s.type === 'hyb', g = v => NF(2).format(v / G0);
   const rows = [
     [_('eng.o.mdot'), fmtMd(s.mdot)], [_('eng.o.tb'), fmtBurn(s.tb)],
@@ -157,7 +158,7 @@ function engChart(s, m) {
   const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0);
   const L = 46, R = 8, W = w - L - R, N = 121, tb = s.tb, X = t => L + W * t / tb;
   const css = getComputedStyle(document.documentElement), tok = k => css.getPropertyValue(k).trim();
-  const col = { F: tok('--accent'), md: tok('--burn'), fuel: tok('--orbit'), ox: tok('--cyan'), of: tok('--warn'), line: tok('--line'), faint: tok('--faint'), dim: tok('--dim'), span: tok('--accent-soft') };
+  const col = { F: tok('--accent'), md: tok('--orbit'), fuel: tok('--burn'), ox: tok('--cyan'), of: tok('--warn'), line: tok('--line'), faint: tok('--faint'), dim: tok('--dim'), span: tok('--accent-soft') };
   const at = t => engAt(s, Math.min(t, tb * (1 - 1e-9)));
   const series = {
     F: [[t => at(t).F, col.F]], md: [[t => at(t).md, col.md]],
@@ -195,27 +196,146 @@ function engChart(s, m) {
   ENGW.st = { L, W, tb, top, H: rows.length * RH, dpr, m, col: tok('--ink') };
   engTick(true);
 }
-// the playhead: the mission's moment on the engine's clock (still between burns: "motor kapalı")
+// the playhead: the mission's moment on the engine's clock (still between burns: "motor kapalı"); an impulsive burn
+// burns for its own length from its moment on (t1 = t), a finite one from t to t1
 function engTau(m, t) {
-  let tau = 0, on = false;
-  for (const b of m.burns) {
+  let tau = 0, on = false, j = -1;
+  for (let k = 0; k < m.burns.length; k++) {
+    const b = m.burns[k], e = b.t1 > b.t ? b.t1 : b.t + b.len;
     if (t < b.t) break;
-    if (t <= b.t1 && b.t1 > b.t) { tau = b.tau0 + (b.tau1 - b.tau0) * (t - b.t) / (b.t1 - b.t); on = true; break; }
+    if (t <= e && e > b.t) { tau = b.tau0 + (b.tau1 - b.tau0) * (t - b.t) / (e - b.t); on = t < e; j = k; break; }
     tau = b.tau1;
   }
-  return { tau, on };
+  return { tau, on, j };
 }
+// The engine the craft shows (the 3D model, the cutaways): the mission's, or one standing for a maneuver's own figures
+// (a liquid N2O4/MMH engine with its thrust, Isp and masses), else the default
+function engCraftE() {
+  const M = S.M || {};
+  if (M.eng) return M.eng;
+  if (S.kind === 'man' && M.m0 > M.md && M.md > 0 && M.F > 0 && M.isp > 0) return { ...ENG_DEF, F: M.F, isp: M.isp, pm: 'tot', mp: M.m0 - M.md, md: M.md };
+  return ENG_DEF;
+}
+// the craft's engine at mission time t: its spec, the burns (engMission), the engine's clock, whether it burns, and
+// what it looks like inside (core.js engState). Cached per result and engine: per frame only the clock is looked up.
+const ENGM = { simR: null, E: null, m: null, s: null };
+function engNow(t) {
+  const E = engCraftE();
+  if (ENGM.simR !== simR || ENGM.E !== E) {
+    ENGM.simR = simR; ENGM.E = E; ENGM.s = engSpecOf(E);
+    if (ENGM.s && ENGM.s.error) ENGM.s = engSpecOf(ENG_DEF);
+    ENGM.m = simR ? engMission(E) : null;
+  }
+  const s = ENGM.s, m = ENGM.m && !ENGM.m.error ? ENGM.m : null, q = m ? engTau(m, t) : { tau: 0, on: false, j: -1 };
+  return { s, E, m, tau: q.tau, on: q.on, j: q.j, st: engState(s, q.on ? q.tau : Math.min(q.tau, s.tb)), plume: (PROPS[E.prop] || {}).plume || 'amber' };
+}
+// The craft in the views (Phase 18b): its length on screen comes from its mass (a plain model, about 4 m per tonne^⅓,
+// 1.5 … 30 m); cut: the 3D cutaway on; L: this frame's length (m, mode3d.js minDist3 keeps the camera outside it)
+const CRAFT = { cut: false, L: 10 };
+const craftLen = s => Math.min(30, Math.max(1.5, 4 * Math.cbrt((s ? s.m0 : 1000) / 1000)));
+// plume colours by propellant class (Phase 18c): the theme's tokens
+const ENG_PLUME = { blue: '--cyan', orange: '--burn', white: '--ink', faint: '--ink', amber: '--accent' };
+const engTok = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+
+// ----- the side cutaway (Phase 18b, 2D): tanks, feed lines, chamber, nozzle and a small plume, nose left, nozzle right;
+// tank levels, the hybrid's port and the solid's grain live; the lines carry a moving dash while the engine burns.
+// Any mode (2D, the low-resource mode, phones): plain shapes, a gradient only for the plume outside the low mode.
+function engSchematic(cv, s, st, E, phase) {
+  const w = Math.max(160, cv.parentElement.clientWidth), h = 118, dpr = Math.min(2, window.devicePixelRatio || 1);
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + 'px'; }
+  const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, w, h);
+  const col = { metal: engTok('--dim'), line: engTok('--line2'), fuel: engTok('--burn'), ox: engTok('--cyan'), ink: engTok('--ink'), faint: engTok('--faint'), flame: engTok('--accent'),
+    plume: engTok(ENG_PLUME[(PROPS[E.prop] || {}).plume || 'amber']) };
+  const X = f => 6 + (w - 12) * f, my = h / 2 - 4, low = lowQ || MODE === 'low';
+  x.lineWidth = 1.2; x.font = '10px ' + engTok('--f-mono'); x.textBaseline = 'alphabetic';
+  // a tank: rounded body, filled from its aft (right) end by the level
+  const tank = (a, b, half, level, c, label) => {
+    const x0 = X(a), x1 = X(b), r = Math.min(half, (x1 - x0) / 2);
+    const path = () => { x.beginPath(); x.moveTo(x0 + r, my - half); x.lineTo(x1 - r, my - half); x.arc(x1 - r, my, half, -Math.PI / 2, Math.PI / 2); x.lineTo(x0 + r, my + half); x.arc(x0 + r, my, half, Math.PI / 2, Math.PI * 1.5); x.closePath(); };
+    x.save(); path(); x.clip();
+    x.fillStyle = c; x.globalAlpha = 0.85; x.fillRect(x1 - (x1 - x0) * level, my - half, (x1 - x0) * level, 2 * half); x.restore();
+    path(); x.strokeStyle = col.metal; x.stroke();
+    x.fillStyle = col.ink; x.globalAlpha = 0.8; x.textAlign = 'left'; x.fillText(label + ' ' + Math.round(level * 100) + '%', x0 + 2, my - half - 4); x.globalAlpha = 1;
+  };
+  // a feed line (points in fractions of the width, y px), the dash running towards the chamber while it burns
+  const feed = (pts, c) => {
+    x.beginPath(); pts.forEach(([f, y], i) => (i ? x.lineTo(X(f), y) : x.moveTo(X(f), y)));
+    x.strokeStyle = col.line; x.lineWidth = 3; x.setLineDash([]); x.stroke();
+    if (st.on) { x.strokeStyle = c; x.lineWidth = 1.6; x.setLineDash([4, 5]); x.lineDashOffset = -phase * 40; x.stroke(); x.setLineDash([]); }
+    x.lineWidth = 1.2;
+  };
+  // the chamber (a to b, half height ch) and the nozzle (to c, exit half height e); the plume beyond, by thrust
+  const engine = (a, b, ch, c, thr, e) => {
+    x.fillStyle = engTok('--solid'); x.strokeStyle = col.metal;
+    if (b > a) { x.fillRect(X(a), my - ch, X(b) - X(a), 2 * ch); x.strokeRect(X(a), my - ch, X(b) - X(a), 2 * ch); }
+    x.beginPath(); x.moveTo(X(b), my - thr); x.lineTo(X(c), my - e); x.lineTo(X(c), my + e); x.lineTo(X(b), my + thr); x.closePath(); x.fill(); x.stroke();
+    if (st.on && st.Fk > 0) {
+      const L = (w - X(c) - 4) * (0.45 + 0.55 * st.Fk), sp = e + L * 0.55, k = E.type === 'mono' ? 0.35 : 1;
+      x.save(); x.globalAlpha = (low ? 0.4 : 0.85) * k * (0.4 + 0.6 * st.Fk);
+      if (low) x.fillStyle = col.plume; else { const g = x.createLinearGradient(X(c), 0, X(c) + L, 0); g.addColorStop(0, col.plume); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; }
+      x.beginPath(); x.moveTo(X(c), my - e * 0.9); x.lineTo(X(c) + L, my - sp); x.lineTo(X(c) + L, my + sp); x.lineTo(X(c), my + e * 0.9); x.closePath(); x.fill(); x.restore();
+    }
+  };
+  const bot = h - 8;
+  if (E.type === 'liq') {
+    tank(0.02, 0.32, 24, st.ox, col.ox, _('eng.sch.ox')); tank(0.36, 0.6, 24, st.fuel, col.fuel, _('eng.sch.fuel'));
+    feed([[0.6, my], [0.69, my - 4]], col.fuel); feed([[0.32, my + 10], [0.33, bot], [0.66, bot], [0.69, my + 6]], col.ox);
+    engine(0.69, 0.77, 11, 0.9, 7, 20);
+  } else if (E.type === 'hyb') {
+    tank(0.02, 0.32, 24, st.ox, col.ox, _('eng.sch.ox')); feed([[0.32, my], [0.38, my]], col.ox);
+    const a = X(0.38), b = X(0.8), G = 26, p = Math.max(2, st.port * G);
+    x.fillStyle = engTok('--solid'); x.fillRect(a, my - G - 3, b - a, 2 * G + 6);
+    if (st.on) { x.fillStyle = col.flame; x.globalAlpha = 0.25 + 0.35 * st.Fk; x.fillRect(a, my - p, b - a, 2 * p); x.globalAlpha = 1; }
+    x.fillStyle = col.fuel; x.globalAlpha = 0.85; x.fillRect(a, my - G, b - a, G - p); x.fillRect(a, my + p, b - a, G - p); x.globalAlpha = 1;
+    x.strokeStyle = col.metal; x.strokeRect(a, my - G - 3, b - a, 2 * G + 6);
+    x.fillStyle = col.ink; x.globalAlpha = 0.8; x.textAlign = 'left'; x.fillText(_('eng.sch.grain', { r: nf1.format(st.port * 100) }), a + 2, my - G - 7); x.globalAlpha = 1;
+    engine(0.8, 0.8, 0, 0.92, 9, 20);
+  } else if (E.type === 'sol') {
+    const a = X(0.03), b = X(0.8), G = 30, g = SOL_GRAIN_VIEW[E.grain] || SOL_GRAIN_VIEW.bates, [ri, ro] = g(st.web);
+    x.fillStyle = engTok('--solid'); x.fillRect(a, my - G - 3, b - a, 2 * G + 6);
+    if (st.on) { // the flame in what has burnt away: the core (BATES, tube) or around the rod
+      x.fillStyle = col.flame; x.globalAlpha = 0.2 + 0.3 * st.Fk;
+      if (ri > 0) x.fillRect(a, my - ri * G, b - a, 2 * ri * G); else { x.fillRect(a, my - G, b - a, (1 - ro) * G); x.fillRect(a, my + ro * G, b - a, (1 - ro) * G); }
+      x.globalAlpha = 1;
+    }
+    x.fillStyle = col.fuel; x.globalAlpha = 0.85;
+    if (ro > ri) { x.fillRect(a, my - ro * G, b - a, (ro - ri) * G); x.fillRect(a, my + ri * G, b - a, (ro - ri) * G); }
+    x.globalAlpha = 1; x.strokeStyle = col.metal; x.strokeRect(a, my - G - 3, b - a, 2 * G + 6);
+    x.fillStyle = col.ink; x.globalAlpha = 0.8; x.textAlign = 'left'; x.fillText(_('eng.sch.web', { p: Math.round(st.web * 100) }), a + 2, my - G - 7); x.globalAlpha = 1;
+    engine(0.8, 0.8, 0, 0.94, 8, 22);
+  } else {
+    const cx = X(0.16), r = 30;
+    x.save(); x.beginPath(); x.arc(cx, my, r, 0, 6.2832); x.clip(); x.fillStyle = col.fuel; x.globalAlpha = 0.85; x.fillRect(cx + r - 2 * r * st.fuel, my - r, 2 * r * st.fuel, 2 * r); x.restore();
+    x.strokeStyle = col.metal; x.beginPath(); x.arc(cx, my, r, 0, 6.2832); x.stroke();
+    x.fillStyle = col.ink; x.globalAlpha = 0.8; x.textAlign = 'left'; x.fillText(_('eng.sch.prop') + ' ' + Math.round(st.fuel * 100) + '%', cx - r, my - r - 4); x.globalAlpha = 1;
+    feed([[0.16 + 30 / (w - 12), my], [0.56, my]], col.fuel);
+    engine(0.56, 0.64, 7, 0.74, 4, 10);
+  }
+}
+// the solid's grain in the cutaway: inner and outer radius over the casing's at the web burnt (as core.js SOL_GRAIN)
+const SOL_GRAIN_VIEW = { bates: w => [0.5 + 0.5 * w, 1], tube: w => [0.5 + 0.5 * w, 1], rod: w => [0, 1 - 0.6 * w] };
+
+// the window's playhead and cutaway: the mission's moment, or the "Oynat" run of one whole burn (≈ 6 s)
 function engTick(force) {
-  const st = ENGW.st;
-  if (!st || !st.m || !C || engEl('w-engine').hidden) return;
-  const t = uToT(S.u), q = engTau(st.m, t);
-  if (!force && Math.abs(q.tau - ENGW.tau) < st.tb / 2000 && q.on === ENGW.on) return;
-  ENGW.tau = q.tau; ENGW.on = q.on;
+  if (engEl('w-engine').hidden || !ENGW.s || ENGW.s.error) return;
+  const s = ENGW.s, now = performance.now(), E = ENGW.E;
+  let tau = 0, on = false;
+  if (ENGW.play) {
+    const D = Math.min(8000, Math.max(4000, s.tb * 1000)), f = (now - ENGW.play) / D;
+    if (f >= 1) { ENGW.play = 0; engEl('engPlay').setAttribute('aria-pressed', 'false'); } else { tau = f * s.tb; on = true; }
+  }
+  if (!ENGW.play && ENGW.st && ENGW.st.m && C) { const q = engTau(ENGW.st.m, uToT(S.u)); tau = q.tau; on = q.on; }
+  const moving = on || ENGW.play;
+  if (!force && !moving && Math.abs(tau - ENGW.tau) < s.tb / 2000 && on === ENGW.on) return;
+  ENGW.tau = tau; ENGW.on = on;
+  engSchematic(engEl('engSch'), s, engState(s, on ? tau : Math.min(tau, s.tb)), E, now / 1000);
+  const st = ENGW.st; if (!st) return;
   const pv = engEl('engCvP'), x = pv.getContext('2d');
   x.setTransform(st.dpr, 0, 0, st.dpr, 0, 0); x.clearRect(0, 0, pv.width, pv.height);
-  const px = st.L + st.W * Math.min(1, q.tau / st.tb);
-  x.strokeStyle = st.col; x.globalAlpha = q.on ? 0.9 : 0.4; x.lineWidth = 1; x.beginPath(); x.moveTo(px + 0.5, st.top); x.lineTo(px + 0.5, st.top + st.H); x.stroke(); x.globalAlpha = 1;
-  engEl('engChartNote').textContent = q.on ? _('eng.on', { t: fmtBurn(q.tau) }) : _('eng.off');
+  if (!st.m && !ENGW.play) { engEl('engChartNote').textContent = ''; return; }
+  const px = st.L + st.W * Math.min(1, tau / st.tb);
+  x.strokeStyle = st.col; x.globalAlpha = on ? 0.9 : 0.4; x.lineWidth = 1; x.beginPath(); x.moveTo(px + 0.5, st.top); x.lineTo(px + 0.5, st.top + st.H); x.stroke(); x.globalAlpha = 1;
+  engEl('engChartNote').textContent = on ? _('eng.on', { t: fmtBurn(tau) }) : _('eng.off');
 }
 
 // ----- events -----
@@ -243,6 +363,8 @@ for (const f of ENG_NUM) engEl('eng-' + f).addEventListener('input', e => {
   if (bad) return;
   ENGW.E[f] = v; engEdit();
 });
+// "Oynat": one whole burn in the cutaway (and on the charts), ≈ 6 s
+engEl('engPlay').addEventListener('click', () => { ENGW.play = ENGW.play ? 0 : performance.now(); engEl('engPlay').setAttribute('aria-pressed', String(!!ENGW.play)); engTick(true); });
 engEl('engApply').addEventListener('click', () => { if (!ENGW.s || ENGW.s.error) return; engApply({ ...ENGW.E }); });
 engEl('engSave').addEventListener('click', () => {
   const name = (engEl('eng-name').value.trim() || _('eng.auto', { n: SAVED_ENG.length + 1 })).slice(0, 40), q = { ...ENGW.E, name };

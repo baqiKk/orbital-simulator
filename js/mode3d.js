@@ -102,6 +102,7 @@ function pan3(dx, dy) {
 function minDist3() {
   if (MAP.on) return MAP.follow != null ? mapSys.R[MAP.follow] * 1.15 : 1e3;
   const i = S.follow === 'A' ? 0 : S.follow === 'B' ? 1 : S.follow[0] === 'b' ? +S.follow.slice(1) : -1;
+  if (S.follow === 'craft') return CRAFT.L * 0.9; // close enough to see the craft's model, not inside it
   return sys && i >= 0 && i < sys.N ? sys.R[i] * 1.15 : 50;
 }
 // zoom by k about screen point (px, py): the point under it stays put while nothing is followed
@@ -379,6 +380,7 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   const gl3 = sunIdx >= 0 ? glare3([BP3[3 * sunIdx], BP3[3 * sunIdx + 1], BP3[3 * sunIdx + 2]], false, rpx[sunIdx], sunIdx)
     : S.model === 'real' ? glare3(SUN3, true, CB.f * sunAngOf(S.bodies[0].key), -1) : null;
   if (gl3) skySun(gl3.i, sunIdx >= 0 ? rpx[sunIdx] : CB.f * sunAngOf(S.bodies[0].key));
+  const lpx = craft3(tNow, craft, ext, sunIdx);
   V3.render({ stars: Q.stars && !skyRec(), sky: ROT9, skyGain: skyGain(), glare: glow ? gl3 : null });
 
   // ---- overlay ----
@@ -427,9 +429,11 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   proj3(CR3, PJ); proj3(CR3b, PJ2);
   if (PJ[2] > 0 && !behind3(CR3, 0, -1)) {
     const x = PJ[0], y = PJ[1];
-    addHit('c', 0, x, y, 3.2);
-    if (Q.glow) { const g = ctx.createRadialGradient(x, y, 0, x, y, 16); g.addColorStop(0, hexA(COL.traj, 0.6)); g.addColorStop(1, hexA(COL.traj, 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 16, 0, 6.2832); ctx.fill(); }
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
+    addHit('c', 0, x, y, Math.max(3.2, lpx / 2));
+    if (lpx < 14) { // the model takes over once it is large enough on screen
+      if (Q.glow) { const g = ctx.createRadialGradient(x, y, 0, x, y, 16); g.addColorStop(0, hexA(COL.traj, 0.6)); g.addColorStop(1, hexA(COL.traj, 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 16, 0, 6.2832); ctx.fill(); }
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
+    }
     const td = !ext ? thrustNow(tNow, craft) : null;
     if (td) { // the thrust direction while the engine burns: a short step along it, projected
       const k = c.dist * 0.05, X = FP.X, Y = FP.Y, Z = FP.Z;
@@ -446,6 +450,27 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   if (V3S.grid && S.model === 'real' && S.frame === 'inertial') gammaLabel(c);
   // caption: what the grid shows, the node marks
   drawScale(CB.f / c.dist);
+}
+// The craft's model (Phase 18b, view3d.js craft): shown once it is a few pixels long; the nose along the thrust while a
+// finite burn is on, else along the velocity; the cutaway (CRAFT.cut) with the engine's state at this moment (js/engine-ui.js
+// engNow: tank levels, the hybrid's port, a solid's web) and the plume while it burns (Phase 18c: length and brightness
+// by thrust, colour by propellant). Returns the model's length on screen (px).
+const PLUME_TOK = { blue: 'cyan', orange: 'burn', white: 'ink', faint: 'ink', amber: 'accent' };
+function craft3(tNow, craft, ext, sunIdx) {
+  const en = engNow(tNow), L = CRAFT.L = craftLen(en.s);
+  proj3(CR3, PJ);
+  const lpx = PJ[2] > 0 ? L * CB.f / PJ[2] : 0;
+  if (!(lpx > 6)) { V3.craft({ show: false }); return lpx; }
+  const td = en.on && !ext ? thrustNow(tNow, craft) : null, X = FP.X, Y = FP.Y, Z = FP.Z;
+  let ax = td ? [td[0] * X[0] + td[1] * X[1] + td[2] * X[2], td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2], td[0] * Z[0] + td[1] * Z[1] + td[2] * Z[2]] : [CR3b[0] - CR3[0], CR3b[1] - CR3[1], CR3b[2] - CR3[2]];
+  if (!(Math.hypot(...ax) > 0)) ax = [0, 0, 1];
+  let sun = SUN3;
+  if (sunIdx >= 0) { const v = [BP3[3 * sunIdx] - CR3[0], BP3[3 * sunIdx + 1] - CR3[1], BP3[3 * sunIdx + 2] - CR3[2]], l = Math.hypot(...v) || 1; sun = v.map(q => q / l); }
+  const faint = en.plume === 'faint', k = en.st.Fk;
+  V3.craft({ show: true, p: CR3, axis: ax, L, sun, cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, st: en.st,
+    col: { metal: COL.dim, nozzle: COL.faint, fuel: COL.burn, ox: COL.cyan }, // fuel and oxidizer as the engine window's charts
+    plume: { color: COL[PLUME_TOK[en.plume] || 'accent'], a: (faint ? 0.12 : 0.45) * (0.35 + 0.65 * k), len: 0.55 + 0.95 * k } });
+  return lpx;
 }
 // the trail after capture (fading oldest revolutions), up to the craft
 function trail3() {

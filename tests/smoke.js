@@ -50,7 +50,8 @@ function watch(page, errs) {
     }
   }
   // a short design session: the wizard flies a maneuver (Earth 600 → 1300 km), the engine window opens on a ready-made
-  // engine and applies it (the finite burns fly on it), the result card lists the burns
+  // engine and applies it (the finite burns fly on it), the result card lists the burns; then the craft up close (the
+  // button, the cutaway, Esc, A, double clicks) and the engine window's cutaway
   {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 }), page = await ctx.newPage(), errs = [];
     watch(page, errs);
@@ -67,6 +68,30 @@ function watch(page, errs) {
     await step('a ready-made engine', async () => { await page.selectOption('#engPre', 'p:s400'); const t = await page.textContent('#engOut'); if (!/kg\/s/.test(t)) throw new Error('no figures: ' + t); });
     await step('apply it', async () => { await page.click('#engApply'); await page.waitForFunction(() => typeof MAN === "object" && MAN && MAN.res && !MAN.busy && simR && simR.burns && simR.burns.every(b => b.tau1 != null), null, { timeout: 30000 }); });
     await step('the engine in the results', async () => { await page.waitForFunction(() => /S400/.test(document.querySelector('#res').textContent), null, { timeout: 5000 }); });
+    // the craft up close (Phase 18b): the button, the cutaway, Esc and A, a double click on the craft and on empty space
+    const appr = () => page.evaluate(() => APPR.on), cut = () => page.evaluate(() => CRAFT.cut);
+    await step('approach the craft (button)', async () => { await page.click('#apprBtn'); if (!(await appr())) throw new Error('not approached'); });
+    await step('the cutaway', async () => { await page.click('#cutBtn'); if (!(await cut())) throw new Error('no cutaway'); await page.waitForTimeout(800); await page.click('#cutBtn'); });
+    await step('Esc goes back', async () => { await page.click('#cv', { position: { x: 5, y: 5 } }).catch(() => {}); await page.keyboard.press('Escape'); if (await appr()) throw new Error('still close'); });
+    await step('the A key', async () => { await page.keyboard.press('a'); if (!(await appr())) throw new Error('A did not approach'); await page.keyboard.press('a'); if (await appr()) throw new Error('A did not go back'); });
+    await step('double click on the craft', async () => {
+      // the windows close (their rail buttons): nothing over the plot but the readout
+      for (const w of ['engine', 'mission', 'results']) if (await page.evaluate(id => winShown(id), w)) await page.click('.rail [data-win="' + w + '"]');
+      // a double click on empty space fits the whole mission (the craft on screen), then wait for the craft to be clear of
+      // anything (it moves: behind the planet for a while)
+      const e0 = await page.evaluate(() => { const r = document.querySelector('#cv').getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height * 0.4 }; });
+      await page.mouse.dblclick(e0.x, e0.y); await page.waitForTimeout(1200);
+      const where = () => page.evaluate(() => { const h = HITS.find(q => q.kind === 'c'), cv = document.querySelector('#cv'), r = cv.getBoundingClientRect(); if (!h) return null; const x = r.left + h.x, y = r.top + h.y; return document.elementFromPoint(x, y) === cv ? { x, y } : null; });
+      let p = null; for (let i = 0; i < 40 && !(p = await where()); i++) await page.waitForTimeout(250);
+      if (!p) throw new Error('the craft is not on screen'); await page.mouse.dblclick(p.x, p.y); await page.waitForTimeout(300);
+      if (!(await appr())) throw new Error('the double click did not approach');
+    });
+    await step('double click on empty space', async () => {
+      const p = await page.evaluate(() => { const r = document.querySelector('#cv').getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height * 0.4 }; });
+      await page.waitForTimeout(500); await page.mouse.dblclick(p.x, p.y); await page.waitForTimeout(300);
+      if (await appr()) throw new Error('still close after a double click on empty space');
+    });
+    await step('the cutaway in the engine window plays', async () => { await page.click('.rail [data-win="engine"]'); await page.click('#engPlay'); await page.waitForTimeout(1500); const w = await page.evaluate(() => document.querySelector('#engSch').width); if (!(w > 0)) throw new Error('no cutaway drawn'); });
     await page.waitForTimeout(1000);
     report('index.html: wizard maneuver + engine window', errs);
     await ctx.close();

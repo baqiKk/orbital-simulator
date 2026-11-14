@@ -222,6 +222,61 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
+// The craft (Phase 18b): a plain low-poly model by engine type, lit by the Sun (uSun, world axes); the inside of an
+// opened shell darker; the cut faces of the cutaway (tank contents, grain) flat (uFlat). Colours are the theme's tokens.
+export const CRAFT_VS = /* glsl */`
+#include <common>
+#include <logdepthbuf_pars_vertex>
+varying vec3 vN;
+void main() {
+  vN = normalize(mat3(modelMatrix) * normal);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  #include <logdepthbuf_vertex>
+}`;
+export const CRAFT_FS = /* glsl */`
+#include <common>
+#include <logdepthbuf_pars_fragment>
+uniform vec3 uColor, uSun;
+uniform float uFlat;
+varying vec3 vN;
+void main() {
+  #include <logdepthbuf_fragment>
+  vec3 n = normalize(vN) * (gl_FrontFacing ? 1.0 : -1.0);
+  float l = 0.3 + 0.7 * max(dot(n, uSun), 0.0);
+  vec3 c = uFlat > 0.5 ? uColor * 0.92 : uColor * (gl_FrontFacing ? l : 0.38);
+  gl_FragColor = vec4(c, 1.0);
+  #include <colorspace_fragment>
+}`;
+// The plume (Phase 18c): an open cone out of the nozzle, widening in vacuum, no shock diamonds; brightest at the nozzle
+// and along the axis (the side facing the viewer), fading to nothing at the far end. Premultiplied, normal blending
+// (no additive mode), no depth writes. vA: 0 at the nozzle, 1 at the far end.
+export const PLUME_VS = /* glsl */`
+#include <common>
+#include <logdepthbuf_pars_vertex>
+varying float vA;
+varying vec3 vN, vV;
+void main() {
+  vA = position.y;
+  vec4 w = modelMatrix * vec4(position, 1.0);
+  vN = normalize(mat3(modelMatrix) * normal); vV = cameraPosition - w.xyz;
+  gl_Position = projectionMatrix * viewMatrix * w;
+  #include <logdepthbuf_vertex>
+}`;
+export const PLUME_FS = /* glsl */`
+#include <common>
+#include <logdepthbuf_pars_fragment>
+uniform vec3 uColor;
+uniform float uA;
+varying float vA;
+varying vec3 vN, vV;
+void main() {
+  #include <logdepthbuf_fragment>
+  float f = abs(dot(normalize(vN), normalize(vV)));
+  float a = uA * pow(1.0 - clamp(vA, 0.0, 1.0), 1.7) * (0.15 + 0.85 * f * f);
+  gl_FragColor = vec4(uColor * a, a);
+  #include <colorspace_fragment>
+}`;
+
 // Tone mapping: the custom operator of js/globe.js (highlights only), through Three's CustomToneMapping hook
 THREE.ShaderChunk.tonemapping_pars_fragment = THREE.ShaderChunk.tonemapping_pars_fragment.replace('vec3 CustomToneMapping( vec3 color ) { return color; }',
   TONEMAP_GLSL + '\nvec3 CustomToneMapping( vec3 color ) { return toneMap( color * toneMappingExposure ); }');
@@ -472,6 +527,103 @@ export function create(canvas, opts) {
     grid.c[0] = c[0]; grid.c[1] = c[1]; grid.c[2] = c[2]; grid.s = s; grid.alpha[0] = aMinor; grid.alpha[1] = aMajor;
   }
 
+  // ---- the craft (Phase 18b) and its plume (18c) ----
+  // Model units: length 1 along +y (nose at +0.5, nozzle exit at −0.5), scaled by the craft's length. Shells are lathe
+  // surfaces, whole or (cutaway) the half x ≤ 0; the group is turned so +x faces the camera: the cut always opens
+  // towards the viewer. The cutaway's contents are flat faces in the plane x = 0 (tank liquids filling from the aft end,
+  // a hybrid's grain on both sides of its port, a solid's grain about its core) and half cylinders for the port walls.
+  const craftG = { group: null, key: '', shells: [], fills: {}, mats: {}, plumes: [], ports: [] };
+  const lathe = (pts, half) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), 28, half ? Math.PI : 0, half ? Math.PI : Math.PI * 2);
+  // a capsule tank: radius r from y0 to y1, domes of height k·r
+  const tankPts = (r, y0, y1, k = 0.5) => { const p = []; for (let i = 0; i <= 6; i++) { const a = i / 6 * Math.PI / 2; p.push([r * Math.sin(a), y0 + k * r * (1 - Math.cos(a))]); } for (let i = 6; i >= 0; i--) { const a = i / 6 * Math.PI / 2; p.push([r * Math.sin(a), y1 - k * r * (1 - Math.cos(a))]); } return p; };
+  const bellPts = (r0, r1, y0, y1) => { const p = []; for (let i = 0; i <= 8; i++) { const f = i / 8; p.push([r0 + (r1 - r0) * Math.sqrt(f), y0 - (y0 - y1) * f]); } return p; };
+  const quad = new THREE.PlaneGeometry(1, 1).rotateY(Math.PI / 2), halfCyl = new THREE.CylinderGeometry(1, 1, 1, 24, 1, true, Math.PI, Math.PI);
+  function craftMat(color, flat) {
+    return new THREE.ShaderMaterial({ vertexShader: CRAFT_VS, fragmentShader: CRAFT_FS, side: THREE.DoubleSide, toneMapped: false,
+      uniforms: { uColor: { value: new THREE.Color(color) }, uSun: { value: new THREE.Vector3(1, 0, 0) }, uFlat: { value: flat ? 1 : 0 } } });
+  }
+  function plumeMesh() {
+    // the cone opens away from the nozzle: radius 1 at the far end (y = 1), 0.1 at the nozzle, sized per frame by scale
+    const g = new THREE.CylinderGeometry(1, 0.1, 1, 32, 6, true).translate(0, 0.5, 0);
+    const m = new THREE.Mesh(g, new THREE.ShaderMaterial({ vertexShader: PLUME_VS, fragmentShader: PLUME_FS, transparent: true, premultipliedAlpha: true, depthWrite: false,
+      side: THREE.DoubleSide, toneMapped: false, uniforms: { uColor: { value: new THREE.Color(1, 1, 1) }, uA: { value: 0 } } }));
+    m.rotation.x = Math.PI; m.visible = false; m.renderOrder = 2; return m;
+  }
+  // build the model for engine type ty (grain for a solid); col: { metal, nozzle, fuel, ox }
+  function craftBuild(ty, grain, col) {
+    if (craftG.group) { roots.sim.remove(craftG.group); craftG.group.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry && o.geometry !== quad && o.geometry !== halfCyl) o.geometry.dispose(); }); }
+    const g = new THREE.Group(); g.visible = false;
+    const M = { metal: craftMat(col.metal), nozzle: craftMat(col.nozzle), fuel: craftMat(col.fuel, true), ox: craftMat(col.ox, true), wall: craftMat(col.fuel) };
+    M.wall.uniforms.uColor.value.multiplyScalar(0.4); // the port's burning wall, darker than the grain's cut face
+    const shells = [], fills = {}, ports = [], plumes = [];
+    const shell = (pts, mat) => { const a = new THREE.Mesh(lathe(pts, false), mat), b = new THREE.Mesh(lathe(pts, true), mat); b.visible = false; g.add(a, b); shells.push([a, b]); };
+    const fill = (name, mat, r, y0, y1) => { const m = new THREE.Mesh(quad, mat); m.visible = false; g.add(m); fills[name] = { m, r, y0, y1 }; };
+    const port = (name, r, y0, y1) => { const m = new THREE.Mesh(halfCyl, M.wall); m.visible = false; g.add(m); ports.push(m); fills[name] = { m, r, y0, y1, wall: true }; };
+    if (ty === 'liq') {
+      shell(tankPts(0.12, 0.12, 0.48), M.metal); fill('ox', M.ox, 0.115, 0.15, 0.45);
+      shell(tankPts(0.12, -0.22, 0.09), M.metal); fill('fuel', M.fuel, 0.115, -0.19, 0.06);
+      shell([[0.1, -0.22], [0.05, -0.27]], M.metal); shell([[0.04, -0.27], [0.04, -0.31]], M.nozzle); shell(bellPts(0.035, 0.1, -0.31, -0.5), M.nozzle);
+    } else if (ty === 'hyb') {
+      shell(tankPts(0.12, 0.1, 0.48), M.metal); fill('ox', M.ox, 0.115, 0.13, 0.45);
+      shell(tankPts(0.125, -0.36, 0.07, 0.25), M.metal); fill('grainA', M.fuel, 0.115, -0.33, 0.04); fill('grainB', M.fuel, 0.115, -0.33, 0.04); port('port', 0.115, -0.33, 0.04);
+      shell(bellPts(0.03, 0.095, -0.36, -0.5), M.nozzle);
+    } else if (ty === 'sol') {
+      shell(tankPts(0.15, -0.38, 0.45, 0.6), M.metal); fill('grainA', M.fuel, 0.14, -0.3, 0.38); fill('grainB', M.fuel, 0.14, -0.3, 0.38); port('port', 0.14, -0.3, 0.38);
+      shell(bellPts(0.035, 0.1, -0.38, -0.5), M.nozzle);
+    } else {
+      shell(tankPts(0.2, -0.05, 0.37, 1), M.metal); fill('fuel', M.fuel, 0.15, 0.0, 0.32);
+      shell([[0.16, -0.25], [0.16, -0.05]], M.metal);
+      for (const [x, z] of [[0.12, 0.12], [-0.12, 0.12], [0.12, -0.12], [-0.12, -0.12]]) { const t = new THREE.Mesh(lathe(bellPts(0.012, 0.03, -0.25, -0.33), false), M.nozzle); t.position.set(x, 0, z); g.add(t); }
+    }
+    const nPl = ty === 'mono' ? 4 : 1;
+    for (let i = 0; i < nPl; i++) { const p = plumeMesh(); g.add(p); plumes.push(p); }
+    roots.sim.add(g);
+    Object.assign(craftG, { group: g, shells, fills, ports, plumes, mats: M, ty, grain });
+  }
+  // o: { show, p (metres), axis (unit, the nose), L (m), sun (unit, world), cut, type, grain, col, st: core.js engState,
+  //      plume: { color, a, len (model lengths) } }
+  const _cx = new THREE.Vector3(), _cy = new THREE.Vector3(), _cz = new THREE.Vector3(), _cm = new THREE.Matrix4();
+  function craft(o) {
+    if (!o.show) { if (craftG.group) craftG.group.visible = false; return; }
+    const key = [o.type, o.grain, o.col.metal, o.col.fuel, o.col.ox, o.col.nozzle].join('|');
+    if (craftG.key !== key) { craftBuild(o.type, o.grain, o.col); craftG.key = key; }
+    const g = craftG.group, L = o.L * KM, st = o.st || {};
+    g.visible = true; g.scale.setScalar(L); g.position.set((o.p[0] - T[0]) * KM, (o.p[1] - T[1]) * KM, (o.p[2] - T[2]) * KM); // after view(): T is this frame's
+    for (const m of Object.values(craftG.mats)) m.uniforms.uSun.value.set(o.sun[0], o.sun[1], o.sun[2]);
+    // orientation: +y the nose, +x towards the camera (the cut faces it), from the camera's place this frame
+    _cy.set(o.axis[0], o.axis[1], o.axis[2]).normalize();
+    _cx.set((o.p[0] - T[0]) * KM, (o.p[1] - T[1]) * KM, (o.p[2] - T[2]) * KM).negate().add(camera.position).normalize();
+    _cx.addScaledVector(_cy, -_cx.dot(_cy)); if (_cx.lengthSq() < 1e-12) _cx.set(_cy.y, -_cy.x, 0); _cx.normalize();
+    _cz.crossVectors(_cx, _cy);
+    g.quaternion.setFromRotationMatrix(_cm.makeBasis(_cx, _cy, _cz));
+    for (const [a, b] of craftG.shells) { a.visible = !o.cut; b.visible = !!o.cut; }
+    // the cutaway's contents
+    for (const [name, f] of Object.entries(craftG.fills)) {
+      const m = f.m; m.visible = !!o.cut;
+      if (!o.cut) continue;
+      const len = f.y1 - f.y0;
+      if (name === 'fuel' || name === 'ox') { const k = Math.max(0, Math.min(1, name === 'ox' ? st.ox : st.fuel)); m.visible = k > 0.002; m.scale.set(1, len * k, 2 * f.r); m.position.set(0.001, f.y0 + len * k / 2, 0); continue; }
+      // grains: the hybrid's port (st.port of the outer radius) and a solid's web (core.js SOL_GRAIN shapes)
+      let ri, ro;
+      if (craftG.ty === 'hyb') { ri = st.port || 0; ro = 1; } else if (craftG.grain === 'rod') { ri = 0; ro = 1 - 0.6 * (st.web || 0); } else { ri = 0.5 + 0.5 * (st.web || 0); ro = 1; }
+      const w = (ro - ri) * f.r;
+      if (f.wall) { m.visible = ri > 0.01 || craftG.grain === 'rod'; const rr = craftG.grain === 'rod' ? ro : ri; m.scale.set(rr * f.r, len, rr * f.r); m.position.set(0, (f.y0 + f.y1) / 2, 0); continue; }
+      m.visible = w > 1e-4; m.scale.set(1, len, craftG.grain === 'rod' && craftG.ty === 'sol' ? 2 * ro * f.r : w);
+      const zc = craftG.grain === 'rod' && craftG.ty === 'sol' ? 0 : (name === 'grainA' ? 1 : -1) * (ri * f.r + w / 2);
+      m.position.set(0.001, (f.y0 + f.y1) / 2, zc);
+      if (name === 'grainB' && craftG.grain === 'rod' && craftG.ty === 'sol') m.visible = false;
+    }
+    // the plume(s): only while the engine burns, length and brightness by thrust
+    const pl = o.plume || { a: 0 }, on = st.on && pl.a > 0.002;
+    craftG.plumes.forEach((p, i) => {
+      p.visible = on; if (!on) return;
+      const mono = craftG.plumes.length > 1, len = mono ? pl.len * 0.3 : pl.len, r1 = (mono ? 0.03 : 0.1) + len * 0.45;
+      p.material.uniforms.uColor.value.set(pl.color); p.material.uniforms.uA.value = pl.a;
+      p.scale.set(r1, len, r1);
+      if (mono) { const s = [[0.12, 0.12], [-0.12, 0.12], [0.12, -0.12], [-0.12, -0.12]][i]; p.position.set(s[0], -0.33, s[1]); } else p.position.set(0, -0.5, 0);
+    });
+  }
+
   // ---- frame ----
   function size(w, h, dpr) {
     W = w; H = h; DPR = dpr;
@@ -493,7 +645,7 @@ export function create(canvas, opts) {
     camera.updateProjectionMatrix();
   }
   const _q = new THREE.Quaternion();
-  function setActive(set) { active = set; for (const k in roots) roots[k].visible = k === set; }
+  function setActive(set) { active = set; for (const k in roots) roots[k].visible = k === set; if (set !== 'sim' && craftG.group) craftG.group.visible = false; }
   // opts: stars (draw the sky), sky (ecliptic -> view frame, row-major; null: the ecliptic axes), skyGain (the viewer's
   // gain × the eye adaptation), glare ({ x, y px from the top left, L px, i intensity } or null)
   const _sk = new THREE.Matrix4();
@@ -544,6 +696,6 @@ export function create(canvas, opts) {
   }
   function dispose() { renderer.dispose(); }
 
-  return { size, view, setActive, render, bodies, body, skySet, line, lineDrop, lineDropAll, lineUpTo, lineSet, lineOpacity, lineGlow, dyn, dynSet, dynHide, gridSet, dispose,
+  return { size, view, setActive, render, bodies, body, skySet, line, lineDrop, lineDropAll, lineUpTo, lineSet, lineOpacity, lineGlow, dyn, dynSet, dynHide, gridSet, craft, dispose,
     get gl() { return renderer.getContext(); }, renderer };
 }

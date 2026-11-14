@@ -793,3 +793,7 @@ html[data-q=low] #kGlowArt{filter:none}
 .eng-act{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .eng-act input{flex:1;min-width:110px}
 .eng-burns th{white-space:nowrap}
+.eng-sch{width:100%;border:1px solid var(--line);background:rgba(3,5,7,.5)}
+.eng-sch canvas{display:block;width:100%}
+.appr-btn,.cut-btn{white-space:nowrap}
+.appr-tip{position:absolute;right:8px;bottom:calc(100% + 8px);padding:7px 10px;font:500 11.5px/1.3 var(--f-body);color:var(--ink);z-index:29;pointer-events:none;white-space:nowrap}

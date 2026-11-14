@@ -1319,10 +1319,86 @@ function tap(x, y, touch) {
   const dbl = lastTap && now - lastTap.t < 350 && Math.hypot(x - lastTap.x, y - lastTap.y) < 24;
   // the first tap re-centres the body it hit, so the second one acts on that body, not on where it landed
   const tgt = dbl && lastTap.h ? lastTap.h : h;
+  const onPath = dbl && !tgt && !MAP.on && pathHit(x, y, touch ? 18 : 10);
   lastTap = dbl ? null : { t: now, x, y, h };
+  // a double tap on the craft or on its path comes close to the craft; on empty space it goes back from there
+  if (dbl && !MAP.on && C && ((tgt && tgt.kind === 'c') || onPath)) { sceneTouch(); apprSet(true); return; }
+  if (dbl && !tgt && APPR.on) { apprSet(false); return; }
   if (tgt || dbl) sceneTouch();
   if (tgt) focusHit(tgt, dbl);
   else if (dbl) { if (MAP.on) fitMap(); else { S.follow = 'free'; renderFrameSeg(); fit(); } }
+}
+
+// ===================== The craft up close (Phase 18b) =====================
+// "Araca yaklaş" (the timeline's and the engine window's button, a double tap on the craft or its path, the A key): the
+// camera follows the craft and comes close enough to show it large (3D: its model about 45 % of the view's height; 2D: a
+// view 400 km across about it), a smooth move as for an overview pick; Esc, A, the button again or a double tap on empty
+// space go back to the view before (APPR.prev). "Kesit" opens the 3D model's hull (CRAFT.cut); in 2D the engine window's
+// cutaway shows it. The first time a mission is on screen, a hint says how (once: PREF_KEYS.apprTip).
+const APPR = { on: false, prev: null, tipAt: 0 };
+function apprSet(on) {
+  if (on && (!C || MAP.on || SCENE.on)) return;
+  if (on === APPR.on) return;
+  const a = flyFrom(), v3 = is3d(), c = v3 ? cam3() : null;
+  if (on) {
+    APPR.prev = { follow: S.follow, v3, cam: { cx: cam.cx, cy: cam.cy, scale: cam.scale }, c: c && { t: [...c.t], dist: c.dist, yaw: c.yaw, elev: c.elev, cx: c.cx, cy: c.cy } };
+    S.follow = 'craft'; renderFrameSeg();
+    CRAFT.L = craftLen(engNow(uToT(S.u)).s); // this craft's length (the frame has not drawn it yet)
+    if (v3) c.dist = CRAFT.L / (0.9 * Math.tan(c.fov * Math.PI / 360)); // the model ≈ 45 % of the view's height
+    else cam.scale = Math.min(W, H) / 4e5;
+  } else {
+    const p = APPR.prev; APPR.prev = null;
+    if (p) {
+      S.follow = p.follow; renderFrameSeg();
+      if (p.v3 === v3) { if (v3) Object.assign(c, { ...p.c, t: [...p.c.t] }); else Object.assign(cam, p.cam); }
+    }
+  }
+  APPR.on = on; flyTo(a); apprSync();
+}
+function apprSync() { for (const id of ['#apprBtn', '#engAppr']) $(id).setAttribute('aria-pressed', String(APPR.on)); for (const id of ['#cutBtn', '#engCut']) $(id).setAttribute('aria-pressed', String(CRAFT.cut)); }
+function cutToggle() { CRAFT.cut = !CRAFT.cut; apprSync(); if (CRAFT.cut && !is3d()) setWin('engine', { open: true, collapsed: false }); }
+for (const id of ['#apprBtn', '#engAppr']) $(id).addEventListener('click', () => apprSet(!APPR.on));
+for (const id of ['#cutBtn', '#engCut']) $(id).addEventListener('click', cutToggle);
+// the craft's path under a screen point (within r px): its drawn points, segment by segment (a double tap only)
+function pathHit(px, py, r) {
+  if (!C || !C.pt) return false;
+  const v3 = is3d(), n = C.pt.length, step = Math.max(1, Math.floor(n / 4000)), P = [0, 0];
+  const at = i => { if (v3) { if (!C.f3) return false; proj3(C.f3, PJ, 3 * i); if (!(PJ[2] > 0)) return false; P[0] = PJ[0]; P[1] = PJ[1]; return true; } if (!C.fx) return false; P[0] = sx(C.fx[i]); P[1] = sy(C.fy[i]); return true; };
+  let q = null;
+  for (let i = 0; i < n; i += step) {
+    if (!at(i)) { q = null; continue; }
+    if (q) { const dx = P[0] - q[0], dy = P[1] - q[1], l2 = dx * dx + dy * dy, f = l2 > 0 ? clamp(((px - q[0]) * dx + (py - q[1]) * dy) / l2, 0, 1) : 0; if (Math.hypot(q[0] + f * dx - px, q[1] + f * dy - py) < r) return true; }
+    q = [P[0], P[1]];
+  }
+  return false;
+}
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (e.key === 'a' || e.key === 'A') apprSet(!APPR.on);
+  else if (e.key === 'Escape' && APPR.on && !e.defaultPrevented && $('#start').hidden && $('#viewMenu').hidden && $('#followMenu').hidden) apprSet(false);
+});
+// the hint, once, the first time a mission is on screen; it goes after a few seconds or when the craft is approached
+function apprTip(now) {
+  const el = $('#apprTip');
+  if (!APPR.tipAt) {
+    if (SCENE.on || !C || MAP.on || readPref(LS, PREF_KEYS.apprTip)) return;
+    APPR.tipAt = now; writePref(LS, PREF_KEYS.apprTip, '1');
+    el.textContent = _(matchMedia('(pointer: coarse)').matches ? 'appr.hintTouch' : 'appr.hint'); el.hidden = false;
+  } else if (!el.hidden && (now - APPR.tipAt > 7000 || APPR.on)) el.hidden = true;
+}
+// 2D: a small plume behind the craft while it burns (Phase 18c), against the thrust (or the velocity for an impulsive
+// burn's length), by thrust; flat in the low-resource mode
+function plume2d(x, y, tNow, td, vx, vy, ext) {
+  if (ext) return;
+  const en = engNow(tNow); if (!en.on) return;
+  let dx, dy;
+  if (td) { const X = FP.X, Y = FP.Y; dx = -(td[0] * X[0] + td[1] * X[1] + td[2] * X[2]); dy = td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2]; } else { dx = -vx; dy = -vy; }
+  const l = Math.hypot(dx, dy); if (!(l > 1e-9)) return;
+  const ux = dx / l, uy = dy / l, k = en.st.Fk, L = 10 + 18 * k, s = L * 0.5, col = COL[PLUME_TOK[en.plume] || 'accent'], faint = en.plume === 'faint';
+  ctx.save(); ctx.globalAlpha = (faint ? 0.3 : 0.85) * (0.4 + 0.6 * k);
+  if (Q.glow) { const g = ctx.createLinearGradient(x, y, x + ux * L, y + uy * L); g.addColorStop(0, col); g.addColorStop(1, hexA(col, 0)); ctx.fillStyle = g; } else ctx.fillStyle = col;
+  ctx.beginPath(); ctx.moveTo(x + ux * 3 - uy * 2, y + uy * 3 + ux * 2); ctx.lineTo(x + ux * L - uy * s, y + uy * L + ux * s); ctx.lineTo(x + ux * L + uy * s, y + uy * L - ux * s); ctx.lineTo(x + ux * 3 + uy * 2, y + uy * 3 - ux * 2); ctx.closePath(); ctx.fill();
+  ctx.restore();
 }
 
 // ===================== Picking & focus =====================
@@ -1427,7 +1503,7 @@ function focusName() {
 }
 // end of a frame: HUD focus tag, hover cursor and ring (rings are plain in the low-resource mode)
 function frameEnd() {
-  setCaption(); liveTick();
+  setCaption(); liveTick(); apprTip(performance.now());
   engTick(); // the engine charts' playhead (O(1); js/engine-ui.js, loaded before this file)
   const n = focusName();
   if (n !== focusTxt) { focusTxt = n; $('#focusName').textContent = n; $('#focusTag').hidden = !n; $('#followTxt').textContent = _('vw.followOn', { name: n || _('fo.free') }); $('#followX').hidden = !n; INS = null; }
@@ -3313,6 +3389,7 @@ function drawBody(now, once) {
         } else { ctx.strokeStyle = COL.traj; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, 6, 0, 6.2832); ctx.stroke(); }
         ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
         const td = !ext ? thrustNow(tNow, craft) : null;
+        plume2d(x, y, tNow, td, sx(cpos2[0]) - x, sy(cpos2[1]) - y, ext);
         if (td) { // the thrust direction while the engine burns, in the view plane
           const X = FP.X, Y = FP.Y, ax = td[0] * X[0] + td[1] * X[1] + td[2] * X[2], ay = -(td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2]);
           arrow(x, y, ax, ay, COL.burn, 34);

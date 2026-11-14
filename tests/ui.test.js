@@ -1283,6 +1283,30 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(/\n  smoke:\n/.test(ci) && ci.includes('playwright@1.49.1') && ci.includes('--prefix "$RUNNER_TEMP/pw"') && ci.includes('node tests/smoke.js'), 'smoke: its own CI job, Playwright outside the repository');
   assert.ok(!fs.existsSync(path.join(__dirname, '..', 'package.json')) && !fs.existsSync(path.join(__dirname, '..', 'node_modules')), 'smoke: no package.json or node_modules in the repository');
   assert.ok(/Push'tan önce duman testini yerelde de çalıştır/.test(read('CLAUDE.md')), 'smoke: the rule in CLAUDE.md');
+  assert.ok(['#apprBtn', '#cutBtn', "page.keyboard.press('a')", 'page.mouse.dblclick', '#engPlay'].every(k => sm.includes(k)), 'smoke: the craft up close (button, cutaway, A, double clicks) and the engine window\'s cutaway');
+}
+// 42) The craft and its plume (Phase 18b, 18c): a procedural model per engine type in view3d.js (no model files), its
+// shaders in the logarithmic depth space (test 7 checks every *_VS / *_FS), the plume premultiplied without an additive
+// mode; the cutaway's colours the engine charts' tokens (fuel --burn, oxidizer --cyan), the plume's by propellant;
+// "Araca yaklaş": button, double tap on the craft or its path, A, Esc back, a one-time hint; the 2D cutaway in the engine
+// window in every mode (plain shapes in the low mode); the 2D view's small plume; the engine window's rail icon.
+{
+  const v3 = read('js/view3d.js'), m3 = read('js/mode3d.js'), app = read('js/app.js'), ui = read('js/engine-ui.js');
+  assert.ok(/export const CRAFT_VS/.test(v3) && /export const PLUME_FS/.test(v3) && v3.includes('new THREE.LatheGeometry(') && !/\.(glb|gltf|obj|fbx)['"]/.test(v3) && v3.includes('craft, dispose'), 'craft: procedural lathe model, no model files, exported');
+  const pl = v3.slice(v3.indexOf('function plumeMesh()'), v3.indexOf('// build the model for engine type'));
+  assert.ok(pl.includes('premultipliedAlpha: true') && pl.includes('depthWrite: false') && !pl.includes('AdditiveBlending'), 'plume: premultiplied, no depth writes, no additive mode');
+  for (const ty of ["ty === 'liq'", "ty === 'hyb'", "ty === 'sol'"]) assert.ok(v3.includes(ty), 'craft: a model for ' + ty);
+  assert.ok(m3.includes("col: { metal: COL.dim, nozzle: COL.faint, fuel: COL.burn, ox: COL.cyan }") && ui.includes("fuel: tok('--burn'), ox: tok('--cyan')") && ui.includes("fuel: engTok('--burn'), ox: engTok('--cyan')"), 'cutaway: fuel and oxidizer in the charts\' tokens, in 3D and 2D');
+  assert.ok(/const PLUME_TOK = \{ blue: 'cyan', orange: 'burn', white: 'ink', faint: 'ink', amber: 'accent' \}/.test(m3) && /const ENG_PLUME = \{ blue: '--cyan', orange: '--burn', white: '--ink', faint: '--ink', amber: '--accent' \}/.test(ui), 'plume: colour by propellant from the tokens');
+  assert.ok(m3.includes('const td = en.on && !ext ? thrustNow(tNow, craft) : null') && m3.includes("if (S.follow === 'craft') return CRAFT.L * 0.9;"), 'craft: the nose along the thrust while burning; the camera kept outside it');
+  // approaching the craft
+  assert.ok(html.includes('id="apprBtn"') && html.includes('id="cutBtn"') && html.includes('id="engAppr"') && html.includes('id="engCut"') && html.includes('id="apprTip"') && ['appr.btn', 'appr.tip', 'appr.hint', 'appr.hintTouch', 'cut.btn', 'cut.tip', 'eng.play'].every(has), 'approach: the buttons, the hint, the words');
+  assert.ok(app.includes("if (dbl && !MAP.on && C && ((tgt && tgt.kind === 'c') || onPath)) { sceneTouch(); apprSet(true); return; }") && app.includes('if (dbl && !tgt && APPR.on) { apprSet(false); return; }') && app.includes("if (e.key === 'a' || e.key === 'A') apprSet(!APPR.on);") && app.includes("e.key === 'Escape' && APPR.on"), 'approach: double tap on the craft or its path, empty space back, A, Esc');
+  assert.ok(P.PREF_KEYS.apprTip && app.includes('writePref(LS, PREF_KEYS.apprTip, \'1\')'), 'approach: the hint once');
+  // the 2D cutaway and the 2D plume
+  assert.ok(ui.includes("low = lowQ || MODE === 'low'") && ui.includes('function engSchematic(') && html.includes('id="engSch"') && html.includes('id="engPlay"'), 'cutaway 2D: in the engine window, plain in the low mode, "Oynat"');
+  assert.ok(app.includes('plume2d(x, y, tNow, td, sx(cpos2[0]) - x, sy(cpos2[1]) - y, ext);') && app.includes('if (Q.glow) { const g = ctx.createLinearGradient(x, y, x + ux * L, y + uy * L);'), '2D view: a small plume, flat without glow');
+  assert.ok(html.includes('<path d="M7 1.5h6v3.1l-1.7 2.3v.3C12.5 8.5 14.9 11 15.4 14.6H4.6C5.1 11 7.5 8.5 8.7 7.2v-.3L7 4.6z"/><path class="acc" d="M6.8 15.6h6.4L10 19.6z"/>'), 'rail: the engine window\'s icon');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {
