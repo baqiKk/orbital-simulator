@@ -38,7 +38,12 @@ function watch(page, errs) {
   const pages = fs.readdirSync(ROOT).filter(f => f.endsWith('.html') && !/^google[0-9a-f]+\.html$/.test(f)).sort();
   const browser = await pw.chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'] });
   let failed = 0;
-  const report = (name, errs) => { if (errs.length) { failed++; console.error(`✗ ${name}\n  ` + errs.join('\n  ')); } else console.log('✓ ' + name); };
+  // a failure is also a GitHub Actions annotation (readable without the job's log)
+  const report = (name, errs) => {
+    if (!errs.length) { console.log('✓ ' + name); return; }
+    failed++; console.error(`✗ ${name}\n  ` + errs.join('\n  '));
+    if (process.env.GITHUB_ACTIONS) for (const e of errs.slice(0, 8)) console.log(`::error title=smoke ${name.replace(/[:,]/g, ' ')}::${String(e).replace(/\r?\n/g, ' ').slice(0, 400)}`);
+  };
   for (const [vw, label] of [[{ width: 1280, height: 800 }, 'desktop'], [{ width: 390, height: 844 }, 'phone']]) {
     for (const f of pages) {
       const ctx = await browser.newContext({ viewport: vw, deviceScaleFactor: 1 }), page = await ctx.newPage(), errs = [];
@@ -70,6 +75,8 @@ function watch(page, errs) {
     await step('the engine in the results', async () => { await page.waitForFunction(() => /S400/.test(document.querySelector('#res').textContent), null, { timeout: 5000 }); });
     // the craft up close (Phase 18b): the button, the cutaway, Esc and A, a double click on the craft and on empty space
     const appr = () => page.evaluate(() => APPR.on), cut = () => page.evaluate(() => CRAFT.cut);
+    // paused (the play button): the craft stays where the double clicks aim
+    await step('pause', async () => { if (await page.evaluate(() => S.playing)) await page.click('#play'); });
     await step('approach the craft (button)', async () => { await page.click('#apprBtn'); if (!(await appr())) throw new Error('not approached'); });
     await step('the cutaway', async () => { await page.click('#cutBtn'); if (!(await cut())) throw new Error('no cutaway'); await page.waitForTimeout(800); await page.click('#cutBtn'); });
     await step('Esc goes back', async () => { await page.click('#cv', { position: { x: 5, y: 5 } }).catch(() => {}); await page.keyboard.press('Escape'); if (await appr()) throw new Error('still close'); });
