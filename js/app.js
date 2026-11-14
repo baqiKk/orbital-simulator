@@ -1516,6 +1516,10 @@ function frameEnd() {
   setCaption(); liveTick(); apprTip(performance.now());
   engTick(); // the engine charts' playhead (O(1); js/engine-ui.js, loaded before this file)
   engPanelTick(tNowG, !!(C && simR && !MAP.on && !SCENE.on && !REC.busy)); // the engine panel (shown only with engine burns)
+  // the engine rumble (js/sim-audio.js): while playing, the plume's strength times the camera's closeness to the craft
+  // (3D: following it, gone by NEAR3's far end; 2D: in the close view)
+  const near = !C || !simR || MAP.on || SCENE.on || !S.playing ? 0 : is3d() ? (S.follow === 'craft' ? 1 - nearFade3(CAM3.sim.dist) : 0) : APPR.on ? 1 : 0;
+  simAudioTick(near > 0 ? engNow(tNowG).pl * near : 0);
   const n = focusName();
   if (n !== focusTxt) { focusTxt = n; $('#focusName').textContent = n; $('#focusTag').hidden = !n; $('#followTxt').textContent = _('vw.followOn', { name: n || _('fo.free') }); $('#followX').hidden = !n; INS = null; }
   const h = hoverPt && !ptrs.size ? hitAt(hoverPt.x, hoverPt.y, HIT_PX.mouse) : null;

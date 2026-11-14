@@ -65,7 +65,14 @@
         <div class="ctrl-bar" id="ctrlBar">
           <div class="seg" id="dimSeg" role="group" data-i18n-aria-label="vw.dimAria"><button type="button" data-v="2d" data-i18n="vw.2d"></button><button type="button" data-v="3d" data-i18n="vw.3d"></button></div>
           <div class="vw-follow" id="vwFollow"><span class="lbl" data-i18n="vw.follow"></span><div class="follow-ctl" id="followCtl"><button class="ghost follow-btn" id="followBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="followMenu"><span id="followTxt"></span><span class="vw-caret" aria-hidden="true">▾</span></button><button class="ghost follow-x" id="followX" type="button" data-i18n-aria-label="focus.release" data-i18n-title="focus.release" hidden><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button><div class="glass follow-menu" id="followMenu" hidden><div class="follow-map" id="followMap" hidden></div></div></div></div>
-          <button class="ghost vw-btn" id="viewBtn" type="button" aria-expanded="false" aria-controls="viewMenu" data-i18n-title="vw.menu"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14"/><circle cx="7" cy="6" r="1.6"/><circle cx="13" cy="10" r="1.6"/><circle cx="8" cy="14" r="1.6"/></svg><span data-i18n="vw.menu"></span><span class="vw-caret" aria-hidden="true">▾</span></button>
+          <div class="vw-row"><div class="snd-wrap"><button class="ghost snd-btn" id="sndBtn" type="button" aria-pressed="true" aria-expanded="false" aria-controls="sndPop" data-i18n-title="snd.btn" data-i18n-aria-label="snd.btn"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z"/><path class="w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.3 5.2c2.2 2.8 2.2 6.8 0 9.6"/><path class="x" d="M13.2 7.5l4.5 5M17.7 7.5l-4.5 5"/></svg></button>
+            <div class="glass snd-pop" id="sndPop" role="dialog" data-i18n-aria-label="snd.title" hidden>
+              <label class="chk"><input type="checkbox" id="sndOn"><span data-i18n="snd.on"></span></label>
+              <label class="snd-vol"><span data-i18n="snd.vol"></span><input type="range" id="sndVol" min="0" max="100" step="1"></label>
+              <label class="chk" data-i18n-title="snd.engTip"><input type="checkbox" id="sndEng"><span data-i18n="snd.eng"></span></label>
+              <p class="snd-note" data-i18n="snd.note"></p>
+            </div></div>
+          <button class="ghost vw-btn" id="viewBtn" type="button" aria-expanded="false" aria-controls="viewMenu" data-i18n-title="vw.menu"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14"/><circle cx="7" cy="6" r="1.6"/><circle cx="13" cy="10" r="1.6"/><circle cx="8" cy="14" r="1.6"/></svg><span data-i18n="vw.menu"></span><span class="vw-caret" aria-hidden="true">▾</span></button></div>
         </div>
         <div class="seg vmode" id="viewMode" role="group" data-i18n-aria-label="mode.aria">
           <button type="button" data-v="low" data-i18n="mode.low"></button>
@@ -524,6 +531,7 @@
 <script src="js/globe.js"></script>
 <script src="js/mode3d.js"></script>
 <script src="js/engine-ui.js"></script>
+<script src="js/sim-audio.js"></script>
 <script src="js/app.js"></script>
 <script src="js/wizard.js"></script>
 <script src="js/record.js"></script>

@@ -1,7 +1,7 @@
 // Persisted UI preferences: view mode and window layout.
 // DOM-free: the storage object is passed in (localStorage, sessionStorage, a stub or null), so Node tests can run it.
 // Every storage access is wrapped: private windows, blocked site data and quota errors must never break the page.
-const PREF_KEYS = { apprTip: 'orbsim.apprTip', engPanel: 'orbsim.engPanel', engines: 'orbsim.engines.v1', rec: 'orbsim.rec', mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify', cabSaver: 'orbsim.cab.saver.v1', cabPanHint: 'orbsim.cab.panHint', cabBoot: 'orbsim.cab.boot', cabBox: 'orbsim.cab.box.v1', cabQ: 'orbsim.cab.q', simBoot: 'orbsim.boot', uiExpert: 'orbsim.ui.expert', start: 'orbsim.start', tour: 'orbsim.tour.v1', evStop: 'orbsim.evStop', liveTip: 'orbsim.liveTip', startSeen: 'orbsim.startSeen' };
+const PREF_KEYS = { apprTip: 'orbsim.apprTip', engPanel: 'orbsim.engPanel', simAudio: 'orbsim.simAudio.v1', engines: 'orbsim.engines.v1', rec: 'orbsim.rec', mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify', cabSaver: 'orbsim.cab.saver.v1', cabPanHint: 'orbsim.cab.panHint', cabBoot: 'orbsim.cab.boot', cabBox: 'orbsim.cab.box.v1', cabQ: 'orbsim.cab.q', simBoot: 'orbsim.boot', uiExpert: 'orbsim.ui.expert', start: 'orbsim.start', tour: 'orbsim.tour.v1', evStop: 'orbsim.evStop', liveTip: 'orbsim.liveTip', startSeen: 'orbsim.startSeen' };
 const VIEW_MODES = ['low', 'normal', '3d'];
 // placement order: overview's default spot sits under Results, so it comes after it
 const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'engine', 'gloss', 'model', 'credits'];
@@ -218,6 +218,15 @@ function slowAdvance(t0, dt, r0, fires, tEnd = Infinity) {
     t += dtau;
   }
   return Math.min(t, tEnd);
+}
+
+// The simulator page's sound settings (2026-11-15, js/sim-audio.js): on (a quiet start at the first gesture), volume
+// 0 … 1 (default 0.35), the engine rumble effect; each field falls back on its own
+const SIM_AUDIO = { on: true, vol: 0.35, eng: true };
+function parseSimAudio(raw) {
+  let o = null; try { o = JSON.parse(raw); } catch (e) { /* default */ }
+  if (!o || typeof o !== 'object') return { ...SIM_AUDIO };
+  return { on: typeof o.on === 'boolean' ? o.on : SIM_AUDIO.on, vol: Number.isFinite(o.vol) ? Math.max(0, Math.min(1, o.vol)) : SIM_AUDIO.vol, eng: typeof o.eng === 'boolean' ? o.eng : SIM_AUDIO.eng };
 }
 
 // Opacity of the orbit trail by age in revolutions: the last keep revolutions are drawn; with fade the
@@ -572,4 +581,4 @@ function saturnShot(sat, sun, pole, box, o = {}) {
     side: [c.g, c.k], phase: ang(e, s), lit: c.lit, milky: c.mw, sway: { k: K, ke: KE, az: A * K, el: sw.el * KE, dist: o.sway ? sw.dist : 0 }, fit: [K, KE, yk0] };
 }
 
-if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, auto3dFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, parseEngines, ENG_KINDS, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha, SLOW_W, burnShow, slowFires, slowRho, slowAdvance, rampLen, rampRate };
+if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, auto3dFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, parseEngines, ENG_KINDS, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha, SLOW_W, burnShow, slowFires, slowRho, slowAdvance, rampLen, rampRate, SIM_AUDIO, parseSimAudio };

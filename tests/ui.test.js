@@ -996,7 +996,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // transfer chosen by the automatic method, within the body's sphere of influence); the result card follows updateResults.
 {
   const C = require('../js/core.js'), wz = read('js/wizard.js'), css = read('css/style.css');
-  assert.ok(/<script src="js\/mode3d\.js"><\/script>\n<script src="js\/engine-ui\.js"><\/script>\n<script src="js\/app\.js"><\/script>\n<script src="js\/wizard\.js"><\/script>/.test(html), 'wizard.js after app.js; the engine window before app.js (app.js calls it while starting)');
+  assert.ok(/<script src="js\/mode3d\.js"><\/script>\n<script src="js\/engine-ui\.js"><\/script>\n<script src="js\/sim-audio\.js"><\/script>\n<script src="js\/app\.js"><\/script>\n<script src="js\/wizard\.js"><\/script>/.test(html), 'wizard.js after app.js; the engine window and the page\'s sound before app.js (app.js calls them while starting)');
   assert.ok(css.includes('html:not(.ui-expert) #w-mission .win-b>:not(.wiz){display:none!important}') && css.includes('html.ui-expert #wiz{display:none}'), 'plain: the wizard; expert: the full form');
   for (const id of ['wiz', 'wzPick', 'wzForm', 'wzSteps', 'wzEx', 'wzRes', 'wzFoot', 'wzErr', 'wzGo', 'wzExpert']) assert.ok(html.includes('id="' + id + '"'), 'wizard element ' + id);
   for (const m of ['auto', 'hohmann', 'bielliptic']) assert.ok(has('wz.m.' + m) && has('wz.m.' + m + 'D'), 'method ' + m);
@@ -1438,6 +1438,19 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(ctx.f(100) === 0 && ctx.f(2e3) === 0 && ctx.f(8e4) === 1 && ctx.f(1e7) === 1 && ctx.f(1e4) > 0 && ctx.f(1e4) < ctx.f(3e4), 'close view: the fade by distance');
   assert.ok(m3.includes("const nk = S.follow === 'craft' ? nearFade3(c.dist) : 1;") && m3.includes("V3.fadeSet('sim', nk, OWN3, 0.1 + 0.9 * nk);") && m3.includes('grid3(c, V3S.grid, nk);') && m3.includes("OWN3 = new Set(['path', 'pathB', 'osc', 'conn', 'trail', 'park'])"), 'close view: lines and grid fade, the own path faint');
   assert.ok(v3.includes('m.opacity = m.userData.base * f;') && v3.includes("h.mats[0].userData.base = opacity; fadeApply(set, id, h.mats[0]);"), 'close view: on top of each line\'s opacity');
+}
+// 48) Sound on the simulator page (2026-11-15, js/sim-audio.js): no files (generated hum and engine rumble), Web Audio
+// only after the first gesture, a quiet start; the speaker button by "Görünüm" with on / volume / the engine effect, saved
+// (parseSimAudio falls back per field); the rumble's level the plume's strength times the camera's closeness, only while
+// playing; suspended in a hidden tab; the cabin page does not load it
+{
+  const sa = read('js/sim-audio.js'), app = read('js/app.js'), cab = read('kabin.html');
+  assert.ok(!/\.(mp3|webm|ogg|wav)['"]/.test(sa) && !sa.includes('new Audio(') && sa.includes("for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, function first()") && sa.includes('if (SA.ctx || !SA.set.on) return;'), 'sound: generated, started by the first gesture');
+  assert.ok(sa.includes("SA.out.gain.setTargetAtTime(s.on ? 0.5 * s.vol * s.vol : 0, t, 0.4);") && P.SIM_AUDIO.vol <= 0.4 && sa.includes("if (document.hidden) SA.ctx.suspend();"), 'sound: a quiet start, suspended when hidden');
+  const d = P.parseSimAudio('{"on":false,"vol":7,"eng":"x"}');
+  assert.ok(d.on === false && d.vol === 1 && d.eng === true && P.parseSimAudio('nope').on === true && P.PREF_KEYS.simAudio, 'sound: saved settings, each field falls back');
+  assert.ok(['sndBtn', 'sndPop', 'sndOn', 'sndVol', 'sndEng'].every(id => html.includes('id="' + id + '"')) && ['snd.btn', 'snd.title', 'snd.on', 'snd.vol', 'snd.eng', 'snd.engTip', 'snd.note'].every(has), 'sound: the button and its panel');
+  assert.ok(app.includes("simAudioTick(near > 0 ? engNow(tNowG).pl * near : 0);") && app.includes('!S.playing ? 0 :') && !cab.includes('sim-audio.js'), 'sound: the rumble by thrust and closeness, while playing; not on the cabin page');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

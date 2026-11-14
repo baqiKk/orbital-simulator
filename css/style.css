@@ -486,7 +486,7 @@ html[data-q=low] .live-dot{box-shadow:none;animation:none}
 .follow-menu .seg button:hover,.follow-map button:hover{background:var(--raise);color:var(--ink)}
 .follow-menu .seg button[aria-pressed="true"],.follow-map button[aria-pressed="true"]{color:var(--accent)}
 html:not(.ui-expert) #focusTag,html:not(.ui-expert) .vw-follow>.lbl,html.ui-expert #followCtl{display:none}
-@media (max-width:560px){.ctrl-bar{flex-direction:column;align-items:flex-start}.ctrl-bar .vw-btn{order:-1}.follow-menu{left:0;right:auto}}
+@media (max-width:560px){.ctrl-bar{flex-direction:column;align-items:flex-start}.ctrl-bar .vw-row{order:-1}.follow-menu{left:0;right:auto}.snd-pop{left:0;right:auto}}
 /* the start screen (js/app.js startOpen): compact over the opening tour, which stays in view above it: four cards in a
    row at the bottom; on phones 2 × 2 in the lower half, without scrolling */
 .start{position:fixed;inset:0;z-index:60;display:grid;place-items:end center;padding:16px 16px 22px;background:linear-gradient(to top,color-mix(in srgb,var(--void) 72%,transparent),transparent 45%)}
@@ -523,6 +523,14 @@ button.rail-mark:hover{color:var(--accent)}
 /* view controls (js/app.js VW): the bar (2D/3D, follow, the view menu) and the menu holding the rest; the expert
    layout (html.ui-expert) shows the old full set in place */
 .ctrl-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.vw-row{display:flex;gap:6px;align-items:center}
+.snd-wrap{position:relative}
+.snd-btn{display:inline-grid;place-items:center;padding:5px 7px}
+.snd-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linejoin:round}
+.snd-btn .x{display:none}.snd-btn.off .x{display:inline}.snd-btn.off .w{display:none}
+.snd-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:230px;padding:10px 12px;display:flex;flex-direction:column;gap:9px}
+.snd-vol{display:flex;flex-direction:column;gap:4px;color:var(--dim);font-size:12px}
+.snd-note{margin:0;color:var(--faint);font-size:11px;line-height:1.35}
 .vw-follow{display:flex;gap:6px;align-items:center}
 .vw-follow .lbl{font:500 10px/1 var(--f-disp);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
 .vw-btn{display:inline-flex;align-items:center;gap:7px}.vw-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.5}.vw-btn svg circle{fill:var(--panel);}
