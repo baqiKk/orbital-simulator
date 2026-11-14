@@ -471,7 +471,8 @@ function craft3(tNow, craft, ext, sunIdx) {
   const fl = reduceMotion ? 1 : 1 + 0.045 * Math.sin(ts * 37.7) + 0.03 * Math.sin(ts * 61.3 + 1.3) + 0.02 * Math.sin(ts * 97.1 + 2.1);
   // a liquid engine's tanks as long as their volumes (core.js engTanks, js/engines.js densities), as in the 2D cutaway
   const rho = (PROPS[en.E.prop] || {}).rho, V = rho && en.E.type === 'liq' ? engTanks(en.s, rho) : null, fo = V ? V.ox / (V.ox + V.fuel) : 0.5;
-  V3.craft({ show: true, p: CR3, axis: ax, L, sun, cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,
+  // the cut faces the frame's reference-plane normal (fixed to the body, not to the camera)
+  V3.craft({ show: true, p: CR3, axis: ax, side: [0, 0, 1], L, sun, cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,
     col: { metal: COL.dim, nozzle: COL.faint, fuel: COL.burn, ox: COL.cyan, // fuel and oxidizer as the engine window's charts
       tex: { ink: COL.ink, dim: COL.dim, faint: COL.faint, solid: COL.solid, accent: COL.accent, warn: COL.warn, burn: COL.burn, bad: COL.bad, orbit: COL.orbit } },
     plume: { core: pc.core, body: pc.body, I: k > 0.004 ? 0.85 * pc.k * (0.3 + 0.7 * k) * Math.min(1, 3 * k) * fl : 0, len: (0.7 + 1.3 * k) * fl, t: ts, simple: lowQ || FX.lvl >= 2 } });

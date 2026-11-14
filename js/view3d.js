@@ -689,8 +689,9 @@ export function create(canvas, opts) {
 
   // ---- the craft (Phase 18b) and its plume (18c) ----
   // Model units: length 1 along +y (nose at +0.5, nozzle exit at −0.5), scaled by the craft's length. Shells are lathe
-  // surfaces, whole or (cutaway) the half x ≤ 0; the group is turned so +x faces the camera: the cut always opens
-  // towards the viewer. The cutaway's contents are flat faces in the plane x = 0 (tank liquids filling from the aft end,
+  // surfaces, whole or (cutaway) the half x ≤ 0. +x is fixed to the craft's body (2026-11-15: o.side, the view frame's
+  // reference-plane normal made square to the nose; before, +x faced the camera): one side is cut open, and turning the
+  // camera round shows the whole shell on the other. The cutaway's contents are flat faces in the plane x = 0 (tank liquids filling from the aft end,
   // a hybrid's grain on both sides of its port, a solid's grain about its core) and half cylinders for the port walls.
   const craftG = { group: null, key: '', shells: [], fills: {}, mats: {}, plumes: [], ports: [] };
   // a lathe surface; its v runs by length along the profile (three.js spaces it by point), so the textures are not
@@ -779,10 +780,12 @@ export function create(canvas, opts) {
     const g = craftG.group, L = o.L * KM, st = o.st || {};
     g.visible = true; g.scale.setScalar(L); g.position.set((o.p[0] - T[0]) * KM, (o.p[1] - T[1]) * KM, (o.p[2] - T[2]) * KM); // after view(): T is this frame's
     for (const m of Object.values(craftG.mats)) m.uniforms.uSun.value.set(o.sun[0], o.sun[1], o.sun[2]);
-    // orientation: +y the nose, +x towards the camera (the cut faces it), from the camera's place this frame
+    // orientation: +y the nose, +x the body's side (o.side square to the nose; the cut opens towards it)
     _cy.set(o.axis[0], o.axis[1], o.axis[2]).normalize();
-    _cx.set((o.p[0] - T[0]) * KM, (o.p[1] - T[1]) * KM, (o.p[2] - T[2]) * KM).negate().add(camera.position).normalize();
-    _cx.addScaledVector(_cy, -_cx.dot(_cy)); if (_cx.lengthSq() < 1e-12) _cx.set(_cy.y, -_cy.x, 0); _cx.normalize();
+    const sd = o.side || [0, 0, 1];
+    _cx.set(sd[0], sd[1], sd[2]); _cx.addScaledVector(_cy, -_cx.dot(_cy));
+    if (_cx.lengthSq() < 1e-6) { _cx.set(1, 0, 0); _cx.addScaledVector(_cy, -_cx.dot(_cy)); }
+    _cx.normalize();
     _cz.crossVectors(_cx, _cy);
     g.quaternion.setFromRotationMatrix(_cm.makeBasis(_cx, _cy, _cz));
     for (const [a, b] of craftG.shells) { a.visible = !o.cut; b.visible = !!o.cut; }
