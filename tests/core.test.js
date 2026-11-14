@@ -1328,6 +1328,9 @@ const sEM = realSys(['earth', 'mars', 'sun']);
     assert.ok(Math.abs(a0.fuel - 1) < 1e-12 && (!bi || Math.abs(a0.ox - 1) < 1e-12) && a1.fuel < 1e-9 && a1.ox < 1e-9 && mono, sp.type + ': the tanks go from full to empty, monotonically');
     assert.ok(a0.on && a0.F > 0 && a0.Fk > 0 && a0.Fk <= 1 + 1e-12 && !a1.on && a1.F === 0 && !C.engState(sp, -1).on, sp.type + ': thrust only while it burns');
     if (sp.type === 'hyb') assert.ok(Math.abs(a0.port - sp.r0 / sp.r1) < 1e-9 && Math.abs(a1.port - 1) < 1e-9, 'hybrid: the port grows to the grain\'s outer radius');
+    // mid-burn (2026-11-14: the 2D cutaway showed "Oks. %100"): the oxidizer flows at a constant rate, so half of it is
+    // left, while the port has grown part of the way; the fuel lags (the regression is slow early)
+    if (sp.type === 'hyb') { const m = st(0.5); assert.ok(Math.abs(m.ox - 0.5) < 0.01 && m.port > a0.port + 0.05 && m.port < 1 - 0.05 && m.fuel > 0.1 && m.fuel < 0.9, `hybrid: mid-burn oxidizer ${(m.ox * 100).toFixed(1)} %, port ${(m.port * 100).toFixed(0)} %`); }
     if (sp.type === 'sol') assert.ok(a0.web === 0 && a1.web === 1, 'solid: the web burns through');
   }
   // the engine window's checks: a CEA table's reasonable O/F range (Ivac at ε = 50 at least 90 % of its peak, by hand

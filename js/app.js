@@ -1392,9 +1392,9 @@ function plumeTd(tNow, craft, en) {
   if (!(en.pl > 0) || !en.m || en.j < 0) return null;
   return thrustNow(en.on ? tNow : Math.min(tNow, engWin(en.m.burns[en.j])[1] - 1e-6), craft);
 }
-// 2D: a small plume behind the craft (Phase 18c), against the thrust (or the velocity for an impulsive burn's length);
-// its strength the engine's thrust, lit at ignition and dying after the cut (engNow pl, 2026-11-14); flat in the
-// low-resource mode
+// 2D: a small flame behind the craft (Phase 18c; 2026-11-14 js/engine-ui.js flame2d), against the thrust (or the
+// velocity for an impulsive burn's length); its strength the engine's thrust, lit at ignition and dying after the cut
+// (engNow pl); flickering except with reduced motion; flat in the low-resource mode. Drawn under the craft's dot.
 function plume2d(x, y, tNow, craft, vx, vy, ext) {
   if (ext) return;
   const en = engNow(tNow); if (!(en.pl > 0.004)) return;
@@ -1402,10 +1402,10 @@ function plume2d(x, y, tNow, craft, vx, vy, ext) {
   let dx, dy;
   if (td) { const X = FP.X, Y = FP.Y; dx = -(td[0] * X[0] + td[1] * X[1] + td[2] * X[2]); dy = td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2]; } else { dx = -vx; dy = -vy; }
   const l = Math.hypot(dx, dy); if (!(l > 1e-9)) return;
-  const ux = dx / l, uy = dy / l, k = en.pl, L = 10 + 18 * k, s = L * 0.5, col = COL[PLUME_TOK[en.plume] || 'accent'], faint = en.plume === 'faint';
-  ctx.save(); ctx.globalAlpha = (faint ? 0.3 : 0.85) * (0.4 + 0.6 * k);
-  if (Q.glow) { const g = ctx.createLinearGradient(x, y, x + ux * L, y + uy * L); g.addColorStop(0, col); g.addColorStop(1, hexA(col, 0)); ctx.fillStyle = g; } else ctx.fillStyle = col;
-  ctx.beginPath(); ctx.moveTo(x + ux * 3 - uy * 2, y + uy * 3 + ux * 2); ctx.lineTo(x + ux * L - uy * s, y + uy * L + ux * s); ctx.lineTo(x + ux * L + uy * s, y + uy * L - ux * s); ctx.lineTo(x + ux * 3 + uy * 2, y + uy * 3 - ux * 2); ctx.closePath(); ctx.fill();
+  const k = en.pl, pc = plumeCols(en.plume), ts = reduceMotion ? 0 : performance.now() / 1000;
+  const fl = reduceMotion ? 1 : 1 + 0.05 * Math.sin(ts * 37.7) + 0.03 * Math.sin(ts * 61.3 + 1.3);
+  ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(dy, dx));
+  flame2d(ctx, (12 + 22 * k) * fl, 2.2, pc, Math.min(1.2, pc.k * 1.2) * (0.35 + 0.65 * k) * Math.min(1, 3 * k) * fl, ts, !Q.glow);
   ctx.restore();
 }
 
@@ -3421,6 +3421,7 @@ function drawBody(now, once) {
       {
         const x = sx(cpos[0]), y = sy(cpos[1]);
         addHit('c', 0, x, y, 3.2);
+        plume2d(x, y, tNow, craft, sx(cpos2[0]) - x, sy(cpos2[1]) - y, ext); // under the craft's dot
         if (Q.glow) {
           const g = ctx.createRadialGradient(x, y, 0, x, y, 16);
           g.addColorStop(0, hexA(COL.traj, 0.6)); g.addColorStop(1, hexA(COL.traj, 0));
@@ -3428,7 +3429,6 @@ function drawBody(now, once) {
         } else { ctx.strokeStyle = COL.traj; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, 6, 0, 6.2832); ctx.stroke(); }
         ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
         const td = !ext ? thrustNow(tNow, craft) : null;
-        plume2d(x, y, tNow, craft, sx(cpos2[0]) - x, sy(cpos2[1]) - y, ext);
         if (td) { // the thrust direction while the engine burns, in the view plane
           const X = FP.X, Y = FP.Y, ax = td[0] * X[0] + td[1] * X[1] + td[2] * X[2], ay = -(td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2]);
           arrow(x, y, ax, ay, COL.burn, 34);

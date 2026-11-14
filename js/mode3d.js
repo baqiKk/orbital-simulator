@@ -453,9 +453,10 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
 }
 // The craft's model (Phase 18b, view3d.js craft): shown once it is a few pixels long; the nose along the thrust while a
 // finite burn is on, else along the velocity; the cutaway (CRAFT.cut) with the engine's state at this moment (js/engine-ui.js
-// engNow: tank levels, the hybrid's port, a solid's web) and the plume while it burns (Phase 18c: length and brightness
-// by thrust, colour by propellant). Returns the model's length on screen (px).
-const PLUME_TOK = { blue: 'cyan', orange: 'burn', white: 'ink', faint: 'ink', amber: 'accent' };
+// engNow: tank levels, the hybrid's port, a solid's web) and the plume while it burns (Phase 18c, redone 2026-11-14:
+// a layered, wavering flame; length, width and brightness by thrust, colours by propellant (js/engine-ui.js
+// plumeCols), lit and dying with engNow pl; flickering, the noise drifting, except with reduced motion; plain in the low
+// quality). Returns the model's length on screen (px).
 function craft3(tNow, craft, ext, sunIdx) {
   const en = engNow(tNow), L = CRAFT.L = craftLen(en.s);
   proj3(CR3, PJ);
@@ -466,10 +467,11 @@ function craft3(tNow, craft, ext, sunIdx) {
   if (!(Math.hypot(...ax) > 0)) ax = [0, 0, 1];
   let sun = SUN3;
   if (sunIdx >= 0) { const v = [BP3[3 * sunIdx] - CR3[0], BP3[3 * sunIdx + 1] - CR3[1], BP3[3 * sunIdx + 2] - CR3[2]], l = Math.hypot(...v) || 1; sun = v.map(q => q / l); }
-  const faint = en.plume === 'faint', k = ext ? 0 : en.pl; // the plume: the thrust, eased in at ignition and out after the cut
+  const pc = plumeCols(en.plume), k = ext ? 0 : en.pl, ts = reduceMotion ? 0 : performance.now() / 1000;
+  const fl = reduceMotion ? 1 : 1 + 0.045 * Math.sin(ts * 37.7) + 0.03 * Math.sin(ts * 61.3 + 1.3) + 0.02 * Math.sin(ts * 97.1 + 2.1);
   V3.craft({ show: true, p: CR3, axis: ax, L, sun, cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, st: en.st,
     col: { metal: COL.dim, nozzle: COL.faint, fuel: COL.burn, ox: COL.cyan }, // fuel and oxidizer as the engine window's charts
-    plume: { color: COL[PLUME_TOK[en.plume] || 'accent'], a: k > 0.004 ? (faint ? 0.12 : 0.45) * (0.35 + 0.65 * k) * Math.min(1, 3 * k) : 0, len: 0.55 + 0.95 * k } });
+    plume: { core: pc.core, body: pc.body, I: k > 0.004 ? 0.85 * pc.k * (0.3 + 0.7 * k) * Math.min(1, 3 * k) * fl : 0, len: (0.7 + 1.3 * k) * fl, t: ts, simple: lowQ || FX.lvl >= 2 } });
   return lpx;
 }
 // the trail after capture (fading oldest revolutions), up to the craft

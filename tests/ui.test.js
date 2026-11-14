@@ -1292,18 +1292,28 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(['#apprBtn', '#cutBtn', "page.keyboard.press('a')", 'page.mouse.dblclick', '#engPlay'].every(k => sm.includes(k)), 'smoke: the craft up close (button, cutaway, A, double clicks) and the engine window\'s cutaway');
 }
 // 42) The craft and its plume (Phase 18b, 18c): a procedural model per engine type in view3d.js (no model files), its
-// shaders in the logarithmic depth space (test 7 checks every *_VS / *_FS), the plume premultiplied without an additive
-// mode; the cutaway's colours the engine charts' tokens (fuel --burn, oxidizer --cyan), the plume's by propellant;
+// shaders in the logarithmic depth space (test 7 checks every *_VS / *_FS); the plume (redone 2026-11-14) a layered
+// flame: a quad about its axis facing the camera with a core, a body and a halo, value noise drifting outwards, added
+// light (ONE, ONE) without depth writes, a nozzle glow seen end on, plain without noise in the low quality; its colours
+// by propellant, token mixes (PLUME_PAL: hydrogen blue with a violet core, kerosene orange-yellow, N2O4 storables pink-
+// orange, solid white-yellow, monopropellant faint); the cutaway's colours the engine charts' tokens (fuel --burn,
+// oxidizer --cyan);
 // "Araca yaklaş": button, double tap on the craft or its path, A, Esc back, a one-time hint; the 2D cutaway in the engine
 // window in every mode (plain shapes in the low mode); the 2D view's small plume; the engine window's rail icon.
 {
   const v3 = read('js/view3d.js'), m3 = read('js/mode3d.js'), app = read('js/app.js'), ui = read('js/engine-ui.js');
   assert.ok(/export const CRAFT_VS/.test(v3) && /export const PLUME_FS/.test(v3) && v3.includes('new THREE.LatheGeometry(') && !/\.(glb|gltf|obj|fbx)['"]/.test(v3) && v3.includes('craft, dispose'), 'craft: procedural lathe model, no model files, exported');
-  const pl = v3.slice(v3.indexOf('function plumeMesh()'), v3.indexOf('// build the model for engine type'));
-  assert.ok(pl.includes('premultipliedAlpha: true') && pl.includes('depthWrite: false') && !pl.includes('AdditiveBlending'), 'plume: premultiplied, no depth writes, no additive mode');
+  const pl = v3.slice(v3.indexOf('// a plume: the flame quad'), v3.indexOf('// build the model for engine type'));
+  assert.ok(pl.includes('premultipliedAlpha: true, blending: THREE.AdditiveBlending, depthWrite: false') && pl.includes('vertexShader: PLUME_VS') && pl.includes('vertexShader: PGLOW_VS'), 'plume: added light, no depth writes, the nozzle glow');
+  const pfs = v3.slice(v3.indexOf('export const PLUME_FS'), v3.indexOf('export const PGLOW_VS'));
+  assert.ok(['float vnoise(', 'uT * 4.0', 'float body =', 'float halo =', 'float core =', 'if (uSimple < 0.5)'].every(k => pfs.includes(k)) && v3.includes('S = cross(A, V)'), 'plume: core, body and halo, drifting noise (none in the low quality), facing the camera about its axis');
   for (const ty of ["ty === 'liq'", "ty === 'hyb'", "ty === 'sol'"]) assert.ok(v3.includes(ty), 'craft: a model for ' + ty);
   assert.ok(m3.includes("col: { metal: COL.dim, nozzle: COL.faint, fuel: COL.burn, ox: COL.cyan }") && ui.includes("fuel: tok('--burn'), ox: tok('--cyan')") && ui.includes("fuel: engTok('--burn'), ox: engTok('--cyan')"), 'cutaway: fuel and oxidizer in the charts\' tokens, in 3D and 2D');
-  assert.ok(/const PLUME_TOK = \{ blue: 'cyan', orange: 'burn', white: 'ink', faint: 'ink', amber: 'accent' \}/.test(m3) && /const ENG_PLUME = \{ blue: '--cyan', orange: '--burn', white: '--ink', faint: '--ink', amber: '--accent' \}/.test(ui), 'plume: colour by propellant from the tokens');
+  const vm2 = require('vm'), E2 = {}; vm2.createContext(E2); vm2.runInContext(read('js/engines.js') + ';this.PROPS = PROPS;', E2);
+  const PAL = ui.slice(ui.indexOf('const PLUME_PAL = {'), ui.indexOf('const engTok'));
+  assert.ok(['blue', 'orange', 'pink', 'white', 'faint', 'amber'].every(k => PAL.includes(k + ': { core: [')) && !/#[0-9a-f]{3,6}/i.test(PAL) && ui.includes('function plumeCols(cls)') && m3.includes('plumeCols(en.plume)') && app.includes('plumeCols(en.plume)'), 'plume: colours by propellant, from the tokens');
+  assert.ok(E2.PROPS.lox_lh2.plume === 'blue' && E2.PROPS.lox_rp1.plume === 'orange' && E2.PROPS.nto_mmh.plume === 'pink' && E2.PROPS.nto_a50.plume === 'pink' && E2.PROPS.apcp.plume === 'white' && E2.PROPS.n2h4.plume === 'faint', 'plume: classes by propellant');
+  assert.ok(m3.includes('const fl = reduceMotion ? 1 :') && m3.includes('simple: lowQ || FX.lvl >= 2'), 'plume: flicker except with reduced motion, plain in the low quality');
   assert.ok(m3.includes('const td = !ext ? plumeTd(tNow, craft, en) : null') && m3.includes("if (S.follow === 'craft') return CRAFT.L * 0.9;"), 'craft: the nose along the thrust while burning (and through the plume fading); the camera kept outside it');
   // approaching the craft
   assert.ok(html.includes('id="apprBtn"') && html.includes('id="cutBtn"') && html.includes('id="engAppr"') && html.includes('id="engCut"') && html.includes('id="apprTip"') && ['appr.btn', 'appr.tip', 'appr.hint', 'appr.hintTouch', 'cut.btn', 'cut.tip', 'eng.play'].every(has), 'approach: the buttons, the hint, the words');
@@ -1311,7 +1321,9 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(P.PREF_KEYS.apprTip && app.includes('writePref(LS, PREF_KEYS.apprTip, \'1\')'), 'approach: the hint once');
   // the 2D cutaway and the 2D plume
   assert.ok(ui.includes("low = lowQ || MODE === 'low'") && ui.includes('function engSchematic(') && html.includes('id="engSch"') && html.includes('id="engPlay"'), 'cutaway 2D: in the engine window, plain in the low mode, "Oynat"');
-  assert.ok(app.includes('plume2d(x, y, tNow, craft, sx(cpos2[0]) - x, sy(cpos2[1]) - y, ext);') && app.includes('if (Q.glow) { const g = ctx.createLinearGradient(x, y, x + ux * L, y + uy * L);'), '2D view: a small plume, flat without glow');
+  assert.ok(app.includes('plume2d(x, y, tNow, craft, sx(cpos2[0]) - x, sy(cpos2[1]) - y, ext); // under the craft\'s dot') && app.includes('flame2d(ctx, (12 + 22 * k) * fl, 2.2, pc,') && app.includes('ts, !Q.glow);'), '2D view: a small flame under the craft, flat without glow');
+  const f2 = ui.slice(ui.indexOf('function flame2d('), ui.indexOf('function plumeCols('));
+  assert.ok(f2.includes("x.globalCompositeOperation = 'lighter'") && f2.includes('if (flat) {') && f2.includes('// halo') && f2.includes('// body') && f2.includes('// the core at the exit'), '2D flame: halo, wavering body and core in added light; one wedge when flat');
   assert.ok(html.includes('<path d="M7 1.5h6v3.1l-1.7 2.3v.3C12.5 8.5 14.9 11 15.4 14.6H4.6C5.1 11 7.5 8.5 8.7 7.2v-.3L7 4.6z"/><path class="acc" d="M6.8 15.6h6.4L10 19.6z"/>'), 'rail: the engine window\'s icon');
   // the engine window's fixes: a type brings its default engine (asked first after hand edits); warnings from the core;
   // the cutaway: liquid tanks by volume, the hybrid's end view, a fading, flickering cone (still in the low mode and with
@@ -1319,7 +1331,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(ui.includes("const ENG_TYPE_DEF = { liq: 'rl10', hyb: 'hyb', sol: 'star48', mono: 'n2h4' };") && ui.includes('if (ENGW.dirty) { ENGW.ask = b.dataset.v; engEl(\'engAsk\').hidden = false;') && html.includes('id="engAsk"') && ['eng.askType', 'eng.askYes', 'eng.askNo'].every(has), 'engine window: the type\'s default engine, asked first after hand edits');
   assert.ok(ui.includes('engChecks(s, { cea: pr.cea && CEA[pr.cea] ? engCea(CEA[pr.cea]) : null })') && html.includes('id="engWarn"') && ['warn.engOF', 'warn.engIsp', 'warn.engPort', 'warn.engLD', 'warn.engTW'].every(has), 'engine window: warnings (O/F, Isp, grain, T/W) in words');
   const sch = ui.slice(ui.indexOf('function engSchematic('), ui.indexOf('const SOL_GRAIN_VIEW'));
-  assert.ok(sch.includes('engTanks(s, rho)') && sch.includes("_('eng.sch.end')") && has('eng.sch.end') && sch.includes('still = low || reduceMotion') && sch.includes('const fl = still ? 1 :') && sch.includes('x.createLinearGradient(px, 0, px + L, 0)') && sch.indexOf('plume(X(c), e);') < sch.indexOf("x.fillStyle = hexA(col.metal, 0.75)"), 'cutaway: tanks by volume, the end view, the plume cone (flicker only when allowed), the nozzle over it in metal');
+  assert.ok(sch.includes('engTanks(s, rho)') && sch.includes("_('eng.sch.end')") && has('eng.sch.end') && sch.includes('still = low || reduceMotion') && sch.includes('const fl = still ? 1 :') && sch.includes('flame2d(x, L, e * 0.95, col.plume,') && sch.indexOf('plume(X(c), e);') < sch.indexOf("x.fillStyle = hexA(col.metal, 0.75)"), 'cutaway: tanks by volume, the end view, the plume cone (flicker only when allowed), the nozzle over it in metal');
 }
 // 43) Burns in slow motion (2026-11-14, prefs.js burnShow / slowRho / slowAdvance, record.js recSchedule fires): a burn
 // shows for at least a quarter of its length and at most its length (a 2 min burn 30 s, a 3 s burn 3 s, an 81 min

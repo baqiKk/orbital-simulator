@@ -247,33 +247,89 @@ void main() {
   gl_FragColor = vec4(c, 1.0);
   #include <colorspace_fragment>
 }`;
-// The plume (Phase 18c): an open cone out of the nozzle, widening in vacuum, no shock diamonds; brightest at the nozzle
-// and along the axis (the side facing the viewer), fading to nothing at the far end. Premultiplied, normal blending
-// (no additive mode), no depth writes. vA: 0 at the nozzle, 1 at the far end.
+// The plume (Phase 18c; redone 2026-11-14): a flame, not a cone. One quad per plume along the thrust axis, turned about
+// that axis to face the camera (a vacuum plume is round, so its look from the side is its line integral: a Gaussian
+// across stays a Gaussian), its half width growing wide out of the nozzle (uR0 → uR1 over uLen, model units). Three
+// layers: a short bright core at the exit, the body widening and fading, a faint wide halo; the body broken up by value
+// noise drifting outwards (uT) and wavering sideways; no shock diamonds. Additive (ONE, ONE), no depth writes. Seen along
+// its axis the quad thins out (vSin → 0) and the nozzle glow (PGLOW) takes over. uSimple: no noise (the low quality).
 export const PLUME_VS = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_vertex>
-varying float vA;
-varying vec3 vN, vV;
+uniform float uLen, uR0, uR1;
+varying vec2 vP;
+varying float vSin;
 void main() {
-  vA = position.y;
-  vec4 w = modelMatrix * vec4(position, 1.0);
-  vN = normalize(mat3(modelMatrix) * normal); vV = cameraPosition - w.xyz;
-  gl_Position = projectionMatrix * viewMatrix * w;
+  vec3 O = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+  vec3 Ay = mat3(modelMatrix) * vec3(0.0, -1.0, 0.0);
+  float sc = length(Ay); vec3 A = Ay / sc;
+  vec3 V = normalize(cameraPosition - O), S = cross(A, V);
+  float sn = length(S);
+  S = sn > 1e-4 ? S / sn : normalize(cross(A, abs(A.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+  float a = uv.y, r = mix(uR0, uR1, pow(a, 0.7)) * 1.6, x = uv.x * 2.0 - 1.0;
+  vec3 w = O + A * (a * uLen * sc) + S * (x * r * sc);
+  vP = vec2(x * 1.6, a); vSin = sn;
+  gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
   #include <logdepthbuf_vertex>
 }`;
 export const PLUME_FS = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_fragment>
-uniform vec3 uColor;
-uniform float uA;
-varying float vA;
-varying vec3 vN, vV;
+uniform vec3 uCore, uBody;
+uniform float uI, uT, uSimple, uSeed;
+varying vec2 vP;
+varying float vSin;
+float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
 void main() {
   #include <logdepthbuf_fragment>
-  float f = abs(dot(normalize(vN), normalize(vV)));
-  float a = uA * pow(1.0 - clamp(vA, 0.0, 1.0), 1.7) * (0.15 + 0.85 * f * f);
-  gl_FragColor = vec4(uColor * a, a);
+  float a = vP.y, x = vP.x, n = 0.5;
+  if (uSimple < 0.5) {
+    float n1 = vnoise(vec2(a * 7.0 - uT * 4.0, x * 1.4 + uSeed)), n2 = vnoise(vec2(a * 16.0 - uT * 9.0, x * 3.0 - uSeed));
+    n = 0.62 * n1 + 0.38 * n2;
+    x += (n1 - 0.5) * 0.45 * a;
+  }
+  float start = smoothstep(0.0, 0.02, a);
+  float body = exp(-x * x * 3.0) * pow(1.0 - a, 2.2) * (0.3 + 0.8 * n) * 0.75;
+  float halo = exp(-x * x * 0.9) * pow(1.0 - a, 3.0) * 0.12;
+  float core = exp(-x * x * 9.0) * exp(-a * 7.0) * 1.3;
+  float tot = body + halo + core;
+  float I = tot * start * uI * smoothstep(0.02, 0.3, vSin);
+  vec3 c = mix(uBody, uCore, clamp(core / (tot + 1e-4), 0.0, 1.0));
+  gl_FragColor = vec4(c * I, I);
+  #include <colorspace_fragment>
+}`;
+// the nozzle glow: a camera-facing disc at the exit (uSize, model units), strongest seen along the plume's axis
+export const PGLOW_VS = /* glsl */`
+#include <common>
+#include <logdepthbuf_pars_vertex>
+uniform float uSize;
+varying vec2 vQ;
+varying float vCos;
+void main() {
+  vec3 O = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+  vec3 Ay = mat3(modelMatrix) * vec3(0.0, -1.0, 0.0);
+  float sc = length(Ay);
+  vec3 Rr = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]), Uu = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+  vQ = uv * 2.0 - 1.0;
+  vCos = abs(dot(Ay / sc, normalize(cameraPosition - O)));
+  gl_Position = projectionMatrix * viewMatrix * vec4(O + (Rr * vQ.x + Uu * vQ.y) * uSize * sc, 1.0);
+  #include <logdepthbuf_vertex>
+}`;
+export const PGLOW_FS = /* glsl */`
+#include <common>
+#include <logdepthbuf_pars_fragment>
+uniform vec3 uCore;
+uniform float uI;
+varying vec2 vQ;
+varying float vCos;
+void main() {
+  #include <logdepthbuf_fragment>
+  float d = dot(vQ, vQ), I = (exp(-d * 9.0) * 0.8 + exp(-d * 2.5) * 0.12) * uI * vCos * vCos;
+  gl_FragColor = vec4(uCore * I, I);
   #include <colorspace_fragment>
 }`;
 
@@ -542,16 +598,23 @@ export function create(canvas, opts) {
     return new THREE.ShaderMaterial({ vertexShader: CRAFT_VS, fragmentShader: CRAFT_FS, side: THREE.DoubleSide, toneMapped: false,
       uniforms: { uColor: { value: new THREE.Color(color) }, uSun: { value: new THREE.Vector3(1, 0, 0) }, uFlat: { value: flat ? 1 : 0 } } });
   }
-  function plumeMesh() {
-    // the cone opens away from the nozzle: radius 1 at the far end (y = 1), 0.1 at the nozzle, sized per frame by scale
-    const g = new THREE.CylinderGeometry(1, 0.1, 1, 32, 6, true).translate(0, 0.5, 0);
-    const m = new THREE.Mesh(g, new THREE.ShaderMaterial({ vertexShader: PLUME_VS, fragmentShader: PLUME_FS, transparent: true, premultipliedAlpha: true, depthWrite: false,
-      side: THREE.DoubleSide, toneMapped: false, uniforms: { uColor: { value: new THREE.Color(1, 1, 1) }, uA: { value: 0 } } }));
-    m.rotation.x = Math.PI; m.visible = false; m.renderOrder = 2; return m;
+  // a plume: the flame quad (placed at the nozzle exit, its axis −y of the model) and, for a main engine, the nozzle glow;
+  // additive: blending ONE, ONE (premultiplied), no depth writes, drawn after the model
+  const flameQuad = new THREE.PlaneGeometry(1, 1, 1, 20).translate(0.5, 0.5, 0), glowQuad = new THREE.PlaneGeometry(1, 1).translate(0.5, 0.5, 0);
+  const ADD = { transparent: true, premultipliedAlpha: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false };
+  function plumeMesh(glow) {
+    const f = new THREE.Mesh(flameQuad, new THREE.ShaderMaterial({ vertexShader: PLUME_VS, fragmentShader: PLUME_FS, ...ADD, uniforms: { uCore: { value: new THREE.Color() }, uBody: { value: new THREE.Color() },
+      uI: { value: 0 }, uT: { value: 0 }, uSimple: { value: 0 }, uSeed: { value: Math.random() * 50 }, uLen: { value: 1 }, uR0: { value: 0.1 }, uR1: { value: 0.6 } } }));
+    f.visible = false; f.renderOrder = 2; f.frustumCulled = false;
+    if (glow) {
+      const g = new THREE.Mesh(glowQuad, new THREE.ShaderMaterial({ vertexShader: PGLOW_VS, fragmentShader: PGLOW_FS, ...ADD, uniforms: { uCore: { value: new THREE.Color() }, uI: { value: 0 }, uSize: { value: 0.2 } } }));
+      g.visible = false; g.renderOrder = 2; g.frustumCulled = false; f.userData.glow = g;
+    }
+    return f;
   }
   // build the model for engine type ty (grain for a solid); col: { metal, nozzle, fuel, ox }
   function craftBuild(ty, grain, col) {
-    if (craftG.group) { roots.sim.remove(craftG.group); craftG.group.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry && o.geometry !== quad && o.geometry !== halfCyl) o.geometry.dispose(); }); }
+    if (craftG.group) { roots.sim.remove(craftG.group); craftG.group.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry && ![quad, halfCyl, flameQuad, glowQuad].includes(o.geometry)) o.geometry.dispose(); }); }
     const g = new THREE.Group(); g.visible = false;
     const M = { metal: craftMat(col.metal), nozzle: craftMat(col.nozzle), fuel: craftMat(col.fuel, true), ox: craftMat(col.ox, true), wall: craftMat(col.fuel) };
     M.wall.uniforms.uColor.value.multiplyScalar(0.4); // the port's burning wall, darker than the grain's cut face
@@ -576,7 +639,7 @@ export function create(canvas, opts) {
       for (const [x, z] of [[0.12, 0.12], [-0.12, 0.12], [0.12, -0.12], [-0.12, -0.12]]) { const t = new THREE.Mesh(lathe(bellPts(0.012, 0.03, -0.25, -0.33), false), M.nozzle); t.position.set(x, 0, z); g.add(t); }
     }
     const nPl = ty === 'mono' ? 4 : 1;
-    for (let i = 0; i < nPl; i++) { const p = plumeMesh(); g.add(p); plumes.push(p); }
+    for (let i = 0; i < nPl; i++) { const p = plumeMesh(nPl === 1); g.add(p); if (p.userData.glow) g.add(p.userData.glow); plumes.push(p); }
     roots.sim.add(g);
     Object.assign(craftG, { group: g, shells, fills, ports, plumes, mats: M, ty, grain });
   }
@@ -613,14 +676,18 @@ export function create(canvas, opts) {
       m.position.set(0.001, (f.y0 + f.y1) / 2, zc);
       if (name === 'grainB' && craftG.grain === 'rod' && craftG.ty === 'sol') m.visible = false;
     }
-    // the plume(s): while the engine burns and the moment after its cut (o.plume.a goes to 0), length and brightness by thrust
-    const pl = o.plume || { a: 0 }, on = pl.a > 0.002;
+    // the plume(s): while the engine burns and the moment after its cut (o.plume.I goes to 0); length, width and
+    // brightness by thrust (o.plume: { core, body (colours), I, len (model lengths), t (s, the noise's drift), simple })
+    const pl = o.plume || { I: 0 }, on = pl.I > 0.002, mono = craftG.plumes.length > 1;
     craftG.plumes.forEach((p, i) => {
-      p.visible = on; if (!on) return;
-      const mono = craftG.plumes.length > 1, len = mono ? pl.len * 0.3 : pl.len, r1 = (mono ? 0.03 : 0.1) + len * 0.45;
-      p.material.uniforms.uColor.value.set(pl.color); p.material.uniforms.uA.value = pl.a;
-      p.scale.set(r1, len, r1);
+      const gl = p.userData.glow;
+      p.visible = on; if (gl) gl.visible = on;
+      if (!on) return;
+      const U = p.material.uniforms, len = mono ? pl.len * 0.3 : pl.len, r0 = mono ? 0.03 : 0.095;
+      U.uCore.value.set(pl.core); U.uBody.value.set(pl.body); U.uI.value = pl.I; U.uT.value = pl.t || 0; U.uSimple.value = pl.simple ? 1 : 0;
+      U.uLen.value = len; U.uR0.value = r0; U.uR1.value = r0 + len * 0.28;
       if (mono) { const s = [[0.12, 0.12], [-0.12, 0.12], [0.12, -0.12], [-0.12, -0.12]][i]; p.position.set(s[0], -0.33, s[1]); } else p.position.set(0, -0.5, 0);
+      if (gl) { gl.position.copy(p.position); const G = gl.material.uniforms; G.uCore.value.set(pl.core); G.uI.value = pl.I; G.uSize.value = r0 * 1.6; }
     });
   }
 

@@ -281,9 +281,61 @@ function engNow(t) {
 // 1.5 … 30 m); cut: the 3D cutaway on; L: this frame's length (m, mode3d.js minDist3 keeps the camera outside it)
 const CRAFT = { cut: false, L: 10 };
 const craftLen = s => Math.min(30, Math.max(1.5, 4 * Math.cbrt((s ? s.m0 : 1000) / 1000)));
-// plume colours by propellant class (Phase 18c): the theme's tokens
-const ENG_PLUME = { blue: '--cyan', orange: '--burn', white: '--ink', faint: '--ink', amber: '--accent' };
+// The plume's look by propellant class (2026-11-14): a core colour (by the nozzle) and a body colour, each a theme token
+// or two mixed ([token, token, share of the second]), and a strength k: hydrogen pale blue with a violet core, kerosene
+// orange-yellow, N2O4 storables pale pink-orange, a solid bright white-yellow, a monopropellant almost invisible, a hybrid
+// amber. plumeCols resolves them (hex, cached).
+const PLUME_PAL = {
+  blue: { core: ['--ink', '--bad', 0.45], body: ['--orbit', '--bad', 0.12], k: 0.75 },
+  orange: { core: ['--ink', '--warn', 0.55], body: ['--burn', '--warn', 0.35], k: 1 },
+  pink: { core: ['--ink', '--accent', 0.35], body: ['--bad', '--accent', 0.3], k: 0.7 },
+  white: { core: ['--ink'], body: ['--ink', '--warn', 0.45], k: 1.25 },
+  faint: { core: ['--ink'], body: ['--ink', '--cyan', 0.5], k: 0.14 },
+  amber: { core: ['--ink', '--warn', 0.5], body: ['--accent', '--burn', 0.3], k: 0.9 },
+};
 const engTok = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+const hexMix = (a, b, f) => { const p = h => parseInt(h.slice(1), 16), x = p(a), y = p(b), c = s => Math.round(((x >> s) & 255) * (1 - f) + ((y >> s) & 255) * f); return '#' + ((1 << 24) + (c(16) << 16) + (c(8) << 8) + c(0)).toString(16).slice(1); };
+const PLUME_C = {};
+// The flame in 2D (2026-11-14; the 2D view and the cutaway): drawn on x with its nozzle exit at the origin (half height e)
+// and the plume along +x, L long. The same character as the 3D one: a faint wide halo, the body widening out of the
+// nozzle and fading, its edges wavering, a bright core at the exit; added light ('lighter'). I: strength (0 … 1, the
+// thrust and its ignition / cut, times the propellant's k); ts: seconds (the waver and the flicker, 0 when still);
+// flat: one plain wedge (the low-resource mode).
+function flame2d(x, L, e, pc, I, ts, flat) {
+  if (!(I > 0.004) || !(L > 1)) return;
+  x.save();
+  if (flat) {
+    x.globalAlpha = Math.min(1, 0.55 * I); x.fillStyle = pc.body;
+    x.beginPath(); x.moveTo(0, -e); x.lineTo(L, -e - L * 0.3); x.lineTo(L, e + L * 0.3); x.lineTo(0, e); x.closePath(); x.fill();
+    x.restore(); return;
+  }
+  x.globalCompositeOperation = 'lighter';
+  const layer = (len, hw, col, a, wob, ph) => {
+    const n = 12, top = [], bot = [];
+    for (let i = 0; i <= n; i++) {
+      const s = i / n, w = e + (hw - e) * Math.pow(s, 0.7), d = wob ? Math.sin(s * 9 - ts * 13 + ph) * hw * 0.09 * s + Math.sin(s * 17 - ts * 23 + 2 * ph) * hw * 0.05 * s : 0;
+      top.push([s * len, -w + d]); bot.push([s * len, w + d * 0.7]);
+    }
+    const g = x.createLinearGradient(0, 0, len, 0);
+    g.addColorStop(0, hexA(col, Math.min(1, a))); g.addColorStop(0.35, hexA(col, Math.min(1, a * 0.55))); g.addColorStop(1, hexA(col, 0));
+    x.fillStyle = g; x.beginPath(); x.moveTo(0, -e);
+    for (const [px, py] of top) x.lineTo(px, py);
+    for (let i = bot.length - 1; i >= 0; i--) x.lineTo(bot[i][0], bot[i][1]);
+    x.closePath(); x.fill();
+  };
+  layer(L * 1.05, e + L * 0.42, pc.body, 0.16 * I, false, 0); // halo
+  layer(L, e + L * 0.24, pc.body, 0.5 * I, true, 0.7); // body
+  layer(L * 0.55, e * 0.9 + L * 0.08, pc.body, 0.35 * I, true, 2.1); // inner body
+  const rc = Math.max(2, L * 0.2), g = x.createRadialGradient(0, 0, 0, 0, 0, rc); // the core at the exit
+  g.addColorStop(0, hexA(pc.core, Math.min(1, 0.95 * I))); g.addColorStop(0.45, hexA(pc.core, Math.min(1, 0.4 * I))); g.addColorStop(1, hexA(pc.core, 0));
+  x.fillStyle = g; x.beginPath(); x.ellipse(rc * 0.55, 0, rc * 1.1, Math.max(e, rc * 0.55), 0, 0, 6.2832); x.fill();
+  x.restore();
+}
+function plumeCols(cls) {
+  if (PLUME_C[cls]) return PLUME_C[cls];
+  const P = PLUME_PAL[cls] || PLUME_PAL.amber, col = q => (q.length > 1 ? hexMix(engTok(q[0]), engTok(q[1]), q[2]) : engTok(q[0]));
+  return (PLUME_C[cls] = { core: col(P.core), body: col(P.body), k: P.k });
+}
 
 // ----- the side cutaway (Phase 18b, 2D): tanks, feed lines, chamber, nozzle and a small plume, nose left, nozzle right;
 // tank levels, the hybrid's port and the solid's grain live; the lines carry a moving dash while the engine burns.
@@ -295,7 +347,7 @@ function engSchematic(cv, s, st, E, phase, pl = st.Fk) {
   if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + 'px'; }
   const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, w, h);
   const col = { metal: engTok('--dim'), line: engTok('--line2'), fuel: engTok('--burn'), ox: engTok('--cyan'), ink: engTok('--ink'), faint: engTok('--faint'), flame: engTok('--accent'),
-    plume: engTok(ENG_PLUME[(PROPS[E.prop] || {}).plume || 'amber']), solid: engTok('--solid') };
+    plume: plumeCols((PROPS[E.prop] || {}).plume || 'amber'), solid: engTok('--solid') };
   const X = f => 6 + (w - 12) * f, my = h / 2 - 4, low = lowQ || MODE === 'low', still = low || reduceMotion;
   x.lineWidth = 1.2; x.font = '10px ' + engTok('--f-mono'); x.textBaseline = 'alphabetic';
   const label = (t, px, py) => { x.fillStyle = col.ink; x.globalAlpha = 0.8; x.textAlign = 'left'; x.fillText(t, px, py); x.globalAlpha = 1; };
@@ -315,21 +367,16 @@ function engSchematic(cv, s, st, E, phase, pl = st.Fk) {
     if (st.on) { x.strokeStyle = c; x.lineWidth = 1.6; x.setLineDash([4, 5]); x.lineDashOffset = still ? 0 : -phase * 40; x.stroke(); x.setLineDash([]); }
     x.lineWidth = 1.2;
   };
-  // The plume (Phase 18c): a cone opening from the nozzle exit (half height e at px), fading to nothing at its far end,
-  // a brighter core along the axis; length and brightness by thrust; a slight flicker (none in the low mode or with
-  // reduced motion); colour by propellant. Drawn before the nozzle, which stays a clear metal shape over it.
+  // The plume (Phase 18c; 2026-11-14 the flame of flame2d, as in the views): out of the nozzle exit (half height e at
+  // px), length and brightness by thrust, lit and dying with pl; flickering and wavering (still in the low mode and with
+  // reduced motion; flat in the low mode); colours by propellant. Drawn before the nozzle, which stays a clear metal
+  // shape over it.
   const plume = (px, e) => {
     if (!(pl > 0.004)) return;
-    const fl = still ? 1 : 1 + 0.035 * Math.sin(phase * 31.4) + 0.025 * Math.sin(phase * 57.3 + 1.3), k = E.type === 'mono' ? 0.35 : 1;
-    const L = (w - px - 4) * (0.45 + 0.55 * pl) * fl, sp = e + L * 0.5;
-    const cone = (h0, h1, a) => {
-      if (low) x.fillStyle = col.plume; else { const g = x.createLinearGradient(px, 0, px + L, 0); g.addColorStop(0, col.plume); g.addColorStop(0.55, hexA(col.plume, 0.35)); g.addColorStop(1, hexA(col.plume, 0)); x.fillStyle = g; }
-      x.globalAlpha = a; x.beginPath(); x.moveTo(px, my - h0); x.lineTo(px + L * 0.92, my - h1); x.quadraticCurveTo(px + L * 1.04, my, px + L * 0.92, my + h1); x.lineTo(px, my + h0); x.closePath(); x.fill();
-    };
-    x.save();
-    const g = Math.min(1, 3 * pl);
-    cone(e * 0.95, sp, (low ? 0.3 : 0.55) * k * (0.45 + 0.55 * pl) * fl * g);
-    if (!low) cone(e * 0.5, e * 0.5 + L * 0.16, 0.6 * k * (0.45 + 0.55 * pl) * g);
+    const fl = still ? 1 : 1 + 0.04 * Math.sin(phase * 37.7) + 0.025 * Math.sin(phase * 61.3 + 1.3), k = E.type === 'mono' ? 0.35 : 1;
+    const L = (w - px - 4) * (0.45 + 0.55 * pl) * fl * (E.type === 'mono' ? 0.6 : 1);
+    x.save(); x.translate(px, my);
+    flame2d(x, L, e * 0.95, col.plume, Math.min(1.2, col.plume.k * 1.3) * k * (0.35 + 0.65 * pl) * Math.min(1, 3 * pl) * fl, still ? 0 : phase, low);
     x.restore();
   };
   // the chamber (a to b, half height ch) and the nozzle (throat half height thr to the exit at c, half height e)

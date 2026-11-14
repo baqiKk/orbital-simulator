@@ -36,8 +36,9 @@ const ENGINES = [
   { id: 'star48', type: 'sol', prop: 'apcp', F: 15430 * 4.4482216, isp: 292.1, mp: 4431.2 * 0.45359237, md: 257.8 * 0.45359237, sol: { grain: 'bates' }, src: ['ngcat'] },
   { id: 'hyb', type: 'hyb', prop: 'n2o_htpb', F: 5000, isp: 250, of: 6.5, mp: 300, md: 150, hyb: { r0: 0.03 }, ex: true, src: ['doran'] },
 ];
-// Propellants: plume class for Phase 18c (blue: hydrogen, orange: kerosene, white: solid, faint: monopropellant, amber:
-// storable and hybrid); for hybrids the regression law ṙ = a·G_ox^n (ṙ mm/s, G_ox kg/(m²·s)), the fuel's density rho
+// Propellants: plume class for Phase 18c (blue: hydrogen, pale blue-violet; orange: kerosene, orange-yellow; pink:
+// storable N2O4 pairs, pale pink-orange; white: solid, bright white-yellow; faint: monopropellant, almost invisible;
+// amber: hybrid; the colours js/engine-ui.js PLUME_PAL); for hybrids the regression law ṙ = a·G_ox^n (ṙ mm/s, G_ox kg/(m²·s)), the fuel's density rho
 // (kg/m³; only for the grain's length on screen, the performance needs ρ·L alone; 0: none published here) and the
 // vacuum Isp against O/F (ispOF: [[O/F, Isp s], …]; null: not yet, Isp kept constant, noted in the Model window).
 //
@@ -92,8 +93,8 @@ const RHO = { lox: 1141.58, lh2: 70.8665, rp1: 810, nto: 1450, mmh: 874, a50: 1 
 const PROPS = {
   lox_lh2: { plume: 'blue', cea: 'lox_lh2', rho: { ox: RHO.lox, fuel: RHO.lh2 } },
   lox_rp1: { plume: 'orange', cea: 'lox_rp1', rho: { ox: RHO.lox, fuel: RHO.rp1 } },
-  nto_a50: { plume: 'amber', cea: 'nto_a50', rho: { ox: RHO.nto, fuel: RHO.a50 } },
-  nto_mmh: { plume: 'amber', cea: 'nto_mmh', rho: { ox: RHO.nto, fuel: RHO.mmh } },
+  nto_a50: { plume: 'pink', cea: 'nto_a50', rho: { ox: RHO.nto, fuel: RHO.a50 } },
+  nto_mmh: { plume: 'pink', cea: 'nto_mmh', rho: { ox: RHO.nto, fuel: RHO.mmh } },
   n2h4: { plume: 'faint' },
   h2o2: { plume: 'faint' },
   apcp: { plume: 'white' },
