@@ -467,7 +467,7 @@ function craft3(tNow, craft, ext, sunIdx) {
   if (!(Math.hypot(...ax) > 0)) ax = [0, 0, 1];
   let sun = SUN3;
   if (sunIdx >= 0) { const v = [BP3[3 * sunIdx] - CR3[0], BP3[3 * sunIdx + 1] - CR3[1], BP3[3 * sunIdx + 2] - CR3[2]], l = Math.hypot(...v) || 1; sun = v.map(q => q / l); }
-  const pc = plumeCols(en.plume), k = ext ? 0 : en.pl, ts = reduceMotion ? 0 : performance.now() / 1000;
+  const pc = plumeCols(en.plume), k = ext ? 0 : en.pl, ts = reduceMotion ? 0 : (performance.now() / 1000) % 600; // wrapped: the noise's inputs stay small
   const fl = reduceMotion ? 1 : 1 + 0.045 * Math.sin(ts * 37.7) + 0.03 * Math.sin(ts * 61.3 + 1.3) + 0.02 * Math.sin(ts * 97.1 + 2.1);
   // a liquid engine's tanks as long as their volumes (core.js engTanks, js/engines.js densities), as in the 2D cutaway
   const rho = (PROPS[en.E.prop] || {}).rho, V = rho && en.E.type === 'liq' ? engTanks(en.s, rho) : null, fo = V ? V.ox / (V.ox + V.fuel) : 0.5;
