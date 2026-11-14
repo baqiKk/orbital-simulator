@@ -1371,7 +1371,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const ui = read('js/engine-ui.js'), app = read('js/app.js'), rj = read('js/record.js');
   assert.ok(ui.includes('const a = Math.max(0, Math.min(b.t - L / 2, T - L));') && ui.includes('function engStOf(s, tau, on) {') && ui.includes('if (!on) { st.on = false; st.F = 0; st.Fk = 0; }'), 'engine: impulsive burns centred on their moment; off between burns');
   assert.ok((ui + app).split('engState(s, on ? tau').length === 2 && !(ui + app).includes('engState(s, q.on'), 'engine: the firing comes from the mission, never from the load left');
-  assert.ok(ui.includes('w = SLOW_W.fade * burnRate(q.j)') && ui.includes('pl = st.Fk * Math.min(1, (t - a) / Math.max(w, 1e-9))') && ui.includes('pl = ENGM.end[q.j] * (1 - q.e / w)') && P.SLOW_W.fade === 0.3, 'plume: lights and dies over 0.3 s of screen');
+  assert.ok(ui.includes('SLOW_W.fade * burnRate(q.j)') && ui.includes('pl = q.on ? st.Fk * Math.min(1, (t - a) / Math.max(w, 1e-9)) : ENGM.end[q.j] * (1 - q.e / w);') && P.SLOW_W.fade === 0.3, 'plume: lights and dies over 0.3 s of screen');
   assert.ok(app.includes('t1 = slowAdvance(t0, dt, r0, fs, C.T)') && app.includes("_(slow ? 'tl.rateSlow' : 'tl.rate', { r: fmtRate(rate) })") && has('tl.rate') && has('tl.rateSlow') && DICT['ui.slow'] === 'Yanmalarda yavaşla', 'slow motion: the playback runs through the warp, its rate by the clock');
   const Rc = require('../js/record.js'), base = Rc.recSchedule([0.3, 0.7]);
   const sc = Rc.recSchedule([0.3, 0.7], { fires: [{ ua: 0.3, ub: 0.3005, T: 120, show: 30 }, { ua: 0.7, ub: 0.72, T: 4851, show: 150 }], ease: { rate: P.rampRate, len: P.rampLen } }), n = sc.u.length;
@@ -1381,6 +1381,22 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(sc.T > base.T && sc.T <= Rc.REC_OPT.max && b1 > 0.8 && b2 > b1 * 3 && b1 + b2 <= Rc.REC_OPT.burnShare * sc.T + 0.2, `recording: burns get their share (${b1.toFixed(2)} s, ${b2.toFixed(2)} s of ${sc.T} s)`);
   assert.ok(sc.u[0] === 0 && sc.u[n - 1] === 1 && sc.u.every((u, k) => !k || u >= sc.u[k - 1]) && sc.fireC.length === 2 && sc.fireC.every(c => c > 0), 'recording: u grows, rates for the plume');
   assert.ok(rj.includes('fires: firesU(), ease: RAMP })') && rj.includes('REC.fireC = o;') && app.includes('if (REC.busy && REC.fireC) return REC.fireC[j]'), 'recording: the same mapping, the plume at the film\'s rates');
+}
+// 44) The engine a transfer flies when none is chosen (2026-11-15): an RL10-class stage (RL10A-4-2, the Centaur's dry
+// mass) carrying a Mars Express-mass spacecraft, propellant just what the burns need: every ready-made transfer's
+// departure burn between 30 s and 6 min (before: the default 400 N engine, 82 min); the big orbit raises from low orbit
+// fly the Centaur with its RL10 (a ready-made vehicle brings its engine on loading)
+{
+  const ui = read('js/engine-ui.js'), app = read('js/app.js'), C = require('../js/core.js'), En = require('../js/engines.js'), Vh = require('../js/vehicles.js');
+  assert.ok(ui.includes("return S.kind === 'man' ? ENG_DEF : ENG_AUTO;") && ui.includes("VEHICLES.find(v => v.id === 'centaur').md + VEHICLES.find(v => v.id === 'mex').m0") && ui.includes('1.02 * engNeed('), 'default engine: the sized stage');
+  const rl = En.ENGINES.find(e => e.id === 'rl10'), md = Vh.VEHICLES.find(v => v.id === 'centaur').md + Vh.VEHICLES.find(v => v.id === 'mex').m0;
+  const scStart = app.indexOf('const SCENARIOS = [') + 'const SCENARIOS = '.length, SC = require('vm').runInNewContext('(' + app.slice(scStart, app.indexOf('\n];', scStart) + 2) + ')');
+  for (const sc of SC.filter(q => q.model !== 'man')) {
+    const sp = C.engineSpec({ type: 'liq', F: rl.F, isp: rl.isp, of: rl.of, md, mp: 1.02 * C.engNeed(sc.M.dv, md, rl.isp) }), t = C.engBurns(sp, [sc.M.dv]).burns[0].t;
+    assert.ok(t > 30 && t < 360, `default engine: ${sc.id} departs in ${t.toFixed(0)} s`);
+  }
+  for (const id of ['mv_leo_geo', 'mv_cape_geo', 'mv_bielliptic']) { const M = SC.find(q => q.id === id).M; assert.ok(M.veh === 'p:centaur' && M.F === 99200 && M.m0 === 23073, id + ': the Centaur'); }
+  assert.ok(app.includes("if (S.kind === 'man' && S.M.veh && S.M.veh.startsWith('p:')) S.M.eng = engOfVehicle(S.M.veh.slice(2));"), 'a ready-made vehicle brings its engine');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

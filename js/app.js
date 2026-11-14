@@ -48,12 +48,12 @@ const SCENARIOS = [
     bodies: [{ k: 'ganymede', parent: 2 }, { k: 'callisto', parent: 2 }, { k: 'jupiter', parent: -1 }],
     M: { mode: 'capture', side: 0, h0: 100, hB: 200, hRet: 60, t0: 9800.78452933949, theta: -115.32101579869845, dv: 1133.8633422404118, beta: -2.9268533075196106, autoDur: true, duration: 10 } },
   // orbit maneuvers about one body (altitudes above its equatorial radius, km; angles deg); 2026-11-15 00:00 UTC
-  { id: 'mv_leo_geo', model: 'man', frame: 'eq',
-    M: { body: 'earth', t0: 9814.500800740741, hp0: 191.34411, ha0: 191.34411, i0: 0, O0: 0, hp1: 35781.34857, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 2000, md: 500, isp: 320, j2: false, thrust: 'imp', F: 400, steer: 'local' } },
-  { id: 'mv_cape_geo', model: 'man', frame: 'eq',
-    M: { body: 'earth', t0: 9814.500800740741, hp0: 185, ha0: 185, i0: 28.5, O0: 0, hp1: 35786, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 2000, md: 500, isp: 320, j2: false, thrust: 'imp', F: 400, steer: 'local' } },
-  { id: 'mv_bielliptic', model: 'man', frame: 'eq',
-    M: { body: 'earth', t0: 9814.500800740741, hp0: 191.34411, ha0: 191.34411, i0: 0, O0: 0, hp1: 376310, e1: 0, i1: 0, type: 'bielliptic', rb: 503873, plane: 'comb', k: 1, m0: 2000, md: 500, isp: 320, j2: false, thrust: 'imp', F: 400, steer: 'local' } },
+  { id: 'mv_leo_geo', model: 'man', frame: 'eq', // the Centaur (js/vehicles.js) with its RL10
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 191.34411, ha0: 191.34411, i0: 0, O0: 0, hp1: 35781.34857, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 23073, md: 2243, isp: 450.5, j2: false, thrust: 'imp', F: 99200, steer: 'local', veh: 'p:centaur' } },
+  { id: 'mv_cape_geo', model: 'man', frame: 'eq', // the Centaur (js/vehicles.js) with its RL10
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 185, ha0: 185, i0: 28.5, O0: 0, hp1: 35786, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 1, m0: 23073, md: 2243, isp: 450.5, j2: false, thrust: 'imp', F: 99200, steer: 'local', veh: 'p:centaur' } },
+  { id: 'mv_bielliptic', model: 'man', frame: 'eq', // the Centaur (js/vehicles.js) with its RL10
+    M: { body: 'earth', t0: 9814.500800740741, hp0: 191.34411, ha0: 191.34411, i0: 0, O0: 0, hp1: 376310, e1: 0, i1: 0, type: 'bielliptic', rb: 503873, plane: 'comb', k: 1, m0: 23073, md: 2243, isp: 450.5, j2: false, thrust: 'imp', F: 99200, steer: 'local', veh: 'p:centaur' } },
   { id: 'mv_gto', model: 'man', frame: 'eq',
     M: { body: 'earth', t0: 9814.500800740741, hp0: 250, ha0: 35786, i0: 28.5, O0: 0, hp1: 35786, e1: 0, i1: 0, type: 'hohmann', rb: 100000, plane: 'comb', k: 3, m0: 3500, md: 1900, isp: 320, j2: false, thrust: 'fin', F: 400, steer: 'local' } },
   { id: 'mv_spiral', model: 'man', frame: 'eq',
@@ -161,6 +161,7 @@ function loadScenario(id) {
     S.bodies = sc.bodies.map(b => bodyFromPreset(b.k, { parent: b.parent, ...(b.a != null ? { a: b.a } : {}), phase: b.phase || 0 }));
     if (S.model === 'real') linkReal();
   }
+  if (S.kind === 'man' && S.M.veh && S.M.veh.startsWith('p:')) S.M.eng = engOfVehicle(S.M.veh.slice(2)); // a ready-made vehicle brings its engine
   S.frame = sc.frame; S.follow = 'free';
   openRows.clear(); ovReveal(); MAP.needFit = true;
   $('#scenario').value = sc.id;

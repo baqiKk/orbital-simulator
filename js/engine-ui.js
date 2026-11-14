@@ -47,7 +47,23 @@ function engSummary(E, s) {
 // from the engine's clock τ at the start and the end; impulsive: Tsiolkovsky one after the other, core.js engBurns);
 // short: the propellant missing for the impulsive plan (kg). E: the engine (the mission's by default; the craft's stand-in
 // for engNow)
+// The engine a transfer flies when none is chosen (2026-11-15, ENG_AUTO): an RL10-class upper stage (RL10A-4-2's thrust
+// and Isp, the Centaur's dry mass) carrying a Mars Express-mass spacecraft (1152 kg) and firing every burn of the
+// mission (departure, capture, raise), its propellant what those burns need plus 2 %. (Tried first: the departure by the
+// stage and the capture by the spacecraft's own engine — with the Apollo CSM the departure takes 24–30 min, Mars Express
+// cannot carry a Mars capture.) Each burn on the engine's clock.
+const ENG_AUTO = { auto: true, id: '', type: 'liq', prop: 'lox_lh2' };
+function engAutoPlan(dvs) {
+  const st = engPreset('rl10'), md = VEHICLES.find(v => v.id === 'centaur').md + VEHICLES.find(v => v.id === 'mex').m0;
+  return { ...st, id: 'auto:rl10', md, mp: Math.max(1, 1.02 * engNeed(dvs.reduce((a, q) => a + q, 0), md, st.isp)), pm: 'tot' };
+}
 function engMission(E = S.M && S.M.eng) {
+  if (E && E.auto) {
+    if (!simR || S.kind === 'man') return null;
+    const M = S.M, cap = M.mode === 'capture' && simR.captured ? simR.captured.dv : 0, dvs = cap ? [M.dv, cap] : [M.dv], ts = cap ? [0, simR.captured.t || 0] : [0];
+    const P = engAutoPlan(dvs), s0 = engSpecOf(P), R = engBurns(s0, dvs);
+    return { s: s0, E: P, fin: false, burns: R.burns.map((q, j) => ({ ...q, t: ts[j], t1: ts[j], len: q.t, s: s0, E: P })), short: 0, need: R.need, dv: R.dv, auto: true };
+  }
   const s = engSpecOf(E);
   if (!s || s.error || !simR) return s && s.error ? { error: s.error } : null;
   const fin = S.kind === 'man' && MAN && MAN.res && simR.burns && simR.burns.some(b => b.tau1 != null);
@@ -244,10 +260,11 @@ function engCraftE() {
   if (M.eng) return M.eng;
   if (S.kind === 'man' && M.m0 > M.md && M.md > 0 && M.F > 0 && M.isp > 0) {
     const k = [M.F, M.isp, M.m0, M.md].join('|'); // the same object while the figures stay (engNow's cache holds)
-    if (CRAFT_E.k !== k) { CRAFT_E.k = k; CRAFT_E.E = { ...ENG_DEF, F: M.F, isp: M.isp, pm: 'tot', mp: M.m0 - M.md, md: M.md }; }
+    // an electric thruster (Isp over 1000 s: the spiral) shows as a faint monopropellant-like plume, else N2O4/MMH
+    if (CRAFT_E.k !== k) { CRAFT_E.k = k; CRAFT_E.E = { ...ENG_DEF, ...(M.isp > 1000 ? { type: 'mono', prop: 'n2h4', of: 0 } : {}), F: M.F, isp: M.isp, pm: 'tot', mp: M.m0 - M.md, md: M.md }; }
     return CRAFT_E.E;
   }
-  return ENG_DEF;
+  return S.kind === 'man' ? ENG_DEF : ENG_AUTO;
 }
 const CRAFT_E = { k: '', E: null };
 // the craft's engine at mission time t: its spec, the burns (engMission), the engine's clock, whether it burns, and
@@ -258,24 +275,30 @@ const ENGM = { simR: null, E: null, m: null, s: null, fires: null, end: [] };
 function engCache() {
   const E = engCraftE();
   if (ENGM.simR !== simR || ENGM.E !== E) {
-    ENGM.simR = simR; ENGM.E = E; ENGM.s = engSpecOf(E); ENGM.fires = null;
-    if (ENGM.s && ENGM.s.error) ENGM.s = engSpecOf(ENG_DEF);
+    ENGM.simR = simR; ENGM.E = E; ENGM.fires = null;
     ENGM.m = simR ? engMission(E) : null;
+    ENGM.s = E.auto ? (ENGM.m ? ENGM.m.s : engSpecOf(ENG_DEF)) : engSpecOf(E);
+    if (ENGM.s && ENGM.s.error) ENGM.s = engSpecOf(ENG_DEF);
     const m = ENGM.m && !ENGM.m.error ? ENGM.m : null, s = ENGM.s;
-    ENGM.end = m ? m.burns.map(b => engState(s, Math.max(b.tau0, b.tau1 - s.tb * 1e-6)).Fk) : []; // thrust at each cut
+    ENGM.end = m ? m.burns.map(b => { const bs = b.s || s; return engState(bs, Math.max(b.tau0, b.tau1 - bs.tb * 1e-6)).Fk; }) : []; // thrust at each cut
   }
   return E;
 }
+// With an engine per burn (ENG_AUTO: the stage, then the spacecraft) the craft shows the engine of the burn under way
+// or dying, else of the next burn (the stage is gone after its burn), its clock that engine's own.
 function engNow(t) {
-  const E = engCache(), s = ENGM.s, m = ENGM.m && !ENGM.m.error ? ENGM.m : null, q = m ? engTau(m, t) : { tau: 0, on: false, j: -1, e: Infinity };
-  const st = engStOf(s, q.tau, q.on);
+  const E0 = engCache(), m = ENGM.m && !ENGM.m.error ? ENGM.m : null, q = m ? engTau(m, t) : { tau: 0, on: false, j: -1, e: Infinity };
+  const w = q.j >= 0 && m ? SLOW_W.fade * burnRate(q.j) : 0, live = q.j >= 0 && (q.on || q.e < w);
+  let jb = q.j;
+  if (m && m.auto && !live) jb = Math.min(m.burns.length - 1, q.j + 1);
+  const bb = m && jb >= 0 ? m.burns[jb] : null, s = (bb && bb.s) || ENGM.s, E = (bb && bb.E) || E0;
+  const tau = m && m.auto && jb !== q.j ? 0 : q.tau, st = engStOf(s, tau, q.on);
   let pl = 0;
-  if (q.j >= 0 && m) {
-    const b = m.burns[q.j], [a] = engWin(b), w = SLOW_W.fade * burnRate(q.j);
-    if (q.on) pl = st.Fk * Math.min(1, (t - a) / Math.max(w, 1e-9));
-    else if (q.e < w) pl = ENGM.end[q.j] * (1 - q.e / w);
+  if (live) {
+    const [a] = engWin(m.burns[q.j]);
+    pl = q.on ? st.Fk * Math.min(1, (t - a) / Math.max(w, 1e-9)) : ENGM.end[q.j] * (1 - q.e / w);
   }
-  return { s, E, m, tau: q.tau, on: q.on, j: q.j, st, pl, plume: (PROPS[E.prop] || {}).plume || 'amber' };
+  return { s, E, m, tau, on: q.on, j: q.j, st, pl, plume: (PROPS[E.prop] || {}).plume || 'amber' };
 }
 // The craft in the views (Phase 18b): its length on screen comes from its mass (a plain model, about 4 m per tonne^⅓,
 // 1.5 … 30 m); cut: the 3D cutaway on; L: this frame's length (m, mode3d.js minDist3 keeps the camera outside it)
