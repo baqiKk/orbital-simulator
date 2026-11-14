@@ -3508,7 +3508,8 @@ function renderCredits() {
     <label class="chk"><input type="checkbox" id="earthClouds"${TEXOPT.clouds ? ' checked' : ''}><span>${esc(_('cred.clouds'))}</span></label>
     <h3>${esc(_('cred.h.eng'))}</h3>
     <ul>${ENGINES.map(v => `<li><b>${esc(_('eng.' + v.id))}</b> — ${esc(_('cred.eng.' + v.id))} ${v.src.map(s => link(ENG_SRC[s], _('cred.esrc.' + s))).join(' · ')}</li>`).join('')}
-      ${['lox_paraffin', 'n2o_htpb'].map(k => `<li><b>${esc(_('eng.p.' + k))}</b> — ${esc(_('cred.prop.' + k))} ${PROPS[k].src.map(s => link(ENG_SRC[s], _('cred.esrc.' + s))).join(' · ')}</li>`).join('')}</ul>
+      ${['lox_paraffin', 'n2o_htpb'].map(k => `<li><b>${esc(_('eng.p.' + k))}</b> — ${esc(_('cred.prop.' + k))} ${PROPS[k].src.map(s => link(ENG_SRC[s], _('cred.esrc.' + s))).join(' · ')}</li>`).join('')}
+      <li>${esc(_('cred.cea'))} ${['cearun', 'nist', 'pubchem', 'wikiRp1'].map(s => link(ENG_SRC[s], _('cred.esrc.' + s))).join(' · ')}</li></ul>
     <h3>${esc(_('cred.h.veh'))}</h3>
     <ul>${VEHICLES.map(v => `<li><b>${esc(_('veh.' + v.id))}</b> — ${esc(_('cred.veh.' + v.id))} ${v.src.map(s => link(VEH_SRC[s], _('cred.vsrc.' + s))).join(' · ')}</li>`).join('')}</ul>
     <h3>${esc(_('cred.h.cabin'))}</h3>

@@ -414,6 +414,7 @@
         <div class="eng-sch"><canvas id="engSch" role="img" data-i18n-aria-label="eng.schAria"></canvas></div>
         <div class="eng-act"><button type="button" class="ghost" id="engPlay" aria-pressed="false" data-i18n="eng.play"></button><button type="button" class="ghost appr-btn" id="engAppr" aria-pressed="false" data-i18n="appr.btn"></button><button type="button" class="ghost cut-btn" id="engCut" aria-pressed="false" data-i18n="cut.btn"></button></div>
         <div class="seg full" id="engType" role="group" data-i18n-aria-label="eng.type"><button type="button" data-v="liq" data-i18n="eng.t.liq"></button><button type="button" data-v="hyb" data-i18n="eng.t.hyb"></button><button type="button" data-v="sol" data-i18n="eng.t.sol"></button><button type="button" data-v="mono" data-i18n="eng.t.mono"></button></div>
+        <div class="eng-ask" id="engAsk" role="alertdialog" hidden><span data-i18n="eng.askType"></span><button type="button" class="btn primary sm" id="engAskYes" data-i18n="eng.askYes"></button><button type="button" class="btn sm" id="engAskNo" data-i18n="eng.askNo"></button></div>
         <div class="grid2">
           <label class="field"><span data-i18n="eng.preset"></span><select id="engPre"></select></label>
           <label class="field"><span data-i18n="eng.prop"></span><select id="engProp"></select></label>
@@ -424,6 +425,7 @@
         <div class="field" id="engSolW"><span data-i18n="eng.grain"></span><div class="seg full" id="engGrain" role="group" data-i18n-aria-label="eng.grain"><button type="button" data-v="bates" data-i18n="eng.g.bates"></button><button type="button" data-v="tube" data-i18n="eng.g.tube"></button><button type="button" data-v="rod" data-i18n="eng.g.rod"></button></div></div>
         <details class="adv" id="engHybW" open><summary data-i18n="eng.hybH"></summary><div class="adv-b"><label class="field"><span data-i18n="eng.r0"></span><input type="text" inputmode="decimal" id="eng-r0" autocomplete="off"></label><small class="mv-hint" id="engHybD"></small></div></details>
         <small class="mv-hint warn" id="engErr" role="status" hidden></small>
+        <ul class="eng-warn" id="engWarn" role="status" hidden></ul>
         <dl class="eng-out" id="engOut"></dl>
         <div class="eng-chart"><canvas id="engCv" aria-hidden="true"></canvas><canvas id="engCvP" aria-hidden="true"></canvas></div>
         <small class="mv-hint" id="engChartNote" aria-live="polite"></small>

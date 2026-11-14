@@ -1652,6 +1652,35 @@ function engState(s, tau) {
   return { fuel: s.mf > 0 ? Math.max(0, 1 - u.fuel / s.mf) : 0, ox: s.mox > 0 ? Math.max(0, 1 - u.ox / s.mox) : 0,
     port: s.type === 'hyb' ? q.r / c.r[c.n - 1] : 0, web: s.type === 'sol' ? t / s.tb : 0, F: on ? q.F : 0, Fk: on ? q.F / peak : 0, on };
 }
+// A CEA table's reading (rows [O/F, Ivac at ε = 50, Ivac at ε = 300 or null], m/s; js/engines.js CEA): the reasonable
+// O/F range, where Ivac at ε = 50 stays at least 90 % of its peak (linear between rows; a table end where it does not
+// fall that far), the peak and its O/F, and the theoretical vacuum Isp, the highest Ivac at ε = 300 (s).
+function engCea(rows) {
+  let j = 0;
+  rows.forEach((r, i) => { if (r[1] > rows[j][1]) j = i; });
+  const pk = rows[j][1], th = 0.9 * pk;
+  let lo = rows[0][0], hi = rows[rows.length - 1][0];
+  for (let i = j; i > 0; i--) if (rows[i - 1][1] < th) { const a = rows[i - 1], b = rows[i]; lo = a[0] + (th - a[1]) / (b[1] - a[1]) * (b[0] - a[0]); break; }
+  for (let i = j; i < rows.length - 1; i++) if (rows[i + 1][1] < th) { const a = rows[i], b = rows[i + 1]; hi = a[0] + (a[1] - th) / (a[1] - b[1]) * (b[0] - a[0]); break; }
+  return { lo, hi, ofPeak: rows[j][0], ispPeak: pk / G0, ispMax: Math.max(...rows.map(r => r[2] || 0)) / G0 };
+}
+// The engine window's warnings (they do not refuse): [{ key ('warn.eng*'), p (figures) }]. s: engineSpec; pr: { cea (an
+// engCea reading or null) }. O/F outside the propellant pair's reasonable range (the mean O/F for a hybrid), Isp above
+// its theoretical vacuum Isp, a hybrid's port growing more than tenfold or a grain length over diameter outside 2 … 30
+// (when the length is known), a thrust-to-weight so low that the burns are long (under 0.05 g₀ at the start).
+function engChecks(s, pr) {
+  const out = [], bi = s.type === 'liq' || s.type === 'hyb', c = pr && pr.cea;
+  if (c && bi && (s.of < c.lo || s.of > c.hi)) out.push({ key: 'warn.engOF', p: { of: s.of, a: c.lo, b: c.hi } });
+  if (c && s.isp > c.ispMax) out.push({ key: 'warn.engIsp', p: { isp: s.isp, max: c.ispMax } });
+  if (s.type === 'hyb') {
+    if (s.r1 / s.r0 > 10) out.push({ key: 'warn.engPort', p: { k: s.r1 / s.r0 } });
+    if (s.L > 0) { const ld = s.L / (2 * s.r1); if (ld > 30 || ld < 2) out.push({ key: 'warn.engLD', p: { ld } }); }
+  }
+  if (s.a0 / G0 < 0.05) out.push({ key: 'warn.engTW', p: { tw: s.a0 / G0, t: s.tb } });
+  return out;
+}
+// the tanks' volumes (m³) of a liquid engine from its loads and the propellants' densities (rho: { ox, fuel } kg/m³)
+const engTanks = (s, rho) => ({ ox: s.mox / rho.ox, fuel: s.mf / rho.fuel });
 // propellant a Δv needs with this dry mass and Isp (kg; Tsiolkovsky with the burn's end at the dry mass)
 const engNeed = (dv, md, isp) => md * (Math.exp(dv / (isp * G0)) - 1);
 // Impulsive burns (Δv list, m/s) flown with the engine one after the other: each burn's propellant from the mass it
@@ -2177,5 +2206,5 @@ if (typeof module !== 'undefined') module.exports = {
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed, SOLVE_KM, missionMiss, solveMission,
   G0, visViva, burnDv, propMass, dvAvail, planeSplit, maneuverPlan, mvOrbits, rv2el, j2Rates, keplerStep, equatorFrame, orbitPoint, maneuverSim,
   mvImpulse, maneuverFlight, spiralEstimate, spiralFlight, maneuverRun, conicPoints, domBody, splitPlan, burnFor, KMAX, AUTO_GAIN, maneuverAuto, freeBurn,
-  ENG_TYPES, ENG_N, engineSpec, engineCurve, engAt, engUsed, engTauAt, engNeed, engBurns, engState,
+  ENG_TYPES, ENG_N, engineSpec, engineCurve, engAt, engUsed, engTauAt, engNeed, engBurns, engState, engCea, engChecks, engTanks,
 };

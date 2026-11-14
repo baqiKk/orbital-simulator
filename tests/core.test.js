@@ -1330,5 +1330,24 @@ const sEM = realSys(['earth', 'mars', 'sun']);
     if (sp.type === 'hyb') assert.ok(Math.abs(a0.port - sp.r0 / sp.r1) < 1e-9 && Math.abs(a1.port - 1) < 1e-9, 'hybrid: the port grows to the grain\'s outer radius');
     if (sp.type === 'sol') assert.ok(a0.web === 0 && a1.web === 1, 'solid: the web burns through');
   }
+  // the engine window's checks: a CEA table's reasonable O/F range (Ivac at ε = 50 at least 90 % of its peak, by hand
+  // on a made-up table) and its theoretical vacuum Isp; the warnings each fire only when they should; tank volumes
+  {
+    const tab = [[1, 80, 90], [2, 100, 120], [3, 95, 118], [4, 70, 80]], r = C.engCea(tab);
+    assert.ok(r.ofPeak === 2 && Math.abs(r.lo - 1.5) < 1e-12 && Math.abs(r.hi - (3 + 5 / 25)) < 1e-12 && Math.abs(r.ispMax - 120 / G0) < 1e-12, 'checks: the reasonable O/F range and the theoretical Isp of a CEA table');
+    const flat = C.engCea([[1, 100, 100], [2, 101, 101]]);
+    assert.ok(flat.lo === 1 && flat.hi === 2, 'checks: a table that never falls to 90 % gives its ends');
+    const lh2 = C.engCea(E.CEA.lox_lh2), keys = (s, pr) => C.engChecks(s, pr).map(q => q.key);
+    assert.ok(keys(L, { cea: lh2 }).length === 0, 'checks: the RL10 raises no warning');
+    assert.deepStrictEqual(keys(C.engineSpec({ type: 'liq', F: 99200, isp: 450.5, of: 12, mp: 20830, md: 2243 }), { cea: lh2 }), ['warn.engOF'], 'checks: O/F 12 is outside the LOX/LH2 range');
+    assert.deepStrictEqual(keys(C.engineSpec({ type: 'liq', F: 99200, isp: 500, of: 5.5, mp: 20830, md: 2243 }), { cea: lh2 }), ['warn.engIsp'], 'checks: Isp 500 s is above the LOX/LH2 theoretical vacuum Isp');
+    assert.ok(keys(C.engineSpec({ type: 'liq', F: 400, isp: 320, of: 1.65, mp: 700, md: 300 }), {}).includes('warn.engTW'), 'checks: a 400 N engine on a tonne burns long');
+    const thin = hyb('n2o_htpb', 6.5, 0.005);
+    assert.ok(keys(thin, {}).includes('warn.engPort') && !keys(hyb('n2o_htpb', 6.5, 0.03), {}).includes('warn.engPort'), `checks: a hybrid port growing ${(thin.r1 / thin.r0).toFixed(0)}-fold is flagged, 5-fold is not`);
+    const par = hyb('lox_paraffin', 2.5, 0.03), ld = par.L / (2 * par.r1);
+    assert.ok(keys(par, {}).includes('warn.engLD') === (ld > 30 || ld < 2), `checks: the grain L/D (${ld.toFixed(1)}) against 2 … 30`);
+    const V = C.engTanks(L, E.PROPS.lox_lh2.rho);
+    assert.ok(Math.abs(V.ox - L.mox / 1141.58) < 1e-12 && Math.abs(V.fuel - L.mf / 70.8665) < 1e-12 && V.fuel > 2.5 * V.ox, `checks: tank volumes (the hydrogen tank ${(V.fuel / V.ox).toFixed(1)} times the oxygen one)`);
+  }
   console.log('engines ok');
 }

@@ -1244,7 +1244,13 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(by('hyb').ex && by('hyb').prop === 'n2o_htpb' && !E.ENGINES.some(q => /merlin/i.test(q.id)), 'engines: the hybrid is marked as an example; no engine without a published Isp');
   const PR = E.PROPS;
   assert.ok(PR.lox_paraffin.hyb.a === 9.36e-2 && PR.lox_paraffin.hyb.n === 0.62 && PR.lox_paraffin.hyb.rho === 920 && PR.n2o_htpb.hyb.a === 0.1876 && PR.n2o_htpb.hyb.n === 0.347 && PR.n2o_htpb.hyb.ispOF === null, 'engines: the regression laws as published; no Isp table for N2O/HTPB yet');
-  assert.ok(E.CEA_PARAFFIN_IVAC.length === 13 && E.CEA_PARAFFIN_IVAC[6][0] === 2.5 && E.CEA_PARAFFIN_IVAC[6][1] === 3474.9 && PR.lox_paraffin.hyb.ispOF.every((q, i) => Math.abs(q[1] * 9.80665 - E.CEA_PARAFFIN_IVAC[i][1]) < 1e-9), 'engines: the CEA table (Ivac, m/s) as run, in seconds');
+  const cp = E.CEA.lox_paraffin, row = of => cp.find(r => r[0] === of);
+  assert.ok(row(2.5)[1] === 3474.9 && row(1)[1] === 2633.8 && row(4)[1] === 3290.8 && row(3)[2] === 3755.3 && PR.lox_paraffin.hyb.ispOF.every((q, i) => Math.abs(q[1] * 9.80665 - cp[i][1]) < 1e-9), 'engines: the paraffin CEA table (Ivac, m/s) as run, the hybrid\'s Isp in seconds');
+  // the other CEA tables and the densities as their sources print them; every liquid pair has both
+  assert.ok(E.CEA.lox_lh2.find(r => r[0] === 5.5)[2] === 4724.5 && E.CEA.lox_rp1.find(r => r[0] === 2.75)[1] === 3529.8 && E.CEA.nto_mmh.find(r => r[0] === 2.5)[2] === 3587.5 && E.CEA.nto_a50.find(r => r[0] === 2)[1] === 3370.2, 'engines: CEA tables as run');
+  assert.ok(E.RHO.lox === 1141.58 && E.RHO.lh2 === 70.8665 && E.RHO.mmh === 874 && E.RHO.nto === 1450 && Math.abs(E.RHO.a50 - 884.7) < 0.1 && E.RHO.rp1 === 810, 'engines: densities (NIST, PubChem/HSDB; A-50 derived; RP-1 secondary)');
+  for (const k of ['lox_lh2', 'lox_rp1', 'nto_mmh', 'nto_a50']) assert.ok(PR[k].cea === k && E.CEA[k] && PR[k].rho.ox > 0 && PR[k].rho.fuel > 0, 'engines: CEA and densities for ' + k);
+  assert.ok(has('cred.cea') && ['nist', 'pubchem', 'wikiRp1'].every(s => E.ENG_SRC[s] && has('cred.esrc.' + s)), 'engines: the CEA tables and densities credited');
   const ej = read('js/engines.js');
   assert.ok(/pressure 30 bar, supersonic area ratio Ae\/At = 50/.test(ej) && /equilibrium \(shifting\)/.test(ej) && ej.includes('CEA2, February 5, 2004'), 'engines: the CEA run\'s Pc, ε and equilibrium assumption in the comment');
   for (const q of E.ENGINES) {
@@ -1307,6 +1313,13 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(ui.includes("low = lowQ || MODE === 'low'") && ui.includes('function engSchematic(') && html.includes('id="engSch"') && html.includes('id="engPlay"'), 'cutaway 2D: in the engine window, plain in the low mode, "Oynat"');
   assert.ok(app.includes('plume2d(x, y, tNow, td, sx(cpos2[0]) - x, sy(cpos2[1]) - y, ext);') && app.includes('if (Q.glow) { const g = ctx.createLinearGradient(x, y, x + ux * L, y + uy * L);'), '2D view: a small plume, flat without glow');
   assert.ok(html.includes('<path d="M7 1.5h6v3.1l-1.7 2.3v.3C12.5 8.5 14.9 11 15.4 14.6H4.6C5.1 11 7.5 8.5 8.7 7.2v-.3L7 4.6z"/><path class="acc" d="M6.8 15.6h6.4L10 19.6z"/>'), 'rail: the engine window\'s icon');
+  // the engine window's fixes: a type brings its default engine (asked first after hand edits); warnings from the core;
+  // the cutaway: liquid tanks by volume, the hybrid's end view, a fading, flickering cone (still in the low mode and with
+  // reduced motion) drawn before a solid metal nozzle
+  assert.ok(ui.includes("const ENG_TYPE_DEF = { liq: 'rl10', hyb: 'hyb', sol: 'star48', mono: 'n2h4' };") && ui.includes('if (ENGW.dirty) { ENGW.ask = b.dataset.v; engEl(\'engAsk\').hidden = false;') && html.includes('id="engAsk"') && ['eng.askType', 'eng.askYes', 'eng.askNo'].every(has), 'engine window: the type\'s default engine, asked first after hand edits');
+  assert.ok(ui.includes('engChecks(s, { cea: pr.cea && CEA[pr.cea] ? engCea(CEA[pr.cea]) : null })') && html.includes('id="engWarn"') && ['warn.engOF', 'warn.engIsp', 'warn.engPort', 'warn.engLD', 'warn.engTW'].every(has), 'engine window: warnings (O/F, Isp, grain, T/W) in words');
+  const sch = ui.slice(ui.indexOf('function engSchematic('), ui.indexOf('const SOL_GRAIN_VIEW'));
+  assert.ok(sch.includes('engTanks(s, rho)') && sch.includes("_('eng.sch.end')") && has('eng.sch.end') && sch.includes('still = low || reduceMotion') && sch.includes('const fl = still ? 1 :') && sch.includes('x.createLinearGradient(px, 0, px + L, 0)') && sch.indexOf('plume(X(c), e);') < sch.indexOf("x.fillStyle = hexA(col.metal, 0.75)"), 'cutaway: tanks by volume, the end view, the plume cone (flicker only when allowed), the nozzle over it in metal');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

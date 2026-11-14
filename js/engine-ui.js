@@ -13,6 +13,7 @@
 const ENG_PROP_OF = { liq: ['lox_lh2', 'lox_rp1', 'nto_mmh', 'nto_a50'], hyb: ['n2o_htpb', 'lox_paraffin'], sol: ['apcp'], mono: ['n2h4', 'h2o2'] };
 const ENG_DEF = { id: '', type: 'liq', prop: 'nto_mmh', F: 400, isp: 320, of: 1.65, pm: 'tot', mp: 700, mf: 264, mox: 436, md: 300, r0: 3, grain: 'bates' };
 const ENG_NUM = ['F', 'isp', 'of', 'mp', 'mf', 'mox', 'md', 'r0'];
+const ENG_TYPE_DEF0 = { liq: 'rl10' }; // the window opens on the liquid type's default engine
 const ENG_LS = (() => { try { return window.localStorage; } catch (e) { return null; } })();
 let SAVED_ENG = parseEngines(readPref(ENG_LS, PREF_KEYS.engines));
 // an engine from a ready-made one (its masses from the vehicle it flew on, else its own)
@@ -88,9 +89,9 @@ function engResRows() {
 }
 
 // ----- the window -----
-const ENGW = { E: { ...ENG_DEF }, linked: false, s: null, tau: -1, st: null, play: 0 };
+const ENGW = { E: engPreset(ENG_TYPE_DEF0.liq), linked: false, s: null, tau: -1, st: null, play: 0, dirty: false, ask: null };
 const engEl = id => document.getElementById(id);
-function engOpenFrom(E) { ENGW.E = { ...(E || ENGW.E) }; ENGW.linked = !!E && S.M && S.M.eng === E; engRender(); }
+function engOpenFrom(E) { if (E) ENGW.dirty = false; ENGW.E = { ...(E || ENGW.E) }; ENGW.linked = !!E && S.M && S.M.eng === E; engRender(); }
 function engRenderPre() {
   const sel = engEl('engPre'), cur = ENGW.E.id;
   sel.innerHTML = `<option value="">${esc(_('eng.custom'))}</option><optgroup label="${esc(_('eng.presets'))}">${ENGINES.map(p => `<option value="p:${p.id}">${esc(_('eng.' + p.id))}</option>`).join('')}</optgroup>`
@@ -118,6 +119,10 @@ function engCompute() {
   const E = ENGW.E, s = ENGW.s = engSpecOf(E), out = engEl('engOut'), err = engEl('engErr');
   ENGW.linked = !!(S.M && S.M.eng) && JSON.stringify(S.M.eng) === JSON.stringify(E);
   err.textContent = s.error ? _(s.error) : ''; err.hidden = !s.error;
+  // warnings that do not refuse (core.js engChecks): O/F and Isp against the pair's CEA table, the hybrid's grain, T/W
+  const pr = PROPS[E.prop] || {}, ws = s.error ? [] : engChecks(s, { cea: pr.cea && CEA[pr.cea] ? engCea(CEA[pr.cea]) : null }), wl = engEl('engWarn');
+  const fmtW = (k, p) => _(k, { of: nf2.format(p.of || 0), a: nf2.format(p.a || 0), b: nf2.format(p.b || 0), isp: nf1.format(p.isp || 0), max: nf1.format(p.max || 0), k: nf1.format(p.k || 0), ld: nf1.format(p.ld || 0), tw: NF(3).format(p.tw || 0), t: fmtBurn(p.t || 0) });
+  wl.innerHTML = ws.map(q => `<li>${esc(fmtW(q.key, q.p))}</li>`).join(''); wl.hidden = !ws.length;
   engEl('engApply').disabled = !!s.error;
   engEl('engNote').textContent = ENGW.linked ? _('eng.linked') : S.M && S.M.eng ? _('eng.unlinked') : '';
   if (s.error) { out.innerHTML = ''; engChart(null); engEl('engBurns').innerHTML = ''; engSchematic(engEl('engSch'), engSpecOf(ENG_DEF), engState(engSpecOf(ENG_DEF), 0), ENG_DEF, 0); return; }
@@ -239,60 +244,87 @@ const engTok = k => getComputedStyle(document.documentElement).getPropertyValue(
 
 // ----- the side cutaway (Phase 18b, 2D): tanks, feed lines, chamber, nozzle and a small plume, nose left, nozzle right;
 // tank levels, the hybrid's port and the solid's grain live; the lines carry a moving dash while the engine burns.
-// Any mode (2D, the low-resource mode, phones): plain shapes, a gradient only for the plume outside the low mode.
+// A liquid engine's tanks are as long as their volumes (core.js engTanks, js/engines.js densities: a hydrogen tank is
+// far larger); a hybrid also shows its grain end on (the port hole and the web). Any mode (2D, the low-resource mode,
+// phones): plain shapes, the plume's gradient and flicker only outside the low mode (no flicker with reduced motion).
 function engSchematic(cv, s, st, E, phase) {
   const w = Math.max(160, cv.parentElement.clientWidth), h = 118, dpr = Math.min(2, window.devicePixelRatio || 1);
   if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + 'px'; }
   const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, w, h);
   const col = { metal: engTok('--dim'), line: engTok('--line2'), fuel: engTok('--burn'), ox: engTok('--cyan'), ink: engTok('--ink'), faint: engTok('--faint'), flame: engTok('--accent'),
-    plume: engTok(ENG_PLUME[(PROPS[E.prop] || {}).plume || 'amber']) };
-  const X = f => 6 + (w - 12) * f, my = h / 2 - 4, low = lowQ || MODE === 'low';
+    plume: engTok(ENG_PLUME[(PROPS[E.prop] || {}).plume || 'amber']), solid: engTok('--solid') };
+  const X = f => 6 + (w - 12) * f, my = h / 2 - 4, low = lowQ || MODE === 'low', still = low || reduceMotion;
   x.lineWidth = 1.2; x.font = '10px ' + engTok('--f-mono'); x.textBaseline = 'alphabetic';
-  // a tank: rounded body, filled from its aft (right) end by the level
-  const tank = (a, b, half, level, c, label) => {
+  const label = (t, px, py) => { x.fillStyle = col.ink; x.globalAlpha = 0.8; x.textAlign = 'left'; x.fillText(t, px, py); x.globalAlpha = 1; };
+  // a tank: rounded body from fraction a to b, filled from its aft (right) end by the level
+  const tank = (a, b, half, level, c, name) => {
     const x0 = X(a), x1 = X(b), r = Math.min(half, (x1 - x0) / 2);
     const path = () => { x.beginPath(); x.moveTo(x0 + r, my - half); x.lineTo(x1 - r, my - half); x.arc(x1 - r, my, half, -Math.PI / 2, Math.PI / 2); x.lineTo(x0 + r, my + half); x.arc(x0 + r, my, half, Math.PI / 2, Math.PI * 1.5); x.closePath(); };
     x.save(); path(); x.clip();
     x.fillStyle = c; x.globalAlpha = 0.85; x.fillRect(x1 - (x1 - x0) * level, my - half, (x1 - x0) * level, 2 * half); x.restore();
     path(); x.strokeStyle = col.metal; x.stroke();
-    x.fillStyle = col.ink; x.globalAlpha = 0.8; x.textAlign = 'left'; x.fillText(label + ' ' + Math.round(level * 100) + '%', x0 + 2, my - half - 4); x.globalAlpha = 1;
+    label(name + ' ' + Math.round(level * 100) + '%', x0 + 2, my - half - 4);
   };
   // a feed line (points in fractions of the width, y px), the dash running towards the chamber while it burns
   const feed = (pts, c) => {
     x.beginPath(); pts.forEach(([f, y], i) => (i ? x.lineTo(X(f), y) : x.moveTo(X(f), y)));
     x.strokeStyle = col.line; x.lineWidth = 3; x.setLineDash([]); x.stroke();
-    if (st.on) { x.strokeStyle = c; x.lineWidth = 1.6; x.setLineDash([4, 5]); x.lineDashOffset = -phase * 40; x.stroke(); x.setLineDash([]); }
+    if (st.on) { x.strokeStyle = c; x.lineWidth = 1.6; x.setLineDash([4, 5]); x.lineDashOffset = still ? 0 : -phase * 40; x.stroke(); x.setLineDash([]); }
     x.lineWidth = 1.2;
   };
-  // the chamber (a to b, half height ch) and the nozzle (to c, exit half height e); the plume beyond, by thrust
+  // The plume (Phase 18c): a cone opening from the nozzle exit (half height e at px), fading to nothing at its far end,
+  // a brighter core along the axis; length and brightness by thrust; a slight flicker (none in the low mode or with
+  // reduced motion); colour by propellant. Drawn before the nozzle, which stays a clear metal shape over it.
+  const plume = (px, e) => {
+    if (!st.on || !(st.Fk > 0)) return;
+    const fl = still ? 1 : 1 + 0.035 * Math.sin(phase * 31.4) + 0.025 * Math.sin(phase * 57.3 + 1.3), k = E.type === 'mono' ? 0.35 : 1;
+    const L = (w - px - 4) * (0.45 + 0.55 * st.Fk) * fl, sp = e + L * 0.5;
+    const cone = (h0, h1, a) => {
+      if (low) x.fillStyle = col.plume; else { const g = x.createLinearGradient(px, 0, px + L, 0); g.addColorStop(0, col.plume); g.addColorStop(0.55, hexA(col.plume, 0.35)); g.addColorStop(1, hexA(col.plume, 0)); x.fillStyle = g; }
+      x.globalAlpha = a; x.beginPath(); x.moveTo(px, my - h0); x.lineTo(px + L * 0.92, my - h1); x.quadraticCurveTo(px + L * 1.04, my, px + L * 0.92, my + h1); x.lineTo(px, my + h0); x.closePath(); x.fill();
+    };
+    x.save();
+    cone(e * 0.95, sp, (low ? 0.3 : 0.55) * k * (0.45 + 0.55 * st.Fk) * fl);
+    if (!low) cone(e * 0.5, e * 0.5 + L * 0.16, 0.6 * k * (0.45 + 0.55 * st.Fk));
+    x.restore();
+  };
+  // the chamber (a to b, half height ch) and the nozzle (throat half height thr to the exit at c, half height e)
   const engine = (a, b, ch, c, thr, e) => {
-    x.fillStyle = engTok('--solid'); x.strokeStyle = col.metal;
-    if (b > a) { x.fillRect(X(a), my - ch, X(b) - X(a), 2 * ch); x.strokeRect(X(a), my - ch, X(b) - X(a), 2 * ch); }
-    x.beginPath(); x.moveTo(X(b), my - thr); x.lineTo(X(c), my - e); x.lineTo(X(c), my + e); x.lineTo(X(b), my + thr); x.closePath(); x.fill(); x.stroke();
-    if (st.on && st.Fk > 0) {
-      const L = (w - X(c) - 4) * (0.45 + 0.55 * st.Fk), sp = e + L * 0.55, k = E.type === 'mono' ? 0.35 : 1;
-      x.save(); x.globalAlpha = (low ? 0.4 : 0.85) * k * (0.4 + 0.6 * st.Fk);
-      if (low) x.fillStyle = col.plume; else { const g = x.createLinearGradient(X(c), 0, X(c) + L, 0); g.addColorStop(0, col.plume); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; }
-      x.beginPath(); x.moveTo(X(c), my - e * 0.9); x.lineTo(X(c) + L, my - sp); x.lineTo(X(c) + L, my + sp); x.lineTo(X(c), my + e * 0.9); x.closePath(); x.fill(); x.restore();
-    }
+    plume(X(c), e);
+    x.strokeStyle = col.metal;
+    if (b > a) { x.fillStyle = col.solid; x.fillRect(X(a), my - ch, X(b) - X(a), 2 * ch); x.strokeRect(X(a), my - ch, X(b) - X(a), 2 * ch); }
+    x.beginPath(); x.moveTo(X(b), my - thr); x.lineTo(X(c), my - e); x.lineTo(X(c), my + e); x.lineTo(X(b), my + thr); x.closePath();
+    x.fillStyle = hexA(col.metal, 0.75); x.fill(); x.strokeStyle = col.ink; x.globalAlpha = 0.55; x.stroke(); x.globalAlpha = 1;
   };
   const bot = h - 8;
   if (E.type === 'liq') {
-    tank(0.02, 0.32, 24, st.ox, col.ox, _('eng.sch.ox')); tank(0.36, 0.6, 24, st.fuel, col.fuel, _('eng.sch.fuel'));
-    feed([[0.6, my], [0.69, my - 4]], col.fuel); feed([[0.32, my + 10], [0.33, bot], [0.66, bot], [0.69, my + 6]], col.ox);
+    // tanks as long as their volumes (load / density), the same diameter; the span 0.02 … 0.62 shared, each at least 0.08
+    const rho = (PROPS[E.prop] || {}).rho, V = rho ? engTanks(s, rho) : { ox: s.mox, fuel: s.mf }, span = 0.56, kk = span / (V.ox + V.fuel);
+    let lo = Math.max(0.08, V.ox * kk), lf = Math.max(0.08, V.fuel * kk); const sc = span / (lo + lf); lo *= sc; lf *= sc;
+    const a0 = 0.02, a1 = a0 + lo, b0 = a1 + 0.04, b1 = b0 + lf;
+    tank(a0, a1, 24, st.ox, col.ox, _('eng.sch.ox')); tank(b0, b1, 24, st.fuel, col.fuel, _('eng.sch.fuel'));
+    feed([[b1, my], [0.69, my - 4]], col.fuel); feed([[a1, my + 10], [a1 + 0.01, bot], [0.66, bot], [0.69, my + 6]], col.ox);
     engine(0.69, 0.77, 11, 0.9, 7, 20);
   } else if (E.type === 'hyb') {
-    tank(0.02, 0.32, 24, st.ox, col.ox, _('eng.sch.ox')); feed([[0.32, my], [0.38, my]], col.ox);
-    const a = X(0.38), b = X(0.8), G = 26, p = Math.max(2, st.port * G);
-    x.fillStyle = engTok('--solid'); x.fillRect(a, my - G - 3, b - a, 2 * G + 6);
-    if (st.on) { x.fillStyle = col.flame; x.globalAlpha = 0.25 + 0.35 * st.Fk; x.fillRect(a, my - p, b - a, 2 * p); x.globalAlpha = 1; }
-    x.fillStyle = col.fuel; x.globalAlpha = 0.85; x.fillRect(a, my - G, b - a, G - p); x.fillRect(a, my + p, b - a, G - p); x.globalAlpha = 1;
+    // an end view of the grain (inset, left): casing, grain and the port hole, at the same scale as the side view
+    const cx = X(0.02) + 25, R = 23, p = Math.max(1.5, st.port * (R - 3));
+    x.fillStyle = col.solid; x.beginPath(); x.arc(cx, my, R, 0, 6.2832); x.fill(); x.strokeStyle = col.metal; x.stroke();
+    x.fillStyle = col.fuel; x.globalAlpha = 0.85; x.beginPath(); x.arc(cx, my, R - 3, 0, 6.2832); x.arc(cx, my, p, 0, 6.2832, true); x.fill('evenodd'); x.globalAlpha = 1;
+    if (st.on) { x.fillStyle = col.flame; x.globalAlpha = 0.3 + 0.35 * st.Fk; x.beginPath(); x.arc(cx, my, p, 0, 6.2832); x.fill(); x.globalAlpha = 1; }
+    x.textAlign = 'center'; x.fillStyle = col.ink; x.globalAlpha = 0.8; x.fillText(_('eng.sch.end'), cx, my + R + 13); x.globalAlpha = 1; // under the circle (the tank's label is above)
+    x.strokeStyle = col.line; x.setLineDash([2, 3]); x.beginPath(); x.moveTo(cx + R + 6, 6); x.lineTo(cx + R + 6, h - 6); x.stroke(); x.setLineDash([]);
+    const t0 = (cx + R + 12 - 6) / (w - 12);
+    tank(t0, t0 + 0.2, 24, st.ox, col.ox, _('eng.sch.ox')); feed([[t0 + 0.2, my], [t0 + 0.25, my]], col.ox);
+    const a = X(t0 + 0.25), b = X(0.8), G = 26, pp = Math.max(2, st.port * G);
+    x.fillStyle = col.solid; x.fillRect(a, my - G - 3, b - a, 2 * G + 6);
+    if (st.on) { x.fillStyle = col.flame; x.globalAlpha = 0.25 + 0.35 * st.Fk; x.fillRect(a, my - pp, b - a, 2 * pp); x.globalAlpha = 1; }
+    x.fillStyle = col.fuel; x.globalAlpha = 0.85; x.fillRect(a, my - G, b - a, G - pp); x.fillRect(a, my + pp, b - a, G - pp); x.globalAlpha = 1;
     x.strokeStyle = col.metal; x.strokeRect(a, my - G - 3, b - a, 2 * G + 6);
-    x.fillStyle = col.ink; x.globalAlpha = 0.8; x.textAlign = 'left'; x.fillText(_('eng.sch.grain', { r: nf1.format(st.port * 100) }), a + 2, my - G - 7); x.globalAlpha = 1;
-    engine(0.8, 0.8, 0, 0.92, 9, 20);
+    label(_('eng.sch.grain', { r: nf1.format(st.port * 100) }), a + 2, my - G - 7);
+    engine(0.8, 0.8, 0, 0.9, 9, 20);
   } else if (E.type === 'sol') {
     const a = X(0.03), b = X(0.8), G = 30, g = SOL_GRAIN_VIEW[E.grain] || SOL_GRAIN_VIEW.bates, [ri, ro] = g(st.web);
-    x.fillStyle = engTok('--solid'); x.fillRect(a, my - G - 3, b - a, 2 * G + 6);
+    x.fillStyle = col.solid; x.fillRect(a, my - G - 3, b - a, 2 * G + 6);
     if (st.on) { // the flame in what has burnt away: the core (BATES, tube) or around the rod
       x.fillStyle = col.flame; x.globalAlpha = 0.2 + 0.3 * st.Fk;
       if (ri > 0) x.fillRect(a, my - ri * G, b - a, 2 * ri * G); else { x.fillRect(a, my - G, b - a, (1 - ro) * G); x.fillRect(a, my + ro * G, b - a, (1 - ro) * G); }
@@ -301,13 +333,13 @@ function engSchematic(cv, s, st, E, phase) {
     x.fillStyle = col.fuel; x.globalAlpha = 0.85;
     if (ro > ri) { x.fillRect(a, my - ro * G, b - a, (ro - ri) * G); x.fillRect(a, my + ri * G, b - a, (ro - ri) * G); }
     x.globalAlpha = 1; x.strokeStyle = col.metal; x.strokeRect(a, my - G - 3, b - a, 2 * G + 6);
-    x.fillStyle = col.ink; x.globalAlpha = 0.8; x.textAlign = 'left'; x.fillText(_('eng.sch.web', { p: Math.round(st.web * 100) }), a + 2, my - G - 7); x.globalAlpha = 1;
-    engine(0.8, 0.8, 0, 0.94, 8, 22);
+    label(_('eng.sch.web', { p: Math.round(st.web * 100) }), a + 2, my - G - 7);
+    engine(0.8, 0.8, 0, 0.92, 8, 22);
   } else {
     const cx = X(0.16), r = 30;
     x.save(); x.beginPath(); x.arc(cx, my, r, 0, 6.2832); x.clip(); x.fillStyle = col.fuel; x.globalAlpha = 0.85; x.fillRect(cx + r - 2 * r * st.fuel, my - r, 2 * r * st.fuel, 2 * r); x.restore();
     x.strokeStyle = col.metal; x.beginPath(); x.arc(cx, my, r, 0, 6.2832); x.stroke();
-    x.fillStyle = col.ink; x.globalAlpha = 0.8; x.textAlign = 'left'; x.fillText(_('eng.sch.prop') + ' ' + Math.round(st.fuel * 100) + '%', cx - r, my - r - 4); x.globalAlpha = 1;
+    label(_('eng.sch.prop') + ' ' + Math.round(st.fuel * 100) + '%', cx - r, my - r - 4);
     feed([[0.16 + 30 / (w - 12), my], [0.56, my]], col.fuel);
     engine(0.56, 0.64, 7, 0.74, 4, 10);
   }
@@ -339,8 +371,21 @@ function engTick(force) {
 }
 
 // ----- events -----
-function engEdit() { ENGW.E.id = ''; engRenderPre(); engCompute(); }
-engEl('engType').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; ENGW.E.type = b.dataset.v; ENGW.E.id = ''; engRender(); });
+function engEdit() { ENGW.E.id = ''; ENGW.dirty = true; engRenderPre(); engCompute(); }
+// a new type brings its default ready-made engine (its thrust, Isp, O/F and load make sense for that type); values typed
+// in by hand are asked about first ("Değerler türün varsayılanıyla değişsin mi?"; no: the type changes, the values stay)
+const ENG_TYPE_DEF = { liq: 'rl10', hyb: 'hyb', sol: 'star48', mono: 'n2h4' };
+function engTypeSet(ty, preset) {
+  engEl('engAsk').hidden = true; ENGW.ask = null;
+  if (preset) { ENGW.E = engPreset(ENG_TYPE_DEF[ty]); ENGW.dirty = false; } else { ENGW.E.type = ty; ENGW.E.id = ''; }
+  engRender();
+}
+engEl('engType').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.dataset.v === ENGW.E.type) return;
+  if (ENGW.dirty) { ENGW.ask = b.dataset.v; engEl('engAsk').hidden = false; engEl('engAskYes').focus(); } else engTypeSet(b.dataset.v, true);
+});
+engEl('engAskYes').addEventListener('click', () => { if (ENGW.ask) engTypeSet(ENGW.ask, true); });
+engEl('engAskNo').addEventListener('click', () => { if (ENGW.ask) engTypeSet(ENGW.ask, false); });
 engEl('engPm').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return; const E = ENGW.E;
   if (b.dataset.v === E.pm) return;
@@ -355,6 +400,7 @@ engEl('engPre').addEventListener('change', e => {
   if (v.startsWith('p:')) ENGW.E = engPreset(v.slice(2));
   else if (v.startsWith('s:')) ENGW.E = { ...ENG_DEF, ...SAVED_ENG[+v.slice(2)], id: v };
   else ENGW.E.id = '';
+  ENGW.dirty = false; engEl('engAsk').hidden = true;
   engRender();
 });
 for (const f of ENG_NUM) engEl('eng-' + f).addEventListener('input', e => {
