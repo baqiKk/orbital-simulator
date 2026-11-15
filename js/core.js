@@ -2347,11 +2347,12 @@ function flyPredict(s, t0, r0, v0, opt = {}) {
     const r1 = [R[0] - B[0], R[1] - B[1], R[2] - B[2]], v1 = [V[0] - B[3], V[1] - B[4], V[2] - B[5]], mu = s.mu[b], el = rv2el(mu, r1, v1);
     const per = el.a > 0 ? 2 * Math.PI * Math.sqrt(el.a ** 3 / mu) : 0, soi = Number.isFinite(s.soi[b]) ? s.soi[b] : Infinity;
     const kids = []; for (let c = 0; c < s.N; c++) if (s.parent[c] === b) kids.push(c);
-    // this segment's horizon: the next node, the revolutions asked for (closed and inside its sphere), or a long time
+    // this segment's horizon: the next node (however many revolutions ahead), the revolutions asked for (closed and
+    // inside its sphere), or a long time
     const nodeT = ni < nodes.length ? nodes[ni].t : Infinity, closed = el.e < 1 && el.ra < soi;
-    let tEnd = Math.min(Tend, nodeT, closed ? t + (opt.revs || 1) * per : t + (opt.T || 400 * 86400));
-    // march, then bisect the first crossing
-    const step = closed ? per / K : Math.max(60, (tEnd - t) / (4 * K));
+    let tEnd = Math.min(Tend, nodeT, closed ? (nodeT < Infinity ? nodeT : t + (opt.revs || 1) * per) : t + (opt.T || 400 * 86400));
+    // march (a closed orbit: K points a revolution, at most 8 K in all), then bisect the first crossing
+    const step = closed ? Math.max(per / K, (tEnd - t) / (8 * K)) : Math.max(60, (tEnd - t) / (4 * K));
     const at = tt => { uniStep(mu, r1, v1, tt - t, rel); return rel; };
     const hit = tt => {
       const q = at(tt), rr = Math.hypot(q[0], q[1], q[2]);
@@ -2397,6 +2398,43 @@ function flyPredict(s, t0, r0, v0, opt = {}) {
   return { segs, events };
 }
 
+// The prediction refined in the N-body field (Phase 19c; the page's worker): from the absolute state (t0, r0, v0)
+// to the absolute time opt.until (the patched-conic prediction's end), the impulsive nodes opt.nodes applied in their
+// dominant body's frame on the way, sampled about K times a revolution (or an eighth of r/v on open paths; at most
+// opt.maxPts points). Segments as flyPredict's ({ b, t0, t1, n, pts (relative to b), ts, end: 'node' | 'impact' |
+// 'soi' | 'horizon' }), split where the dominant body changes and at each node.
+function flyRefine(s, t0, r0, v0, opt = {}) {
+  const nodes = (opt.nodes || []).filter(q => q.t >= t0).sort((a, b) => a.t - b.t), K = opt.K || 160, maxPts = opt.maxPts || 6000, until = opt.until || t0 + 86400;
+  const st = { t: t0, r: [...r0], v: [...v0], m: 1, h: 10 }, segs = [];
+  s.P = s.P || new Float64Array(3 * s.N); s.V = s.V || new Float64Array(3 * s.N);
+  let cur = null, ni = 0, total = 0;
+  const close = end => { if (cur && cur.ts.length > 1) segs.push({ b: cur.b, t0: cur.ts[0], t1: cur.ts[cur.ts.length - 1], n: cur.ts.length, pts: Float64Array.from(cur.pts), ts: Float64Array.from(cur.ts), end }); cur = null; };
+  const rel = () => { states(s, st.t, s.P, s.V); const b = domBody(s, s.P, st.r[0], st.r[1], st.r[2]); return { b, r: [0, 1, 2].map(j => st.r[j] - s.P[3 * b + j]), v: [0, 1, 2].map(j => st.v[j] - s.V[3 * b + j]) }; };
+  const push = q => {
+    if (cur && cur.b !== q.b) close('soi');
+    if (!cur) cur = { b: q.b, pts: [], ts: [] };
+    cur.pts.push(q.r[0], q.r[1], q.r[2]); cur.ts.push(st.t); total++;
+  };
+  let q = rel(); push(q);
+  while (st.t < until - 1e-6 && total < maxPts) {
+    const el = rv2el(s.mu[q.b], q.r, q.v), rn = Math.hypot(...q.r), vn = Math.hypot(...q.v);
+    const h = el.e < 1 && el.a > 0 ? 2 * Math.PI * Math.sqrt(el.a ** 3 / s.mu[q.b]) / K : Math.max(1, rn / Math.max(vn, 1) / 8);
+    const nodeT = ni < nodes.length ? nodes[ni].t : Infinity, next = Math.min(st.t + h, nodeT, until);
+    const res = flyAdvance(s, st, next - st.t, { tol: opt.tol || 1e-9, maxSteps: 20000 });
+    if (res.done <= 0) break;
+    q = rel();
+    if (Math.hypot(...q.r) < s.R[q.b]) { push(q); close('impact'); return { segs }; }
+    push(q);
+    if (Math.abs(st.t - nodeT) < 1e-6) { // the node: its Δv in this body's frame, then a new segment from the same point
+      const dv = nodeDv(q.r, q.v, nodes[ni++].d);
+      for (let j = 0; j < 3; j++) st.v[j] += dv[j];
+      st.h = 1; close('node'); q = rel(); push(q);
+    }
+  }
+  close('horizon');
+  return { segs };
+}
+
 // The closest approach of a prediction to body c: per segment, its times sampled against c's analytic motion, the
 // least distance refined by golden-section search. Returns { d (m, centre to centre), t } or null.
 function flyClosest(s, pred, c) {
@@ -2415,7 +2453,7 @@ function flyClosest(s, pred, c) {
 }
 
 if (typeof module !== 'undefined') module.exports = {
-  stumpff, uniStep, nodeFrame, nodeDv, dvLocal, FLY_WARPS, flyWarpMax, flyDeriv, flyAdvance, flyPredict, flyClosest,
+  stumpff, uniStep, nodeFrame, nodeDv, dvLocal, FLY_WARPS, flyWarpMax, flyDeriv, flyAdvance, flyPredict, flyRefine, flyClosest,
   G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, clockAt, clockSet, keplerE, laplaceFrame, bodyFrame, orbitElements, orbitState, orbitPath,
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed, SOLVE_KM, missionMiss, solveMission,

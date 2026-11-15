@@ -103,6 +103,25 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-conten
 .fly-bar{align-self:stretch;display:flex;align-items:center;gap:10px;padding:7px 11px;flex-wrap:wrap}
 html[data-fly] #timeline,html[data-fly] #readout,html[data-fly] #engPanel,html[data-fly] #liveBar{display:none}
 .fly-warp button{padding:6px 8px;font-variant-numeric:tabular-nums}
+.fly-node{pointer-events:auto;width:280px;margin-left:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px;font:500 11px/1.3 var(--f-mono);color:var(--dim)}
+.fly-node[hidden],html:not([data-fly]) .fly-node{display:none}
+.fn-hint,.fn-tip{margin:0;font:400 11.5px/1.4 var(--f-body);color:var(--dim)}
+.fn-tip{color:var(--faint);font-size:11px}
+.fn-body{display:flex;flex-direction:column;gap:6px}
+.fn-h{display:flex;align-items:center;gap:6px;color:var(--ink)}
+.fn-h b{font:600 11px/1 var(--f-disp);letter-spacing:.08em;text-transform:uppercase}
+.fn-h span{margin-left:auto;color:var(--dim);font-variant-numeric:tabular-nums}
+.fn-nav{padding:2px 7px}
+.fn-f{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.fn-f label{display:flex;flex-direction:column;gap:3px;font:500 10px/1 var(--f-disp);letter-spacing:.05em;text-transform:uppercase}
+.fn-f input{width:100%;min-width:0;font:500 12px/1 var(--f-mono)}
+.fn-f .pro span{color:var(--traj)}.fn-f .rad span{color:var(--cyan)}.fn-f .nor span{color:var(--good)}
+.fn-tot{color:var(--ink);font-variant-numeric:tabular-nums}
+.fn-after{color:var(--cyan)}
+.fn-prov:empty,.fn-after:empty{display:none}
+.fn-prov{color:var(--faint);font-size:10.5px}
+.fn-b{display:flex;gap:6px;justify-content:flex-end}
+@media (max-width:560px){.fly-node{width:auto;margin-left:0}}
 .fly-info{display:flex;flex-direction:column;gap:2px;font:500 11.5px/1.2 var(--f-mono);color:var(--dim);margin-left:auto;font-variant-numeric:tabular-nums}
 .fly-info span:first-child{color:var(--ink)}
 @media (max-width:560px){.fly-bar{gap:6px;padding:6px 8px}.fly-warp{overflow-x:auto;max-width:100%}.fly-info{margin-left:0;width:100%}}

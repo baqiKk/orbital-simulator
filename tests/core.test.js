@@ -522,6 +522,17 @@ const sEM = realSys(['earth', 'mars', 'sun']);
   assert.ok(Math.abs(alt - pe.alt) < 1e3, `free flight: the field flies simulate's free return (periapsis ${(alt / 1e3).toFixed(2)} km)`);
   const kinds = pp.events.map(e => e.type + e.b), ca = C.flyClosest(sy2, pp, 1);
   assert.ok(kinds.includes('soiIn1') && kinds.includes('pe1') && kinds.includes('soiOut1') && Math.abs(ca.d - sy2.R[1] - pe.alt) < 1500e3 && Math.abs(ca.t - T0 - pe.t) < 3 * 3600, `free flight: patched conics through the Moon's sphere (closest ${((ca.d - sy2.R[1]) / 1e3).toFixed(0)} km, the field ${(pe.alt / 1e3).toFixed(0)} km)`);
+  // Phase 19c: a node three revolutions ahead is reached (the closed orbit's horizon reaches it); the N-body refinement
+  // (flyRefine) flies the same node: its apoapsis as the patched conics' within a few km, a segment ending at the node
+  const pr3 = C.flyPredict(sy, t0, R, Vv, { nodes: [{ t: t0 + 3.3 * per, d: [100, 0, 0] }], revs: 1 });
+  const ap3 = pr3.events.find(e => e.type === 'ap' && e.t > t0 + 3.3 * per);
+  assert.ok(pr3.events.some(e => e.type === 'node') && ap3 && Math.abs(ap3.r - ra) < 5e3 && pr3.segs[0].n <= 8 * 160 + 2, 'free flight: a node revolutions ahead is reached, the points capped');
+  const end = pr.segs[pr.segs.length - 1].t1, rf = C.flyRefine(sy, t0, R, Vv, { nodes: [{ t: t0 + 600, d: [100, 0, 0] }], until: end });
+  const g1 = rf.segs[1], rmax = Math.max(...Array.from({ length: g1.n }, (_, k) => Math.hypot(g1.pts[3 * k], g1.pts[3 * k + 1], g1.pts[3 * k + 2])));
+  assert.ok(rf.segs[0].end === 'node' && Math.abs(rf.segs[0].t1 - (t0 + 600)) < 1e-6 && Math.abs(rf.segs[rf.segs.length - 1].t1 - end) < 1 && Math.abs(rmax - ap.r) < 10e3,
+    `free flight: the N-body refinement flies the node (apoapsis ${(rmax / 1e3).toFixed(0)} km, patched ${(ap.r / 1e3).toFixed(0)} km)`);
+  const rfi = C.flyRefine(sy, t0, [P[0] + Re + 50e3, P[1], P[2]], [V[0], V[1] + 2000, V[2]], { until: t0 + 3600 });
+  assert.ok(rfi.segs[rfi.segs.length - 1].end === 'impact', 'free flight: the refinement stops at an impact');
   console.log('free flight ok');
 }
 

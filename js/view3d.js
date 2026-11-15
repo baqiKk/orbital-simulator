@@ -674,14 +674,15 @@ export function create(canvas, opts) {
     dyns[set].set(id, d); fadeApply(set, id, mat);
     return d;
   }
-  // pts: metres, 3 per point (n points); colors: linear RGB per point or null
-  function dynSet(set, id, pts, n, colors) {
+  // pts: metres, 3 per point (n points); colors: linear RGB per point or null; dash (optional, Phase 19c): segments per
+  // dash, every other run of dash segments left out (a provisional path: the free flight's patched prediction)
+  function dynSet(set, id, pts, n, colors, dash) {
     const d = dyns[set].get(id); if (!d) return;
     n = Math.min(n, d.cap);
     if (n < 2) { d.line.visible = false; return; }
     d.o[0] = pts[0]; d.o[1] = pts[1]; d.o[2] = pts[2];
     const A = d.geo.attributes.instanceStart.data, a = A.array;
-    for (let j = 0; j < n - 1; j++) for (let q = 0; q < 2; q++) for (let c = 0; c < 3; c++) a[6 * j + 3 * q + c] = (pts[3 * (j + q) + c] - d.o[c]) * KM;
+    for (let j = 0; j < n - 1; j++) { const gap = dash > 0 && Math.floor(j / dash) % 2 === 1; for (let q = 0; q < 2; q++) for (let c = 0; c < 3; c++) a[6 * j + 3 * q + c] = (pts[3 * (j + (gap ? 0 : q)) + c] - d.o[c]) * KM; }
     A.needsUpdate = true;
     if (colors && d.geo.attributes.instanceColorStart) {
       const B = d.geo.attributes.instanceColorStart.data, b = B.array;
@@ -691,6 +692,7 @@ export function create(canvas, opts) {
     d.geo.instanceCount = n - 1; d.line.visible = true;
   }
   function dynHide(set, id) { const d = dyns[set].get(id); if (d) d.line.visible = false; }
+  function dynOpacity(set, id, opacity) { const d = dyns[set].get(id); if (d && d.mat.userData.base !== opacity) { d.mat.userData.base = opacity; fadeApply(set, id, d.mat); } }
 
   // ---- reference-plane grid: two lattices (spacing s and 10 s) that cross-fade with the zoom ----
   const grid = (() => {
@@ -972,6 +974,6 @@ export function create(canvas, opts) {
   }
   function dispose() { renderer.dispose(); }
 
-  return { size, view, setActive, render, bodies, body, skySet, line, lineDrop, lineDropAll, lineUpTo, lineSet, lineOpacity, lineGlow, fadeSet, dyn, dynSet, dynHide, gridSet, craft, dispose,
+  return { size, view, setActive, render, bodies, body, skySet, line, lineDrop, lineDropAll, lineUpTo, lineSet, lineOpacity, lineGlow, fadeSet, dyn, dynSet, dynHide, dynOpacity, gridSet, craft, dispose,
     get gl() { return renderer.getContext(); }, renderer };
 }

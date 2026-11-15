@@ -124,6 +124,22 @@
         <div class="ep-bars"><div class="ep-bar ox" id="epOx"><span class="ep-l"></span><span class="ep-t"><i></i></span><b></b></div><div class="ep-bar fuel" id="epFuel"><span class="ep-l"></span><span class="ep-t"><i></i></span><b></b></div></div>
         <div class="ep-btns"><button type="button" class="ghost" id="epAppr" aria-pressed="false" data-i18n="appr.btn" data-i18n-title="appr.tip"></button><button type="button" class="ghost" id="epCut" aria-pressed="false" data-i18n="cut.btn" data-i18n-title="cut.tip"></button></div>
       </section>
+      <section class="glass fly-node" id="flyNode" data-i18n-aria-label="fn.aria" hidden>
+        <p class="fn-hint" id="fnHint"></p>
+        <div class="fn-body" id="fnBody" hidden>
+          <div class="fn-h"><button type="button" class="ghost fn-nav" id="fnPrev" data-i18n-aria-label="fn.prev">‹</button><b id="fnTitle"></b><button type="button" class="ghost fn-nav" id="fnNext" data-i18n-aria-label="fn.next">›</button><span id="fnIn"></span></div>
+          <div class="fn-f">
+            <label class="pro"><span data-i18n="fn.pro"></span><input type="number" id="fnPro" step="1" inputmode="decimal"></label>
+            <label class="rad"><span data-i18n="fn.rad"></span><input type="number" id="fnRad" step="1" inputmode="decimal"></label>
+            <label class="nor"><span data-i18n="fn.nor"></span><input type="number" id="fnNor" step="1" inputmode="decimal"></label>
+          </div>
+          <div class="fn-tot" id="fnTot"></div>
+          <div class="fn-after" id="fnAfter"></div>
+          <div class="fn-prov" id="fnProv"></div>
+          <p class="fn-tip" data-i18n="fn.tip"></p>
+        </div>
+        <div class="fn-b"><button type="button" class="ghost" id="fnUndo" data-i18n-title="fn.undoTip" data-i18n-aria-label="fn.undoTip">↶</button><button type="button" class="ghost" id="fnDel" data-i18n="fn.del"></button></div>
+      </section>
       <div class="glass readout" id="readout">
         <div class="big" id="r-t" data-i18n="ui.tplusInit"></div>
         <div class="date" id="r-date" hidden></div>

@@ -1471,7 +1471,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const fl = read('js/fly.js'), app = read('js/app.js'), now = Date.now(), ok = { t: 8.5e8, r: [1, 2, 3], v: [4, 5, 6], m: 1000, warp: 100, at: now - 1000 };
   assert.ok(P.parseFlySnap(JSON.stringify(ok), now).warp === 100 && P.parseFlySnap(JSON.stringify({ ...ok, at: now - 13 * 3600e3 }), now) === null && P.parseFlySnap(JSON.stringify({ ...ok, r: [1, 2] }), now) === null && P.parseFlySnap('x', now) === null && P.PREF_KEYS.flySnap, 'free flight: the snapshot');
   assert.ok(['flyBar', 'flyPause', 'flyWarp', 'flyNow', 'flyExit', 'flyDate', 'flyBody', 'flyGo'].every(id => html.includes('id="' + id + '"')) && ['fly.bar', 'fly.warp', 'fly.play', 'fly.pause', 'fly.now', 'fly.nowTip', 'fly.exit', 'fly.exitTip', 'fly.go', 'fly.goTip', 'fly.state', 'chip.fly'].every(has), 'free flight: the bar and its words');
-  assert.ok(fl.includes('flyAdvance(mapSys, s, Math.min(dt, 0.1) * FREE.warp, { rails: FREE.warp >= RAILS_W, maxSteps: 4000 })') && fl.includes('const RAILS_W = 1000') && fl.includes('flyPredict(mapSys, s.t, s.r, s.v, { revs: 1, T: 30 * DAY, K: 120 })') && fl.includes("if (e.key === '.' || e.key === ',')") && fl.includes("e.code === 'Space'"), 'free flight: the advance, the prediction, the keys');
+  assert.ok(fl.includes('flyAdvance(mapSys, s, Math.min(dt, 0.1) * FREE.warp, { rails: FREE.warp >= RAILS_W, maxSteps: 4000 })') && fl.includes('const RAILS_W = 1000') && fl.includes('flyPredict(mapSys, s.t, s.r, s.v, { revs: 1, T: 30 * DAY, K: 120, nodes: FREE.nodes })') && fl.includes("if (e.key === '.' || e.key === ',')") && fl.includes("e.code === 'Space'"), 'free flight: the advance, the prediction, the keys');
   assert.ok(app.includes('if (FREE.on) { flyFrame(dt, v3, glow, now);') && app.includes('if (flyRestore()) startClose();') && app.includes("$('#flyGo').addEventListener('click', () => flyEnter());") && app.includes('|| !sys || FREE.on) return null;') && read('css/style.css').includes('html[data-fly] #timeline,html[data-fly] #readout'), 'free flight: hooked into the draw loop, restored on start, the mission path off the map');
 }
 // 50) The craft up close, framed again (2026-11-15): the mission's windows fold and unfold again; the craft in the middle of
@@ -1533,6 +1533,23 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(P.playAdvance(1500, 1 / 60, 2, f, 1e6, { ...P.fireAt(f, 1500), r: 2 }).rate === 2, 'speed: slower by hand too');
   assert.ok(app.includes('r: Math.min(S.rate ||') && app.includes('flyWarpMax(f.b - f.a)') && app.includes('const rt = S.rate === 1, el = $(\'#slow\');') && app.includes("el.disabled = rt; el.closest('label').classList.toggle('off', rt);") && read('css/style.css').includes('.chk.off{opacity:.45'), 'speed: capped by the burn; real time turns the slow motion off, faint');
   assert.ok(app.includes("if ((e.key !== ',' && e.key !== '.') || FREE.on") && app.includes('sort((p, q) => speedRate(p, T) - speedRate(q, T))'), 'speed: , and . in the mission, by rate');
+}
+// 52) Maneuver nodes (Phase 19c, js/fly.js): a click on the predicted path puts a node, a click on its mark selects it;
+// six handles drag the components (faster further out, Shift finer); the panel's number fields, total, the orbit after,
+// Sil and ↶ (U); Delete; the path after the first node in cyan; dashed and faint while dragged and until the N-body
+// refinement (core.js flyRefine, in a worker) is back; the nodes kept in the snapshot.
+{
+  const fl = read('js/fly.js'), app = read('js/app.js'), v3 = read('js/view3d.js'), now = Date.now(), snap = { t: 8.5e8, r: [1, 2, 3], v: [4, 5, 6], m: 1000, warp: 1, at: now - 1000 };
+  const q = P.parseFlySnap(JSON.stringify({ ...snap, nodes: [{ t: 8.5e8 + 600, d: [100, 0, -5] }, { t: 'x', d: [1, 2, 3] }, { t: 1, d: [1, 2] }] }), now);
+  assert.ok(q.nodes.length === 1 && q.nodes[0].d[2] === -5 && P.parseFlySnap(JSON.stringify(snap), now).nodes.length === 0 && P.FLY_NODES_MAX >= 8, 'nodes: kept in the snapshot, the broken ones dropped');
+  assert.ok(['flyNode', 'fnHint', 'fnBody', 'fnTitle', 'fnIn', 'fnPro', 'fnRad', 'fnNor', 'fnTot', 'fnAfter', 'fnProv', 'fnUndo', 'fnDel', 'fnPrev', 'fnNext'].every(id => html.includes('id="' + id + '"')) &&
+    ['fn.aria', 'fn.hint', 'fn.pick', 'fn.title', 'fn.in', 'fn.pro', 'fn.rad', 'fn.nor', 'fn.tot', 'fn.orbit', 'fn.escape', 'fn.impact', 'fn.prov', 'fn.tip', 'fn.del', 'fn.undoTip'].every(has), 'nodes: the panel and its words');
+  assert.ok(app.includes('if (flyTap(x, y, touch)) return;') && fl.includes("flyEl('stage').addEventListener('pointerdown'") && fl.includes('}, true);') && fl.includes("e.key === 'u' || e.key === 'U'") && fl.includes("e.key === 'Delete' || e.key === 'Backspace'"), 'nodes: taps, handle drags before the camera, U and Delete');
+  // the drag's mapping: proportional near the node, faster further out, a tenth with Shift
+  const dvs = {}; require('vm').runInNewContext(fl.slice(fl.indexOf('const flyDv = '), fl.indexOf('\n', fl.indexOf('const flyDv = '))) + '\nthis.f = flyDv;', dvs);
+  assert.ok(Math.abs(dvs.f(10, false) - 10.83) < 0.01 && dvs.f(240, false) > 700 && Math.abs(dvs.f(100, true) - dvs.f(100, false) / 10) < 1e-9 && dvs.f(-50, false) < 0, 'nodes: the handle mapping');
+  assert.ok(fl.includes("if (nn && FREE.ref && FREE.ref.ver === FREE.ver && !FREE.drag) return { segs: FREE.ref.segs, prov: false };") && fl.includes('ctx.setLineDash(pa.prov ? [6, 5] : [])') && fl.includes("V3.dynSet('map', 'flyP' + k, B, m, FLY3.col, pa.prov ? 3 : 0)") && v3.includes('function dynOpacity(') && v3.includes('const gap = dash > 0'), 'nodes: dashed and faint until the refinement, then solid (2D and 3D)');
+  assert.ok(app.includes('if (fly) { try { if (!self.FS) self.FS = buildSystem(list); postMessage({ done: flyRefine(self.FS, fly.t0, fly.r, fly.v, fly.opt), ver: fly.ver });') && fl.includes('now - FREE.editAt < FLY_REF_MS') && fl.includes('if (FREE.wkBusy && FREE.wk) { FREE.wk.terminate();'), 'nodes: the refinement in a worker, after a pause, a newer edit drops an old run');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

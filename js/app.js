@@ -1081,7 +1081,7 @@ function frameCache() {
 const cv = $('#cv'), ctx = cv.getContext('2d'), stage = $('#stage');
 let W = 0, H = 0, DPR = 1, stars = null;
 const css = getComputedStyle(document.documentElement);
-const COL = { traj: css.getPropertyValue('--traj').trim() || '#ffb547', orbit: css.getPropertyValue('--orbit').trim() || '#6b9be0', burn: css.getPropertyValue('--burn').trim() || '#ff7a52', dim: css.getPropertyValue('--dim').trim() || '#8a96ae', faint: css.getPropertyValue('--faint').trim() || '#56637d', void: css.getPropertyValue('--void').trim() || '#04060b', ink: css.getPropertyValue('--ink').trim() || '#e2e8f3', bad: css.getPropertyValue('--bad').trim() || '#ff6f6f', warn: css.getPropertyValue('--warn').trim() || '#f2c85b', accent: css.getPropertyValue('--accent').trim() || '#ffb547', solid: css.getPropertyValue('--solid').trim() || '#080c10', line: css.getPropertyValue('--line2').trim() || 'rgba(140,196,212,.28)', cyan: css.getPropertyValue('--cyan').trim() || '#9fd6e4' };
+const COL = { traj: css.getPropertyValue('--traj').trim() || '#ffb547', orbit: css.getPropertyValue('--orbit').trim() || '#6b9be0', burn: css.getPropertyValue('--burn').trim() || '#ff7a52', dim: css.getPropertyValue('--dim').trim() || '#8a96ae', faint: css.getPropertyValue('--faint').trim() || '#56637d', void: css.getPropertyValue('--void').trim() || '#04060b', ink: css.getPropertyValue('--ink').trim() || '#e2e8f3', bad: css.getPropertyValue('--bad').trim() || '#ff6f6f', warn: css.getPropertyValue('--warn').trim() || '#f2c85b', accent: css.getPropertyValue('--accent').trim() || '#ffb547', solid: css.getPropertyValue('--solid').trim() || '#080c10', line: css.getPropertyValue('--line2').trim() || 'rgba(140,196,212,.28)', cyan: css.getPropertyValue('--cyan').trim() || '#9fd6e4', good: css.getPropertyValue('--good').trim() || '#68d3a0' };
 
 function resize() {
   if (REC.view) { recView(REC.view); return; } // a recording draws at its own size until it ends
@@ -1318,6 +1318,7 @@ cv.addEventListener('wheel', e => {
   if (is3d()) zoom3(e.offsetX, e.offsetY, Math.exp(e.deltaY * 0.0015)); else zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0015));
 }, { passive: false });
 function tap(x, y, touch) {
+  if (flyTap(x, y, touch)) return; // free flight: a node's mark or the path (js/fly.js)
   const h = hitAt(x, y, HIT_PX[touch ? 'touch' : 'mouse']), now = performance.now();
   const dbl = lastTap && now - lastTap.t < 350 && Math.hypot(x - lastTap.x, y - lastTap.y) < 24;
   // the first tap re-centres the body it hit, so the second one acts on that body, not on where it landed
@@ -2161,8 +2162,9 @@ let solverWorker = null, rejectSolve = null;
 // The same worker code serves the porkchop grid (pc: grid spec; progress = rows done).
 const WORKER_BODY = `
 onmessage = async (e) => {
-  const { list, M, opt, pc, mv } = e.data;
+  const { list, M, opt, pc, mv, fly } = e.data;
   if (mv) { try { postMessage({ done: maneuverRun(mv, p => postMessage({ p })) }); } catch (err) { postMessage({ error: String(err) }); } return; }
+  if (fly) { try { if (!self.FS) self.FS = buildSystem(list); postMessage({ done: flyRefine(self.FS, fly.t0, fly.r, fly.v, fly.opt), ver: fly.ver }); } catch (err) { postMessage({ error: String(err), ver: fly.ver }); } return; }
   try {
     const s = buildSystem(list);
     if (pc) { const g = porkchop(s, M, { ...pc, onRow: j => { if (j % 8 === 0) postMessage({ p: j }); } }); postMessage({ done: g }, [g.dv.buffer, g.c3.buffer, g.va.buffer]); return; }
@@ -2614,7 +2616,8 @@ new ResizeObserver(() => { PC.base = null; pcDraw(); }).observe($('#pcPlot'));
 // departure plus the timeline time (real model) or today plus the timeline time (simplified model).
 // The map has its own camera: entering the map swaps it with the mission view's.
 const MAPK = KEYS_REAL, MSUN = MAPK.indexOf('sun');
-const mapSys = buildSystem(MAPK.map(k => { const d = BODIES[k]; return { name: k, mu: d.gm * 1e9, radius: d.radius * 1e3, parent: MAPK.indexOf(d.parent), a: 0, orb: d.orb }; }));
+const mapList = () => MAPK.map(k => { const d = BODIES[k]; return { name: k, mu: d.gm * 1e9, radius: d.radius * 1e3, parent: MAPK.indexOf(d.parent), a: 0, orb: d.orb }; });
+const mapSys = buildSystem(mapList());
 const MPAR = MAPK.map(k => MAPK.indexOf(BODIES[k].parent));
 const MKIDS = MAPK.map(k => MAPK.filter(q => BODIES[q].parent === k).map(q => MAPK.indexOf(q)));
 const isMoon = i => MPAR[i] >= 0 && MPAR[i] !== MSUN;

@@ -159,6 +159,21 @@ function watch(page, errs) {
       await page.evaluate(async () => { sceneEnd(true); loadScenario('mv_leo_geo'); S.playing = false; setPlayIcon(); await new Promise(r => setTimeout(r, 600)); S.u = tToU(600); slowJump(); });
       await page.waitForTimeout(300); await page.click('#flyGo'); await page.waitForTimeout(400);
       const t0 = await page.evaluate(() => FREE.on && FREE.st.t); if (!t0) throw new Error('not in free flight');
+      // Phase 19c: a click on the path puts a node, its prograde handle dragged gives it Δv, the N-body refinement comes
+      // back (solid path), U undoes the drag and then the node
+      await page.click('#flyWarp [data-w="1"]');
+      const at = await page.evaluate(() => { const g = FREE.pred.segs[0], k = Math.floor(g.n / 4); states(mapSys, FREE.st.t, MP, MV); const P = flyScr(g.b, g.pts[3 * k], g.pts[3 * k + 1], g.pts[3 * k + 2], is3d()), r = document.querySelector('#cv').getBoundingClientRect(); return P && { x: r.left + P[0], y: r.top + P[1] }; });
+      if (!at) throw new Error('the path is not on screen');
+      await page.mouse.click(at.x, at.y); await page.waitForTimeout(300);
+      const hd = await page.evaluate(() => { const r = document.querySelector('#cv').getBoundingClientRect(), h = FREE.hnd.find(q => q.k === 0 && q.s === 1); return FREE.nodes.length === 1 && h && { x: r.left + h.x, y: r.top + h.y, ux: h.ux, uy: h.uy }; });
+      if (!hd) throw new Error('no node with handles after a click on the path');
+      await page.mouse.move(hd.x, hd.y); await page.mouse.down();
+      for (let i = 1; i <= 8; i++) await page.mouse.move(hd.x + hd.ux * 10 * i, hd.y + hd.uy * 10 * i);
+      const mid = await page.evaluate(() => ({ dv: FREE.nodes[0].d[0], prov: flyPath().prov })); await page.mouse.up();
+      if (!(mid.dv > 50) || !mid.prov) throw new Error(`the drag: ${JSON.stringify(mid)}`);
+      await page.waitForFunction(() => FREE.ref && FREE.ref.ver === FREE.ver && !flyPath().prov, null, { timeout: 10000 });
+      await page.keyboard.press('u'); await page.keyboard.press('u');
+      if (await page.evaluate(() => FREE.nodes.length)) throw new Error('U did not undo the node');
       await page.click('#flyWarp [data-w="1000"]'); await page.waitForTimeout(1200);
       const r = await page.evaluate(() => ({ dt: FREE.st.t, segs: FREE.pred ? FREE.pred.segs.length : 0 }));
       if (!(r.dt - t0 > 200) || !(r.segs > 0)) throw new Error('the flight did not advance or predict: ' + JSON.stringify(r));

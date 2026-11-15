@@ -235,12 +235,15 @@ const fireAt = (fires, t) => (fires || []).find(f => t >= f.a && t < f.b) || nul
 
 // The free flight's one snapshot in the session (Phase 19b, js/fly.js): { t (s since J2000 TDB), r, v (the map system's
 // axes, m, m/s), m (kg), warp, at (wall ms) }; null when broken, not finite or older than 12 hours
+const FLY_NODES_MAX = 12;
 function parseFlySnap(raw, now = Date.now()) {
   let o = null; try { o = JSON.parse(raw); } catch (e) { return null; }
   if (!o || typeof o !== 'object') return null;
   const v3 = a => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite);
   if (!Number.isFinite(o.t) || !v3(o.r) || !v3(o.v) || !(o.m > 0) || !Number.isFinite(o.at) || now - o.at > 12 * 3600e3 || now < o.at) return null;
-  return { t: o.t, r: o.r, v: o.v, m: o.m, warp: Number.isFinite(o.warp) && o.warp >= 1 ? o.warp : 1 };
+  // maneuver nodes (Phase 19c): [{ t, d: [prograde, radial, normal] m/s }], the broken ones dropped, at most FLY_NODES_MAX
+  const nodes = Array.isArray(o.nodes) ? o.nodes.filter(q => q && Number.isFinite(q.t) && v3(q.d)).slice(0, FLY_NODES_MAX).map(q => ({ t: q.t, d: [...q.d] })) : [];
+  return { t: o.t, r: o.r, v: o.v, m: o.m, warp: Number.isFinite(o.warp) && o.warp >= 1 ? o.warp : 1, nodes };
 }
 
 // The simulator page's sound settings (2026-11-15, js/sim-audio.js): on (a quiet start at the first gesture), volume
@@ -605,4 +608,4 @@ function saturnShot(sat, sun, pole, box, o = {}) {
     side: [c.g, c.k], phase: ang(e, s), lit: c.lit, milky: c.mw, sway: { k: K, ke: KE, az: A * K, el: sw.el * KE, dist: o.sway ? sw.dist : 0 }, fit: [K, KE, yk0] };
 }
 
-if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, auto3dFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, parseEngines, ENG_KINDS, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha, SLOW_W, burnShow, slowFires, slowRho, slowAdvance, playAdvance, fireAt, rampLen, rampRate, SIM_AUDIO, parseSimAudio, parseFlySnap };
+if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, auto3dFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, parseEngines, ENG_KINDS, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha, SLOW_W, burnShow, slowFires, slowRho, slowAdvance, playAdvance, fireAt, rampLen, rampRate, SIM_AUDIO, parseSimAudio, parseFlySnap, FLY_NODES_MAX };
