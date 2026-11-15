@@ -2235,14 +2235,29 @@ function stumpff(z) {
 function uniStep(mu, r0, v0, dt, out) {
   const rn = Math.hypot(r0[0], r0[1], r0[2]), vr = (r0[0] * v0[0] + r0[1] * v0[1] + r0[2] * v0[2]) / rn, v2 = v0[0] * v0[0] + v0[1] * v0[1] + v0[2] * v0[2];
   const alpha = 2 / rn - v2 / mu, sm = Math.sqrt(mu);
+  // the first guess (Vallado alg. 8): the ellipse's mean motion; the hyperbola's logarithmic one (2026-11-15: the old
+  // linear guess let Newton run away past ~1 day on an escape hyperbola, the sphere's exit came out below v∞); a parabola's
   let x = alpha > 1e-12 ? sm * alpha * dt : Math.sign(dt) * Math.sqrt(mu) * Math.abs(dt) / rn;
-  for (let it = 0; it < 80; it++) {
-    const z = alpha * x * x, [C, S] = stumpff(z);
-    const F = rn * vr / sm * x * x * C + (1 - alpha * rn) * x * x * x * S + rn * x - sm * dt;
-    const dF = rn * vr / sm * x * (1 - z * S) + (1 - alpha * rn) * x * x * C + rn;
-    const d = F / dF; x -= d;
-    if (Math.abs(d) < 1e-10 * Math.max(1, Math.abs(x))) break;
+  if (alpha < -1e-12) {
+    const a = 1 / alpha, g = Math.log((-2 * mu * alpha * dt) / (rn * vr + Math.sign(dt) * Math.sqrt(-mu * a) * (1 - rn * alpha)));
+    if (Number.isFinite(g)) x = Math.sign(dt) * Math.sqrt(-a) * g;
   }
+  // F(χ) (Kepler's equation in χ) rises with χ (dF/dχ = r > 0): Newton kept inside a bracket that bisection narrows
+  // (rtsafe), so a poor first guess cannot run away (an inbound hyperbola's logarithmic guess can be far off)
+  const Fx = q => { const zz = alpha * q * q, [Cq, Sq] = stumpff(zz); return [rn * vr / sm * q * q * Cq + (1 - alpha * rn) * q * q * q * Sq + rn * q - sm * dt, rn * vr / sm * q * (1 - zz * Sq) + (1 - alpha * rn) * q * q * Cq + rn]; };
+  let lo = 0, hi = 0; // F(0) = −√μ·dt: the root lies on dt's side of 0
+  if (dt > 0) { hi = Math.max(x, 1e-6 * sm); for (let i = 0; i < 200 && !(Fx(hi)[0] > 0); i++) { lo = hi; hi *= 2; } }
+  else if (dt < 0) { lo = Math.min(x, -1e-6 * sm); for (let i = 0; i < 200 && !(Fx(lo)[0] < 0); i++) { hi = lo; lo *= 2; } }
+  if (!(x > lo && x < hi)) x = (lo + hi) / 2;
+  for (let it = 0; it < 120 && dt !== 0; it++) {
+    const [F, dF] = Fx(x);
+    if (F > 0) hi = x; else lo = x;
+    let xn = x - F / dF;
+    if (!(xn > lo && xn < hi) || !Number.isFinite(xn)) xn = (lo + hi) / 2; // outside the bracket: bisect
+    const d = xn - x; x = xn;
+    if (Math.abs(d) < 1e-10 * Math.max(1, Math.abs(x)) || hi - lo < 1e-12 * Math.max(1, Math.abs(x))) break;
+  }
+  if (dt === 0) x = 0;
   const z = alpha * x * x, [C, S] = stumpff(z), f = 1 - x * x / rn * C, g = dt - x * x * x / sm * S;
   const p = [0, 1, 2].map(j => f * r0[j] + g * v0[j]), r = Math.hypot(p[0], p[1], p[2]);
   const fd = sm / (r * rn) * (alpha * x * x * x * S - x), gd = 1 - x * x / r * C;
@@ -2373,12 +2388,25 @@ function flyPredict(s, t0, r0, v0, opt = {}) {
       tt = tn;
     }
     const t1 = ev ? ev.t : tEnd, q1 = at(t1); pts.push(q1[0], q1[1], q1[2]); ts.push(t1);
+    // an open conic's periapsis on the way, exactly (2026-11-15: the march's points are hours apart on a long open
+    // segment and missed a fast flyby's periapsis): its time from the hyperbolic anomaly, a point there for the drawing
+    let peOpen = null;
+    if (!closed && el.e > 1 && el.a < 0) {
+      const rn = Math.hypot(r1[0], r1[1], r1[2]), vr = (r1[0] * v1[0] + r1[1] * v1[1] + r1[2] * v1[2]) / rn, e = el.e, aa = -el.a;
+      const cnu = Math.max(-1, Math.min(1, (aa * (e * e - 1) / rn - 1) / e)), nu = Math.sign(vr || 1) * Math.acos(cnu);
+      const F = 2 * Math.atanh(Math.sqrt((e - 1) / (e + 1)) * Math.tan(nu / 2)), tp = -(e * Math.sinh(F) - F) / Math.sqrt(mu / (aa * aa * aa));
+      if (tp > 0 && t + tp < t1) {
+        const tq = t + tp, q = at(tq); let k = ts.findIndex(x => x > tq); if (k < 0) k = ts.length;
+        pts.splice(3 * k, 0, q[0], q[1], q[2]); ts.splice(k, 0, tq); peOpen = { type: 'pe', t: tq, b, r: aa * (e - 1) };
+      }
+    }
     // periapsis / apoapsis passages on the way (the radial speed changing sign)
     for (let i = 1; i + 1 < ts.length; i++) {
       const rA = Math.hypot(pts[3 * i - 3], pts[3 * i - 2], pts[3 * i - 1]), rB = Math.hypot(pts[3 * i], pts[3 * i + 1], pts[3 * i + 2]), rC = Math.hypot(pts[3 * i + 3], pts[3 * i + 4], pts[3 * i + 5]);
-      if (rB <= rA && rB < rC) events.push({ type: 'pe', t: ts[i], b, r: Math.hypot(pts[3 * i], pts[3 * i + 1], pts[3 * i + 2]) });
+      if (rB <= rA && rB < rC && !peOpen) events.push({ type: 'pe', t: ts[i], b, r: Math.hypot(pts[3 * i], pts[3 * i + 1], pts[3 * i + 2]) });
       if (rB >= rA && rB > rC && closed) events.push({ type: 'ap', t: ts[i], b, r: rB });
     }
+    if (peOpen) events.push(peOpen);
     const end = ev ? ev.type : t1 >= nodeT - 1e-6 ? 'node' : 'horizon';
     segs.push({ b, t0: t, t1, r0: r1, v0: v1, el, end, n: ts.length, pts: Float64Array.from(pts), ts: Float64Array.from(ts) });
     // on to the next segment: back to absolute at t1
@@ -2418,8 +2446,10 @@ function flyRefine(s, t0, r0, v0, opt = {}) {
   let q = rel(); push(q);
   while (st.t < until - 1e-6 && total < maxPts) {
     const el = rv2el(s.mu[q.b], q.r, q.v), rn = Math.hypot(...q.r), vn = Math.hypot(...q.v);
-    const h = el.e < 1 && el.a > 0 ? 2 * Math.PI * Math.sqrt(el.a ** 3 / s.mu[q.b]) / K : Math.max(1, rn / Math.max(vn, 1) / 8);
-    const nodeT = ni < nodes.length ? nodes[ni].t : Infinity, next = Math.min(st.t + h, nodeT, until);
+    // the samples: K a revolution (at most 8 K up to the next node or the end, as the prediction), or an eighth of r/v
+    const nodeT = ni < nodes.length ? nodes[ni].t : Infinity, span = Math.min(nodeT, until) - st.t;
+    const h = el.e < 1 && el.a > 0 ? Math.max(2 * Math.PI * Math.sqrt(el.a ** 3 / s.mu[q.b]) / K, span / (8 * K)) : Math.max(1, rn / Math.max(vn, 1) / 8, span / (8 * K));
+    const next = Math.min(st.t + h, nodeT, until);
     const res = flyAdvance(s, st, next - st.t, { tol: opt.tol || 1e-9, maxSteps: 20000 });
     if (res.done <= 0) break;
     q = rel();
@@ -2433,6 +2463,194 @@ function flyRefine(s, t0, r0, v0, opt = {}) {
   }
   close('horizon');
   return { segs };
+}
+
+// The transfer window to body c from the craft's closed orbit (Phase 19e; absolute state t0, r0, v0 in s, the map's
+// system). Two cases:
+//  inner — c orbits the body the craft orbits (LEO → the Moon, a solar orbit → a planet): Lambert arcs from the craft's
+//    own two-body orbit straight to c over departures across one synodic period (a slow target such as the Moon: one of
+//    its periods, each slot at 24 phases of the craft's revolution) and times of flight 0.6 … 1.5 × the Hohmann time,
+//    aimed beside c's centre at the impact parameter for a pass at opt.hArr; the least |Δv|, refined; then the impact
+//    parameter scaled (secant) until the patched conics' pass about c is at hArr. The node is the arc's start.
+//  sibling — c and the craft's body b orbit the same parent (Earth → Mars): body-centre Lambert arcs about the parent over
+//    one synodic period × 0.6 … 1.5 Hohmann times (none within ARC_GAP of a half turn), by the escape from the craft's
+//    orbit plane (ejGeom: the plane is fixed, so v∞'s direction against it costs) plus the capture into a circle at hArr;
+//    the ejection node where that hyperbola's periapsis sits, fitted (Newton on patched-conic predictions) to the arc's
+//    v∞ at the sphere's exit; then a course correction out of the sphere onto c.
+// Returns { kind, b, c, tDep, tof, dv (all nodes'; sibling also dvEj, dvMid), dvCap (sibling: the capture), vinf (departure),
+// vinfArr, node (the first) and nodes [{ t, d }] (sibling: the ejection and the course correction) }
+// or { error: 'err.flyWin*' }.
+const ARC_GAP = 12 * Math.PI / 180; // sibling arcs within this of 180° are left out
+function flyWindow(s, t0, r0, v0, c, opt = {}) {
+  s.P = s.P || new Float64Array(3 * s.N); s.V = s.V || new Float64Array(3 * s.N);
+  const P = s.P, V = s.V, rel = (i, j, t) => { states(s, t, P, V); return { r: [P[3 * i] - P[3 * j], P[3 * i + 1] - P[3 * j + 1], P[3 * i + 2] - P[3 * j + 2]], v: [V[3 * i] - V[3 * j], V[3 * i + 1] - V[3 * j + 1], V[3 * i + 2] - V[3 * j + 2]] }; };
+  states(s, t0, P, V);
+  const b = domBody(s, P, r0[0], r0[1], r0[2]);
+  if (c === b || c < 0 || c >= s.N) return { error: 'err.flyWinSame' };
+  const r = [0, 1, 2].map(j => r0[j] - P[3 * b + j]), v = [0, 1, 2].map(j => v0[j] - V[3 * b + j]), mu = s.mu[b], el = rv2el(mu, r, v);
+  if (!(el.e < 1 && el.a > 0)) return { error: 'err.flyWinOrbit' };
+  const Pc = 2 * Math.PI * Math.sqrt(el.a ** 3 / mu), hN = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]];
+  const nD = opt.nD || 64, nT = opt.nT || 14, maxSpan = opt.maxSpan || 800 * 86400, CS = new Float64Array(6), norm = a => Math.hypot(a[0], a[1], a[2]);
+  const sub = (a, q) => [a[0] - q[0], a[1] - q[1], a[2] - q[2]], dot = (a, q) => a[0] * q[0] + a[1] * q[1] + a[2] * q[2];
+  const craftAt = t => { uniStep(mu, r, v, t - t0, CS); return { r: [CS[0], CS[1], CS[2]], v: [CS[3], CS[4], CS[5]] }; };
+  // a grid of departures × flight times, then two finer passes around the best cell; cost(td, tof) → { k, … } or null
+  // deps: the departure times to try (default nD over span)
+  const search = (span, tH, cost, deps) => {
+    let best = null; const dT = deps ? Pc / 24 : span / nD, dF = 0.9 * tH / (nT - 1);
+    const at = (td, tof) => { if (!(tof > 0) || td < t0) return; const q = cost(td, tof); if (q && (!best || q.k < best.k)) best = { ...q, td, tof }; };
+    for (const td of deps || Array.from({ length: nD }, (_, i) => t0 + 60 + dT * i)) for (let j = 0; j < nT; j++) at(td, tH * 0.6 + dF * j);
+    for (let pass = 0, sT = dT, sF = dF; pass < 2 && best; pass++, sT /= 4, sF /= 4) { const b0 = best; for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) at(b0.td + sT * i / 2, b0.tof + sF * j / 2); }
+    return best;
+  };
+  const synodic = (P1, P2) => (Math.abs(1 / P1 - 1 / P2) > 1e-30 ? 1 / Math.abs(1 / P1 - 1 / P2) : maxSpan);
+  if (s.parent[c] === b) { // ----- inner -----
+    const tc0 = rel(c, b, t0), rt = norm(tc0.r), Pt = 2 * Math.PI * Math.sqrt(rt ** 3 / mu), tH = Math.PI * Math.sqrt(((el.a + rt) / 2) ** 3 / mu);
+    const span = Math.min(maxSpan, Math.max(Pc, Math.min(synodic(Pc, Pt), 3 * Pc))), hArr = opt.hArr != null ? opt.hArr : Math.max(100e3, 0.05 * s.R[c]), rpA = s.R[c] + hArr;
+    // the arc from the craft at td to beside c at td + tof: the impact parameter for a pass at hArr (× kb), across the
+    // arrival v∞ in the transfer plane; null when it goes through b
+    const arc = (td, tof, kb) => {
+      const k = craftAt(td), T = rel(c, b, td + tof);
+      let L = lambert(mu, k.r, T.r, tof, hN); if (!L) return null;
+      const vi = sub(L.v2, T.v), vl = norm(vi), bImp = kb * rpA * Math.sqrt(1 + 2 * s.mu[c] / (rpA * vl * vl));
+      const side = [L.h[1] * vi[2] - L.h[2] * vi[1], L.h[2] * vi[0] - L.h[0] * vi[2], L.h[0] * vi[1] - L.h[1] * vi[0]], sl = norm(side) || 1;
+      L = lambert(mu, k.r, T.r.map((x, q) => x + bImp * side[q] / sl), tof, hN); if (!L) return null;
+      const tr = rv2el(mu, k.r, L.v1); if (tr.a > 0 && tr.e < 1 && tr.a * (1 - tr.e) < s.R[b] * 1.02 && dot(k.r, L.v1) < 0) return null; // through b
+      const dvv = sub(L.v1, k.v);
+      return { k: norm(dvv), dvv, kr: k.r, kv: k.v, vinfArr: norm(sub(L.v2, T.v)) };
+    };
+    // a target slow against the craft (the Moon from a low orbit): departures over one of its periods (it reaches the
+    // orbit's plane twice), each day slot at 24 phases of the craft's revolution
+    let deps = null;
+    if (Pt > 3 * Pc) { deps = []; const nS = Math.min(40, Math.ceil(Math.min(Pt, maxSpan) / Pc)); for (let i = 0; i < nS; i++) for (let j = 0; j < 24; j++) deps.push(t0 + 60 + Math.min(Pt, maxSpan) * i / nS + Pc * j / 24); }
+    const best = search(span, tH, (td, tof) => arc(td, tof, 1), deps);
+    if (!best) return { error: 'err.flyWinNone' };
+    // the pass the patched conics really give (c's sphere bends the arc): its periapsis from the conic about c; the
+    // impact parameter scaled (secant) until it is at hArr
+    const passR = kb => { const q = arc(best.td, best.tof, kb); if (!q) return null; const pr = flyPredict(s, t0, r0, v0, { nodes: [{ t: best.td, d: dvLocal(q.kr, q.kv, q.dvv) }], T: best.td - t0 + 2 * best.tof, maxSeg: 5, K: 120 }), g = pr.segs.find(x => x.b === c); if (!g) return null; return { q, rp: g.el.e > 1 ? Math.abs(g.el.a) * (g.el.e - 1) : g.el.a * (1 - g.el.e) }; };
+    let k0 = 1, p0 = passR(k0), k1 = 1.3, p1 = passR(k1), bestQ = p0 ? p0.q : best;
+    for (let it = 0; it < 6 && p0 && p1 && Math.abs(p1.rp - p0.rp) > 1; it++) {
+      if (Math.abs(p1.rp - rpA) < 0.02 * rpA) break;
+      const k2 = Math.max(0.05, k1 + (rpA - p1.rp) * (k1 - k0) / (p1.rp - p0.rp)), p2 = passR(k2); if (!p2) break;
+      k0 = k1; p0 = p1; k1 = k2; p1 = p2;
+    }
+    if (p1 && p0) bestQ = Math.abs(p1.rp - rpA) <= Math.abs(p0.rp - rpA) ? p1.q : p0.q;
+    const node = { t: best.td, d: dvLocal(bestQ.kr, bestQ.kv, bestQ.dvv) };
+    return { kind: 'inner', b, c, tDep: best.td, tof: best.tof, dv: bestQ.k, vinf: 0, vinfArr: bestQ.vinfArr, node, nodes: [node] };
+  }
+  const pb = s.parent[b];
+  if (pb < 0 || s.parent[c] !== pb) return { error: 'err.flyWinCase' };
+  // ----- sibling: the arc about the parent -----
+  const muS = s.mu[pb], B0 = rel(b, pb, t0), C0 = rel(c, pb, t0), rb = norm(B0.r), rc = norm(C0.r);
+  const Pb = 2 * Math.PI * Math.sqrt(rb ** 3 / muS), Pt = 2 * Math.PI * Math.sqrt(rc ** 3 / muS), tH = Math.PI * Math.sqrt(((rb + rc) / 2) ** 3 / muS);
+  const nB = [B0.r[1] * B0.v[2] - B0.r[2] * B0.v[1], B0.r[2] * B0.v[0] - B0.r[0] * B0.v[2], B0.r[0] * B0.v[1] - B0.r[1] * B0.v[0]];
+  // the arc's angle about nB (prograde, 0 … 2π): within ARC_GAP of a half turn either way
+  const nearHalf = (p, q) => { const x = [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]]; let a = Math.atan2(dot(x, nB) / norm(nB), dot(p, q)); if (a < 0) a += 2 * Math.PI; return Math.abs(a - Math.PI) < ARC_GAP; };
+  const span = Math.min(maxSpan, synodic(Pb, Pt)), rp = norm(r), hArr = opt.hArr != null ? opt.hArr : 300e3, rcap = s.R[c] + hArr;
+  // the ejection's geometry for v∞ (vector vi) from the craft's orbit plane (fixed: the orbit's two-body plane): the
+  // periapsis direction makes θ∞ = acos(−1/e) with v∞; in the orbit plane (r̂ = cos φ e1 + sin φ e2) that is
+  // a·cos φ + b·sin φ = cos θ∞, two points when v∞ lies close enough to the plane (else the closest one); of them the
+  // one whose hyperbola turns the velocity least. tv: the periapsis velocity's direction (in the plane of r̂ and v∞, square
+  // to r̂); turn: its cosine with the orbit's own direction there. The escape costs √(vp² + vc² − 2·vp·vc·turn).
+  const hh = [hN[0] / norm(hN), hN[1] / norm(hN), hN[2] / norm(hN)], e1 = r.map(x => x / norm(r)), e2 = [hh[1] * e1[2] - hh[2] * e1[1], hh[2] * e1[0] - hh[0] * e1[2], hh[0] * e1[1] - hh[1] * e1[0]];
+  const ejGeom = vi => {
+    const vl = norm(vi), vh = vi.map(x => x / vl), ecc = 1 + rp * vl * vl / mu, cth = -1 / ecc;
+    const a1 = dot(e1, vh), b1 = dot(e2, vh), A1 = Math.hypot(a1, b1), ph0 = Math.atan2(b1, a1);
+    const cands = A1 > Math.abs(cth) ? [ph0 + Math.acos(cth / A1), ph0 - Math.acos(cth / A1)] : [cth < 0 ? ph0 + Math.PI : ph0];
+    let g = null;
+    for (const f of cands) {
+      const q = e1.map((x, k) => x * Math.cos(f) + e2[k] * Math.sin(f)), mv = [hh[1] * q[2] - hh[2] * q[1], hh[2] * q[0] - hh[0] * q[2], hh[0] * q[1] - hh[1] * q[0]];
+      let tv = sub(vh, q.map(x => x * dot(vh, q))); const tl = norm(tv); if (!(tl > 1e-9)) continue; tv = tv.map(x => x / tl);
+      if (!g || dot(tv, mv) > g.turn) g = { pDir: q, tv, turn: dot(tv, mv) };
+    }
+    if (!g) return null;
+    const vp = Math.sqrt(vl * vl + 2 * mu / rp), vc0 = Math.sqrt(mu / rp);
+    g.dv = Math.sqrt(Math.max(0, vp * vp + vc0 * vc0 - 2 * vp * vc0 * g.turn)); return g;
+  };
+  const best = search(span, tH, (td, tof) => {
+    const B = rel(b, pb, td), C = rel(c, pb, td + tof);
+    if (nearHalf(B.r, C.r)) return null; // near 180°: the arc's plane is ill-defined, the targeting from the sphere's exit would not hold
+    const L = lambert(muS, B.r, C.r, tof, nB); if (!L) return null;
+    const vi = sub(L.v1, B.v), va = norm(sub(L.v2, C.v)), vl = norm(vi);
+    const G = ejGeom(vi); if (!G) return null;
+    const dvE = G.dv, dvC = Math.sqrt(va * va + 2 * s.mu[c] / rcap) - Math.sqrt(s.mu[c] / rcap);
+    return { k: dvE + dvC, dvE, dvC, vi, va };
+  });
+  if (!best) return { error: 'err.flyWinNone' };
+  // the ejection node: the chosen geometry's periapsis direction, the craft there near the departure
+  const vi = best.vi, vl = norm(vi), G = ejGeom(vi); if (!G) return { error: 'err.flyWinNone' };
+  const pDir = G.pDir, tvB = G.tv;
+  const ang = t => { const k = craftAt(t), q = k.r.map(x => x / norm(k.r)); return Math.atan2(dot(hh, [pDir[1] * q[2] - pDir[2] * q[1], pDir[2] * q[0] - pDir[0] * q[2], pDir[0] * q[1] - pDir[1] * q[0]]), dot(pDir, q)); };
+  let tN = Math.max(t0 + 60, best.td - Pc / 2), bestA = Infinity;
+  for (let i = 0; i <= 96; i++) { const t = Math.max(t0 + 60, best.td - Pc / 2) + Pc * i / 96, a = Math.abs(ang(t)); if (a < bestA) { bestA = a; tN = t; } }
+  for (let i = 0, lo = tN - Pc / 96, hi = tN + Pc / 96; i < 40; i++) { const m = (lo + hi) / 2; if (Math.sign(ang(m)) === Math.sign(ang(lo))) lo = m; else hi = m; tN = (lo + hi) / 2; }
+  const K = craftAt(tN), rn = norm(K.r), vp = Math.sqrt(vl * vl + 2 * mu / rn);
+  let d = dvLocal(K.r, K.v, sub(tvB.map(x => x * vp), K.v));
+  // Newton on the departure hyperbola's excess velocity vector (patched conics from the node: the arc about b up to its
+  // sphere's exit; v∞ along the outgoing asymptote, cos θ∞ ê + sin θ∞ ĥ × ê)
+  states(s, tN, P, V);
+  const RA = [0, 1, 2].map(j => K.r[j] + P[3 * b + j]), VA = [0, 1, 2].map(j => K.v[j] + V[3 * b + j]);
+  const exitV = dd => {
+    const pr = flyPredict(s, tN, RA, VA, { nodes: [{ t: tN, d: dd }], maxSeg: 6, T: 120 * 86400, K: 120 }), g = pr.segs.find(q => q.b === b && q.end === 'soiOut');
+    if (!g) return null;
+    const r1 = g.r0, v1 = g.v0, r1n = norm(r1), v2 = dot(v1, v1), E = v2 / 2 - mu / r1n; if (!(E > 0)) return null;
+    const ev = r1.map((x, q) => ((v2 - mu / r1n) * x - dot(r1, v1) * v1[q]) / mu), en = norm(ev), h = [r1[1] * v1[2] - r1[2] * v1[1], r1[2] * v1[0] - r1[0] * v1[2], r1[0] * v1[1] - r1[1] * v1[0]], hl = norm(h);
+    const eh = ev.map(x => x / en), hx = h.map(x => x / hl), qh = [hx[1] * eh[2] - hx[2] * eh[1], hx[2] * eh[0] - hx[0] * eh[2], hx[0] * eh[1] - hx[1] * eh[0]], ti = Math.acos(-1 / en), vinf = Math.sqrt(2 * E);
+    return eh.map((x, q) => vinf * (Math.cos(ti) * x + Math.sin(ti) * qh[q]));
+  };
+  // Newton (3 × 3, finite differences of 1 m/s, steps held to a quarter of the periapsis speed) on fun(d) → residual vector
+  const newton = (fun, iters, tol) => {
+    for (let it = 0; it < iters; it++) {
+      const e0 = fun(d); if (!e0) return;
+      if (norm(e0) < tol) return;
+      const J = [];
+      for (let k = 0; k < 3; k++) { const dd = [...d]; dd[k] += 1; const ek = fun(dd); if (!ek) return; J.push(sub(ek, e0)); }
+      const A = [[J[0][0], J[1][0], J[2][0]], [J[0][1], J[1][1], J[2][1]], [J[0][2], J[1][2], J[2][2]]], det3 = m => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+      const D = det3(A); if (!(Math.abs(D) > 1e-30)) return;
+      const x = [0, 1, 2].map(k => det3(A.map((row, i) => row.map((val, j) => (j === k ? -e0[i] : val)))) / D);
+      const step = norm(x), lim = 0.25 * vp, f = step > lim ? lim / step : 1;
+      d = d.map((q, k) => q + f * x[k]);
+    }
+  };
+  // The ejection node fits the arc's v∞ (Newton below). The departure hyperbola starts at b's sphere, about a million km
+  // from b's centre for the Earth, enough to miss c by millions of km over the arc, so a course correction follows once
+  // the craft is out of the sphere (as real missions do): of a few moments 5 … 40 % of the way (two days after the exit at
+  // the earliest, the remaining arc away from a half turn) the one needing least, the
+  // Lambert arc from the craft's heliocentric state there to c's place at the arc's arrival, beside its centre by the
+  // impact parameter of a pass at hArr (its Δv in the parent's frame: the dominant body then).
+  // The v∞ to fit is the arc's at the sphere's exit (b's own velocity turns about 2° in the two days the Earth's sphere
+  // takes: about 1 km/s): the arc's heliocentric velocity at the exit time minus b's then, the exit time from the node
+  // being fitted (two rounds)
+  const tA = best.td + best.tof, CA = rel(c, pb, tA), B0d = rel(b, pb, best.td), L0 = lambert(muS, B0d.r, CA.r, best.tof, nB);
+  let viT = vi;
+  for (let round = 0; round < 3; round++) {
+    newton(dd => { const e = exitV(dd); return e && sub(e, viT); }, opt.iters != null ? opt.iters : 4, 0.05);
+    const pq = flyPredict(s, tN, RA, VA, { nodes: [{ t: tN, d }], maxSeg: 6, T: 120 * 86400, K: 120 }), gq = pq.segs.find(q => q.b === pb);
+    if (!gq || !L0) break;
+    const Q = new Float64Array(6); uniStep(muS, B0d.r, L0.v1, gq.t0 - best.td, Q);
+    const nv = sub([Q[3], Q[4], Q[5]], rel(b, pb, gq.t0).v), ch = norm(sub(nv, viT)); viT = nv;
+    if (ch < 0.05) break;
+  }
+  let aimP = CA.r;
+  if (L0) {
+    const vi2 = sub(L0.v2, CA.v), vl2 = norm(vi2) || 1, bI = rcap * Math.sqrt(1 + 2 * s.mu[c] / (rcap * vl2 * vl2));
+    const sd = [L0.h[1] * vi2[2] - L0.h[2] * vi2[1], L0.h[2] * vi2[0] - L0.h[0] * vi2[2], L0.h[0] * vi2[1] - L0.h[1] * vi2[0]], sl0 = norm(sd) || 1;
+    aimP = CA.r.map((x, q) => x + bI * sd[q] / sl0);
+  }
+  const nodes = [{ t: tN, d }];
+  const pr = flyPredict(s, tN, RA, VA, { nodes: [{ t: tN, d }], maxSeg: 6, T: 120 * 86400, K: 120 }), g = pr.segs.find(q => q.b === pb);
+  if (g) { // when: the least correction of a few moments, the remaining arc away from a half turn
+    let bestC = null;
+    for (const f of [0.05, 0.1, 0.15, 0.2, 0.3, 0.4]) {
+      const tc = Math.max(g.t0 + 2 * 86400, best.td + f * best.tof); if (!(tc < tA - 0.2 * best.tof)) continue;
+      const Q = new Float64Array(6); uniStep(muS, g.r0, g.v0, tc - g.t0, Q);
+      const rq = [Q[0], Q[1], Q[2]], vq = [Q[3], Q[4], Q[5]]; if (nearHalf(rq, aimP)) continue;
+      const L = lambert(muS, rq, aimP, tA - tc, nB); if (!L) continue;
+      const dvq = sub(L.v1, vq); if (!bestC || norm(dvq) < norm(bestC.dv)) bestC = { t: tc, rq, vq, dv: dvq };
+    }
+    if (bestC) nodes.push({ t: bestC.t, d: dvLocal(bestC.rq, bestC.vq, bestC.dv) });
+  }
+  const dvAll = nodes.reduce((q, nd) => q + norm(nd.d), 0), ef = exitV(d), vErr = ef ? norm(sub(ef, viT)) : Infinity;
+  return { kind: 'sibling', b, c, tDep: best.td, tof: best.tof, dv: dvAll, dvEj: norm(d), dvMid: nodes[1] ? norm(nodes[1].d) : 0, vErr, dvCap: best.dvC, vinf: vl, vinfArr: best.va, node: nodes[0], nodes };
 }
 
 // The closest approach of a prediction to body c: per segment, its times sampled against c's analytic motion, the
@@ -2453,7 +2671,7 @@ function flyClosest(s, pred, c) {
 }
 
 if (typeof module !== 'undefined') module.exports = {
-  stumpff, uniStep, nodeFrame, nodeDv, dvLocal, FLY_WARPS, flyWarpMax, flyDeriv, flyAdvance, flyPredict, flyRefine, flyClosest,
+  stumpff, uniStep, nodeFrame, nodeDv, dvLocal, FLY_WARPS, flyWarpMax, flyDeriv, flyAdvance, flyPredict, flyRefine, flyWindow, flyClosest,
   G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, clockAt, clockSet, keplerE, laplaceFrame, bodyFrame, orbitElements, orbitState, orbitPath,
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed, SOLVE_KM, missionMiss, solveMission,

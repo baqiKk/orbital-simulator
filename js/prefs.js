@@ -245,7 +245,7 @@ function parseFlySnap(raw, now = Date.now()) {
   const nodes = Array.isArray(o.nodes) ? o.nodes.filter(q => q && Number.isFinite(q.t) && v3(q.d)).slice(0, FLY_NODES_MAX).map(q => ({ t: q.t, d: [...q.d] })) : [];
   // the engine (Phase 19d): its object (checked by the page with core.js engineSpec), clock τ, auto fire, direction lock
   const eng = o.eng && typeof o.eng === 'object' && o.eng.E && typeof o.eng.E === 'object' && Number.isFinite(o.eng.tau) ? { E: o.eng.E, tau: Math.max(0, o.eng.tau), auto: o.eng.auto !== false, lock: typeof o.eng.lock === 'string' ? o.eng.lock : 'pro' } : null;
-  return { t: o.t, r: o.r, v: o.v, m: o.m, warp: Number.isFinite(o.warp) && o.warp >= 1 ? o.warp : 1, nodes, eng };
+  return { t: o.t, r: o.r, v: o.v, m: o.m, warp: Number.isFinite(o.warp) && o.warp >= 1 ? o.warp : 1, nodes, eng, target: typeof o.target === 'string' ? o.target : null };
 }
 
 // The simulator page's sound settings (2026-11-15, js/sim-audio.js): on (a quiet start at the first gesture), volume

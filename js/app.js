@@ -2168,6 +2168,7 @@ const WORKER_BODY = `
 onmessage = async (e) => {
   const { list, M, opt, pc, mv, fly } = e.data;
   if (mv) { try { postMessage({ done: maneuverRun(mv, p => postMessage({ p })) }); } catch (err) { postMessage({ error: String(err) }); } return; }
+  if (e.data.flyWin) { const q = e.data.flyWin; try { postMessage({ done: flyWindow(buildSystem(list), q.t0, q.r, q.v, q.c) }); } catch (err) { postMessage({ error: String(err) }); } return; }
   if (fly) { try { if (!self.FS) self.FS = buildSystem(list); postMessage({ done: flyRefine(self.FS, fly.t0, fly.r, fly.v, fly.opt), ver: fly.ver }); } catch (err) { postMessage({ error: String(err), ver: fly.ver }); } return; }
   try {
     const s = buildSystem(list);

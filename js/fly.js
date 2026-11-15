@@ -28,7 +28,14 @@
 // mission; the 3D model, "Araca yaklaş" (A, double click on the craft) and the cutaway work in free flight too
 // (mode3d.js drawMap3 calls flyCraft3). The first time, a short skippable run of hints (FLY_TIPS); "Nasıl uçulur?" under
 // the mode chip brings them back.
-const FREE = { on: false, hid: [], st: null, warp: 1, paused: false, pred: null, predAt: 0, trail: null, tb: -1, tn: 0, saveAt: 0, txt: {},
+// Targets and transfer windows (Phase 19e): a target body (#fnTgt; FREE.target) shows how the path meets it: its sphere
+// entered and the pass's altitude, else the closest approach (core.js flyClosest, every FLY_CA_MS), drawn as the target's
+// place at that moment, the craft's, a dashed line between and the distance. "Transfer penceresi" (#fnWin) asks the
+// worker for core.js flyWindow (the least Δv over the next synodic period: a Lambert arc straight from the orbit to a
+// moon of the body below, or between planets the arc about the Sun and the ejection node on the parking orbit, corrected
+// on v∞ and the B-plane); "Düğümü koy" lays its node (one undo step), "Düğüme hızlandır" takes it from there. When the
+// dominant body changes (a sphere left or entered) the map's camera frames the new one.
+const FREE = { on: false, hid: [], st: null, target: -1, tca: null, tcaAt: 0, win: null, winBusy: null, warp: 1, paused: false, pred: null, predAt: 0, trail: null, tb: -1, tn: 0, saveAt: 0, txt: {},
   nodes: [], sel: -1, undo: [], ver: 0, editAt: 0, drag: null, ref: null, refVer: -1, wk: null, wkBusy: false, nst: [], hnd: [], nmk: [], predDirty: false,
   eng: null, burn: null, fire: 0, fdir: null, pl: 0, warpTo: null, cap: Infinity, appr: false, apprPrev: null, aim: null, tip: -1 };
 const RAILS_W = 1000, TRAIL_N = 720, FLY_REF_MS = 250, FLY_UNDO = 60, FLY_SS = (() => { try { return window.sessionStorage; } catch (e) { return null; } })();
@@ -56,6 +63,7 @@ function flyEnterState(q) {
   FREE.on = true; FREE.paused = false; FREE.warp = q.warp || 1; FREE.pred = null; FREE.predAt = 0; FREE.trail = new Float64Array(3 * TRAIL_N); FREE.tn = 0; FREE.tb = -1; FREE.txt = {};
   FREE.nodes = (q.nodes || []).filter(nd => nd.t > q.t).map(nd => ({ t: nd.t, d: [...nd.d] })); FREE.sel = FREE.nodes.length ? 0 : -1; FREE.undo = []; FREE.ver++; FREE.ref = null; FREE.drag = null;
   flyEngInit(q);
+  FREE.target = q.target ? MAPK.indexOf(q.target) : -1; FREE.tca = null; FREE.win = null; flyTgtList();
   if (SCENE.on) sceneEnd(false);
   S.playing = false; setPlayIcon();
   setMap(true); MAP.log = false; MAP.moons = true; syncMapUI();
@@ -87,7 +95,7 @@ function flyExit() {
 function flySave() {
   if (!FREE.on) return;
   const s = FREE.st, e = FREE.eng;
-  writePref(FLY_SS, PREF_KEYS.flySnap, JSON.stringify({ t: s.t, r: s.r, v: s.v, m: s.m, warp: FREE.warp, nodes: FREE.nodes, eng: e && { E: e.E, tau: e.tau, auto: e.auto, lock: e.lock }, at: Date.now() }));
+  writePref(FLY_SS, PREF_KEYS.flySnap, JSON.stringify({ t: s.t, r: s.r, v: s.v, m: s.m, warp: FREE.warp, nodes: FREE.nodes, eng: e && { E: e.E, tau: e.tau, auto: e.auto, lock: e.lock }, target: FREE.target >= 0 ? MAPK[FREE.target] : null, at: Date.now() }));
 }
 addEventListener('pagehide', flySave);
 function flyRestore() {
@@ -95,7 +103,7 @@ function flyRestore() {
   mapSys.P = mapSys.P || new Float64Array(3 * mapSys.N); mapSys.V = mapSys.V || new Float64Array(3 * mapSys.N);
   states(mapSys, q.t, mapSys.P, mapSys.V);
   const b = domBody(mapSys, mapSys.P, q.r[0], q.r[1], q.r[2]);
-  return flyEnterState({ t: q.t, key: MAPK[b], r: [0, 1, 2].map(j => q.r[j] - mapSys.P[3 * b + j]), v: [0, 1, 2].map(j => q.v[j] - mapSys.V[3 * b + j]), m: q.m, warp: q.warp, nodes: q.nodes, eng: q.eng });
+  return flyEnterState({ t: q.t, key: MAPK[b], r: [0, 1, 2].map(j => q.r[j] - mapSys.P[3 * b + j]), v: [0, 1, 2].map(j => q.v[j] - mapSys.V[3 * b + j]), m: q.m, warp: q.warp, nodes: q.nodes, eng: q.eng, target: q.target });
 }
 // one frame: advance (real seconds dt × warp), predict (twice a second, at once after an edit), draw the map at the
 // flight's time and the craft over it, the nodes, the bar's and the panel's numbers
@@ -108,22 +116,26 @@ function flyFrame(dt, v3, glow, now) {
   FREE.pl += ((FREE.fire > 0 ? FREE.fire : 0) - FREE.pl) * (reduceMotion ? 1 : 1 - Math.exp(-dt / 0.15)); // the plume's ignition and cut
   flyPast();
   states(mapSys, s.t, P, V);
-  if (b !== FREE.tb) { FREE.tb = b; FREE.tn = 0; FREE.pred = null; }
+  if (b !== FREE.tb) { const was = FREE.tb; FREE.tb = b; FREE.tn = 0; FREE.pred = null; if (was >= 0 && !FREE.appr) flyFrameBody(b); flyTgtList(); }
   if (FREE.tn === 0 || now - FREE.trailAt > 40) { // the trail, relative to the dominant body
     const k = FREE.tn % TRAIL_N; for (let j = 0; j < 3; j++) FREE.trail[3 * k + j] = s.r[j] - P[3 * b + j]; FREE.tn++; FREE.trailAt = now;
   }
   if (!FREE.pred || FREE.predDirty || now - FREE.predAt > 500) {
-    FREE.pred = flyPredict(mapSys, s.t, s.r, s.v, { revs: 1, T: 30 * DAY, K: 120, nodes: FREE.nodes }); FREE.predAt = now; FREE.predDirty = false;
+    // the horizon: 30 days, or past the last node; to a body outside the system it is in, the long way there (400 days)
+    const far = FREE.target >= 0 && MPAR[FREE.target] !== b, last = FREE.nodes.length ? FREE.nodes[FREE.nodes.length - 1].t - s.t : 0;
+    FREE.pred = flyPredict(mapSys, s.t, s.r, s.v, { revs: 1, T: Math.max(0, last) + (far ? 400 : 30) * DAY, K: 120, nodes: FREE.nodes, maxSeg: 10 }); FREE.predAt = now; FREE.predDirty = false;
     FREE.nst = FREE.nodes.map(nd => flyNodeState(FREE.pred, nd.t));
+    FREE.tcaDirty = true;
     states(mapSys, s.t, P, V);
   }
   flyRefineAsk(now);
   if (now - FREE.saveAt > 2000) { FREE.saveAt = now; flySave(); }
   MAP.follow = FREE.appr ? null : b;
-  if (v3) { flyLines3(b); drawMap3(s.t, glow, null, 0, 0); flyMark(b, true); flyNodes(true); }
-  else { if (FREE.appr) flyFollow2(); drawMap(s.t, glow, null, 0, 0); flyLines2(b); flyMark(b, false); flyNodes(false); if (!MAP.log) drawScale(); }
+  flyTca(now);
+  if (v3) { flyLines3(b); drawMap3(s.t, glow, null, 0, 0); flyTcaDraw(true); flyMark(b, true); flyNodes(true); }
+  else { if (FREE.appr) flyFollow2(); drawMap(s.t, glow, null, 0, 0); flyLines2(b); flyTcaDraw(false); flyMark(b, false); flyNodes(false); if (!MAP.log) drawScale(); }
   flyBarTick(b);
-  flyPanelTick();
+  flyPanelTick(); flyTgtTick();
   if (now - (FREE.helpAt || 0) > 500) { FREE.helpAt = now; flyHelpPlace(); }
 }
 // map coordinates (heliocentric, as the map draws its bodies) of a point relative to body b, after states(mapSys, …)
@@ -398,9 +410,15 @@ function flyNextBurn() {
   const e = FREE.eng; if (!e || !e.auto || !FREE.nodes.length || !FREE.nst[0]) return null;
   const nd = FREE.nodes[0], q = FREE.nst[0], dvI = nodeDv(q.r, q.v, nd.d), dv = Math.hypot(...dvI);
   if (!(dv > 0.01)) return null;
-  const b = flyBurnOf(dv);
-  return { t: nd.t, start: nd.t - b.T / 2, T: b.T, dir: dvI.map(x => x / dv), dv };
+  const b = flyBurnOf(dv), mu = mapSys.mu[q.b], va = q.v.map((x, k) => x + dvI[k]);
+  // a mostly prograde (or retrograde) burn is cut on the orbit's energy after the node, not on its Δv: a long burn spread
+  // over the orbit loses some of it to gravity (2026-11-15: from a low orbit a 9-minute translunar burn fell short)
+  const vh = Math.hypot(...q.v), along = Math.abs(dvI[0] * q.v[0] + dvI[1] * q.v[1] + dvI[2] * q.v[2]) / (vh * dv);
+  const E = along > 0.5 ? (va[0] ** 2 + va[1] ** 2 + va[2] ** 2) / 2 - mu / Math.hypot(...q.r) : null;
+  return { t: nd.t, start: nd.t - b.T / 2, T: b.T, dir: dvI.map(x => x / dv), dv, b: q.b, E, up: E != null && E > (vh * vh) / 2 - mu / Math.hypot(...q.r) };
 }
+// the craft's orbital energy about body b now (after states(mapSys, FREE.st.t, …))
+function flyEnergy(b) { const s = FREE.st, P = mapSys.P, V = mapSys.V, r = Math.hypot(s.r[0] - P[3 * b], s.r[1] - P[3 * b + 1], s.r[2] - P[3 * b + 2]), v = [0, 1, 2].map(j => s.v[j] - V[3 * b + j]); return { E: (v[0] ** 2 + v[1] ** 2 + v[2] ** 2) / 2 - mapSys.mu[b] / r, v }; }
 // one frame of flight (dt real seconds): the warp, an auto burn's start never stepped over and its end exactly, the
 // throttle by hand, "Düğüme hızlandır"; then core.js flyAdvance (in the field while the engine fires, else on rails
 // above RAILS_W)
@@ -413,7 +431,7 @@ function flyStep(dt, b) {
     else { let w = 1; for (const q of FLY_WARPS) if (q * 0.1 <= rem / 3) w = q; if (w !== FREE.warp) flyWarp(w, true); }
   }
   // an auto burn starts
-  if (nb && s.t >= nb.start - 1e-6) { FREE.burn = { t: nb.t, dir: nb.dir, goal: nb.dv, m0: s.m, T: nb.T }; flyChanged(); }
+  if (nb && s.t >= nb.start - 1e-6) { FREE.burn = { t: nb.t, dir: nb.dir, goal: nb.dv, m0: s.m, T: nb.T, b: nb.b, E: nb.E, up: nb.up }; flyChanged(); }
   const th = flyThrust(b);
   FREE.cap = th ? (FREE.burn ? flyWarpMax(FREE.burn.T) : 10) : Infinity;
   if (FREE.warp > FREE.cap) flyWarp(FREE.cap, true);
@@ -421,15 +439,28 @@ function flyStep(dt, b) {
   let adv = dt * FREE.warp;
   if (!th && nb && nb.start > s.t) adv = Math.min(adv, nb.start - s.t); // never over a burn's start
   if (FREE.warpTo != null) adv = Math.min(adv, Math.max(0, FREE.warpTo - s.t));
-  if (th && FREE.burn) { // the burn's end: exactly its Δv
-    const rem = FREE.burn.goal - e.s.ve * Math.log(FREE.burn.m0 / s.m), tr = s.m * (1 - Math.exp(-Math.max(0, rem) / e.s.ve)) / th.mdot;
-    adv = Math.min(adv, tr);
+  if (th && FREE.burn) { // the burn's end: exactly its Δv, or (energy cut) the energy after the node, its rate dE/dt = v·F/m
+    const B = FREE.burn;
+    if (B.E != null) {
+      states(mapSys, s.t, mapSys.P, mapSys.V); const q = flyEnergy(B.b), rate = (q.v[0] * B.dir[0] + q.v[1] * B.dir[1] + q.v[2] * B.dir[2]) * th.F / s.m;
+      if (Math.abs(rate) > 1e-9) adv = Math.min(adv, Math.max(1e-3, (B.E - q.E) / rate));
+      const lim = 1.5 * B.goal - e.s.ve * Math.log(B.m0 / s.m); adv = Math.min(adv, Math.max(1e-3, s.m * (1 - Math.exp(-Math.max(0, lim) / e.s.ve)) / th.mdot));
+    } else {
+      const rem = B.goal - e.s.ve * Math.log(B.m0 / s.m), tr = s.m * (1 - Math.exp(-Math.max(0, rem) / e.s.ve)) / th.mdot;
+      adv = Math.min(adv, tr);
+    }
   }
   if (!(adv > 0)) { FREE.fire = th ? FREE.fire : 0; if (FREE.burn) flyBurnEnd(false); return; }
   const m0 = s.m, r = flyAdvance(mapSys, s, adv, { rails: !th && FREE.warp >= RAILS_W, thrust: th, maxSteps: 4000 });
   FREE.fire = th ? th.k : 0; FREE.fdir = th ? FREE.fdirNow : null;
   if (th) e.tau = Math.min(e.s.tb, e.tau + (m0 - s.m) / e.s.mdot); // the engine's clock by the propellant it used
-  if (FREE.burn) { const rem = FREE.burn.goal - e.s.ve * Math.log(FREE.burn.m0 / s.m); if (rem < 1e-3 || r.out) flyBurnEnd(r.out); }
+  if (FREE.burn) {
+    const B = FREE.burn, got = e.s.ve * Math.log(B.m0 / s.m);
+    let done = r.out;
+    if (B.E != null) { states(mapSys, s.t, mapSys.P, mapSys.V); const q = flyEnergy(B.b); done = done || (B.up ? q.E >= B.E - 1e-3 : q.E <= B.E + 1e-3) || got >= 1.5 * B.goal - 1e-3; }
+    else done = done || B.goal - got < 1e-3;
+    if (done) flyBurnEnd(r.out);
+  }
   else if (th && r.out) { e.thr = 0; flyLockSync(); }
 }
 function flyBurnEnd(out) {
@@ -559,6 +590,93 @@ addEventListener('resize', flyHelpPlace);
 flyEl('flyTipNext').addEventListener('click', () => flyTips(FREE.tip + 1));
 flyEl('flyTipSkip').addEventListener('click', () => flyTips(-1));
 flyEl('flyHow').addEventListener('click', () => flyTips(0));
+// ----- targets and transfer windows (Phase 19e) -----
+const FLY_CA_MS = 1500;
+// the map's camera on body b (a new dominant body): the craft's distance from it in view, as on entering
+function flyFrameBody(b) {
+  const s = FREE.st, rr = Math.hypot(s.r[0] - mapSys.P[3 * b], s.r[1] - mapSys.P[3 * b + 1], s.r[2] - mapSys.P[3 * b + 2]);
+  cam.scale = Math.min(W, H) * 0.3 / Math.max(rr, mapSys.R[b] * 1.2); cam.cx = 0; cam.cy = 0;
+  CAM3.map.dist = Math.max(rr, mapSys.R[b]) * 3.2; MAP.follow = b;
+}
+// the target list: the dominant body's moons, its siblings and its parent's other bodies first, then every other body
+function flyTgtList() {
+  const sel = flyEl('fnTgt'), b = FREE.tb >= 0 ? FREE.tb : -1, pb = b >= 0 ? MPAR[b] : -1;
+  const near = [], far = [];
+  MAPK.forEach((k, i) => { if (i === MSUN || i === b) return; (MPAR[i] === b || (pb >= 0 && MPAR[i] === pb) ? near : far).push(i); });
+  const opt = i => `<option value="${i}">${esc(_('body.' + MAPK[i]))}</option>`;
+  const html = `<option value="-1">${esc(_('fn.tgtNone'))}</option>` + (near.length ? `<optgroup label="${esc(_('fn.tgtNear'))}">${near.map(opt).join('')}</optgroup>` : '') + `<optgroup label="${esc(_('fn.tgtAll'))}">${far.map(opt).join('')}</optgroup>`;
+  if (sel.dataset.k !== html) { sel.dataset.k = html; sel.innerHTML = html; }
+  sel.value = String(FREE.target);
+  flyEl('fnWin').disabled = FREE.target < 0 || !!FREE.winBusy;
+}
+flyEl('fnTgt').addEventListener('change', e => { FREE.target = +e.target.value; FREE.tca = null; FREE.tcaDirty = true; FREE.win = null; flyWinShow(); flyTgtList(); });
+// how the path meets the target (after the prediction; at most every FLY_CA_MS): its sphere and pass, else the closest
+// approach with the target's and the craft's places then (relative to the segment's body, drawn where it is now)
+function flyTca(now) {
+  const c = FREE.target; if (c < 0 || !FREE.pred) { FREE.tca = null; return; }
+  if (!FREE.tcaDirty || now - FREE.tcaAt < FLY_CA_MS) return;
+  FREE.tcaDirty = false; FREE.tcaAt = now;
+  const pr = FREE.pred, ev = pr.events.find(e => e.type === 'soiIn' && e.b === c), pe = ev && pr.events.find(e => e.type === 'pe' && e.b === c && e.t >= ev.t);
+  const imp = ev && pr.events.find(e => e.type === 'impact' && e.b === c);
+  let q = null;
+  if (pe || imp) { const e = pe || imp; q = { t: e.t, d: e.r, alt: e.r - mapSys.R[c], soi: true, impact: !pe }; }
+  else { const ca = flyClosest(mapSys, pr, c); if (ca) q = { t: ca.t, d: ca.d, alt: ca.d - mapSys.R[c], soi: false }; }
+  if (!q) { FREE.tca = null; return; }
+  // the places at that moment: the craft on its segment, the target, both relative to the segment's body
+  const g = pr.segs.find(x => q.t >= x.t0 - 1e-6 && q.t <= x.t1 + 1e-6);
+  if (g) {
+    uniStep(mapSys.mu[g.b], g.r0, g.v0, q.t - g.t0, FRV);
+    const P = mapSys.P, V = mapSys.V; states(mapSys, q.t, P, V);
+    q.b = g.b; q.rc = [FRV[0], FRV[1], FRV[2]]; q.rt = [0, 1, 2].map(j => P[3 * c + j] - P[3 * g.b + j]);
+    states(mapSys, FREE.st.t, P, V);
+  }
+  FREE.tca = q;
+}
+// drawn over the map (both views): the target's place at the meeting, the craft's, a dashed line and the distance
+function flyTcaDraw(v3) {
+  const q = FREE.tca; if (!q || q.b == null) return;
+  states(mapSys, FREE.st.t, MP, MV);
+  const A = flyScr(q.b, q.rc[0], q.rc[1], q.rc[2], v3), B = flyScr(q.b, q.rt[0], q.rt[1], q.rt[2], v3); if (!A || !B) return;
+  const col = BODIES[MAPK[FREE.target]].color;
+  ctx.setLineDash([3, 4]); ctx.strokeStyle = hexA(col, 0.7); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(B[0], B[1], 6, 0, 6.2832); ctx.stroke();
+  ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(A[0], A[1], 2.6, 0, 6.2832); ctx.fill();
+  ctx.font = LABEL_FONT; ctx.fillStyle = hexA(col, 0.9);
+  ctx.fillText(_(q.soi ? (q.impact ? 'fn.tgtHitS' : 'fn.tgtPassS') : 'fn.tgtCaS', { d: fmtDist(q.soi ? Math.max(0, q.alt) : q.d) }), B[0] + 9, B[1] - 8);
+}
+function flyTgtTick() {
+  const q = FREE.tca, c = FREE.target;
+  if (c < 0 || !q) { flyTxt('fnTgtInfo', c >= 0 && FREE.pred ? _('fn.tgtWait') : ''); return; }
+  const t = fmtIn(Math.max(0, q.t - FREE.st.t)), body = _('body.' + MAPK[c]);
+  flyTxt('fnTgtInfo', q.soi ? _(q.impact ? 'fn.tgtHit' : 'fn.tgtPass', { body, alt: fmtDist(Math.max(0, q.alt)), t }) : _('fn.tgtCa', { body, d: fmtDist(q.d), t }));
+}
+// the transfer window, in a worker of its own (the refinement's keeps running)
+flyEl('fnWin').addEventListener('click', () => {
+  if (FREE.target < 0 || FREE.winBusy) return;
+  let w = null; try { w = makeWorker(); } catch (err) { w = null; }
+  const s = FREE.st, job = { t0: s.t, r: [...s.r], v: [...s.v], c: FREE.target };
+  const done = r => { if (FREE.winBusy === w) FREE.winBusy = null; if (w) w.terminate(); FREE.win = r && r.c === FREE.target ? r : r && r.error ? r : null; flyWinShow(); flyTgtList(); };
+  if (!w) { done(flyWindow(mapSys, job.t0, job.r, job.v, job.c)); return; }
+  FREE.winBusy = w; FREE.win = { busy: true }; flyWinShow(); flyTgtList();
+  w.onmessage = e => done(e.data.done || { error: 'err.flyWinNone' });
+  w.onerror = () => done({ error: 'err.flyWinNone' });
+  w.postMessage({ list: mapList(), flyWin: job });
+});
+function flyWinShow() {
+  const r = FREE.win, info = flyEl('fnWinInfo'), go = flyEl('fnWinGo');
+  go.hidden = !(r && r.node);
+  if (!r) { info.textContent = ''; return; }
+  if (r.busy) { info.textContent = _('fn.winBusy'); return; }
+  if (r.error) { info.textContent = _(r.error); return; }
+  const dep = fmtDate(daysToUtc(r.node.t / DAY)), body = _('body.' + MAPK[r.c]);
+  info.textContent = _(r.kind === 'sibling' ? 'fn.winSib' : 'fn.winIn', { body, dep, in: fmtIn(Math.max(0, r.node.t - FREE.st.t)), dv: NFdv.format(r.kind === 'sibling' ? r.dvEj : r.dv), mid: NFdv.format(r.dvMid || 0), tof: fmtDur(r.tof), cap: NFdv.format(r.dvCap || 0), vinf: fmtSpeed(r.vinfArr || 0) });
+}
+flyEl('fnWinGo').addEventListener('click', () => {
+  const r = FREE.win; if (!r || !r.node || r.node.t <= FREE.st.t) return;
+  flyEdit(); for (const nd of r.nodes || [r.node]) FREE.nodes.push({ t: nd.t, d: nd.d.map(x => Math.round(x * 10) / 10) }); // the ejection and (between planets) the course correction
+  FREE.nodes.sort((a, b) => a.t - b.t); FREE.nodes = FREE.nodes.slice(0, FLY_NODES_MAX);
+  FREE.sel = FREE.nodes.findIndex(nd => nd.t === r.node.t); FREE.win = null; flyWinShow(); flyChanged();
+});
 flyEl('fnDel').addEventListener('click', () => flyDel());
 flyEl('fnUndo').addEventListener('click', flyUndo);
 flyEl('fnPrev').addEventListener('click', () => { if (FREE.sel > 0) { FREE.sel--; flyPanel(); } });

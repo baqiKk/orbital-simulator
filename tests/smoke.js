@@ -198,6 +198,17 @@ function watch(page, errs) {
       const ap = await page.evaluate(() => ({ appr: FREE.appr, lpx: FREE.lpx || 0, v3: is3d() }));
       if (!ap.appr || (ap.v3 && !(ap.lpx > 100))) throw new Error('free flight, the craft up close: ' + JSON.stringify(ap));
       await page.keyboard.press('Escape'); if (await page.evaluate(() => FREE.appr)) throw new Error('Esc did not go back');
+      // Phase 19e: the Moon as the target, its transfer window from the worker, its node laid: the path meets the Moon
+      const win = await page.evaluate(async () => {
+        const sl = ms => new Promise(r => setTimeout(r, ms));
+        FREE.nodes = []; FREE.sel = -1; flyChanged();
+        const sel = document.querySelector('#fnTgt'); sel.value = String(MAPK.indexOf('moon')); sel.dispatchEvent(new Event('change'));
+        document.querySelector('#fnWin').click(); for (let i = 0; i < 300 && FREE.winBusy; i++) await sl(50);
+        const ok = !document.querySelector('#fnWinGo').hidden; document.querySelector('#fnWinGo').click(); FREE.tcaAt = 0; await sl(2200);
+        return { ok, nodes: FREE.nodes.length, soi: !!(FREE.tca && FREE.tca.soi), info: document.querySelector('#fnTgtInfo').textContent };
+      });
+      if (!win.ok || win.nodes !== 1 || !win.soi) throw new Error('the transfer window to the Moon: ' + JSON.stringify(win));
+      await page.evaluate(() => { FREE.nodes = []; FREE.sel = -1; flyChanged(); });
       await page.click('#flyWarp [data-w="1000"]'); await page.waitForTimeout(1200);
       const r = await page.evaluate(() => ({ dt: FREE.st.t, segs: FREE.pred ? FREE.pred.segs.length : 0 }));
       if (!(r.dt - t0 > 200) || !(r.segs > 0)) throw new Error('the flight did not advance or predict: ' + JSON.stringify(r));

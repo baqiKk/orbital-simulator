@@ -109,13 +109,19 @@ html[data-fly] #timeline,html[data-fly] #readout,html[data-fly] #liveBar{display
 .fly-tip[hidden]{display:none}
 .fly-how{font-size:11.5px}
 .fn-burn{font-variant-numeric:tabular-nums}
+.fn-tgt{display:flex;align-items:flex-end;gap:6px}
+.fn-tgt label{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;font:500 10px/1 var(--f-disp);letter-spacing:.05em;text-transform:uppercase}
+.fn-tgt select{width:100%;min-width:0}
+.fn-tgtinfo{color:var(--ink)}
+.fn-win{display:flex;flex-direction:column;align-items:flex-start;gap:5px;color:var(--dim)}
+.fn-tgtinfo:empty,.fn-win:has(#fnWinInfo:empty):has(#fnWinGo[hidden]){display:none}
 .fn-warn{color:var(--warn)}
 .fn-burn:empty,.fn-warn:empty{display:none}
 .fn-warpbtn{align-self:flex-start}
 .fn-b .chk{margin-right:auto}
 .fn-man{display:flex;align-items:center;gap:6px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:6px}
 .fn-ml{font:600 10px/1 var(--f-disp);letter-spacing:.08em;text-transform:uppercase}
-.fn-lock{order:3;width:100%;display:flex}
+.fn-lock{order:3;width:100%;display:flex;flex-wrap:nowrap}
 .fn-lock button{flex:1;padding:4px 2px;font-size:10.5px}
 .fn-thr{margin-left:auto;color:var(--ink);font-variant-numeric:tabular-nums}
 @media (max-width:560px){.fly-help{left:8px;right:8px;transform:none;max-width:none}}

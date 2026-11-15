@@ -533,6 +533,36 @@ const sEM = realSys(['earth', 'mars', 'sun']);
     `free flight: the N-body refinement flies the node (apoapsis ${(rmax / 1e3).toFixed(0)} km, patched ${(ap.r / 1e3).toFixed(0)} km)`);
   const rfi = C.flyRefine(sy, t0, [P[0] + Re + 50e3, P[1], P[2]], [V[0], V[1] + 2000, V[2]], { until: t0 + 3600 });
   assert.ok(rfi.segs[rfi.segs.length - 1].end === 'impact', 'free flight: the refinement stops at an impact');
+  // 2026-11-15: the universal step on long hyperbolas (a sphere's exit days out): energy kept, forth and back; the
+  // prediction's open-conic periapsis exact (a flyby's points are hours apart)
+  for (const vinf of [500, 4560, 30000]) for (const dt of [1.22e5, 3e6, -2e5]) {
+    const vp = Math.sqrt(vinf * vinf + 2 * mu / rc), q = new Float64Array(6), bq = new Float64Array(6); C.uniStep(mu, [rc, 0, 0], [0, vp, 0], dt, q); C.uniStep(mu, [q[0], q[1], q[2]], [q[3], q[4], q[5]], -dt, bq);
+    const E1 = (q[3] ** 2 + q[4] ** 2 + q[5] ** 2) / 2 - mu / Math.hypot(q[0], q[1], q[2]), E0 = vp * vp / 2 - mu / rc;
+    assert.ok(Math.abs(E1 / E0 - 1) < 1e-9 && Math.hypot(bq[0] - rc, bq[1], bq[2]) < 1, `free flight: the universal step on a hyperbola, v∞ ${vinf} m/s, ${dt} s`);
+  }
+  {
+    const vp = Math.sqrt(4560 ** 2 + 2 * mu / rc), q = new Float64Array(6); C.uniStep(mu, [rc, 0, 0], [0, vp, 0], -40000, q);
+    const pq = C.flyPredict(sy, t0, [P[0] + q[0], P[1] + q[1], P[2] + q[2]], [V[0] + q[3], V[1] + q[4], V[2] + q[5]], { T: 30 * DAY, maxSeg: 1 }), pe0 = pq.events.find(e => e.type === 'pe');
+    assert.ok(pe0 && Math.abs(pe0.r - rc) < 1 && Math.abs(pe0.t - (t0 + 40000)) < 1, 'free flight: an open conic\'s periapsis in the prediction, exact');
+  }
+  // Phase 19e: the transfer window. From an inclined 300 km Earth orbit on 2026-11-15: to the Moon (inner: a Lambert arc
+  // from the orbit, aimed beside the Moon) the node's patched conics enter the Moon's sphere and pass near the 100 km
+  // asked for; to Mars (sibling: the arc about the Sun, the ejection fitted to v∞ and a course correction) they leave the
+  // Earth's sphere and enter Mars's, the pass near the 300 km asked for; the cases it refuses
+  {
+    const sw = realSys(['sun', 'earth', 'moon', 'mars', 'jupiter', 'io']); sw.P = new Float64Array(3 * sw.N); sw.V = new Float64Array(3 * sw.N);
+    const Pw = new Float64Array(3 * sw.N), Vw = new Float64Array(3 * sw.N); C.states(sw, t0, Pw, Vw);
+    const Rw = [Pw[3] + rc, Pw[4], Pw[5]], Vw0 = [Vw[3], Vw[4] + vc * Math.cos(0.4), Vw[5] + vc * Math.sin(0.4)];
+    const wm = C.flyWindow(sw, t0, Rw, Vw0, 2), pm = C.flyPredict(sw, t0, Rw, Vw0, { nodes: wm.nodes, T: wm.tDep - t0 + 3 * wm.tof, maxSeg: 8 });
+    const peM = pm.events.filter(e => e.type === 'pe' && e.b === 2).sort((a, b) => a.r - b.r)[0], altM = peM ? peM.r - sw.R[2] : NaN;
+    assert.ok(wm.kind === 'inner' && wm.dv > 3000 && wm.dv < 3300 && wm.tof > 3 * DAY && wm.tof < 9 * DAY && pm.events.some(e => e.type === 'soiIn' && e.b === 2) && altM > 30e3 && altM < 250e3 && !pm.events.some(e => e.type === 'impact'),
+      `free flight: the window to the Moon (Δv ${wm.dv.toFixed(0)} m/s, ${(wm.tof / DAY).toFixed(1)} d, perilune ${(altM / 1e3).toFixed(0)} km)`);
+    const wr = C.flyWindow(sw, t0, Rw, Vw0, 3), pp2 = C.flyPredict(sw, t0, Rw, Vw0, { nodes: wr.nodes, T: wr.tDep - t0 + 1.3 * wr.tof, maxSeg: 14 });
+    const peR = pp2.events.filter(e => e.type === 'pe' && e.b === 3).sort((a, b) => a.r - b.r)[0], altR = peR ? peR.r - sw.R[3] : NaN, dep = new Date(C.daysToUtc(wr.tDep / DAY));
+    assert.ok(wr.kind === 'sibling' && pp2.events.some(e => e.type === 'soiOut' && e.b === 1) && pp2.events.some(e => e.type === 'soiIn' && e.b === 3) && altR > 100e3 && altR < 700e3 && wr.nodes.length === 2 && wr.dvEj > 3400 && wr.dvEj < 4700 && wr.dvMid < 400 && wr.tof > 150 * DAY && wr.tof < 400 * DAY && dep.getUTCFullYear() <= 2027,
+      `free flight: the window to Mars (departure ${dep.toISOString().slice(0, 10)}, ejection ${wr.dvEj.toFixed(0)} + correction ${wr.dvMid.toFixed(0)} m/s, ${(wr.tof / DAY).toFixed(0)} d, pass ${(altR / 1e3).toFixed(0)} km)`);
+    assert.ok(C.flyWindow(sw, t0, Rw, Vw0, 1).error === 'err.flyWinSame' && C.flyWindow(sw, t0, Rw, Vw0, 5).error === 'err.flyWinCase' && C.flyWindow(sw, t0, Rw, [Vw[3], Vw[4] + 2 * vc, Vw[5]], 2).error === 'err.flyWinOrbit', 'free flight: the window refuses the body itself, another system, an open orbit');
+  }
   console.log('free flight ok');
 }
 
