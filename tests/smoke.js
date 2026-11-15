@@ -108,6 +108,17 @@ function watch(page, errs) {
       await page.mouse.dblclick(p.x, p.y); await page.waitForTimeout(300);
       if (await appr()) throw new Error('still close after a double click on empty space');
     });
+    await step('the nose along the velocity in the departure burn (Earth → Mars)', async () => {
+      const a = await page.evaluate(async () => {
+        sceneEnd(true); loadScenario('r_e_mars'); S.playing = false; setPlayIcon(); await new Promise(r => setTimeout(r, 600));
+        const f = engFires()[0], t = (f.a + f.b) / 2; S.u = tToU(t); slowJump(); await new Promise(r => setTimeout(r, 300));
+        const craft = posAtTime(t, [0, 0, 0]), ax = craftAxis(t, craft, false, engNow(t));
+        states(sys, S.M.t0 * DAY + t, SPo, SVo); const b = domBody(sys, SPo, craft[0], craft[1], craft[2]), i = segAtTime(t), v = hermV(i, clamp((t - simR.t[i]) / (simR.t[i + 1] - simR.t[i]), 0, 1), [0, 0, 0]);
+        const w = [v[0] - SVo[3 * b], v[1] - SVo[3 * b + 1], v[2] - SVo[3 * b + 2]], l = Math.hypot(...w);
+        return Math.acos(Math.min(1, (ax[0] * w[0] + ax[1] * w[1] + ax[2] * w[2]) / l)) * 180 / Math.PI;
+      });
+      if (!(a < 5)) throw new Error('nose ' + a.toFixed(1) + '° off the velocity');
+    });
     await step('the cutaway in the engine window plays', async () => { await page.click('.rail [data-win="engine"]'); await page.click('#engPlay'); await page.waitForTimeout(1500); const w = await page.evaluate(() => document.querySelector('#engSch').width); if (!(w > 0)) throw new Error('no cutaway drawn'); });
     await page.waitForTimeout(1000);
     report('index.html: wizard maneuver + engine window', errs);

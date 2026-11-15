@@ -1394,15 +1394,45 @@ function plumeTd(tNow, craft, en) {
   if (!(en.pl > 0) || !en.m || en.j < 0) return null;
   return thrustNow(en.on ? tNow : Math.min(tNow, engWin(en.m.burns[en.j])[1] - 1e-6), craft);
 }
+// The craft's nose (2026-11-15; inertial unit vector), for the 3D model and the 2D flame: along the thrust while the
+// engine fires and while its plume dies (a finite burn's steering; an impulsive burn's Δv, the velocity after less the
+// velocity before), else prograde: the velocity about the dominant body (a maneuver's body; after the mission the
+// analytic orbit's). Before: the chord to a later sample, which near a planet pointed out of it.
+const AXv = [0, 0, 0], AXr = new Float64Array(6);
+const unit3 = v => { const l = Math.hypot(v[0], v[1], v[2]); return l > 0 ? [v[0] / l, v[1] / l, v[2] / l] : null; };
+// An impulsive burn's direction is kept as its share of prograde / radial / normal at its moment (core.js dvLocal) and
+// laid on the local frame of now (nodeDv): over the burn's window the nose turns with the orbit as a real burn's does.
+function craftRel(tNow, craft, b0) {
+  states(sys, S.M.t0 * DAY + tNow, SPo, SVo);
+  const bd = b0 != null ? b0 : S.kind === 'man' ? 0 : domBody(sys, SPo, craft[0], craft[1], craft[2]), i = segAtTime(tNow), h = simR.t[i + 1] - simR.t[i];
+  const v = h > 0 ? hermV(i, clamp((tNow - simR.t[i]) / h, 0, 1), AXv) : [simR.vx[i + 1], simR.vy[i + 1], simR.vz[i + 1]];
+  return { r: [craft[0] - SPo[3 * bd], craft[1] - SPo[3 * bd + 1], craft[2] - SPo[3 * bd + 2]], v: [v[0] - SVo[3 * bd], v[1] - SVo[3 * bd + 1], v[2] - SVo[3 * bd + 2]] };
+}
+function craftAxis(tNow, craft, ext, en) {
+  if (!ext && en && en.m && en.j >= 0 && (en.on || en.pl > 0)) {
+    const td = plumeTd(tNow, craft, en); if (td) return td;
+    const b = en.m.burns[en.j], e = (C.imp || []).find(q => Math.abs(q.t - b.t) < 1e-6);
+    if (e) {
+      if (!e.loc) { // the Δv's local share at the burn's moment
+        const c0 = posAtTime(e.t, [0, 0, 0]); states(sys, S.M.t0 * DAY + e.t, SPo, SVo);
+        const rr = [c0[0] - SPo[3 * e.b], c0[1] - SPo[3 * e.b + 1], c0[2] - SPo[3 * e.b + 2]], vv = [e.va[0] - SVo[3 * e.b], e.va[1] - SVo[3 * e.b + 1], e.va[2] - SVo[3 * e.b + 2]];
+        e.loc = dvLocal(rr, vv, [e.vb[0] - e.va[0], e.vb[1] - e.va[1], e.vb[2] - e.va[2]]);
+      }
+      const q = craftRel(tNow, craft, e.b), d = unit3(nodeDv(q.r, q.v, e.loc)); if (d) return d;
+    }
+  }
+  if (ext) { C.orbit.rel(tNow - C.T, AXr); return unit3([AXr[3], AXr[4], AXr[5]]) || [0, 0, 1]; }
+  return unit3(craftRel(tNow, craft).v) || [0, 0, 1];
+}
 // 2D: a small flame behind the craft (Phase 18c; 2026-11-14 js/engine-ui.js flame2d), against the thrust (or the
 // velocity for an impulsive burn's length); its strength the engine's thrust, lit at ignition and dying after the cut
 // (engNow pl); flickering except with reduced motion; flat in the low-resource mode. Drawn under the craft's dot.
 function plume2d(x, y, tNow, craft, vx, vy, ext) {
   if (ext) return;
   const en = engNow(tNow); if (!(en.pl > 0.004)) return;
-  const td = plumeTd(tNow, craft, en);
-  let dx, dy;
-  if (td) { const X = FP.X, Y = FP.Y; dx = -(td[0] * X[0] + td[1] * X[1] + td[2] * X[2]); dy = td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2]; } else { dx = -vx; dy = -vy; }
+  const td = craftAxis(tNow, craft, ext, en), X = FP.X, Y = FP.Y; // against the craft's nose (the thrust)
+  let dx = -(td[0] * X[0] + td[1] * X[1] + td[2] * X[2]), dy = td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2];
+  if (!(Math.hypot(dx, dy) > 1e-6)) { dx = -vx; dy = -vy; } // seen end on: the screen chord
   const l = Math.hypot(dx, dy); if (!(l > 1e-9)) return;
   const k = en.pl, pc = plumeCols(en.plume), ts = reduceMotion ? 0 : performance.now() / 1000;
   const fl = reduceMotion ? 1 : 1 + 0.05 * Math.sin(ts * 37.7) + 0.03 * Math.sin(ts * 61.3 + 1.3);

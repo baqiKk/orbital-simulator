@@ -469,8 +469,10 @@ function craft3(tNow, craft, ext, sunIdx) {
   proj3(CR3, PJ);
   const lpx = PJ[2] > 0 ? L * CB.f / PJ[2] : 0;
   if (!(lpx > 6)) { V3.craft({ show: false }); return lpx; }
-  const td = !ext ? plumeTd(tNow, craft, en) : null, X = FP.X, Y = FP.Y, Z = FP.Z;
-  let ax = td ? [td[0] * X[0] + td[1] * X[1] + td[2] * X[2], td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2], td[0] * Z[0] + td[1] * Z[1] + td[2] * Z[2]] : [CR3b[0] - CR3[0], CR3b[1] - CR3[1], CR3b[2] - CR3[2]];
+  // the nose: the thrust while firing (and while the plume dies), else prograde about the dominant body (app.js
+  // craftAxis), into the view frame's axes
+  const td = craftAxis(tNow, craft, ext, en), X = FP.X, Y = FP.Y, Z = FP.Z;
+  let ax = [td[0] * X[0] + td[1] * X[1] + td[2] * X[2], td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2], td[0] * Z[0] + td[1] * Z[1] + td[2] * Z[2]];
   if (!(Math.hypot(...ax) > 0)) ax = [0, 0, 1];
   let sun = SUN3;
   if (sunIdx >= 0) { const v = [BP3[3 * sunIdx] - CR3[0], BP3[3 * sunIdx + 1] - CR3[1], BP3[3 * sunIdx + 2] - CR3[2]], l = Math.hypot(...v) || 1; sun = v.map(q => q / l); }
