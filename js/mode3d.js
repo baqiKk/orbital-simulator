@@ -484,7 +484,7 @@ function craft3(tNow, craft, ext, sunIdx) {
   V3.craft({ show: true, p: CR3, axis: ax, side: [0, 0, 1], L, sun, cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,
     col: { metal: COL.dim, nozzle: COL.faint, fuel: COL.burn, ox: COL.cyan, // fuel and oxidizer as the engine window's charts
       tex: { ink: COL.ink, dim: COL.dim, faint: COL.faint, solid: COL.solid, accent: COL.accent, warn: COL.warn, burn: COL.burn, bad: COL.bad, orbit: COL.orbit } },
-    plume: { core: pc.core, body: pc.body, I: k > 0.004 ? 0.85 * pc.k * (0.3 + 0.7 * k) * Math.min(1, 3 * k) * fl : 0, len: (0.7 + 1.3 * k) * fl, t: ts, simple: lowQ || FX.lvl >= 2 } });
+    plume: { core: pc.core, body: pc.body, I: k > 0.004 ? 0.85 * pc.k * (0.3 + 0.7 * k) * Math.min(1, 3 * k) * fl : 0, len: (1.2 + 2.6 * k) * fl, t: ts, simple: lowQ || FX.lvl >= 2 } });
   return lpx;
 }
 // the trail after capture (fading oldest revolutions), up to the craft
