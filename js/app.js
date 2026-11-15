@@ -1604,7 +1604,7 @@ function focusName() {
 function frameEnd() {
   setCaption(); liveTick(); apprTip(performance.now());
   engTick(); // the engine charts' playhead (O(1); js/engine-ui.js, loaded before this file)
-  const fg = !FREE.on && !SCENE.on && !!C && S.model === 'real'; if ($('#flyGo').hidden === fg) $('#flyGo').hidden = !fg; // free flight from here (js/fly.js)
+  const fg = !FREE.on && !SCENE.on && !!C && S.model === 'real' && !REC.busy; if ($('#flyGo').hidden === fg) $('#flyGo').hidden = !fg; // free flight from here (js/fly.js; not while a recording draws the mission)
   if (FREE.on) flyEngPanel(); else engPanelTick(tNowG, !!(C && simR && !MAP.on && !SCENE.on && !REC.busy)); // the engine panel (shown only with engine burns; free flight: its engine)
   // the engine rumble (js/sim-audio.js): while playing, the plume's strength times the camera's closeness to the craft
   // (3D: following it, gone by NEAR3's far end; 2D: in the close view)
@@ -2867,7 +2867,7 @@ $('#startCards').addEventListener('click', e => {
   if (go === 'mission') { $('#startCards').hidden = true; $('#startMis').hidden = false; ($('#startMis .start-card.last') || $('#startMis .start-card')).focus(); return; }
   if (go === 'cabin') { writePref(LS, PREF_KEYS.start, 'scene'); return; } // the link (toCabin) goes on
   writePref(LS, PREF_KEYS.start, go); startClose();
-  if (go === 'design') startDesign(); else startScene();
+  if (go === 'design') startDesign(); else if (go === 'fly') { APP.mode = 'scene'; flyStartLEO(); } else startScene();
 });
 $('#startMis').addEventListener('click', e => { const c = e.target.closest('[data-sc]'); if (c) startMission(c.dataset.sc); });
 $('#startBack').addEventListener('click', () => { $('#startMis').hidden = true; $('#startCards').hidden = false; $('#startCards .start-card').focus(); });
@@ -4041,6 +4041,7 @@ setPlayIcon();
 syncMapUI();
 setSeg('#pcMetric', PC.metric);
 for (const id of WIN_IDS) applyWin(id);
+let bootFly = false; // "Kendin uç" chosen before in this session (a reload): a new flight if none is kept
 if (snapOk) { if (SNAP.map) setMap(true); } // back from the cabin: the mission as it was left
 else {
   const sp = sceneParam(location.search);
@@ -4053,10 +4054,12 @@ else {
   if (startShow({ seen, snap: !!SNAP, deep })) { APP.mode = 'scene'; startOpen(st); }
   else if (SNAP && SNAP.scene || deep || !st) APP.mode = 'scene';
   else if (st === 'design') startDesign();
+  else if (st === 'fly') { APP.mode = 'scene'; bootFly = true; } // a reload in the same session: the flight's snapshot, else a new one
   else if (st === 'scene') APP.mode = 'scene';
   else { APP.mode = 'mission'; loadScenario(st.slice(8)); }
 }
 if (location.hash === '#kaynakca') setWin('credits', { open: true, collapsed: false }); // the cabin's sound panel links here
 if (flyRestore()) startClose(); // a free flight in this session comes back (js/fly.js)
+else if (bootFly) flyStartLEO();
 $('#flyGo').addEventListener('click', () => flyEnter());
 requestAnimationFrame(t => { last = t; draw(t); });

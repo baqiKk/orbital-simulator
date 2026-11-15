@@ -73,7 +73,7 @@ function sceneParam(search) {
   return m && ['tour', 'saturn', 'earth'].includes(m[1]) ? m[1] : null;
 }
 function parseStart(raw, ids) {
-  if (raw === 'scene' || raw === 'design') return raw;
+  if (raw === 'scene' || raw === 'design' || raw === 'fly') return raw;
   if (typeof raw === 'string' && raw.startsWith('mission:') && ids.includes(raw.slice(8))) return raw;
   return null;
 }

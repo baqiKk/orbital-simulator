@@ -849,11 +849,11 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const ids = ['em_free', 'r_e_mars'];
   assert.strictEqual(P.parseStart('scene', ids), 'scene'); assert.strictEqual(P.parseStart('design', ids), 'design');
   assert.strictEqual(P.parseStart('mission:r_e_mars', ids), 'mission:r_e_mars'); assert.strictEqual(P.parseStart('mission:nope', ids), null); assert.strictEqual(P.parseStart('cabin', ids), null); assert.strictEqual(P.parseStart(null, ids), null);
-  for (const g of ['scene', 'mission', 'design', 'cabin']) assert.ok(page.includes('data-go="' + g + '"'), 'card ' + g);
+  for (const g of ['scene', 'mission', 'design', 'fly', 'cabin']) assert.ok(page.includes('data-go="' + g + '"'), 'card ' + g);
   for (const sc of ['em_free', 'r_e_mars']) assert.ok(page.includes('data-sc="' + sc + '"') && app.includes("{ id: '" + sc + "'"), 'mission ' + sc);
   assert.ok(['start.title', 'start.scene', 'start.mission', 'start.design', 'start.cabin', 'start.foot', 'start.reopen'].every(has), 'start texts');
   assert.ok(app.includes("if (go === 'cabin') { writePref(LS, PREF_KEYS.start, 'scene'); return; }") && app.includes("$('#startBtn').addEventListener('click', () => startOpen(parseStart(readPref(LS, PREF_KEYS.start), SCENARIOS.map(s => s.id))));") && app.includes("if (e.key === 'Escape' && !$('#start').hidden) { e.stopPropagation(); startClose(); startScene(); }"), 'remembered, not the cabin; Esc: the scene; the logo opens it');
-  assert.ok(/@media \(max-width:560px\)\{\n  \.start\{[^}]*\}\n  \.start-in\{[^}]*\}\n  \.start-cards\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/.test(css), 'phones: 2 × 2');
+  assert.ok(/@media \(max-width:560px\)\{\n  \.start\{[^}]*\}\n  \.start-in\{[^}]*\}\n  \.start-cards,#startMis\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/.test(css) && css.includes('#startCards .start-card[data-go="fly"]{grid-column:1 / -1}'), 'phones: 2 × 2 (and "Kendin uç" across)');
   assert.ok(!page.includes('id="welcome"'), 'the old welcome card is gone');
   // Phase 16b: on every new visit (session), over the tour; not back from the cabin, from a link or on a reload in the
   // same session; the remembered choice only marks its card. Compact: at the bottom, the tour above it in view; phones
@@ -863,7 +863,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.strictEqual(P.sceneParam('?manzara=earth'), 'earth'); assert.strictEqual(P.sceneParam('?x=1&manzara=tour'), 'tour');
   assert.strictEqual(P.sceneParam('?manzara=pluto'), null); assert.strictEqual(P.sceneParam(''), null);
   assert.ok(app.includes("const seen = !!readPref(SS, PREF_KEYS.startSeen); writePref(SS, PREF_KEYS.startSeen, '1');") && app.includes("if (startShow({ seen, snap: !!SNAP, deep })) { APP.mode = 'scene'; startOpen(st); }"), 'shown per session, the remembered choice marked');
-  assert.ok(P.PREF_KEYS.startSeen && has('start.last') && (page.match(/data-i18n-data-last="start\.last"/g) || []).length === 5, 'the "last choice" tag');
+  assert.ok(P.PREF_KEYS.startSeen && has('start.last') && (page.match(/data-i18n-data-last="start\.last"/g) || []).length === 6, 'the "last choice" tag');
   assert.ok(/\.start\{[^}]*place-items:end center/.test(css) && /\.start-in\{[^}]*max-height:50vh/.test(css), 'compact: at the bottom; phones in the lower half');
 }
 // 28) The rail's names (hover on desktop, under the icons on phones), the less used ones in "Diğer" on phones so no name
@@ -1598,6 +1598,21 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(DICT['fn.corIs'] === 'Geçiş {from} → düzeltme {dv} m/s ile {to}', 'correction: the line as asked');
   assert.ok(app.includes('if (e.data.flyCor) { const q = e.data.flyCor; try { postMessage({ done: flyCorrect(buildSystem(list), q.t0, q.r, q.v, q.c) });') && fl.includes("w.postMessage({ list: mapList(), flyCor: job });"), 'correction: in a worker');
   assert.ok(fl.includes('FREE.corAuto = { at: performance.now() + 1500, from: FREE.st.t, mid: false };') && fl.includes('FREE.st.t >= a.from + 0.3 * (q.t - a.from)') && fl.includes("flyEdit(); FREE.nodes.push({ t: r.node.t, d: r.node.d.map(x => Math.round(x * 100) / 100) });"), 'correction: by itself after a burn and ~30 % of the way, laid in one undo step');
+}
+// 56) Free flight, finished (Phase 19f): "Kendin uç" on the start screen (a 400 km, 51.6° Earth orbit on the Centaur,
+// remembered like the other choices, a reload in the session brings the flight or a new one), "Buradan kendin uç" on the
+// wizard's result cards, the node panel folding to one line (folded on phones, scrolling inside), the warp bar in two
+// rows on phones, no free flight while a recording draws, the glossary's "Serbest uçuş" and the model's paragraph.
+{
+  const fl = read('js/fly.js'), app = read('js/app.js'), wz = read('js/wizard.js'), css = read('css/style.css'), ids = ['em_free'];
+  assert.ok(P.parseStart('fly', ids) === 'fly' && html.includes('data-go="fly"') && has('start.fly') && has('start.flyD'), 'finished: the start card');
+  assert.ok(app.includes("else if (go === 'fly') { APP.mode = 'scene'; flyStartLEO(); }") && app.includes("else if (st === 'fly') { APP.mode = 'scene'; bootFly = true; }") && app.includes('else if (bootFly) flyStartLEO();') && fl.includes("const E = engPreset('rl10'), sp = engSpecOf(E);") && fl.includes('i = 51.6 * Math.PI / 180'), 'finished: the start card flies, a reload too');
+  assert.ok((wz.match(/data-wr="fly"/g) || []).length === 3 && wz.includes("else if (w === 'fly') flyEnter();") && has('wz.r.fly') && has('wz.r.flyTip'), 'finished: from the wizard\'s result cards');
+  assert.ok(html.includes('id="fnTop"') && html.includes('id="fnMain"') && fl.includes("flyFold(matchMedia('(max-width: 560px)').matches);") && css.includes('.fly-node.fold .fn-main{display:none}') && css.includes('.fly-node:not(.fold) .fn-main{max-height:42vh;overflow:auto') && css.includes('.fly-bar .fly-warp{display:flex;flex-wrap:nowrap;overflow-x:auto') && ['fn.fold', 'fn.sum', 'fn.sumNone', 'fn.sumTgt'].every(has), 'finished: the panel folds, phones');
+  assert.ok(app.includes("S.model === 'real' && !REC.busy; if ($('#flyGo').hidden === fg)") && fl.includes("function flyEnter() { if (REC.busy) return;"), 'finished: no free flight while recording');
+  const gl = DICT.gloss.find(g => g[0] === 'Serbest uçuş');
+  assert.ok(gl && ['Manevra düğümü', 'Zaman hızlandırma', 'Yamalı konik', 'Transfer penceresi', 'B-düzlemi', 'Yol düzeltmesi'].every(t => gl[1].some(e => e[0] === t)) && html.includes('data-i18n="ui.model12"') && has('ui.model12'), 'finished: the glossary and the model');
+  assert.ok(fl.includes('if (FREE.burn && !FREE.nodes.some(nd => nd.t === FREE.burn.t)) flyBurnEnd(false);'), 'finished: a burn stops with its node');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

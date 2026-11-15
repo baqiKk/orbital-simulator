@@ -126,6 +126,8 @@
         <div class="ep-btns"><button type="button" class="ghost" id="epAppr" aria-pressed="false" data-i18n="appr.btn" data-i18n-title="appr.tip"></button><button type="button" class="ghost" id="epCut" aria-pressed="false" data-i18n="cut.btn" data-i18n-title="cut.tip"></button></div>
       </section>
       <section class="glass fly-node" id="flyNode" data-i18n-aria-label="fn.aria" hidden>
+        <button type="button" class="fn-top" id="fnTop" aria-expanded="true" aria-controls="fnMain" data-i18n-title="fn.fold"><span id="fnSum"></span><svg class="ep-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5 5 3.5l3 3"/></svg></button>
+        <div class="fn-main" id="fnMain">
         <div class="fn-tgt"><label><span data-i18n="fn.tgt"></span><select id="fnTgt" data-i18n-aria-label="fn.tgt"></select></label><button type="button" class="ghost" id="fnWin" data-i18n="fn.win" data-i18n-title="fn.winTip" disabled></button></div>
         <div class="fn-tgtinfo" id="fnTgtInfo"></div>
         <div class="fn-win"><span id="fnWinInfo"></span><button type="button" class="btn sm primary" id="fnWinGo" data-i18n="fn.winGo" hidden></button></div>
@@ -148,6 +150,7 @@
         </div>
         <div class="fn-b"><label class="chk" data-i18n-title="fn.autoTip"><input type="checkbox" id="fnAuto" checked><span data-i18n="fn.auto"></span></label><button type="button" class="ghost" id="fnUndo" data-i18n-title="fn.undoTip" data-i18n-aria-label="fn.undoTip">↶</button><button type="button" class="ghost" id="fnDel" data-i18n="fn.del"></button></div>
         <div class="fn-man"><span class="fn-ml" data-i18n="fn.man"></span><div class="seg fn-lock" id="fnLock" role="group" data-i18n-aria-label="fn.lockAria"></div><span class="fn-thr" id="fnThr" data-i18n-title="fn.thrTip"></span></div>
+        </div>
       </section>
       <div class="glass readout" id="readout">
         <div class="big" id="r-t" data-i18n="ui.tplusInit"></div>
@@ -512,6 +515,7 @@
         <p data-i18n="ui.model9"></p>
         <p data-i18n="ui.model10"></p>
         <p data-i18n="ui.model11"></p>
+        <p data-i18n="ui.model12"></p>
         <p><button class="ghost" type="button" data-open="credits" data-i18n="cred.open"></button></p>
       </div>
     </section>
@@ -529,6 +533,7 @@
       <button type="button" class="start-card" data-go="scene" data-i18n-data-last="start.last"><b data-i18n="start.scene"></b><span data-i18n="start.sceneD"></span></button>
       <button type="button" class="start-card" data-go="mission" data-i18n-data-last="start.last"><b data-i18n="start.mission"></b><span data-i18n="start.missionD"></span></button>
       <button type="button" class="start-card" data-go="design" data-i18n-data-last="start.last"><b data-i18n="start.design"></b><span data-i18n="start.designD"></span></button>
+      <button type="button" class="start-card" data-go="fly" data-i18n-data-last="start.last"><b data-i18n="start.fly"></b><span data-i18n="start.flyD"></span></button>
       <a class="start-card" href="kabin.html" id="wcCabin" data-go="cabin"><b data-i18n="start.cabin"></b><span data-i18n="start.cabinD"></span></a>
     </div>
     <div class="start-cards" id="startMis" hidden>

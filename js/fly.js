@@ -76,10 +76,20 @@ function flyEnterState(q) {
   for (const id of ['mission', 'results', 'overview']) if (WINS[id].open && !SCENE.hide.has(id)) { SCENE.hide.add(id); winEl(id).classList.add('scene-hide'); FREE.hid.push(id); }
   railSync();
   flyEl('flyBar').hidden = false; flyEl('flyNode').hidden = false; flyEl('flyHelp').hidden = false; flyBarSync(); flyPanel(); INS = null;
+  flyFold(matchMedia('(max-width: 560px)').matches); // folded to its one line on phones
   flyTips(readPref(LS, PREF_KEYS.flyTips) ? -1 : 0);
   return true;
 }
-function flyEnter() { const q = flyFromMission(); if (q) flyEnterState(q); }
+function flyEnter() { if (REC.busy) return; $('#recPanel').hidden = true; const q = flyFromMission(); if (q) flyEnterState(q); }
+// "Kendin uç" (the start screen; Phase 19f): a fresh flight in a 400 km Earth orbit inclined 51.6° to the equator (the
+// station's), now, on the Centaur upper stage (RL10, full)
+function flyStartLEO() {
+  if (REC.busy) return;
+  const mu = BODIES.earth.gm * 1e9, r = BODIES.earth.radius * 1e3 + 400e3, v = Math.sqrt(mu / r), i = 51.6 * Math.PI / 180, e = OBLIQUITY;
+  const eq = [[r, 0, 0], [0, v * Math.cos(i), v * Math.sin(i)]], ecl = p => [p[0], Math.cos(e) * p[1] + Math.sin(e) * p[2], -Math.sin(e) * p[1] + Math.cos(e) * p[2]]; // equator → ecliptic
+  const E = engPreset('rl10'), sp = engSpecOf(E);
+  flyEnterState({ t: utcToDays(Date.now()) * DAY, key: 'earth', r: ecl(eq[0]), v: ecl(eq[1]), m: sp.m0, eng: { E, tau: 0, auto: true, lock: 'pro' } });
+}
 function flyExit() {
   flyAppr(false); flyTips(-1);
   FREE.on = false; delete document.documentElement.dataset.fly; flyEl('flyBar').hidden = true; flyEl('flyNode').hidden = true; flyEl('flyHelp').hidden = true;
@@ -360,8 +370,13 @@ function flyPanel() {
   flyEl('fnPrev').disabled = sel <= 0; flyEl('fnNext').disabled = sel >= n - 1;
 }
 const NFdv = new Intl.NumberFormat(DICT['meta.locale'] || 'tr', { maximumFractionDigits: 1 });
+// the panel folds to its one line (the selected node, or the target, or its name); a phone starts folded
+function flyFold(on) { flyEl('flyNode').classList.toggle('fold', on); flyEl('fnTop').setAttribute('aria-expanded', String(!on)); INS = null; }
+flyEl('fnTop').addEventListener('click', () => flyFold(!flyEl('flyNode').classList.contains('fold')));
 function flyPanelTick() {
   const n = FREE.nodes.length, sel = FREE.sel;
+  flyTxt('fnSum', sel >= 0 && sel < n ? _('fn.sum', { title: _('fn.title', { i: sel + 1, n }), dv: NFdv.format(Math.hypot(...FREE.nodes[sel].d)), t: fmtIn(Math.max(0, FREE.nodes[sel].t - FREE.st.t)) })
+    : FREE.target >= 0 ? _('fn.sumTgt', { body: _('body.' + MAPK[FREE.target]) }) : _('fn.sumNone'));
   if (sel < 0 || sel >= n) { flyTxt('fnHint', _(FREE.nodes.length ? 'fn.pick' : 'fn.hint')); return; }
   const nd = FREE.nodes[sel], dv = Math.hypot(...nd.d);
   flyTxt('fnIn', _('fn.in', { t: fmtDur(Math.max(0, nd.t - FREE.st.t), true) }));
@@ -423,6 +438,7 @@ function flyEnergy(b) { const s = FREE.st, P = mapSys.P, V = mapSys.V, r = Math.
 // throttle by hand, "Düğüme hızlandır"; then core.js flyAdvance (in the field while the engine fires, else on rails
 // above RAILS_W)
 function flyStep(dt, b) {
+  if (FREE.burn && !FREE.nodes.some(nd => nd.t === FREE.burn.t)) flyBurnEnd(false); // its node deleted (or undone): the burn stops
   const s = FREE.st, e = FREE.eng, nb = !FREE.burn ? flyNextBurn() : null;
   // the warp to a node: as fast as leaves room to slow down, then real time a little before the burn
   if (FREE.warpTo != null) {

@@ -60,7 +60,7 @@ function watch(page, errs) {
   {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 }), page = await ctx.newPage(), errs = [];
     watch(page, errs);
-    const step = async (what, fn) => { try { await fn(); } catch (e) { errs.push(what + ': ' + e.message.split('\n')[0]); } };
+    const step = async (what, fn) => { try { await fn(); } catch (e) { errs.push(what + ': ' + e.message.split('\n').slice(0, 6).join(' | ')); } };
     await page.goto(base + 'index.html', { waitUntil: 'load' });
     await page.waitForTimeout(1500);
     await step('close the start screen', async () => { if (await page.isVisible('#start')) await page.keyboard.press('Escape'); await page.waitForSelector('#start', { state: 'hidden', timeout: 5000 }); });
@@ -231,6 +231,41 @@ function watch(page, errs) {
     await step('the cutaway in the engine window plays', async () => { await page.click('.rail [data-win="engine"]'); await page.click('#engPlay'); await page.waitForTimeout(1500); const w = await page.evaluate(() => document.querySelector('#engSch').width); if (!(w > 0)) throw new Error('no cutaway drawn'); });
     await page.waitForTimeout(1000);
     report('index.html: wizard maneuver + engine window', errs);
+    await ctx.close();
+  }
+  // Phase 19f: free flight on a phone. "Kendin uç" on the start screen: a flight in a low Earth orbit, the node panel
+  // folded to its line, the panels leave most of the screen to the view, no sideways scroll; unfolded it scrolls inside;
+  // a node and a target survive a reload (the session's snapshot)
+  {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true }), page = await ctx.newPage(), errs = [];
+    watch(page, errs);
+    const step = async (name, fn) => { try { await fn(); } catch (e) { errs.push(name + ': ' + (e && e.message || e)); } };
+    await page.goto(base + 'index.html', { waitUntil: 'load' }).catch(e => errs.push('goto: ' + e.message));
+    await page.waitForTimeout(1500);
+    await step('"Kendin uç" on the start screen', async () => {
+      await page.click('#startCards [data-go="fly"]'); await page.waitForTimeout(1500);
+      const q = await page.evaluate(() => ({ on: FREE.on, body: MAPK[FREE.tb], fold: document.querySelector('#flyNode').classList.contains('fold') }));
+      if (!q.on || q.body !== 'earth' || !q.fold) throw new Error(JSON.stringify(q));
+    });
+    await step('the view stays free on a phone', async () => {
+      if (await page.isVisible('#flyTip')) await page.click('#flyTipSkip');
+      const q = await page.evaluate(() => { const top = Math.min(...['#flyNode', '#flyBar', '#engPanel'].map(s => document.querySelector(s)).filter(e => !e.hidden && e.getClientRects().length).map(e => e.getBoundingClientRect().top)); return { top, h: innerHeight, sw: document.documentElement.scrollWidth, w: innerWidth }; });
+      if (q.sw > q.w) throw new Error('sideways scroll: ' + q.sw);
+      if (q.top < q.h * 0.55) throw new Error(`the panels start at ${Math.round(q.top)} px of ${q.h}`);
+    });
+    await step('the node panel unfolds and scrolls inside', async () => {
+      await page.click('#fnTop'); await page.waitForTimeout(300);
+      const q = await page.evaluate(() => ({ fold: document.querySelector('#flyNode').classList.contains('fold'), mh: getComputedStyle(document.querySelector('#fnMain')).maxHeight, sw: document.documentElement.scrollWidth }));
+      if (q.fold || q.mh === 'none' || q.sw > 390) throw new Error(JSON.stringify(q));
+    });
+    await step('a reload brings the flight back', async () => {
+      await page.evaluate(() => { const g = FREE.pred.segs[0]; flyEdit(); FREE.nodes.push({ t: g.ts[Math.floor(g.n / 3)], d: [50, 0, 0] }); FREE.sel = 0; flyChanged(); const s = document.querySelector('#fnTgt'); s.value = String(MAPK.indexOf('moon')); s.dispatchEvent(new Event('change')); flySave(); });
+      await page.reload({ waitUntil: 'load' }); await page.waitForTimeout(2000);
+      const q = await page.evaluate(() => ({ on: FREE.on, nodes: FREE.nodes.length, target: MAPK[FREE.target], eng: FREE.eng && FREE.eng.E.id }));
+      if (!q.on || q.nodes !== 1 || q.target !== 'moon' || q.eng !== 'p:rl10') throw new Error(JSON.stringify(q));
+    });
+    await page.waitForTimeout(800);
+    report('index.html: free flight on a phone', errs);
     await ctx.close();
   }
   await browser.close(); srv.close();

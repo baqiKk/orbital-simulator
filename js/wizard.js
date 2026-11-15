@@ -365,7 +365,7 @@ function wzResultFree() {
   }
   if (r.impact >= 0) rows.push([_('wz.r.impact'), _('chip.impact', { name })]);
   html += `<table class="wr-burns"><tbody>${rows.map(([l, x]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(x)}</td></tr>`).join('')}</tbody></table>` + engCardHtml();
-  box.innerHTML = html + `<div class="wr-act"><button type="button" class="btn sm" data-wr="replay">${esc(_('wz.r.replay'))}</button><button type="button" class="btn sm" data-wr="more">${esc(_('wz.r.more'))}</button></div>`;
+  box.innerHTML = html + `<div class="wr-act"><button type="button" class="btn sm" data-wr="replay">${esc(_('wz.r.replay'))}</button><button type="button" class="btn sm" data-wr="more">${esc(_('wz.r.more'))}</button><button type="button" class="btn sm" data-wr="fly" title="${esc(_('wz.r.flyTip'))}">${esc(_('wz.r.fly'))}</button></div>`;
 }
 // the engine for the maneuver state: the step's engine and the figures it gives (none: the form's defaults)
 function wzEngM() {
@@ -487,7 +487,7 @@ function wzResultGo() {
     html += `<table class="wr-burns"><tbody>${rows.map(([l, x]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(x)}</td></tr>`).join('')}</tbody></table>` + engCardHtml();
   }
   const pcB = wzSib(v.dep, v.tgt) ? `<button type="button" class="btn sm" data-wr="pc">${esc(_('wz.r.pcOpen'))}</button>` : '';
-  box.innerHTML = html + `<div class="wr-act"><button type="button" class="btn sm" data-wr="replay">${esc(_('wz.r.replay'))}</button><button type="button" class="btn sm" data-wr="more">${esc(_('wz.r.more'))}</button>${pcB}</div>`;
+  box.innerHTML = html + `<div class="wr-act"><button type="button" class="btn sm" data-wr="replay">${esc(_('wz.r.replay'))}</button><button type="button" class="btn sm" data-wr="more">${esc(_('wz.r.more'))}</button><button type="button" class="btn sm" data-wr="fly" title="${esc(_('wz.r.flyTip'))}">${esc(_('wz.r.fly'))}</button>${pcB}</div>`;
 }
 
 // ----- the result card -----
@@ -499,7 +499,7 @@ function wzResult() {
   const box = wzEl('wzRes'), v = WZV, o = wzOrbitVals(), name = _('body.' + o.k);
   const orb = n => (n ? o.hp1 === o.ha1 : o.hp0 === o.ha0) ? kmTxt(n ? o.hp1 : o.hp0) + ' km' : kmTxt(n ? o.hp1 : o.hp0) + ' × ' + kmTxt(n ? o.ha1 : o.ha0) + ' km';
   const head = `<div class="wr-h"><b>${esc(_('wz.r.title', { body: name, a: orb(0), b: orb(1) }))}</b><button type="button" class="btn sm" data-wr="edit">${esc(_('wz.r.edit'))}</button></div>`;
-  const act = `<div class="wr-act"><button type="button" class="btn sm" data-wr="replay">${esc(_('wz.r.replay'))}</button><button type="button" class="btn sm" data-wr="more">${esc(_('wz.r.more'))}</button></div>`;
+  const act = `<div class="wr-act"><button type="button" class="btn sm" data-wr="replay">${esc(_('wz.r.replay'))}</button><button type="button" class="btn sm" data-wr="more">${esc(_('wz.r.more'))}</button><button type="button" class="btn sm" data-wr="fly" title="${esc(_('wz.r.flyTip'))}">${esc(_('wz.r.fly'))}</button></div>`;
   if (!MAN || !simR) { box.innerHTML = head + `<p class="wr-note">${esc(_('wz.r.fail', { e: $('#err').textContent || _('res.fail') }))}</p>`; return; }
   const [pn, an] = wzNames(o.k), plan = MAN.plan, busy = MAN.busy && !MAN.res;
   // the burns flown (finite: each with its start and length), where each is (an apsis of the orbit before it)
@@ -542,5 +542,6 @@ wzEl('wzRes').addEventListener('click', e => {
   else if (w === 'replay' && C) { S.u = 0; S.ext = 0; slowJump(); S.playing = true; setPlayIcon(); }
   else if (w === 'more') setWin('results', { open: true, collapsed: false });
   else if (w === 'pc') setWin('transfer', { open: true, collapsed: false });
+  else if (w === 'fly') flyEnter(); // free flight from the mission's moment (js/fly.js)
 });
 wzShow();
