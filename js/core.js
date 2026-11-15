@@ -2505,7 +2505,7 @@ function flyWindow(s, t0, r0, v0, c, opt = {}) {
   const synodic = (P1, P2) => (Math.abs(1 / P1 - 1 / P2) > 1e-30 ? 1 / Math.abs(1 / P1 - 1 / P2) : maxSpan);
   if (s.parent[c] === b) { // ----- inner -----
     const tc0 = rel(c, b, t0), rt = norm(tc0.r), Pt = 2 * Math.PI * Math.sqrt(rt ** 3 / mu), tH = Math.PI * Math.sqrt(((el.a + rt) / 2) ** 3 / mu);
-    const span = Math.min(maxSpan, Math.max(Pc, Math.min(synodic(Pc, Pt), 3 * Pc))), hArr = opt.hArr != null ? opt.hArr : Math.max(100e3, 0.05 * s.R[c]), rpA = s.R[c] + hArr;
+    const span = Math.min(maxSpan, Math.max(Pc, Math.min(synodic(Pc, Pt), 3 * Pc))), hArr = opt.hArr != null ? opt.hArr : flyHArr(s, c), rpA = s.R[c] + hArr;
     // the arc from the craft at td to beside c at td + tof: the impact parameter for a pass at hArr (× kb), across the
     // arrival v∞ in the transfer plane; null when it goes through b
     const arc = (td, tof, kb) => {
@@ -2545,7 +2545,7 @@ function flyWindow(s, t0, r0, v0, c, opt = {}) {
   const nB = [B0.r[1] * B0.v[2] - B0.r[2] * B0.v[1], B0.r[2] * B0.v[0] - B0.r[0] * B0.v[2], B0.r[0] * B0.v[1] - B0.r[1] * B0.v[0]];
   // the arc's angle about nB (prograde, 0 … 2π): within ARC_GAP of a half turn either way
   const nearHalf = (p, q) => { const x = [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]]; let a = Math.atan2(dot(x, nB) / norm(nB), dot(p, q)); if (a < 0) a += 2 * Math.PI; return Math.abs(a - Math.PI) < ARC_GAP; };
-  const span = Math.min(maxSpan, synodic(Pb, Pt)), rp = norm(r), hArr = opt.hArr != null ? opt.hArr : 300e3, rcap = s.R[c] + hArr;
+  const span = Math.min(maxSpan, synodic(Pb, Pt)), rp = norm(r), hArr = opt.hArr != null ? opt.hArr : flyHArr(s, c), rcap = s.R[c] + hArr;
   // the ejection's geometry for v∞ (vector vi) from the craft's orbit plane (fixed: the orbit's two-body plane): the
   // periapsis direction makes θ∞ = acos(−1/e) with v∞; in the orbit plane (r̂ = cos φ e1 + sin φ e2) that is
   // a·cos φ + b·sin φ = cos θ∞, two points when v∞ lies close enough to the plane (else the closest one); of them the
@@ -2653,6 +2653,51 @@ function flyWindow(s, t0, r0, v0, c, opt = {}) {
   return { kind: 'sibling', b, c, tDep: best.td, tof: best.tof, dv: dvAll, dvEj: norm(d), dvMid: nodes[1] ? norm(nodes[1].d) : 0, vErr, dvCap: best.dvC, vinf: vl, vinfArr: best.va, node: nodes[0], nodes };
 }
 
+// The pass wanted at body c (m above its surface): a moon 100 km (or 5 % of its radius), a planet 300 km
+function flyHArr(s, c) { const p = s.parent[c]; return p >= 0 && s.parent[p] >= 0 ? Math.max(100e3, 0.05 * s.R[c]) : 300e3; }
+// A course correction onto the pass at body c (2026-11-15; the second stage of a transfer, as flyWindow's to a planet):
+// from the absolute state (t0, r0, v0), the path predicted without nodes must enter c's sphere; the correction node at
+// opt.tc (default: a little ahead, 2 % of the way to the sphere, at least two minutes) moves the B-plane point (the
+// impact parameter vector, |h|/v∞ across the incoming asymptote, measured on the conic about c): its size to the one of
+// a pass at opt.hArr (with the v∞ being fitted), no drift out of its plane: damped least-norm Newton steps (J 2 × 3 by finite differences on patched-conic
+// predictions), the best kept. Returns { node: { t, d }, dv, hBefore, hAfter (the pass's altitude, m), tPass } or
+// { error: 'err.flyCor*' }.
+function flyCorrect(s, t0, r0, v0, c, opt = {}) {
+  const T = opt.T || 60 * 86400, rpT = s.R[c] + (opt.hArr != null ? opt.hArr : flyHArr(s, c)), mu = s.mu[c];
+  const norm = a => Math.hypot(a[0], a[1], a[2]), dot = (a, q) => a[0] * q[0] + a[1] * q[1] + a[2] * q[2], crs = (a, q) => [a[1] * q[2] - a[2] * q[1], a[2] * q[0] - a[0] * q[2], a[0] * q[1] - a[1] * q[0]];
+  const pass = nodes => {
+    const pr = flyPredict(s, t0, r0, v0, { nodes, T, maxSeg: 10, K: 100 }), g = pr.segs.find(q => q.b === c);
+    if (!g) return null;
+    const r = g.r0, v = g.v0, h = crs(r, v), vi2 = dot(v, v) - 2 * mu / norm(r); if (!(vi2 > 0)) return null;
+    const S = v.map(x => x / norm(v)), bl = norm(h) / Math.sqrt(vi2); let B = r.map((x, k) => x - dot(r, S) * S[k]); const Bl = norm(B) || 1; B = B.map(x => x * bl / Bl);
+    const rp = g.el.e > 1 ? Math.abs(g.el.a) * (g.el.e - 1) : g.el.a * (1 - g.el.e);
+    return { B, S, rp, vi2, t: g.t0, pr };
+  };
+  const p0 = pass([]); if (!p0) return { error: 'err.flyCorNone' };
+  const tc = opt.tc != null ? opt.tc : t0 + Math.max(120, 0.02 * (p0.t - t0));
+  if (!(tc < p0.t - 60)) return { error: 'err.flyCorLate' };
+  // the wanted impact parameter for the pass at rpT, with the v∞ of the path being fitted (it moves a little)
+  const ax = p0.B.map(x => x / (norm(p0.B) || 1)), ay = crs(p0.S, ax), bOf = vi2 => rpT * Math.sqrt(1 + 2 * mu / (rpT * vi2));
+  const res = d => { const q = pass([{ t: tc, d }]); if (!q) return null; return { e: [norm(q.B) - bOf(q.vi2), dot(q.B, ay)], q }; }; // the size exactly, and the drift out of the pass's plane
+  let d = [0, 0, 0], best = null;
+  for (let it = 0; it < (opt.iters || 16); it++) {
+    const r = res(d); if (!r) break;
+    const en = Math.hypot(r.e[0], r.e[1]);
+    if (!best || en < best.en) best = { en, d: [...d], q: r.q }; else { d = d.map((q, k) => best.d[k] + 0.4 * (q - best.d[k])); continue; } // no better: a shorter step from the best
+    if (Math.abs(r.q.rp - rpT) < (opt.tol || 200)) break;
+    const J = [], h = 0.01;
+    for (let k = 0; k < 3; k++) { const dd = [...d]; dd[k] += h; const rk = res(dd); if (!rk) { J.length = 0; break; } J.push([(rk.e[0] - r.e[0]) / h, (rk.e[1] - r.e[1]) / h]); }
+    if (J.length < 3) break;
+    const m00 = J.reduce((a, q) => a + q[0] * q[0], 0), m01 = J.reduce((a, q) => a + q[0] * q[1], 0), m11 = J.reduce((a, q) => a + q[1] * q[1], 0), lam = 1e-12 * (m00 + m11);
+    const D = (m00 + lam) * (m11 + lam) - m01 * m01; if (!(Math.abs(D) > 0)) break;
+    const y0 = ((m11 + lam) * r.e[0] - m01 * r.e[1]) / D, y1 = (-m01 * r.e[0] + (m00 + lam) * r.e[1]) / D;
+    const x = J.map(q => -(q[0] * y0 + q[1] * y1)), st = norm(x), f = st > 200 ? 200 / st : 1;
+    d = d.map((q, k) => q + f * x[k]);
+  }
+  if (!best) return { error: 'err.flyCorNone' };
+  return { node: { t: tc, d: best.d }, dv: norm(best.d), hBefore: p0.rp - s.R[c], hAfter: best.q.rp - s.R[c], tPass: best.q.t, c };
+}
+
 // The closest approach of a prediction to body c: per segment, its times sampled against c's analytic motion, the
 // least distance refined by golden-section search. Returns { d (m, centre to centre), t } or null.
 function flyClosest(s, pred, c) {
@@ -2671,7 +2716,7 @@ function flyClosest(s, pred, c) {
 }
 
 if (typeof module !== 'undefined') module.exports = {
-  stumpff, uniStep, nodeFrame, nodeDv, dvLocal, FLY_WARPS, flyWarpMax, flyDeriv, flyAdvance, flyPredict, flyRefine, flyWindow, flyClosest,
+  stumpff, uniStep, nodeFrame, nodeDv, dvLocal, FLY_WARPS, flyWarpMax, flyDeriv, flyAdvance, flyPredict, flyRefine, flyWindow, flyHArr, flyCorrect, flyClosest,
   G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, clockAt, clockSet, keplerE, laplaceFrame, bodyFrame, orbitElements, orbitState, orbitPath,
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed, SOLVE_KM, missionMiss, solveMission,

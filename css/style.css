@@ -113,6 +113,8 @@ html[data-fly] #timeline,html[data-fly] #readout,html[data-fly] #liveBar{display
 .fn-tgt label{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;font:500 10px/1 var(--f-disp);letter-spacing:.05em;text-transform:uppercase}
 .fn-tgt select{width:100%;min-width:0}
 .fn-tgtinfo{color:var(--ink)}
+.fn-cor{display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--cyan)}
+.fn-cor[hidden]{display:none}
 .fn-win{display:flex;flex-direction:column;align-items:flex-start;gap:5px;color:var(--dim)}
 .fn-tgtinfo:empty,.fn-win:has(#fnWinInfo:empty):has(#fnWinGo[hidden]){display:none}
 .fn-warn{color:var(--warn)}

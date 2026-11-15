@@ -561,6 +561,18 @@ const sEM = realSys(['earth', 'mars', 'sun']);
     const peR = pp2.events.filter(e => e.type === 'pe' && e.b === 3).sort((a, b) => a.r - b.r)[0], altR = peR ? peR.r - sw.R[3] : NaN, dep = new Date(C.daysToUtc(wr.tDep / DAY));
     assert.ok(wr.kind === 'sibling' && pp2.events.some(e => e.type === 'soiOut' && e.b === 1) && pp2.events.some(e => e.type === 'soiIn' && e.b === 3) && altR > 100e3 && altR < 700e3 && wr.nodes.length === 2 && wr.dvEj > 3400 && wr.dvEj < 4700 && wr.dvMid < 400 && wr.tof > 150 * DAY && wr.tof < 400 * DAY && dep.getUTCFullYear() <= 2027,
       `free flight: the window to Mars (departure ${dep.toISOString().slice(0, 10)}, ejection ${wr.dvEj.toFixed(0)} + correction ${wr.dvMid.toFixed(0)} m/s, ${(wr.tof / DAY).toFixed(0)} d, pass ${(altR / 1e3).toFixed(0)} km)`);
+    // the course correction (flyCorrect): the Moon node flown a little off (as a finite burn leaves it: 900 … 11 000 km
+    // from the pass wanted, or into the Moon), the correction an hour later brings the pass within ±20 km of 100 km
+    for (const pert of [[3, 0, 0], [-2, 4, 6], [0.5, -1, -8]]) {
+      const nd = { t: wm.node.t, d: wm.node.d.map((x, k) => x + pert[k]) }, t1 = nd.t + 3600;
+      const pr = C.flyPredict(sw, t0, Rw, Vw0, { nodes: [nd], T: t1 - t0, maxSeg: 4 }), g = pr.segs[pr.segs.length - 1], q = new Float64Array(6);
+      C.uniStep(sw.mu[g.b], g.r0, g.v0, t1 - g.t0, q); C.states(sw, t1, sw.P, sw.V);
+      const r1 = [0, 1, 2].map(j => q[j] + sw.P[3 * g.b + j]), v1 = [0, 1, 2].map(j => q[3 + j] + sw.V[3 * g.b + j]), cr = C.flyCorrect(sw, t1, r1, v1, 2);
+      const pc = C.flyPredict(sw, t1, r1, v1, { nodes: [cr.node], T: 20 * DAY, maxSeg: 8 }), pe = pc.events.filter(e => e.type === 'pe' && e.b === 2).sort((a, b) => a.r - b.r)[0], alt = pe ? pe.r - sw.R[2] : NaN;
+      assert.ok(Math.abs(cr.hBefore - 100e3) > 500e3 && Math.abs(alt - 100e3) < 20e3 && Math.abs(cr.hAfter - alt) < 1 && cr.dv < 20 && cr.node.t > t1,
+        `free flight: a course correction (pass ${(cr.hBefore / 1e3).toFixed(0)} km → ${(alt / 1e3).toFixed(1)} km with ${cr.dv.toFixed(2)} m/s)`);
+    }
+    assert.ok(C.flyCorrect(sw, t0, Rw, Vw0, 2).error === 'err.flyCorNone' && C.flyHArr(sw, 2) === 100e3 && C.flyHArr(sw, 3) === 300e3, 'free flight: no correction without the sphere; the passes wanted');
     assert.ok(C.flyWindow(sw, t0, Rw, Vw0, 1).error === 'err.flyWinSame' && C.flyWindow(sw, t0, Rw, Vw0, 5).error === 'err.flyWinCase' && C.flyWindow(sw, t0, Rw, [Vw[3], Vw[4] + 2 * vc, Vw[5]], 2).error === 'err.flyWinOrbit', 'free flight: the window refuses the body itself, another system, an open orbit');
   }
   console.log('free flight ok');

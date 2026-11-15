@@ -208,6 +208,19 @@ function watch(page, errs) {
         return { ok, nodes: FREE.nodes.length, soi: !!(FREE.tca && FREE.tca.soi), info: document.querySelector('#fnTgtInfo').textContent };
       });
       if (!win.ok || win.nodes !== 1 || !win.soi) throw new Error('the transfer window to the Moon: ' + JSON.stringify(win));
+      // fly it (warp to the node, auto fire): a correction is suggested by itself; laid, the pass is within ±20 km of 100 km
+      const cor = await page.evaluate(async () => {
+        const sl = ms => new Promise(r => setTimeout(r, ms));
+        document.querySelector('#fnWarp').click(); for (let i = 0; i < 400 && FREE.warpTo != null; i++) await sl(50);
+        flyWarp(10); let f = false; for (let i = 0; i < 600; i++) { await sl(50); if (FREE.burn) f = true; if (f && !FREE.burn) break; }
+        flyWarp(1); FREE.tcaAt = 0; FREE.tcaDirty = true;
+        for (let i = 0; i < 150 && !(FREE.cor && (FREE.cor.node || FREE.cor.error)); i++) await sl(100);
+        const info = document.querySelector('#fnCorInfo').textContent;
+        if (!document.querySelector('#fnCorGo').hidden) document.querySelector('#fnCorGo').click();
+        await sl(300); FREE.tcaAt = 0; FREE.tcaDirty = true; await sl(2000);
+        return { f, info, alt: FREE.tca && FREE.tca.soi ? FREE.tca.alt : null };
+      });
+      if (!cor.f || cor.alt == null || Math.abs(cor.alt - 100e3) > 20e3) throw new Error('the course correction: ' + JSON.stringify(cor));
       await page.evaluate(() => { FREE.nodes = []; FREE.sel = -1; flyChanged(); });
       await page.click('#flyWarp [data-w="1000"]'); await page.waitForTimeout(1200);
       const r = await page.evaluate(() => ({ dt: FREE.st.t, segs: FREE.pred ? FREE.pred.segs.length : 0 }));

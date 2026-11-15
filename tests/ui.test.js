@@ -1590,6 +1590,15 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(fl.includes("const pr = FREE.pred, ev = pr.events.find(e => e.type === 'soiIn' && e.b === c)") && fl.includes('const ca = flyClosest(mapSys, pr, c);') && fl.includes('now - FREE.tcaAt < FLY_CA_MS') && fl.includes('flyTcaDraw(true)') && fl.includes('flyTcaDraw(false)'), 'targets: the meeting, throttled, drawn in both views');
   assert.ok(fl.includes('const E = along > 0.5 ?') && fl.includes('T: Math.max(0, last) + (far ? 400 : 30) * DAY') && fl.includes('if (was >= 0 && !FREE.appr) flyFrameBody(b);'), 'targets: the energy cut, the long horizon, the new body framed');
 }
+// 55) The course correction (2026-11-15): "Düzeltme öner" and a suggestion by itself after a burn and ~30 % of the way,
+// core.js flyCorrect in a worker, "Geçiş 1.506 km → düzeltme 12 m/s ile 100 km", "Düzeltmeyi koy" (one undo step)
+{
+  const fl = read('js/fly.js'), app = read('js/app.js');
+  assert.ok(['fnCorRow', 'fnCor', 'fnCorInfo', 'fnCorGo'].every(id => html.includes('id="' + id + '"')) && ['fn.cor', 'fn.corTip', 'fn.corBusy', 'fn.corIs', 'fn.corOk', 'fn.corGo', 'err.flyCorNone', 'err.flyCorLate'].every(has), 'correction: the controls and their words');
+  assert.ok(DICT['fn.corIs'] === 'Geçiş {from} → düzeltme {dv} m/s ile {to}', 'correction: the line as asked');
+  assert.ok(app.includes('if (e.data.flyCor) { const q = e.data.flyCor; try { postMessage({ done: flyCorrect(buildSystem(list), q.t0, q.r, q.v, q.c) });') && fl.includes("w.postMessage({ list: mapList(), flyCor: job });"), 'correction: in a worker');
+  assert.ok(fl.includes('FREE.corAuto = { at: performance.now() + 1500, from: FREE.st.t, mid: false };') && fl.includes('FREE.st.t >= a.from + 0.3 * (q.t - a.from)') && fl.includes("flyEdit(); FREE.nodes.push({ t: r.node.t, d: r.node.d.map(x => Math.round(x * 100) / 100) });"), 'correction: by itself after a burn and ~30 % of the way, laid in one undo step');
+}
 // the encoder itself (an ES module): a real GIF
 (async () => {
   const G = await import(require('url').pathToFileURL(path.join(__dirname, '..', 'js', 'rec-worker.mjs')).href);

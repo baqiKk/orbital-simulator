@@ -135,7 +135,7 @@ function flyFrame(dt, v3, glow, now) {
   if (v3) { flyLines3(b); drawMap3(s.t, glow, null, 0, 0); flyTcaDraw(true); flyMark(b, true); flyNodes(true); }
   else { if (FREE.appr) flyFollow2(); drawMap(s.t, glow, null, 0, 0); flyLines2(b); flyTcaDraw(false); flyMark(b, false); flyNodes(false); if (!MAP.log) drawScale(); }
   flyBarTick(b);
-  flyPanelTick(); flyTgtTick();
+  flyPanelTick(); flyTgtTick(); flyCorTick(now);
   if (now - (FREE.helpAt || 0) > 500) { FREE.helpAt = now; flyHelpPlace(); }
 }
 // map coordinates (heliocentric, as the map draws its bodies) of a point relative to body b, after states(mapSys, …)
@@ -465,6 +465,7 @@ function flyStep(dt, b) {
 }
 function flyBurnEnd(out) {
   const t = FREE.burn.t; FREE.burn = null; FREE.fire = 0;
+  if (FREE.target >= 0) { FREE.corAuto = { at: performance.now() + 1500, from: FREE.st.t, mid: false }; FREE.cor = null; } // a correction suggested once the path settles, and again ~30 % of the way
   const i = FREE.nodes.findIndex(nd => nd.t === t); if (i >= 0) { FREE.nodes.splice(i, 1); FREE.sel = Math.min(FREE.sel, FREE.nodes.length - 1); if (FREE.sel < 0 && FREE.nodes.length) FREE.sel = 0; }
   if (out) FREE.eng.thr = 0;
   flyChanged();
@@ -609,7 +610,7 @@ function flyTgtList() {
   sel.value = String(FREE.target);
   flyEl('fnWin').disabled = FREE.target < 0 || !!FREE.winBusy;
 }
-flyEl('fnTgt').addEventListener('change', e => { FREE.target = +e.target.value; FREE.tca = null; FREE.tcaDirty = true; FREE.win = null; flyWinShow(); flyTgtList(); });
+flyEl('fnTgt').addEventListener('change', e => { FREE.target = +e.target.value; FREE.tca = null; FREE.tcaDirty = true; FREE.win = null; FREE.cor = null; FREE.corAuto = null; flyWinShow(); flyCorShow(); flyTgtList(); });
 // how the path meets the target (after the prediction; at most every FLY_CA_MS): its sphere and pass, else the closest
 // approach with the target's and the craft's places then (relative to the segment's body, drawn where it is now)
 function flyTca(now) {
@@ -671,6 +672,42 @@ function flyWinShow() {
   const dep = fmtDate(daysToUtc(r.node.t / DAY)), body = _('body.' + MAPK[r.c]);
   info.textContent = _(r.kind === 'sibling' ? 'fn.winSib' : 'fn.winIn', { body, dep, in: fmtIn(Math.max(0, r.node.t - FREE.st.t)), dv: NFdv.format(r.kind === 'sibling' ? r.dvEj : r.dv), mid: NFdv.format(r.dvMid || 0), tof: fmtDur(r.tof), cap: NFdv.format(r.dvCap || 0), vinf: fmtSpeed(r.vinfArr || 0) });
 }
+// ----- the course correction (2026-11-15): core.js flyCorrect in a worker; suggested by itself after a burn and once
+// about 30 % of the way to the pass, or on "Düzeltme öner"; "Düzeltmeyi koy" lays its node -----
+const FLY_COR_OK = 20e3; // a pass within this of the one wanted needs no correction
+function flyCorAsk() {
+  if (FREE.target < 0 || FREE.corBusy) return;
+  let w = null; try { w = makeWorker(); } catch (err) { w = null; }
+  const s = FREE.st, job = { t0: s.t, r: [...s.r], v: [...s.v], c: FREE.target };
+  const done = r => { if (FREE.corBusy === w) FREE.corBusy = null; if (w) w.terminate(); FREE.cor = r && (r.error || r.c === FREE.target) ? r : null; flyCorShow(); };
+  if (!w) { done(flyCorrect(mapSys, job.t0, job.r, job.v, job.c)); return; }
+  FREE.corBusy = w; FREE.cor = { busy: true }; flyCorShow();
+  w.onmessage = e => done(e.data.done || { error: 'err.flyCorNone' });
+  w.onerror = () => done({ error: 'err.flyCorNone' });
+  w.postMessage({ list: mapList(), flyCor: job });
+}
+function flyCorShow() {
+  const r = FREE.cor, row = flyEl('fnCorRow'), q = FREE.tca;
+  row.hidden = !(FREE.target >= 0 && q && q.soi);
+  if (row.hidden) return;
+  const info = flyEl('fnCorInfo'), go = flyEl('fnCorGo');
+  go.hidden = !(r && r.node && Math.abs(r.hBefore - flyHArr(mapSys, FREE.target)) > FLY_COR_OK);
+  info.textContent = !r ? '' : r.busy ? _('fn.corBusy') : r.error ? _(r.error) : go.hidden ? _('fn.corOk', { from: fmtDist(Math.max(0, r.hBefore)) })
+    : _('fn.corIs', { from: fmtDist(Math.max(0, r.hBefore)), dv: NFdv.format(r.dv), to: fmtDist(r.hAfter) });
+}
+// the suggestions by themselves: after a burn (once the prediction is the new one), and once ~30 % of the way to the pass
+function flyCorTick(now) {
+  const a = FREE.corAuto, q = FREE.tca; if (!a || FREE.target < 0) return;
+  if (a.at && now >= a.at && FREE.pred && !FREE.predDirty) { a.at = 0; if (q && q.soi) flyCorAsk(); }
+  if (!a.mid && q && q.soi && FREE.st.t >= a.from + 0.3 * (q.t - a.from)) { a.mid = true; flyCorAsk(); }
+  flyCorShow();
+}
+flyEl('fnCor').addEventListener('click', flyCorAsk);
+flyEl('fnCorGo').addEventListener('click', () => {
+  const r = FREE.cor; if (!r || !r.node || r.node.t <= FREE.st.t) return;
+  flyEdit(); FREE.nodes.push({ t: r.node.t, d: r.node.d.map(x => Math.round(x * 100) / 100) }); FREE.nodes.sort((a, b) => a.t - b.t);
+  FREE.sel = FREE.nodes.findIndex(nd => nd.t === r.node.t); FREE.cor = null; flyCorShow(); flyChanged();
+});
 flyEl('fnWinGo').addEventListener('click', () => {
   const r = FREE.win; if (!r || !r.node || r.node.t <= FREE.st.t) return;
   flyEdit(); for (const nd of r.nodes || [r.node]) FREE.nodes.push({ t: nd.t, d: nd.d.map(x => Math.round(x * 10) / 10) }); // the ejection and (between planets) the course correction
