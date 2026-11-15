@@ -119,6 +119,16 @@ function watch(page, errs) {
       });
       if (!(a < 5)) throw new Error('nose ' + a.toFixed(1) + '° off the velocity');
     });
+    await step('free flight: enter from the mission, warp, exit (Phase 19b)', async () => {
+      await page.evaluate(async () => { sceneEnd(true); loadScenario('mv_leo_geo'); S.playing = false; setPlayIcon(); await new Promise(r => setTimeout(r, 600)); S.u = tToU(600); slowJump(); });
+      await page.waitForTimeout(300); await page.click('#flyGo'); await page.waitForTimeout(400);
+      const t0 = await page.evaluate(() => FREE.on && FREE.st.t); if (!t0) throw new Error('not in free flight');
+      await page.click('#flyWarp [data-w="1000"]'); await page.waitForTimeout(1200);
+      const r = await page.evaluate(() => ({ dt: FREE.st.t, segs: FREE.pred ? FREE.pred.segs.length : 0 }));
+      if (!(r.dt - t0 > 200) || !(r.segs > 0)) throw new Error('the flight did not advance or predict: ' + JSON.stringify(r));
+      await page.click('#flyExit'); await page.waitForTimeout(300);
+      if (await page.evaluate(() => FREE.on || MAP.on)) throw new Error('still flying after Çık');
+    });
     await step('the cutaway in the engine window plays', async () => { await page.click('.rail [data-win="engine"]'); await page.click('#engPlay'); await page.waitForTimeout(1500); const w = await page.evaluate(() => document.querySelector('#engSch').width); if (!(w > 0)) throw new Error('no cutaway drawn'); });
     await page.waitForTimeout(1000);
     report('index.html: wizard maneuver + engine window', errs);

@@ -542,7 +542,7 @@ function mapOffset3(t, out) {
 }
 // the craft path, heliocentric (real model): as mapTraj, in 3D
 function mapTraj3() {
-  if (S.model !== 'real' || !C || !sys) { if (MAP3.trajC) { V3.lineDropAll('map', 'traj'); MAP3.trajC = null; } return null; }
+  if (S.model !== 'real' || !C || !sys || FREE.on) { if (MAP3.trajC) { V3.lineDropAll('map', 'traj'); MAP3.trajC = null; } return null; }
   const key = MAP.log + '|' + C.pt.length;
   if (C.map3Key === key && MAP3.trajC === C) return C;
   const n = C.pt.length, K = 400, off = new Float64Array(3 * (K + 1)), o = [0, 0, 0];

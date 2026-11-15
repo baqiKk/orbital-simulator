@@ -133,6 +133,13 @@
         <span class="lbl" id="r-l4" hidden></span><b id="r-v4" hidden>—</b>
       </div>
       </div>
+      <div class="glass fly-bar" id="flyBar" role="toolbar" data-i18n-aria-label="fly.bar" hidden>
+        <button class="play" id="flyPause" type="button"></button>
+        <div class="seg fly-warp" id="flyWarp" role="group" data-i18n-aria-label="fly.warp"></div>
+        <button type="button" class="ghost" id="flyNow" data-i18n="fly.now" data-i18n-title="fly.nowTip"></button>
+        <div class="fly-info"><span id="flyDate"></span><span id="flyBody"></span></div>
+        <button type="button" class="ghost" id="flyExit" data-i18n="fly.exit" data-i18n-title="fly.exitTip"></button>
+      </div>
       <div class="glass timeline" id="timeline">
         <button class="play" id="play" type="button"></button>
         <div class="tl-time"><span id="tplus" data-i18n="ui.tplusInit"></span><span id="tend">/ —</span><span class="slowtag" id="slowTag" hidden></span></div>
@@ -150,7 +157,7 @@
           <label class="chk" data-i18n-title="ui.loopTip"><input type="checkbox" id="loop"><span data-i18n="ui.loop"></span></label>
           <label class="chk" data-i18n-title="ui.slowTip"><input type="checkbox" id="slow" checked><span data-i18n="ui.slow"></span></label>
           <label class="chk" id="evStopWrap" data-i18n-title="ui.evStopTip" hidden><input type="checkbox" id="evStop"><span data-i18n="ui.evStop"></span></label>
-          <button type="button" class="ghost appr-btn" id="apprBtn" aria-pressed="false" data-i18n-title="appr.tip" data-i18n="appr.btn"></button><button type="button" class="ghost cut-btn" id="cutBtn" aria-pressed="false" data-i18n-title="cut.tip" data-i18n="cut.btn"></button><button type="button" class="ghost rec-btn" id="recBtn" data-i18n-title="rec.tip" aria-controls="recPanel"><svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="3.2"/></svg><span data-i18n="rec.btn"></span></button>
+          <button type="button" class="ghost fly-go" id="flyGo" data-i18n="fly.go" data-i18n-title="fly.goTip" hidden></button><button type="button" class="ghost appr-btn" id="apprBtn" aria-pressed="false" data-i18n-title="appr.tip" data-i18n="appr.btn"></button><button type="button" class="ghost cut-btn" id="cutBtn" aria-pressed="false" data-i18n-title="cut.tip" data-i18n="cut.btn"></button><button type="button" class="ghost rec-btn" id="recBtn" data-i18n-title="rec.tip" aria-controls="recPanel"><svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="3.2"/></svg><span data-i18n="rec.btn"></span></button>
         </div>
         <div class="appr-tip glass" id="apprTip" role="status" hidden></div>
         <div class="glass rec-panel" id="recPanel" role="dialog" aria-labelledby="recT" hidden>
@@ -533,6 +540,7 @@
 <script src="js/mode3d.js"></script>
 <script src="js/engine-ui.js"></script>
 <script src="js/sim-audio.js"></script>
+<script src="js/fly.js"></script>
 <script src="js/app.js"></script>
 <script src="js/wizard.js"></script>
 <script src="js/record.js"></script>

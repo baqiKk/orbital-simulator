@@ -996,7 +996,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // transfer chosen by the automatic method, within the body's sphere of influence); the result card follows updateResults.
 {
   const C = require('../js/core.js'), wz = read('js/wizard.js'), css = read('css/style.css');
-  assert.ok(/<script src="js\/mode3d\.js"><\/script>\n<script src="js\/engine-ui\.js"><\/script>\n<script src="js\/sim-audio\.js"><\/script>\n<script src="js\/app\.js"><\/script>\n<script src="js\/wizard\.js"><\/script>/.test(html), 'wizard.js after app.js; the engine window and the page\'s sound before app.js (app.js calls them while starting)');
+  assert.ok(/<script src="js\/mode3d\.js"><\/script>\n<script src="js\/engine-ui\.js"><\/script>\n<script src="js\/sim-audio\.js"><\/script>\n<script src="js\/fly\.js"><\/script>\n<script src="js\/app\.js"><\/script>\n<script src="js\/wizard\.js"><\/script>/.test(html), 'wizard.js after app.js; the engine window, the page\'s sound and the free flight before app.js (app.js calls them while starting)');
   assert.ok(css.includes('html:not(.ui-expert) #w-mission .win-b>:not(.wiz){display:none!important}') && css.includes('html.ui-expert #wiz{display:none}'), 'plain: the wizard; expert: the full form');
   for (const id of ['wiz', 'wzPick', 'wzForm', 'wzSteps', 'wzEx', 'wzRes', 'wzFoot', 'wzErr', 'wzGo', 'wzExpert']) assert.ok(html.includes('id="' + id + '"'), 'wizard element ' + id);
   for (const m of ['auto', 'hohmann', 'bielliptic']) assert.ok(has('wz.m.' + m) && has('wz.m.' + m + 'D'), 'method ' + m);
@@ -1459,6 +1459,18 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(ctxN.f(1000, img) === 1 && ctxN.f(4000, img) === 0 && ctxN.f(2600, img) > 0 && ctxN.f(2600, img) < 1 && ctxN.f(9e5, null) === 1 && gl.includes('* uLayers.y *'), 'city lights: fade when magnified');
   assert.ok(['sndBtn', 'sndPop', 'sndOn', 'sndVol', 'sndEng'].every(id => html.includes('id="' + id + '"')) && ['snd.btn', 'snd.title', 'snd.on', 'snd.vol', 'snd.eng', 'snd.engTip', 'snd.note'].every(has), 'sound: the button and its panel');
   assert.ok(app.includes("simAudioTick(near > 0 ? engNow(tNowG).pl * near : 0);") && app.includes('!S.playing ? 0 :') && !cab.includes('sim-audio.js'), 'sound: the rumble by thrust and closeness, while playing; not on the cabin page');
+}
+// 49) Free flight, the mode (Phase 19b, js/fly.js): entered from the mission's moment (real model; "Serbest uçuş" by the
+// timeline), flown in the map's system (N-body below 1000×, on rails above), drawn on the map view with its prediction,
+// trail and marker; the warp bar in place of the timeline (pause, the warp steps, "Şimdi", date / body / altitude /
+// speed, "Çık"), , and . for the warp, Space pauses; the mission's windows step aside; one sessionStorage snapshot that
+// comes back on a reload (parseFlySnap: finite, 12 hours)
+{
+  const fl = read('js/fly.js'), app = read('js/app.js'), now = Date.now(), ok = { t: 8.5e8, r: [1, 2, 3], v: [4, 5, 6], m: 1000, warp: 100, at: now - 1000 };
+  assert.ok(P.parseFlySnap(JSON.stringify(ok), now).warp === 100 && P.parseFlySnap(JSON.stringify({ ...ok, at: now - 13 * 3600e3 }), now) === null && P.parseFlySnap(JSON.stringify({ ...ok, r: [1, 2] }), now) === null && P.parseFlySnap('x', now) === null && P.PREF_KEYS.flySnap, 'free flight: the snapshot');
+  assert.ok(['flyBar', 'flyPause', 'flyWarp', 'flyNow', 'flyExit', 'flyDate', 'flyBody', 'flyGo'].every(id => html.includes('id="' + id + '"')) && ['fly.bar', 'fly.warp', 'fly.play', 'fly.pause', 'fly.now', 'fly.nowTip', 'fly.exit', 'fly.exitTip', 'fly.go', 'fly.goTip', 'fly.state', 'chip.fly'].every(has), 'free flight: the bar and its words');
+  assert.ok(fl.includes('flyAdvance(mapSys, s, Math.min(dt, 0.1) * FREE.warp, { rails: FREE.warp >= RAILS_W, maxSteps: 4000 })') && fl.includes('const RAILS_W = 1000') && fl.includes('flyPredict(mapSys, s.t, s.r, s.v, { revs: 1, T: 30 * DAY, K: 120 })') && fl.includes("if (e.key === '.' || e.key === ',')") && fl.includes("e.code === 'Space'"), 'free flight: the advance, the prediction, the keys');
+  assert.ok(app.includes('if (FREE.on) { flyFrame(dt, v3, glow, now);') && app.includes('if (flyRestore()) startClose();') && app.includes("$('#flyGo').addEventListener('click', () => flyEnter());") && app.includes('|| !sys || FREE.on) return null;') && read('css/style.css').includes('html[data-fly] #timeline,html[data-fly] #readout'), 'free flight: hooked into the draw loop, restored on start, the mission path off the map');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

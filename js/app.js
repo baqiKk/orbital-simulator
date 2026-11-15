@@ -1545,6 +1545,7 @@ function focusName() {
 function frameEnd() {
   setCaption(); liveTick(); apprTip(performance.now());
   engTick(); // the engine charts' playhead (O(1); js/engine-ui.js, loaded before this file)
+  const fg = !FREE.on && !SCENE.on && !!C && S.model === 'real'; if ($('#flyGo').hidden === fg) $('#flyGo').hidden = !fg; // free flight from here (js/fly.js)
   engPanelTick(tNowG, !!(C && simR && !MAP.on && !SCENE.on && !REC.busy)); // the engine panel (shown only with engine burns)
   // the engine rumble (js/sim-audio.js): while playing, the plume's strength times the camera's closeness to the craft
   // (3D: following it, gone by NEAR3's far end; 2D: in the close view)
@@ -2593,6 +2594,7 @@ function sceneTouch() { FLY.on = false; if (SCENE.on) SCENE.free = true; }
 function modeChip() {
   let t, back = '';
   if (SCENE.on) { if (SCENE.free) { t = _('chip.free'); back = SCENE.kind === 'earth' ? 'chip.backEarth' : SCENE.kind === 'tour' ? 'chip.replayTour' : 'chip.backSaturn'; } else { t = _('chip.sceneShort'); if (SCENE.kind === 'tour' && SCENE.tt >= OPEN_TOUR_S) back = 'chip.replayTour'; } }
+  else if (FREE.on) t = _('chip.fly');
   else if (MAP.on) t = _('chip.map');
   else if (S.scenario && APP.mode !== 'design') t = _('chip.mission', { name: _('sc.' + S.scenario + '.name') });
   else { const a = S.bodies[0] ? S.bodies[0].name : '', b = S.bodies[1] ? S.bodies[1].name : ''; t = S.kind === 'man' ? _('chip.designMan', { a }) : _('chip.design', { a, b }); }
@@ -2906,7 +2908,7 @@ function mapOffset(t, out) { // map(root body) − sim(root body) at mission tim
   out[0] = hx(rk) - SPm[3 * r]; out[1] = hy(rk) - SPm[3 * r + 1]; return out;
 }
 function mapTraj() {
-  if (S.model !== 'real' || !C || !sys) return null;
+  if (S.model !== 'real' || !C || !sys || FREE.on) return null;
   const key = MAP.log + '|' + C.pt.length;
   if (C.mapKey === key) return C;
   const n = C.pt.length, K = 400, off = new Float64Array(2 * (K + 1)), o = [0, 0];
@@ -3276,6 +3278,7 @@ function drawBody(now, once) {
     if (now - ovLast > 500) { ovLast = now; ovDist(); }
     skyAdapt(dt); frameEnd(); if (!once) requestAnimationFrame(draw); return;
   }
+  if (FREE.on) { flyFrame(dt, v3, glow, now); skyAdapt(dt); frameEnd(); if (!once) requestAnimationFrame(draw); return; } // free flight (js/fly.js)
   if (!sys || !simR || !C) {
     if (MAP.on) { if (v3) drawMap3(mapTime(0), glow, null, 0, 0); else { drawMap(mapTime(0), glow, null, 0, 0); if (!MAP.log) drawScale(); } }
     else if (v3) { V3.setActive('none'); V3.render({ stars: Q.stars && !skyRec(), skyGain: skyGain() }); }
@@ -3959,4 +3962,6 @@ else {
   else { APP.mode = 'mission'; loadScenario(st.slice(8)); }
 }
 if (location.hash === '#kaynakca') setWin('credits', { open: true, collapsed: false }); // the cabin's sound panel links here
+if (flyRestore()) startClose(); // a free flight in this session comes back (js/fly.js)
+$('#flyGo').addEventListener('click', () => flyEnter());
 requestAnimationFrame(t => { last = t; draw(t); });

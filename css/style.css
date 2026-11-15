@@ -98,6 +98,13 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-conten
 .hud-bot>*{pointer-events:auto}
 .hud-row{align-self:stretch;display:flex;justify-content:space-between;align-items:flex-end;gap:10px;pointer-events:none}
 .hud-row>.readout{pointer-events:auto;margin-left:auto}
+/* the free flight's bar (Phase 19b): in place of the timeline */
+.fly-bar{align-self:stretch;display:flex;align-items:center;gap:10px;padding:7px 11px;flex-wrap:wrap}
+html[data-fly] #timeline,html[data-fly] #readout,html[data-fly] #engPanel,html[data-fly] #liveBar{display:none}
+.fly-warp button{padding:6px 8px;font-variant-numeric:tabular-nums}
+.fly-info{display:flex;flex-direction:column;gap:2px;font:500 11.5px/1.2 var(--f-mono);color:var(--dim);margin-left:auto;font-variant-numeric:tabular-nums}
+.fly-info span:first-child{color:var(--ink)}
+@media (max-width:560px){.fly-bar{gap:6px;padding:6px 8px}.fly-warp{overflow-x:auto;max-width:100%}.fly-info{margin-left:0;width:100%}}
 /* the engine panel (2026-11-15): bottom left, above the timeline (clear of the results window), ≈ 260 × 180 px, folds to its header; phones: a strip */
 .eng-panel{pointer-events:auto;width:260px;order:-1;flex:none;padding:6px 8px 7px;display:flex;flex-direction:column;gap:5px;font:500 11px/1.2 var(--f-mono)}
 .ep-h{display:flex;align-items:center;gap:8px;background:none;border:0;padding:0;color:var(--dim);cursor:pointer;font:inherit;text-align:left}
