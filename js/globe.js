@@ -155,7 +155,7 @@ uniform vec4 uGlow;
 uniform float uTex, uMix, uMix2, uSat, uLimb, uRing, uRingHas, uTauHas, uPhot, uEmit, uCloudRot;
 uniform sampler2D uMap, uMap2, uRingMap, uTau, uClouds, uNight, uOcean, uRelief;
 uniform vec2 uRingR;
-uniform vec4 uLayers;   // clouds, city lights, glint, relief (1 = on)
+uniform vec4 uLayers;   // clouds, city lights (their strength 0 … 1), glint, relief (1 = on)
 uniform vec4 uRelief4;  // lowest and highest height (body radii), cast shadows (1 = on), the Sun's angular radius (rad)
 uniform vec4 uHaze;     // on, scale height, vertical optical depth, top (body radii)
 uniform vec4 uHazeC;    // haze colour (linear), Henyey–Greenstein g
@@ -284,7 +284,7 @@ vec3 globeColor(vec3 n, vec3 s, vec3 v, float rs) {
     col += vec3(water * (1.0 - ca) * F * 28.5 * pow(max(dot(n, hv), 0.0), 220.0) * max(mu0, 0.0)) * rs;
   }
   if (uLayers.x > 0.5) col = mix(col, vec3(0.85 * lit), ca);
-  if (uLayers.y > 0.5) col += texture(uNight, uv).rgb * vec3(1.0, 0.78, 0.5) * 0.6 * (1.0 - smoothstep(-0.12, 0.02, mu0)) * (1.0 - ca);
+  if (uLayers.y > 0.001) col += texture(uNight, uv).rgb * vec3(1.0, 0.78, 0.5) * 0.6 * uLayers.y * (1.0 - smoothstep(-0.12, 0.02, mu0)) * (1.0 - ca);
   return col + atmGlow(n, s, mu, uGlow);
 }
 // a thick hazy shell (Venus, Titan) along the ray ro + t rd (body radii, planet at the origin): premultiplied colour of
@@ -397,7 +397,7 @@ const linC = h => { const n = parseInt(h.slice(1), 16), f = c => { c /= 255; ret
 // the uniform values of a look (both renderers): layer switches, relief, haze, ring optical depth
 function lookUniforms(L) {
   return {
-    layers: [L && L.clouds ? 1 : 0, L && L.night ? 1 : 0, L && L.ocean ? 1 : 0, L && L.relief ? 1 : 0],
+    layers: [L && L.clouds ? 1 : 0, L && L.night ? (L.nightK == null ? 1 : L.nightK) : 0, L && L.ocean ? 1 : 0, L && L.relief ? 1 : 0],
     relief: L && L.relief ? [L.relief.h[0], L.relief.h[1], L.shadow ? 1 : 0, L.sunAng] : [0, 0, 0, 0.0047],
     haze: L && L.haze ? [1, L.haze.H, L.haze.tau, L.haze.top] : [0, 1, 0, 0],
     hazeC: L && L.haze ? [...L.haze.col, L.haze.g] : [0, 0, 0, 0],
@@ -452,6 +452,15 @@ function sunAngOf(key) {
 // after the adaptive quality drop), cap = widest texture tier (px), fx = effects left on by the quality ladder
 // ({ clouds, relief, glint }); t: seconds (the clouds' drift). null when a plain disc will do (low-resource mode, too
 // small, nothing loaded yet and no plain globe to draw).
+// The city lights fade out once magnified (2026-11-15): seen close (the craft's view) the night map's texels spread over
+// many pixels and its few bright towns smear into blotchy streaks. Full up to 2 screen pixels per texel along the
+// equator, gone by 5 (r: the body's radius on screen, px).
+function nightFade(r, e) {
+  const w = e && e.img ? e.img.naturalWidth || e.img.width || 0 : 0;
+  if (!w) return 1;
+  const ppt = 2 * Math.PI * r / w;
+  return Math.max(0, Math.min(1, (5 - ppt) / 3));
+}
 function globeLook(key, r, allow, fetch, cap, fx, t) {
   const L = lookOf(key); if (!L) return null;
   const want = allow && r >= TEX_MIN_PX, b = L.b;
@@ -466,7 +475,7 @@ function globeLook(key, r, allow, fetch, cap, fx, t) {
   return { tex: tx, sat: L.sat, limb: L.limb, nodata: tx && L.tex.nodata, glow: b.haze ? [0, 0, 0, 0] : L.glow, phot: b.phot === 'lambert',
     ring: L.rings ? { e: ring, tau, r: L.rings.r.map(q => q * L.rings.req / b.radius) } : null,
     relief: rel ? { e: rel.e, h: b.relief.h.map(m => m / 1000 / b.radius) } : null, shadow: !!rel && r >= SHADOW_PX, sunAng: sunAngOf(key),
-    clouds: cl && cl.e, cloudRot: ((t || 0) / (20 * 86400)) % 1, night: ni && ni.e, ocean: oc && oc.e,
+    clouds: cl && cl.e, cloudRot: ((t || 0) / (20 * 86400)) % 1, night: ni && ni.e, ocean: oc && oc.e, nightK: nightFade(r, ni && ni.e),
     haze: b.haze && !(key === 'venus' && TEXOPT.venusRadar) ? { H: b.haze.H / b.radius, tau: b.haze.tau, top: b.haze.top / b.radius, g: b.haze.g, col: linC(b.color),
       layer: b.haze.layer ? [b.haze.layer[0] / b.radius, b.haze.layer[1] / b.radius, b.haze.layer[2]] : null } : null };
 }
