@@ -244,9 +244,9 @@ function parseFlySnap(raw, now = Date.now()) {
 }
 
 // The simulator page's sound settings (2026-11-15, js/sim-audio.js): on (a quiet start at the first gesture), volume
-// 0 … 1 (default 0.35), the engine rumble effect, the ambience ('deep' drone or 'rec' the NASA recordings); each field
+// 0 … 1 (default 0.18), the engine rumble effect, the ambience ('deep' drone or 'rec' the NASA recordings); each field
 // falls back on its own
-const SIM_AUDIO = { on: true, vol: 0.35, eng: true, kind: 'deep' };
+const SIM_AUDIO = { on: true, vol: 0.18, eng: true, kind: 'deep' }; // 2026-11-15: half the volume it started at (0.35); saved settings keep theirs
 function parseSimAudio(raw) {
   let o = null; try { o = JSON.parse(raw); } catch (e) { /* default */ }
   if (!o || typeof o !== 'object') return { ...SIM_AUDIO };

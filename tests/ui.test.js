@@ -1451,6 +1451,8 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(sa.includes('l1 = saLow(c, 110), l2 = saLow(c, 110)') && sa.includes('sweep.frequency.value = 0.035') && sa.includes("[[41, 'sine', 0.5], [41.6, 'sine', 0.45], [61.5, 'triangle', 0.25]]") && sa.includes("'audio/cabin/space/' + q.id + '.' + ext") && sa.includes('e1 = saLow(c, 85), e2 = saLow(c, 85)') && !sa.includes('frequency.value = 220'), 'sound: a deep drone or the NASA recordings, a muffled rumble');
   assert.ok(P.SIM_AUDIO.kind === 'deep' && P.parseSimAudio('{"kind":"rec"}').kind === 'rec' && P.parseSimAudio('{"kind":"x"}').kind === 'deep' && html.includes('id="sndKind"') && ['snd.kind', 'snd.deep', 'snd.rec'].every(has) && html.indexOf('js/sounds.js') < html.indexOf('js/sim-audio.js'), 'sound: two ambiences to choose, the deep drone by default');
   assert.ok(sa.includes("SA.out.gain.setTargetAtTime(s.on ? 0.5 * s.vol * s.vol : 0, t, 0.4);") && P.SIM_AUDIO.vol <= 0.4 && sa.includes("if (document.hidden) { SA.ctx.suspend(); saRec(false); }"), 'sound: a quiet start, suspended when hidden');
+  // 2026-11-15: the default volume halved (0.35 → 0.18); a saved volume stays as saved
+  assert.ok(P.SIM_AUDIO.vol === 0.18 && P.parseSimAudio('{}').vol === 0.18 && P.parseSimAudio('{"vol":0.35}').vol === 0.35 && P.parseSimAudio(null).vol === 0.18, 'sound: half the old default, saved settings untouched');
   const d = P.parseSimAudio('{"on":false,"vol":7,"eng":"x"}');
   assert.ok(d.on === false && d.vol === 1 && d.eng === true && P.parseSimAudio('nope').on === true && P.PREF_KEYS.simAudio, 'sound: saved settings, each field falls back');
   // the city lights fade once magnified (globe.js nightFade: full to 2 px per texel, gone by 5)
