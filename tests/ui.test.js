@@ -1376,7 +1376,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(ui.includes('const a = Math.max(0, Math.min(b.t - L / 2, T - L));') && ui.includes('function engStOf(s, tau, on) {') && ui.includes('if (!on) { st.on = false; st.F = 0; st.Fk = 0; }'), 'engine: impulsive burns centred on their moment; off between burns');
   assert.ok((ui + app).split('engState(s, on ? tau').length === 2 && !(ui + app).includes('engState(s, q.on'), 'engine: the firing comes from the mission, never from the load left');
   assert.ok(ui.includes('SLOW_W.fade * burnRate(q.j)') && ui.includes('pl = q.on ? st.Fk * Math.min(1, (t - a) / Math.max(w, 1e-9)) : ENGM.end[q.j] * (1 - q.e / w);') && P.SLOW_W.fade === 0.3, 'plume: lights and dies over 0.3 s of screen');
-  assert.ok(app.includes('t1 = slowAdvance(t0, dt, r0, fs, C.T)') && app.includes("_(slow ? 'tl.rateSlow' : 'tl.rate', { r: fmtRate(rate) })") && has('tl.rate') && has('tl.rateSlow') && DICT['ui.slow'] === 'Yanmalarda yavaşla', 'slow motion: the playback runs through the warp, its rate by the clock');
+  assert.ok(app.includes('pa = playAdvance(t0, dt, r0, on ? slowFireList() : null, C.T, on ? SLOW.over : null)') && app.includes("_(SLOW.over ? 'tl.rateHand' : slow ? 'tl.rateSlow' : 'tl.rate', { r: fmtRate(rate), x: fmtX(rate) })") && has('tl.rate') && has('tl.rateSlow') && DICT['ui.slow'] === 'Yanmalarda yavaşla', 'slow motion: the playback runs through the warp, its rate by the clock');
   const Rc = require('../js/record.js'), base = Rc.recSchedule([0.3, 0.7]);
   const sc = Rc.recSchedule([0.3, 0.7], { fires: [{ ua: 0.3, ub: 0.3005, T: 120, show: 30 }, { ua: 0.7, ub: 0.72, T: 4851, show: 150 }], ease: { rate: P.rampRate, len: P.rampLen } }), n = sc.u.length;
   let rj2 = 1; for (let k = 2; k < n; k++) { const a = sc.u[k - 1] - sc.u[k - 2], b = sc.u[k] - sc.u[k - 1]; if (a > 0 && b > 0) rj2 = Math.max(rj2, a / b, b / a); }
@@ -1504,6 +1504,33 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(pn.f(1) === 0 && pn.f(20) === 1 && pn.f(6) > 0 && pn.f(6) < 1 && m3.includes('* (0.3 + 0.7 * nq) : 0, len: (1.0 + 2.0 * k) * fl * (0.5 + 0.5 * nq)'), 'plume: held down up close');
   const fd = {}; require('vm').runInNewContext('const nf0 = new Intl.NumberFormat("tr", { maximumFractionDigits: 0 }), nf1 = new Intl.NumberFormat("tr", { minimumFractionDigits: 1, maximumFractionDigits: 1 }), nf2 = new Intl.NumberFormat("tr", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), nf3 = nf2; const _ = k => k;' + app.slice(app.indexOf('function fmtDist(m)'), app.indexOf('function fmtSpeed')) + ';this.f = fmtDist;', fd);
   assert.ok(fd.f(5) === '5 m' && fd.f(0.5) === '0,50 m' && fd.f(200) === '200 m' && fd.f(2000) === '2,0 km', 'scale bar: metres up close');
+}
+// 51) The playback speed (2026-11-15): rates of real time 1× (real time), 2×, 5×, 10×, 30×, 60× before the large ones;
+// the clock's tag says the multiple of real time too; at real time "Yanmalarda yavaşla" goes off and faint and comes back
+// as it was; a speed picked during a burn holds for that burn (faster or slower, capped by its length), the next burn
+// slows down on its own; , and . step the speeds in the mission too.
+{
+  const app = read('js/app.js'), opts = [...html.matchAll(/<option value="(r\d+)"/g)].map(m => +m[1].slice(1));
+  assert.deepStrictEqual(opts.slice(0, 7), [1, 2, 5, 10, 20, 30, 60], 'speed: real-time rates first');
+  assert.ok(opts.slice(7).every(r => r >= 3600) && DICT['speed.r1'].includes('gerçek zaman'), 'speed: then the large ones; 1× says real time');
+  assert.ok(['tl.rate', 'tl.rateSlow', 'tl.rateHand'].every(k => DICT[k].includes('{x}× gerçek zaman')) && has('ui.slowRt'), 'speed: the tag says the multiple of real time');
+  // real time: 10 s of frames (60 per second, slow motion off) = 10 s of mission time
+  let t = 500, r;
+  for (let i = 0; i < 600; i++) { r = P.playAdvance(t, 1 / 60, 1, null, 1e6, null); t = r.t; }
+  assert.ok(Math.abs(t - 510) < 1e-6 && r.rate === 1, `speed: real time, 10 s on the wall clock = ${(t - 500).toFixed(6)} s of mission`);
+  // a long burn (2000 s) in slow motion: on its own 2000 / 150 ≈ 13.3×; picked by hand 20× (under the cap) → 20× until
+  // its end, then the next burn slows down on its own again
+  const f = P.slowFires([{ a: 1000, b: 3000, j: 0 }, { a: 9000, b: 11000, j: 1 }]), r0 = 600;
+  assert.ok(Math.abs(P.playAdvance(1500, 1 / 60, r0, f, 1e6, null).rate - 2000 / 150) < 1e-6, 'speed: the burn on its own');
+  const cap = Math.min(20, 50), over = { ...P.fireAt(f, 1500), r: cap };
+  let q = P.playAdvance(1500, 1 / 60, r0, f, 1e6, over);
+  assert.ok(q.rate === 20 && Math.abs(q.t - (1500 + 20 / 60)) < 1e-9 && q.over, 'speed: picked during a burn, 20× is 20×');
+  t = 1500; let o = over; for (let i = 0; i < 400 && t < 3000; i++) { q = P.playAdvance(t, 0.5, r0, f, 1e6, o); t = q.t; o = q.over; }
+  assert.ok(t === 3000 && P.playAdvance(t, 1 / 60, r0, f, 1e6, o).over === null, 'speed: the own rate ends with its burn');
+  assert.ok(Math.abs(P.playAdvance(10000, 1 / 60, r0, f, 1e6, null).rate - 2000 / 150) < 1e-6, 'speed: the next burn slows down on its own');
+  assert.ok(P.playAdvance(1500, 1 / 60, 2, f, 1e6, { ...P.fireAt(f, 1500), r: 2 }).rate === 2, 'speed: slower by hand too');
+  assert.ok(app.includes('r: Math.min(S.rate ||') && app.includes('flyWarpMax(f.b - f.a)') && app.includes('const rt = S.rate === 1, el = $(\'#slow\');') && app.includes("el.disabled = rt; el.closest('label').classList.toggle('off', rt);") && read('css/style.css').includes('.chk.off{opacity:.45'), 'speed: capped by the burn; real time turns the slow motion off, faint');
+  assert.ok(app.includes("if ((e.key !== ',' && e.key !== '.') || FREE.on") && app.includes('sort((p, q) => speedRate(p, T) - speedRate(q, T))'), 'speed: , and . in the mission, by rate');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

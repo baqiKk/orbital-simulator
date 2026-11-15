@@ -220,6 +220,19 @@ function slowAdvance(t0, dt, r0, fires, tEnd = Infinity) {
   return Math.min(t, tEnd);
 }
 
+// One frame of mission playback (2026-11-15): from t0, dt screen seconds at the base rate r0 (mission s per screen s).
+// fires: the burns in slow motion (null: none, or the switch is off, as at real time); over: the viewer's own rate for the
+// burn under way ({ a, b, r }: chosen during it, already held under its cap), which holds until that burn's end and then
+// lets the automatic slow motion take the next one. → { t (at most tEnd), rate (mission s per screen s now), over }
+function playAdvance(t0, dt, r0, fires, tEnd = Infinity, over = null) {
+  if (over && !(t0 >= over.a - 1e-6 && t0 < over.b)) over = null;
+  if (over) return { t: Math.min(t0 + dt * over.r, over.b, tEnd), rate: over.r, over };
+  if (fires && fires.length) return { t: slowAdvance(t0, dt, r0, fires, tEnd), rate: 1 / slowRho(t0, r0, fires), over: null };
+  return { t: Math.min(t0 + dt * r0, tEnd), rate: r0, over: null };
+}
+// the burn under way at t, if any
+const fireAt = (fires, t) => (fires || []).find(f => t >= f.a && t < f.b) || null;
+
 // The free flight's one snapshot in the session (Phase 19b, js/fly.js): { t (s since J2000 TDB), r, v (the map system's
 // axes, m, m/s), m (kg), warp, at (wall ms) }; null when broken, not finite or older than 12 hours
 function parseFlySnap(raw, now = Date.now()) {
@@ -592,4 +605,4 @@ function saturnShot(sat, sun, pole, box, o = {}) {
     side: [c.g, c.k], phase: ang(e, s), lit: c.lit, milky: c.mw, sway: { k: K, ke: KE, az: A * K, el: sw.el * KE, dist: o.sway ? sw.dist : 0 }, fit: [K, KE, yk0] };
 }
 
-if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, auto3dFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, parseEngines, ENG_KINDS, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha, SLOW_W, burnShow, slowFires, slowRho, slowAdvance, rampLen, rampRate, SIM_AUDIO, parseSimAudio, parseFlySnap };
+if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, auto3dFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, parseEngines, ENG_KINDS, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha, SLOW_W, burnShow, slowFires, slowRho, slowAdvance, playAdvance, fireAt, rampLen, rampRate, SIM_AUDIO, parseSimAudio, parseFlySnap };

@@ -84,6 +84,7 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-conten
 .toggles{padding:6px 10px;display:flex;gap:14px}
 .chk{display:inline-flex;align-items:center;gap:6px;font:500 11.5px/1 var(--f-disp);letter-spacing:.04em;color:var(--dim);cursor:pointer;white-space:nowrap}
 .chk input{accent-color:var(--accent);margin:0}
+.chk.off{opacity:.45;cursor:default}
 .chk.sky input{width:76px}
 .veh-save{display:flex;gap:6px;margin-top:6px}
 .veh-save input{flex:1;min-width:0}

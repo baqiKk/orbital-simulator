@@ -133,6 +133,28 @@ function watch(page, errs) {
       });
       if (!(a < 5)) throw new Error('nose ' + a.toFixed(1) + '° off the velocity');
     });
+    // the playback speed (2026-11-15): real time runs with the wall clock and turns the slow motion off (faint), another
+    // speed brings it back; 20× picked during a long burn holds for it
+    await step('the speed: real time, and 20× during a burn', async () => {
+      const r = await page.evaluate(async () => {
+        const sl = ms => new Promise(r => setTimeout(r, ms));
+        sceneEnd(true); loadScenario('mv_gto'); S.playing = false; setPlayIcon();
+        for (let i = 0; i < 300 && !(MAN.res && !MAN.busy && engFires()); i++) await sl(100);
+        const sp = document.querySelector('#speed'), pick = v => { sp.value = v; sp.dispatchEvent(new Event('change')); };
+        S.u = tToU(60); slowJump(); pick('r1');
+        const off = document.querySelector('#slow').disabled && !S.slow;
+        const t0 = uToT(S.u), w0 = performance.now(); S.playing = true; setPlayIcon(); await sl(2000);
+        const real = (uToT(S.u) - t0) / ((performance.now() - w0) / 1000); S.playing = false; setPlayIcon();
+        pick('1'); const back = !document.querySelector('#slow').disabled && S.slow === SLOW.keep;
+        const f = engFires()[0]; S.u = tToU(f.a + 30); slowJump(); pick('r20');
+        S.playing = true; setPlayIcon(); await sl(400); S.playing = false; setPlayIcon();
+        return { off, real, back, on: slowOn(), rate: SLOW.rate, over: !!SLOW.over, tag: document.querySelector('#slowTag').textContent };
+      });
+      if (!r.off) throw new Error('real time left the slow motion on');
+      if (!(Math.abs(r.real - 1) < 0.15)) throw new Error('real time ran at ' + r.real.toFixed(3) + '×');
+      if (!r.back) throw new Error('the slow motion did not come back');
+      if (r.on && !(r.over && Math.abs(r.rate - 20) < 1e-6 && /20× gerçek zaman/.test(r.tag))) throw new Error(`20× during the burn: ${r.rate} · ${r.tag}`);
+    });
     await step('free flight: enter from the mission, warp, exit (Phase 19b)', async () => {
       await page.evaluate(async () => { sceneEnd(true); loadScenario('mv_leo_geo'); S.playing = false; setPlayIcon(); await new Promise(r => setTimeout(r, 600)); S.u = tToU(600); slowJump(); });
       await page.waitForTimeout(300); await page.click('#flyGo'); await page.waitForTimeout(400);

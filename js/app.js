@@ -1663,7 +1663,35 @@ scrub.addEventListener('input', () => { S.u = +scrub.value / 10000; S.ext = 0; s
 scrub.addEventListener('pointerdown', () => { scrubbing = true; });
 window.addEventListener('pointerup', () => { scrubbing = false; });
 // "r<seconds>" values play in real time (simulated seconds per second); the others scale the whole mission
-$('#speed').addEventListener('change', e => { const v = e.target.value; S.rate = v[0] === 'r' ? +v.slice(1) : 0; if (!S.rate) S.speed = +v; });
+// The speed (2026-11-15): relative to the mission's length (0.25× … 8×: the whole mission in 120 … 4 s) or a rate of
+// real time (1× real time, 2× … 60×, then 1 h/s … 30 d/s). At real time "Yanmalarda yavaşla" has nothing to do: it goes
+// off and faint, and comes back as it was at any other speed (SLOW.held, not saved). Picked during a burn in slow motion,
+// the speed holds for that burn (SLOW.over; faster or slower, at most core.js flyWarpMax of its length), the next burn
+// slows down on its own again. , and . step through the speeds by rate (as in free flight).
+$('#speed').addEventListener('change', e => speedPick(e.target.value));
+const speedRate = (v, T) => (v[0] === 'r' ? +v.slice(1) : +v * T / 30); // mission s per screen s (relative: roughly)
+function speedPick(v) {
+  S.rate = v[0] === 'r' ? +v.slice(1) : 0; if (!S.rate) S.speed = +v;
+  slowSync();
+  SLOW.over = null;
+  if (!C || !simR || !slowOn()) return;
+  const t = uToT(S.u), f = fireAt(slowFireList(), t);
+  if (f) SLOW.over = { a: f.a, b: f.b, r: Math.min(S.rate || Math.max(1e-6, (uToT(Math.min(1, S.u + S.speed / 30 / 60)) - t) * 60), flyWarpMax(f.b - f.a)) };
+}
+function slowSync() {
+  const rt = S.rate === 1, el = $('#slow');
+  if (rt && !SLOW.held) { SLOW.held = true; SLOW.keep = S.slow; S.slow = false; }
+  else if (!rt && SLOW.held) { SLOW.held = false; S.slow = SLOW.keep; }
+  el.checked = S.slow; el.disabled = rt; el.closest('label').classList.toggle('off', rt);
+  el.closest('label').title = _(rt ? 'ui.slowRt' : 'ui.slowTip');
+}
+document.addEventListener('keydown', e => {
+  if ((e.key !== ',' && e.key !== '.') || FREE.on || e.ctrlKey || e.metaKey || e.altKey || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) || !C) return;
+  const s = $('#speed'), T = C.T, o = [...s.options].map(q => q.value).sort((p, q) => speedRate(p, T) - speedRate(q, T));
+  const i = o.indexOf(s.value), j = clamp(i + (e.key === '.' ? 1 : -1), 0, o.length - 1);
+  e.preventDefault();
+  if (j !== i) { s.value = o[j]; speedPick(o[j]); }
+});
 $('#focus').addEventListener('change', e => { S.focus = e.target.checked; rebuildCum(); renderTicks(); });
 document.addEventListener('keydown', e => {
   if (e.code === 'Space' && !/INPUT|SELECT|TEXTAREA|BUTTON|SUMMARY/.test(document.activeElement.tagName)) { e.preventDefault(); $('#play').click(); }
@@ -1768,7 +1796,7 @@ function drawOsc2(o, bpos) {
 // one after across its window (impTurn; a visual aid only, the burn itself is instantaneous); one with no length (an
 // aerobraking pass) holds playback for SLOW_MS instead. The rate now shows by the clock (#slowTag: "×4 · yanma").
 // Neither in the low-resource mode or with reduced motion; switch #slow ("Yanmalarda yavaşla"), saved.
-const SLOW = { last: -1, prev: 0, morph: null, fires: null, src: null, r0: 1, rate: 1 }, SLOW_MS = 1.2;
+const SLOW = { last: -1, prev: 0, morph: null, fires: null, src: null, r0: 1, rate: 1, over: null, held: false, keep: true }, SLOW_MS = 1.2;
 const slowOn = () => S.slow && Q.glow && !lowQ && !reduceMotion;
 // the burns' windows with their rates (cached per result): the engine's, else the finite burns' spans
 function slowFireList() {
@@ -1781,6 +1809,7 @@ function slowFireList() {
 function burnRate(j) {
   if (REC.busy && REC.fireC) return REC.fireC[j] || REC.fireC.base || 1;
   const q = slowOn() && C ? slowFireList().find(x => x.j === j) : null;
+  if (q && SLOW.over && SLOW.over.a === q.a) return SLOW.over.r; // the viewer's own rate for this burn
   return q ? Math.min(q.c, SLOW.r0) : SLOW.r0;
 }
 // an impulsive burn's window, if it has one on the engine (by its moment)
@@ -1798,6 +1827,8 @@ function impTurn(t) {
 }
 // after a jump (scrub, tick, schedule row) a burn exactly at the new time still gets its turn; earlier ones do not
 function slowJump() { if (C && simR) { SLOW.last = uToT(S.u) - 1e-6; SLOW.prev = SLOW.last; } SLOW.morph = null; }
+// the rate as a multiple of real time: 4×, 2,5×, 372×, 86.400×
+const fmtX = r => NF(r < 9.95 && Math.abs(r - Math.round(r)) > 0.05 ? 1 : 0).format(r);
 const fmtRate = r => (r >= 86400 ? nf1.format(r / 86400) + ' ' + _('unit.d') : r >= 3600 ? nf1.format(r / 3600) + ' ' + _('unit.h') : r >= 60 ? nf1.format(r / 60) + ' ' + _('unit.min') : NF(r < 10 ? 1 : 0).format(r) + ' ' + _('unit.s'));
 // playback advance for this frame (dt real seconds), u < 1: the next u
 function playStep(dt) {
@@ -1813,9 +1844,10 @@ function playStep(dt) {
   let t1 = S.rate ? t0 + dt * S.rate : uToT(Math.min(1, S.u + dt * S.speed / 30));
   const r0 = SLOW.r0 = Math.max(1e-6, (t1 - t0) / Math.max(dt, 1e-6));
   let rate = r0;
-  if (slowOn()) {
-    const fs = slowFireList();
-    if (fs.length) { t1 = slowAdvance(t0, dt, r0, fs, C.T); rate = 1 / slowRho(t0, r0, fs); }
+  const on = slowOn(), pa = playAdvance(t0, dt, r0, on ? slowFireList() : null, C.T, on ? SLOW.over : null);
+  SLOW.over = pa.over;
+  if (on) {
+    t1 = pa.t; rate = pa.rate;
     // an impulsive burn with no window in this step: stop at it, start the turn
     for (const e of C.imp || []) {
       if (e.win === undefined) e.win = impWin(e);
@@ -1823,7 +1855,7 @@ function playStep(dt) {
     }
   }
   SLOW.rate = rate;
-  const slow = rate < r0 / 1.15, txt = _(slow ? 'tl.rateSlow' : 'tl.rate', { r: fmtRate(rate) });
+  const slow = rate < r0 / 1.15, txt = _(SLOW.over ? 'tl.rateHand' : slow ? 'tl.rateSlow' : 'tl.rate', { r: fmtRate(rate), x: fmtX(rate) });
   if (SLOW.morph) { if (!tag.hidden) tag.hidden = true; } else { if (tag.hidden) tag.hidden = false; tag.classList.toggle('slow', slow); setT('#slowTag', txt); }
   return t1 >= C.T ? 1 : Math.max(S.u, tToU(t1));
 }
