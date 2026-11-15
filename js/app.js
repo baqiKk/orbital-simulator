@@ -107,6 +107,8 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 
 function fmtDist(m) {
   const km = m / 1e3;
+  if (Math.abs(m) < 1) return nf2.format(m) + ' m'; // up close to the craft (the scale bar)
+  if (Math.abs(m) < 1000) return nf0.format(m) + ' m';
   if (km < 1000) return nf1.format(km) + ' km';
   if (km < 5e7) return nf0.format(km) + ' km';
   return nf3.format(m / 1.495978707e11) + ' ' + _('unit.au');
@@ -1336,29 +1338,80 @@ function tap(x, y, touch) {
 // view 400 km across about it), a smooth move as for an overview pick; Esc, A, the button again or a double tap on empty
 // space go back to the view before (APPR.prev). "Kesit" opens the 3D model's hull (CRAFT.cut); in 2D the engine window's
 // cutaway shows it. The first time a mission is on screen, a hint says how (once: PREF_KEYS.apprTip).
-const APPR = { on: false, prev: null, tipAt: 0 };
+// Framing (2026-11-15): the mission's windows fold (APPR_FOLD; the engine panel stays) and unfold again on the way back;
+// the craft sits in the middle of the free area left by the windows and the bars (kept there as they change), its length
+// ≈ APPR_K of that area along its axis on screen; 3D: seen across its thrust axis, a little from above and a little from
+// behind (a three-quarter view, the start of the flame in view), with the cutaway its face (the frame's Z) towards the
+// camera, the lit side when there is a choice (apprAim, on the first frame drawn: the axis needs the frame).
+const APPR = { on: false, prev: null, tipAt: 0, aim: null, fold: [] }, APPR_K = 0.45, APPR_FOLD = ['mission', 'results', 'overview', 'engine'];
 function apprSet(on) {
   if (on && (!C || MAP.on || SCENE.on)) return;
   if (on === APPR.on) return;
   const a = flyFrom(), v3 = is3d(), c = v3 ? cam3() : null;
   if (on) {
     APPR.prev = { follow: S.follow, v3, cam: { cx: cam.cx, cy: cam.cy, scale: cam.scale }, c: c && { t: [...c.t], dist: c.dist, yaw: c.yaw, elev: c.elev, cx: c.cx, cy: c.cy } };
+    APPR.fold = [];
+    for (const id of APPR_FOLD) if ((id !== 'engine' || v3) && WINS[id].open && !WINS[id].collapsed && !winEl(id).classList.contains('scene-hide')) { WINS[id].collapsed = true; applyWin(id); APPR.fold.push(id); }
+    INS = null;
     S.follow = 'craft'; renderFrameSeg();
     CRAFT.L = craftLen(engNow(uToT(S.u)).s); // this craft's length (the frame has not drawn it yet)
-    if (v3) c.dist = CRAFT.L / (0.9 * Math.tan(c.fov * Math.PI / 360)); // the model ≈ 45 % of the view's height
-    else cam.scale = Math.min(W, H) / 4e5;
+    if (v3) { APPR.on = true; APPR.aim = a; apprSync(); return; } // aimed on the next frame (draw3d → apprAim)
+    const q = apprBox(); cam.scale = Math.min(q.w, q.h) / 4e5; // 2D: a view ≈ 400 km across the free area
   } else {
-    const p = APPR.prev; APPR.prev = null;
+    const p = APPR.prev; APPR.prev = null; APPR.aim = null;
+    for (const id of APPR.fold) if (WINS[id].open && WINS[id].collapsed) { WINS[id].collapsed = false; applyWin(id); }
+    APPR.fold = []; INS = null;
     if (p) {
       S.follow = p.follow; renderFrameSeg();
-      if (p.v3 === v3) { if (v3) Object.assign(c, { ...p.c, t: [...p.c.t] }); else Object.assign(cam, p.cam); }
+      if (p.v3 === v3) { if (v3) Object.assign(c, { ...p.c, t: [...p.c.t], roll: 0 }); else Object.assign(cam, p.cam); }
     }
   }
   APPR.on = on; flyTo(a); apprSync();
 }
+// the free area's middle (px) and its size
+function apprBox() { const q = insets(); return { x: q.l + (W - q.l - q.r) / 2, y: q.t + (H - q.t - q.b) / 2, w: Math.max(80, W - q.l - q.r), h: Math.max(80, H - q.t - q.b) }; }
+// the direction across the nose ax that is "up" (frame axes): the local vertical v (away from the body below) where it is
+// not along the nose, else the frame's Z, else any
+function acrossUp(ax, v) {
+  for (const q of [v, [0, 0, 1], Math.abs(ax[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]]) {
+    if (!q) continue;
+    const k = q[0] * ax[0] + q[1] * ax[1] + q[2] * ax[2], u = [q[0] - k * ax[0], q[1] - k * ax[1], q[2] - k * ax[2]];
+    if (Math.hypot(u[0], u[1], u[2]) > 0.05 * Math.hypot(q[0], q[1], q[2])) return unit3(u);
+  }
+  return [0, 0, 1];
+}
+// 3D, the first frame after "Araca yaklaş" (frame set; the nose ax, the local vertical vert and the Sun's direction sun
+// in frame axes): the camera's direction, roll (the local vertical up on screen, so a low orbit shows the horizon below
+// the craft), distance and principal point, then the smooth move from where it was (APPR.aim)
+function apprAim(c, ax, vert, sun) {
+  const dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2], up = acrossUp(ax, vert);
+  let w = [ax[1] * up[2] - ax[2] * up[1], ax[2] * up[0] - ax[0] * up[2], ax[0] * up[1] - ax[1] * up[0]];
+  if (dot(w, sun) < 0) w = w.map(v => -v); // the lit side
+  // across the axis, a little from above (with the cutaway: onto its face, which looks up) and a little from behind
+  const d = unit3(CRAFT.cut ? up.map((u, k) => 0.9 * u + 0.3 * w[k] - 0.3 * ax[k]) : w.map((v, k) => 0.85 * v + 0.42 * up[k] - 0.3 * ax[k]));
+  c.elev = Math.asin(clamp(d[2], -1, 1)); c.yaw = Math.atan2(d[0], -d[1]); c.roll = 0; c.fov = FOV3;
+  let B = camBasis(c);
+  const vu = vert ? vert.map((v, k) => v - dot(vert, B.d) * B.d[k]) : null; // the local vertical on screen
+  if (vu && Math.hypot(...vu) > 1e-3 && Math.abs(c.elev) < 1.45) { c.roll = Math.atan2(-dot(B.r, vu), dot(B.u, vu)); B = camBasis(c); }
+  const px = dot(ax, B.r), py = dot(ax, B.u), sl = Math.hypot(px, py) || 1, box = apprBox();
+  const span = Math.min(box.w / Math.max(Math.abs(px / sl), 1e-3), box.h / Math.max(Math.abs(py / sl), 1e-3)); // the area's extent along the craft on screen
+  c.dist = Math.max(CRAFT.L * 0.9, CRAFT.L * sl * B.f / (APPR_K * span));
+  c.cx = box.x; c.cy = box.y;
+  const a = APPR.aim; APPR.aim = null; flyTo(a);
+}
+// while close: the craft stays in the middle of the free area as windows open, fold or move (gently)
+function apprKeep(c, dt) {
+  if (FLY.on) return;
+  const box = apprBox(), k = reduceMotion ? 1 : 1 - Math.exp(-dt / 0.25), x = c.cx == null ? W / 2 : c.cx, y = c.cy == null ? H / 2 : c.cy;
+  c.cx = x + (box.x - x) * k; c.cy = y + (box.y - y) * k;
+}
 function apprSync() { for (const id of ['#apprBtn', '#engAppr', '#epAppr']) $(id).setAttribute('aria-pressed', String(APPR.on)); for (const id of ['#cutBtn', '#engCut', '#epCut']) $(id).setAttribute('aria-pressed', String(CRAFT.cut)); }
 // 2D: the cutaway is the engine panel's (unfolded), else the engine window's
-function cutToggle() { CRAFT.cut = !CRAFT.cut; apprSync(); if (CRAFT.cut && !is3d()) { if (!$('#engPanel').hidden) epFold(false, true); else setWin('engine', { open: true, collapsed: false }); } }
+function cutToggle() {
+  CRAFT.cut = !CRAFT.cut; apprSync();
+  if (CRAFT.cut && !is3d()) { if (!$('#engPanel').hidden) epFold(false, true); else setWin('engine', { open: true, collapsed: false }); }
+  if (APPR.on && is3d() && !APPR.aim) APPR.aim = flyFrom(); // close: turn to the cut face (or back to the side view)
+}
 for (const id of ['#apprBtn', '#engAppr', '#epAppr']) $(id).addEventListener('click', () => apprSet(!APPR.on));
 for (const id of ['#cutBtn', '#engCut', '#epCut']) $(id).addEventListener('click', cutToggle);
 // the craft's path under a screen point (within r px): its drawn points, segment by segment (a double tap only)
@@ -1471,14 +1524,14 @@ function focusHit(h, zoom) {
 // Instant in the low-resource mode and with reduced motion; any camera input of the viewer stops it.
 const FLY = { on: false, t0: 0, a: null, b: null }, FLY_MS = 850;
 // the camera now: call before the zoom, hand the result to flyTo after it
-function flyFrom() { const v3 = is3d(), c = v3 ? cam3() : null; return { v3, map: MAP.on, cx: cam.cx, cy: cam.cy, s: cam.scale, t: c && [...c.t], d: c && c.dist, px: c ? (c.cx == null ? W / 2 : c.cx) : 0, py: c ? (c.cy == null ? H / 2 : c.cy) : 0 }; }
+function flyFrom() { const v3 = is3d(), c = v3 ? cam3() : null; return { v3, map: MAP.on, cx: cam.cx, cy: cam.cy, s: cam.scale, t: c && [...c.t], d: c && c.dist, px: c ? (c.cx == null ? W / 2 : c.cx) : 0, py: c ? (c.cy == null ? H / 2 : c.cy) : 0, yaw: c && c.yaw, el: c && c.elev, roll: c && c.roll }; }
 function flyTo(a) {
   FLY.on = false;
   if (!Q.glow || reduceMotion || a.v3 !== is3d() || a.map !== MAP.on) return;
   const c = a.v3 ? cam3() : null;
-  FLY.b = { cx: cam.cx, cy: cam.cy, s: cam.scale, t: c && [...c.t], d: c && c.dist, px: c ? (c.cx == null ? W / 2 : c.cx) : 0, py: c ? (c.cy == null ? H / 2 : c.cy) : 0 };
+  FLY.b = { cx: cam.cx, cy: cam.cy, s: cam.scale, t: c && [...c.t], d: c && c.dist, px: c ? (c.cx == null ? W / 2 : c.cx) : 0, py: c ? (c.cy == null ? H / 2 : c.cy) : 0, yaw: c && c.yaw, el: c && c.elev, roll: c && c.roll };
   FLY.a = a; FLY.t0 = performance.now(); FLY.on = true;
-  if (c) { c.t = [...a.t]; c.dist = a.d; c.cx = a.px; c.cy = a.py; } else { cam.cx = a.cx; cam.cy = a.cy; cam.scale = a.s; }
+  if (c) { c.t = [...a.t]; c.dist = a.d; c.cx = a.px; c.cy = a.py; c.yaw = a.yaw; c.elev = a.el; c.roll = a.roll || 0; } else { cam.cx = a.cx; cam.cy = a.cy; cam.scale = a.s; }
 }
 // eased progress 0..1; the move ends at 1 (or when the view it belongs to is gone)
 function flyE(v3) {
@@ -1502,6 +1555,7 @@ function fly3(c, followed) {
   const e = flyE(true); if (e < 0) return;
   const a = FLY.a, b = FLY.b, d = flyLog(a.d, b.d, e), k = (1 - e) * d / a.d, T = followed ? c.t : b.t;
   c.t = T.map((v, i) => v + (a.t[i] - v) * k); c.dist = d; c.cx = a.px + (b.px - a.px) * e; c.cy = a.py + (b.py - a.py) * e;
+  if (a.yaw != null && b.yaw != null) { const dy = Math.atan2(Math.sin(b.yaw - a.yaw), Math.cos(b.yaw - a.yaw)); c.yaw = a.yaw + dy * e; c.elev = a.el + (b.el - a.el) * e; c.roll = (a.roll || 0) + ((b.roll || 0) - (a.roll || 0)) * e; } // the turn, the short way
 }
 // drop the follow of the current view; the camera stays where it is
 function unfollow() {
@@ -1556,7 +1610,7 @@ function frameEnd() {
   const h = hoverPt && !ptrs.size ? hitAt(hoverPt.x, hoverPt.y, HIT_PX.mouse) : null;
   if (!!h !== !!hoverHit) cv.classList.toggle('hot', !!h);
   hoverHit = h;
-  if (!h) return;
+  if (!h || h.r > 60) return; // something large on screen (the craft up close) needs no ring around it
   const r = Math.max(h.kind === 'c' ? 8 : 6, h.r + 5);
   ctx.strokeStyle = hexA(COL.ink, 0.85); ctx.lineWidth = 1;
   ctx.beginPath(); ctx.arc(h.x, h.y, r, 0, 6.2832); ctx.stroke();

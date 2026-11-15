@@ -92,6 +92,10 @@ function behind3(p, o, skip) {
   return false;
 }
 
+// a body seen from close (its angular radius over ~17°, as from a low orbit): its disc fills the view, so it gets no
+// label, hit target or highlight ring (2026-11-15: from 400 km the Earth's hit ring circled the craft)
+function close3(p, o, R) { const e = CB.e; return R > 0.3 * Math.hypot(p[o] - e[0], p[o + 1] - e[1], p[o + 2] - e[2]); }
+
 // ---------- camera input ----------
 function rot3(dx, dy) { const c = cam3(); c.yaw -= dx * ROT3; c.elev = clamp(c.elev + dy * ROT3, -Math.PI / 2, Math.PI / 2); }
 function pan3(dx, dy) {
@@ -332,12 +336,18 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   setCaption();
   if (V3sys !== sys) { V3.bodies('sim', S.bodies.map(b => ({ color: b.key === 'sun' ? '#fff3d6' : b.color, sun: b.key === 'sun' }))); V3sys = sys; }
   sky3();
-  if (needFit) fit3();
+  if (needFit && !APPR.on) fit3(); else if (APPR.on) needFit = false; // close to the craft the view stays on it
   if (ext) trailUpdate(S.ext);
   frameAt(t2); tf3(craft2[0], craft2[1], craft2[2], CR3b);
   frameAt(tNow); tf3(craft[0], craft[1], craft[2], CR3);
   const N = sys.N, c = CAM3.sim;
   for (let b = 0; b < N; b++) { BP3[3 * b] = 0; tf3(SP[3 * b], SP[3 * b + 1], SP[3 * b + 2], PJ); BP3[3 * b] = PJ[0]; BP3[3 * b + 1] = PJ[1]; BP3[3 * b + 2] = PJ[2]; }
+  if (APPR.on) { // "Araca yaklaş": aimed once the frame is set (app.js apprAim), then kept in the free area's middle
+    if (APPR.aim) {
+      const sI = S.bodies.findIndex(q => q.key === 'sun'), sd = sI >= 0 ? unit3([BP3[3 * sI] - CR3[0], BP3[3 * sI + 1] - CR3[1], BP3[3 * sI + 2] - CR3[2]]) : sunDir3(0, -1, tNow, [0, 0, 0]);
+      apprAim(c, craftAxis3(tNow, craft, ext), craftUp3(tNow, craft, ext), sd || [1, 0, 0]);
+    } else apprKeep(c, 1 / 60);
+  }
   const fb = S.follow === 'A' ? 0 : S.follow === 'B' ? 1 : S.follow[0] === 'b' ? +S.follow.slice(1) : -1;
   if (S.follow === 'craft') c.t = [...CR3];
   else if (fb >= 0 && fb < N) c.t = [BP3[3 * fb], BP3[3 * fb + 1], BP3[3 * fb + 2]];
@@ -427,7 +437,7 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   for (let b = 0; b < N; b++) {
     const [x, y, dep] = scr[b], r = rpx[b];
     if (!(dep > 0) || x + r < -60 || x - r > W + 60 || y + r < -60 || y - r > H + 60) continue;
-    if (behind3(BP3, 3 * b, b)) continue;
+    if (behind3(BP3, 3 * b, b) || close3(BP3, 3 * b, sys.R[b])) continue;
     addHit('b', b, x, y, r);
     ctx.fillStyle = hexA(COL.ink, 0.82);
     ctx.fillText(S.bodies[b].name.toLocaleUpperCase(DICT['meta.locale']), x + Math.min(r, 400) * 0.72 + 7, y + Math.min(r, 400) * 0.72 + 12);
@@ -441,14 +451,14 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
       if (Q.glow) { const g = ctx.createRadialGradient(x, y, 0, x, y, 16); g.addColorStop(0, hexA(COL.traj, 0.6)); g.addColorStop(1, hexA(COL.traj, 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 16, 0, 6.2832); ctx.fill(); }
       ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
     }
-    const td = !ext ? thrustNow(tNow, craft) : null;
+    const td = !ext && lpx < 14 ? thrustNow(tNow, craft) : null; // the arrows only while the model is too small to show it
     if (td) { // the thrust direction while the engine burns: a short step along it, projected
       const k = c.dist * 0.05, X = FP.X, Y = FP.Y, Z = FP.Z;
       const q = [CR3[0] + k * (td[0] * X[0] + td[1] * X[1] + td[2] * X[2]), CR3[1] + k * (td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2]), CR3[2] + k * (td[0] * Z[0] + td[1] * Z[1] + td[2] * Z[2])];
       proj3(q, PJ); if (PJ[2] > 0) arrow(x, y, PJ[0] - x, PJ[1] - y, COL.burn, 34);
     }
     const vx = PJ2[0] - x, vy = PJ2[1] - y, vl = Math.hypot(vx, vy);
-    if (PJ2[2] > 0 && vl > 1e-6) {
+    if (PJ2[2] > 0 && vl > 1e-6 && lpx < 14) {
       const ux = vx / vl, uy = vy / vl, L = 22;
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(x + ux * 6, y + uy * 6); ctx.lineTo(x + ux * L, y + uy * L); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(x + ux * L, y + uy * L); ctx.lineTo(x + ux * (L - 5) - uy * 3.5, y + uy * (L - 5) + ux * 3.5); ctx.lineTo(x + ux * (L - 5) + uy * 3.5, y + uy * (L - 5) - ux * 3.5); ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
@@ -464,27 +474,41 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
 // a layered, wavering flame; length, width and brightness by thrust, colours by propellant (js/engine-ui.js
 // plumeCols), lit and dying with engNow pl; flickering, the noise drifting, except with reduced motion; plain in the low
 // quality). Returns the model's length on screen (px).
+// how far the flame may reach at a camera distance of q craft lengths: 0 up close, 1 from PLUME_NEAR[1] lengths
+const PLUME_NEAR = [2.5, 12];
+// the nose: the thrust while firing (and while the plume dies), else prograde about the dominant body (app.js
+// craftAxis), in the view frame's axes (after frameAt)
+const toFrame3 = v => { const X = FP.X, Y = FP.Y, Z = FP.Z; return [v[0] * X[0] + v[1] * X[1] + v[2] * X[2], v[0] * Y[0] + v[1] * Y[1] + v[2] * Y[2], v[0] * Z[0] + v[1] * Z[1] + v[2] * Z[2]]; };
+function craftAxis3(tNow, craft, ext, en) { return unit3(toFrame3(craftAxis(tNow, craft, ext, en || engNow(tNow)))) || [0, 0, 1]; }
+// the local vertical: away from the body the craft moves about (a maneuver's body, else the dominant one), frame axes
+function craftUp3(tNow, craft, ext) {
+  let r;
+  if (ext) { C.orbit.rel(tNow - C.T, AXr); r = [AXr[0], AXr[1], AXr[2]]; } else r = craftRel(tNow, craft).r;
+  return unit3(toFrame3(r));
+}
+const plumeNear = q => { const x = Math.max(0, Math.min(1, (q - PLUME_NEAR[0]) / (PLUME_NEAR[1] - PLUME_NEAR[0]))); return x * x * (3 - 2 * x); };
 function craft3(tNow, craft, ext, sunIdx) {
   const en = engNow(tNow), L = CRAFT.L = craftLen(en.s);
   proj3(CR3, PJ);
   const lpx = PJ[2] > 0 ? L * CB.f / PJ[2] : 0;
   if (!(lpx > 6)) { V3.craft({ show: false }); return lpx; }
-  // the nose: the thrust while firing (and while the plume dies), else prograde about the dominant body (app.js
-  // craftAxis), into the view frame's axes
-  const td = craftAxis(tNow, craft, ext, en), X = FP.X, Y = FP.Y, Z = FP.Z;
-  let ax = [td[0] * X[0] + td[1] * X[1] + td[2] * X[2], td[0] * Y[0] + td[1] * Y[1] + td[2] * Y[2], td[0] * Z[0] + td[1] * Z[1] + td[2] * Z[2]];
-  if (!(Math.hypot(...ax) > 0)) ax = [0, 0, 1];
+  const ax = craftAxis3(tNow, craft, ext, en);
   let sun = SUN3;
   if (sunIdx >= 0) { const v = [BP3[3 * sunIdx] - CR3[0], BP3[3 * sunIdx + 1] - CR3[1], BP3[3 * sunIdx + 2] - CR3[2]], l = Math.hypot(...v) || 1; sun = v.map(q => q / l); }
   const pc = plumeCols(en.plume), k = ext ? 0 : en.pl, ts = reduceMotion ? 0 : (performance.now() / 1000) % 600; // wrapped: the noise's inputs stay small
   const fl = reduceMotion ? 1 : 1 + 0.045 * Math.sin(ts * 37.7) + 0.03 * Math.sin(ts * 61.3 + 1.3) + 0.02 * Math.sin(ts * 97.1 + 2.1);
   // a liquid engine's tanks as long as their volumes (core.js engTanks, js/engines.js densities), as in the 2D cutaway
   const rho = (PROPS[en.E.prop] || {}).rho, V = rho && en.E.type === 'liq' ? engTanks(en.s, rho) : null, fo = V ? V.ox / (V.ox + V.fuel) : 0.5;
-  // the cut faces the frame's reference-plane normal (fixed to the body, not to the camera)
-  V3.craft({ show: true, p: CR3, axis: ax, side: [0, 0, 1], L, sun, cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,
+  // Up close (2026-11-15) the flame keeps out of the way: seen from a few craft lengths its length and brightness are
+  // held down (half the length and 30 % of the brightness within PLUME_NEAR[0] lengths, full from PLUME_NEAR[1]), so it
+  // reads as the nozzle's flame and does not fill the screen with an orange glow
+  const nq = plumeNear(CAM3.sim.dist / L);
+  // the cut faces up, the local vertical across the nose (2026-11-15; fixed to the orbit, not to the camera; before: the
+  // frame's Z), so from the default close view it looks at the camera and the body below shows behind it
+  V3.craft({ show: true, p: CR3, axis: ax, side: acrossUp(ax, craftUp3(tNow, craft, ext)), L, sun, cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,
     col: { metal: COL.dim, nozzle: COL.faint, fuel: COL.burn, ox: COL.cyan, // fuel and oxidizer as the engine window's charts
       tex: { ink: COL.ink, dim: COL.dim, faint: COL.faint, solid: COL.solid, accent: COL.accent, warn: COL.warn, burn: COL.burn, bad: COL.bad, orbit: COL.orbit } },
-    plume: { core: pc.core, body: pc.body, I: k > 0.004 ? 0.85 * pc.k * (0.3 + 0.7 * k) * Math.min(1, 3 * k) * fl : 0, len: (1.2 + 2.6 * k) * fl, t: ts, simple: lowQ || FX.lvl >= 2 } });
+    plume: { core: pc.core, body: pc.body, I: k > 0.004 ? 0.85 * pc.k * (0.3 + 0.7 * k) * Math.min(1, 3 * k) * fl * (0.3 + 0.7 * nq) : 0, len: (1.0 + 2.0 * k) * fl * (0.5 + 0.5 * nq), t: ts, simple: lowQ || FX.lvl >= 2 } });
   return lpx;
 }
 // the trail after capture (fading oldest revolutions), up to the craft
@@ -666,7 +690,7 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
   for (const i of order) {
     if (!show[i]) continue;
     const [x, y, dep] = scr[i], r = rpx[i], k = MAPK[i], moon = isMoon(i);
-    if (!(dep > 0) || x < -40 || x > W + 40 || y < -40 || y > H + 40 || behind3(pos, 3 * i, i)) continue;
+    if (!(dep > 0) || x < -40 || x > W + 40 || y < -40 || y > H + 40 || behind3(pos, 3 * i, i) || close3(pos, 3 * i, mapSys.R[i])) continue;
     addHit('m', i, x, y, r);
     if (shot && !moon && i !== MSUN && k !== 'saturn') continue; // the opening shot names Saturn, its moons and the Sun
     if ((k === keyA || k === keyB) && !SCENE.on) { ctx.strokeStyle = k === keyA ? COL.traj : COL.orbit; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.2832); ctx.stroke(); }

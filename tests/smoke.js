@@ -77,9 +77,23 @@ function watch(page, errs) {
     const appr = () => page.evaluate(() => APPR.on), cut = () => page.evaluate(() => CRAFT.cut);
     // paused (the play button): the craft stays where the double clicks aim
     await step('pause', async () => { if (await page.evaluate(() => S.playing)) await page.click('#play'); });
+    const open0 = await page.evaluate(() => ['mission', 'results'].filter(id => WINS[id].open && !WINS[id].collapsed));
     await step('approach the craft (button)', async () => { await page.click('#apprBtn'); if (!(await appr())) throw new Error('not approached'); });
+    // 2026-11-15: the craft in the middle of the free area (windows and bars aside), the mission's windows folded
+    await step('the craft in the middle of the free area', async () => {
+      await page.waitForTimeout(1400);
+      const q = await page.evaluate(() => { const h = HITS.find(q => q.kind === 'c'), b = apprBox(); return { h: h && [h.x, h.y], b, fold: ['mission', 'results'].filter(id => WINS[id].open && !WINS[id].collapsed) }; });
+      if (!q.h) throw new Error('the craft is not on screen');
+      const dx = Math.abs(q.h[0] - q.b.x) / q.b.w, dy = Math.abs(q.h[1] - q.b.y) / q.b.h;
+      if (dx > 0.06 || dy > 0.06) throw new Error(`the craft at ${q.h.map(Math.round)}, the free area's middle at ${[q.b.x, q.b.y].map(Math.round)} (${Math.round(q.b.w)} × ${Math.round(q.b.h)})`);
+      if (q.fold.length) throw new Error('still unfolded: ' + q.fold.join(', '));
+    });
     await step('the cutaway', async () => { await page.click('#cutBtn'); if (!(await cut())) throw new Error('no cutaway'); await page.waitForTimeout(800); await page.click('#cutBtn'); });
-    await step('Esc goes back', async () => { await page.click('#cv', { position: { x: 5, y: 5 } }).catch(() => {}); await page.keyboard.press('Escape'); if (await appr()) throw new Error('still close'); });
+    await step('Esc goes back', async () => {
+      await page.click('#cv', { position: { x: 5, y: 5 } }).catch(() => {}); await page.keyboard.press('Escape'); if (await appr()) throw new Error('still close');
+      const back = await page.evaluate(ids => ids.filter(id => !(WINS[id].open && !WINS[id].collapsed)), open0);
+      if (back.length) throw new Error('not unfolded again: ' + back.join(', '));
+    });
     await step('the A key', async () => { await page.keyboard.press('a'); if (!(await appr())) throw new Error('A did not approach'); await page.keyboard.press('a'); if (await appr()) throw new Error('A did not go back'); });
     await step('double click on the craft', async () => {
       // the windows close (their rail buttons): nothing over the plot but the readout

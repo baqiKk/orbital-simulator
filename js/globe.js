@@ -156,6 +156,8 @@ uniform float uTex, uMix, uMix2, uSat, uLimb, uRing, uRingHas, uTauHas, uPhot, u
 uniform sampler2D uMap, uMap2, uRingMap, uTau, uClouds, uNight, uOcean, uRelief;
 uniform vec2 uRingR;
 uniform vec4 uLayers;   // clouds, city lights (their strength 0 … 1), glint, relief (1 = on)
+uniform float uNightLo; // the night side's faint light seen close (0 … 1: as the city lights fade out; nightLow)
+const float NIGHT_LO = 0.05;
 uniform vec4 uRelief4;  // lowest and highest height (body radii), cast shadows (1 = on), the Sun's angular radius (rad)
 uniform vec4 uHaze;     // on, scale height, vertical optical depth, top (body radii)
 uniform vec4 uHazeC;    // haze colour (linear), Henyey–Greenstein g
@@ -284,6 +286,7 @@ vec3 globeColor(vec3 n, vec3 s, vec3 v, float rs) {
     col += vec3(water * (1.0 - ca) * F * 28.5 * pow(max(dot(n, hv), 0.0), 220.0) * max(mu0, 0.0)) * rs;
   }
   if (uLayers.x > 0.5) col = mix(col, vec3(0.85 * lit), ca);
+  if (uNightLo > 0.0) col += mix(base, vec3(0.85), ca) * uNightLo * NIGHT_LO * (1.0 - smoothstep(-0.12, 0.02, mu0));
   if (uLayers.y > 0.001) col += texture(uNight, uv).rgb * vec3(1.0, 0.78, 0.5) * 0.6 * uLayers.y * (1.0 - smoothstep(-0.12, 0.02, mu0)) * (1.0 - ca);
   return col + atmGlow(n, s, mu, uGlow);
 }
@@ -356,7 +359,7 @@ void main() {
   oC = col.a > 0.0 ? vec4(toSRGB(toneMap(col.rgb / col.a)) * col.a, col.a) : vec4(0.0);
 }`;
 const GLB_UNI = ['uRect', 'uRot', 'uSun', 'uColor', 'uTex', 'uSat', 'uLimb', 'uMix', 'uMix2', 'uPx', 'uRing', 'uRingR', 'uRingHas', 'uTauHas', 'uGlow', 'uPhot', 'uEmit',
-  'uCloudRot', 'uLayers', 'uRelief4', 'uHaze', 'uHazeC', 'uHazeL', 'uVoid', 'uVoidZ'];
+  'uCloudRot', 'uLayers', 'uNightLo', 'uRelief4', 'uHaze', 'uHazeC', 'uHazeL', 'uVoid', 'uVoidZ'];
 const GLB_SAMP = ['uMap', 'uMap2', 'uRingMap', 'uTau', 'uClouds', 'uNight', 'uOcean', 'uRelief']; // texture units 0..7
 function globeInit() {
   if (GLB.gl || GLB.fail) return !!GLB.gl;
@@ -397,6 +400,7 @@ const linC = h => { const n = parseInt(h.slice(1), 16), f = c => { c /= 255; ret
 // the uniform values of a look (both renderers): layer switches, relief, haze, ring optical depth
 function lookUniforms(L) {
   return {
+    nightLo: L && L.nightLo ? L.nightLo : 0,
     layers: [L && L.clouds ? 1 : 0, L && L.night ? (L.nightK == null ? 1 : L.nightK) : 0, L && L.ocean ? 1 : 0, L && L.relief ? 1 : 0],
     relief: L && L.relief ? [L.relief.h[0], L.relief.h[1], L.shadow ? 1 : 0, L.sunAng] : [0, 0, 0, 0.0047],
     haze: L && L.haze ? [1, L.haze.H, L.haze.tau, L.haze.top] : [0, 1, 0, 0],
@@ -433,7 +437,7 @@ function drawGlobe(ctx, x, y, r, W, H, dpr, o) {
   if (ring) { gl.uniform2f(u.uRingR, ring.r[0], ring.r[1]); gl.uniform1f(u.uRingHas, ring.e ? 1 : 0); gl.uniform1f(u.uTauHas, ring.tau ? 1 : 0); }
   bind(4, L.clouds && L.clouds.img, true, true); bind(5, L.night && L.night.img, true, false); bind(6, L.ocean && L.ocean.img, true, true); bind(7, L.relief && L.relief.e.img, true, true);
   const U = lookUniforms(L);
-  gl.uniform4fv(u.uLayers, U.layers); gl.uniform4fv(u.uRelief4, U.relief); gl.uniform4fv(u.uHaze, U.haze); gl.uniform4fv(u.uHazeC, U.hazeC); gl.uniform3fv(u.uHazeL, U.hazeL);
+  gl.uniform4fv(u.uLayers, U.layers); gl.uniform1f(u.uNightLo, U.nightLo); gl.uniform4fv(u.uRelief4, U.relief); gl.uniform4fv(u.uHaze, U.haze); gl.uniform4fv(u.uHazeC, U.hazeC); gl.uniform3fv(u.uHazeL, U.hazeL);
   gl.uniform1f(u.uCloudRot, U.cloudRot); gl.uniform1f(u.uPhot, U.phot); gl.uniform4fv(u.uVoid, U.void); gl.uniform2fv(u.uVoidZ, U.voidZ);
   gl.uniform4fv(u.uGlow, L.glow || [0, 0, 0, 0]);
   gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
@@ -461,6 +465,11 @@ function nightFade(r, e) {
   const ppt = 2 * Math.PI * r / w;
   return Math.max(0, Math.min(1, (5 - ppt) / 3));
 }
+// The night side seen close (2026-11-15): where the city lights have faded out the night side went pitch black and from
+// a low orbit the Earth showed only its limb glow. A faint light (moonlight, airglow: NIGHT_LO of the day albedo) comes
+// in as the lights go, so the surface still reads below the craft; seen whole it stays dark with its lights.
+// (no night map loaded yet: as with the 4k one)
+function nightLow(r, e) { return 1 - (e ? nightFade(r, e) : Math.max(0, Math.min(1, (5 - 2 * Math.PI * r / 4096) / 3))); }
 function globeLook(key, r, allow, fetch, cap, fx, t) {
   const L = lookOf(key); if (!L) return null;
   const want = allow && r >= TEX_MIN_PX, b = L.b;
@@ -475,7 +484,7 @@ function globeLook(key, r, allow, fetch, cap, fx, t) {
   return { tex: tx, sat: L.sat, limb: L.limb, nodata: tx && L.tex.nodata, glow: b.haze ? [0, 0, 0, 0] : L.glow, phot: b.phot === 'lambert',
     ring: L.rings ? { e: ring, tau, r: L.rings.r.map(q => q * L.rings.req / b.radius) } : null,
     relief: rel ? { e: rel.e, h: b.relief.h.map(m => m / 1000 / b.radius) } : null, shadow: !!rel && r >= SHADOW_PX, sunAng: sunAngOf(key),
-    clouds: cl && cl.e, cloudRot: ((t || 0) / (20 * 86400)) % 1, night: ni && ni.e, ocean: oc && oc.e, nightK: nightFade(r, ni && ni.e),
+    clouds: cl && cl.e, cloudRot: ((t || 0) / (20 * 86400)) % 1, night: ni && ni.e, ocean: oc && oc.e, nightK: nightFade(r, ni && ni.e), nightLo: b.night ? nightLow(r, ni && ni.e) : 0,
     haze: b.haze && !(key === 'venus' && TEXOPT.venusRadar) ? { H: b.haze.H / b.radius, tau: b.haze.tau, top: b.haze.top / b.radius, g: b.haze.g, col: linC(b.color),
       layer: b.haze.layer ? [b.haze.layer[0] / b.radius, b.haze.layer[1] / b.radius, b.haze.layer[2]] : null } : null };
 }

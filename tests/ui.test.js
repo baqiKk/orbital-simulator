@@ -1314,7 +1314,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(['blue', 'orange', 'pink', 'white', 'faint', 'amber'].every(k => PAL.includes(k + ': { core: [')) && !/#[0-9a-f]{3,6}/i.test(PAL) && ui.includes('function plumeCols(cls)') && m3.includes('plumeCols(en.plume)') && app.includes('plumeCols(en.plume)'), 'plume: colours by propellant, from the tokens');
   assert.ok(E2.PROPS.lox_lh2.plume === 'blue' && E2.PROPS.lox_rp1.plume === 'orange' && E2.PROPS.nto_mmh.plume === 'pink' && E2.PROPS.nto_a50.plume === 'pink' && E2.PROPS.apcp.plume === 'white' && E2.PROPS.n2h4.plume === 'faint', 'plume: classes by propellant');
   assert.ok(m3.includes('const fl = reduceMotion ? 1 :') && m3.includes('simple: lowQ || FX.lvl >= 2'), 'plume: flicker except with reduced motion, plain in the low quality');
-  assert.ok(m3.includes('const td = craftAxis(tNow, craft, ext, en)') && read('js/app.js').includes('function craftAxis(tNow, craft, ext, en) {') && m3.includes("if (S.follow === 'craft') return CRAFT.L * 0.9;"), 'craft: the nose along the thrust while burning (and through the plume fading); the camera kept outside it');
+  assert.ok(m3.includes('return unit3(toFrame3(craftAxis(tNow, craft, ext, en || engNow(tNow))))') && read('js/app.js').includes('function craftAxis(tNow, craft, ext, en) {') && m3.includes("if (S.follow === 'craft') return CRAFT.L * 0.9;"), 'craft: the nose along the thrust while burning (and through the plume fading); the camera kept outside it');
   // the craft's look (2026-11-14): procedural canvas textures painted from the theme's colours (no image files, no hex
   // in the painters), lathe v by length; foam on cryogenic tanks, gold foil on storables, bare metal for RP-1, a
   // composite case for nitrous oxide and the hybrid's motor, a light case for a solid; cooling channels and heat tint
@@ -1325,10 +1325,10 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(v3.includes("oxTank: T(cryo ? 'foam' : prop === 'n2o_htpb' ? 'carbon' : fin), fuelTank: T(prop === 'lox_lh2' ? 'foam' : prop === 'lox_rp1' ? 'alu' : fin)") && v3.includes("caseC: T(ty === 'sol' ? 'case' : 'carbon')") && v3.includes('M.nozLiq') && v3.includes('M.nozAbl'), 'craft textures: finishes by propellant and type');
   assert.ok(v3.includes('uv.setY(k, rev ? 1 - cum[k % np] / tot : cum[k % np] / tot)') && v3.includes('gl_FrontFacing ? base * l + sp : uBack * 0.38') && v3.includes('pow(max(dot(n, H), 0.0), 28.0)'), 'craft textures: by length along the profile, outsides textured and lit, insides plain');
   assert.ok(m3.includes('engTanks(en.s, rho)') && m3.includes('fo = V ? V.ox / (V.ox + V.fuel) : 0.5') && v3.includes('const span = 0.67, lo = Math.max(0.15, Math.min(span - 0.15, span * (fo > 0 ? fo : 0.5)))'), 'craft: a liquid\'s tanks as long as their volumes in 3D');
-  // the cutaway fixed to the body (2026-11-15): the cut faces the frame's reference-plane normal, never the camera; the
+  // the cutaway fixed to the body (2026-11-15): the cut faces the local vertical (before: the frame's Z), never the camera; the
   // craft call's fields all live (none behind a comment)
   const cc = m3.slice(m3.indexOf('V3.craft({ show: true'), m3.indexOf('return lpx;', m3.indexOf('V3.craft({ show: true')));
-  assert.ok(cc.includes('side: [0, 0, 1]') && cc.includes('cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,') && !cc.split('\n')[0].includes('//') && v3.includes('const sd = o.side || [0, 0, 1];') && !v3.includes('add(camera.position).normalize();'), 'cutaway: fixed to the body');
+  assert.ok(cc.includes('side: acrossUp(ax, craftUp3(tNow, craft, ext))') && cc.includes('cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,') && !cc.split('\n')[0].includes('//') && v3.includes('const sd = o.side || [0, 0, 1];') && !v3.includes('add(camera.position).normalize();'), 'cutaway: fixed to the body');
   // approaching the craft
   assert.ok(html.includes('id="apprBtn"') && html.includes('id="cutBtn"') && html.includes('id="engAppr"') && html.includes('id="engCut"') && html.includes('id="apprTip"') && ['appr.btn', 'appr.tip', 'appr.hint', 'appr.hintTouch', 'cut.btn', 'cut.tip', 'eng.play'].every(has), 'approach: the buttons, the hint, the words');
   assert.ok(app.includes("if (dbl && !MAP.on && C && ((tgt && tgt.kind === 'c') || onPath)) { sceneTouch(); apprSet(true); return; }") && app.includes('if (dbl && !tgt && APPR.on) { apprSet(false); return; }') && app.includes("if (e.key === 'a' || e.key === 'A') apprSet(!APPR.on);") && app.includes("e.key === 'Escape' && APPR.on"), 'approach: double tap on the craft or its path, empty space back, A, Esc');
@@ -1471,6 +1471,39 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(['flyBar', 'flyPause', 'flyWarp', 'flyNow', 'flyExit', 'flyDate', 'flyBody', 'flyGo'].every(id => html.includes('id="' + id + '"')) && ['fly.bar', 'fly.warp', 'fly.play', 'fly.pause', 'fly.now', 'fly.nowTip', 'fly.exit', 'fly.exitTip', 'fly.go', 'fly.goTip', 'fly.state', 'chip.fly'].every(has), 'free flight: the bar and its words');
   assert.ok(fl.includes('flyAdvance(mapSys, s, Math.min(dt, 0.1) * FREE.warp, { rails: FREE.warp >= RAILS_W, maxSteps: 4000 })') && fl.includes('const RAILS_W = 1000') && fl.includes('flyPredict(mapSys, s.t, s.r, s.v, { revs: 1, T: 30 * DAY, K: 120 })') && fl.includes("if (e.key === '.' || e.key === ',')") && fl.includes("e.code === 'Space'"), 'free flight: the advance, the prediction, the keys');
   assert.ok(app.includes('if (FREE.on) { flyFrame(dt, v3, glow, now);') && app.includes('if (flyRestore()) startClose();') && app.includes("$('#flyGo').addEventListener('click', () => flyEnter());") && app.includes('|| !sys || FREE.on) return null;') && read('css/style.css').includes('html[data-fly] #timeline,html[data-fly] #readout'), 'free flight: hooked into the draw loop, restored on start, the mission path off the map');
+}
+// 50) The craft up close, framed again (2026-11-15): the mission's windows fold and unfold again; the craft in the middle of
+// the free area, its length ≈ 45 % of it along its axis on screen, seen across the thrust axis a little from above and
+// behind with the local vertical up (a low orbit shows the horizon), the cutaway's face up towards the camera; a body
+// seen from close gets no label, hit or ring (from 400 km the Earth's hit ring circled the craft), large hits no hover
+// ring; the night side keeps a faint light where the city lights fade; the flame held down up close; the scale bar in m.
+{
+  const app = read('js/app.js'), m3 = read('js/mode3d.js'), gl = read('js/globe.js'), v3 = read('js/view3d.js');
+  assert.ok(app.includes("APPR_K = 0.45, APPR_FOLD = ['mission', 'results', 'overview', 'engine']") && app.includes('WINS[id].collapsed = true; applyWin(id); APPR.fold.push(id);') && app.includes('for (const id of APPR.fold) if (WINS[id].open && WINS[id].collapsed) { WINS[id].collapsed = false; applyWin(id); }'), 'approach: windows fold and come back');
+  assert.ok(m3.includes('apprAim(c, craftAxis3(tNow, craft, ext), craftUp3(tNow, craft, ext), sd || [1, 0, 0]);') && m3.includes('} else apprKeep(c, 1 / 60);') && m3.includes('if (needFit && !APPR.on) fit3();'), 'approach: aimed on the first frame, kept in the free area, no refit');
+  // the aim itself (sandboxed): the craft across the view, the camera above and behind, the local vertical up on screen
+  const sb = { Math, APPR_K: 0.45, FOV3: 45, W: 1440, H: 900, CRAFT: { L: 3, cut: false }, APPR: { aim: null }, FLY: {}, reduceMotion: false, flyTo() {}, insets: () => ({ l: 0, r: 0, t: 100, b: 250 }) };
+  require('vm').runInNewContext('const clamp = (x, a, b) => Math.min(b, Math.max(a, x));' + app.slice(app.indexOf('const unit3 = '), app.indexOf('\n', app.indexOf('const unit3 = '))) + m3.slice(m3.indexOf('const CB = {'), m3.indexOf('// screen position of view-frame point p')) +
+    app.slice(app.indexOf('function apprBox()'), app.indexOf('// while close: the craft stays')) + ';this.aim = apprAim; this.cb = camBasis;', sb);
+  const ax = [1, 0, 0], vert = [0, 0.6, 0.8], c = { t: [0, 0, 0], yaw: 0, elev: 0, dist: 1, roll: 0, fov: 45 };
+  sb.aim(c, ax, vert, [0, -1, 0]);
+  const B = sb.cb(c), dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2], vu = vert.map((v, k) => v - dot(vert, B.d) * B.d[k]);
+  const across = Math.abs(dot(B.d, ax)), lpx = 3 * Math.hypot(dot(ax, B.r), dot(ax, B.u)) * B.f / c.dist;
+  assert.ok(across < 0.35 && dot(B.d, ax) < 0 && dot(B.d, vert) > 0.2 && dot(B.d, vert) < 0.6, `approach: across the axis (${across.toFixed(2)}), from behind and a little above`);
+  assert.ok(dot(B.u, vu) / Math.hypot(...vu) > 0.99, 'approach: the local vertical up on screen');
+  assert.ok(Math.abs(lpx / 1440 - 0.45) < 0.02 && c.cx === 720 && c.cy === 100 + 550 / 2, `approach: the craft ${(lpx / 1440 * 100).toFixed(0)} % of the free area, in its middle`);
+  sb.CRAFT.cut = true; sb.aim(c, ax, vert, [0, -1, 0]);
+  assert.ok(dot(sb.cb(c).d, vert) > 0.85, 'approach: with the cutaway, onto its face (up)');
+  assert.ok(m3.includes('side: acrossUp(ax, craftUp3(tNow, craft, ext))') && app.includes("if (APPR.on && is3d() && !APPR.aim) APPR.aim = flyFrom();"), 'approach: the cut faces the local vertical; toggling it turns the camera');
+  assert.ok(m3.includes('function close3(p, o, R)') && m3.includes('behind3(BP3, 3 * b, b) || close3(BP3, 3 * b, sys.R[b])') && m3.includes('close3(pos, 3 * i, mapSys.R[i])') && app.includes('if (!h || h.r > 60) return;'), 'approach: no label, hit or ring on a body seen from close');
+  assert.ok(m3.includes("const td = !ext && lpx < 14 ? thrustNow(tNow, craft) : null;") && m3.includes('vl > 1e-6 && lpx < 14'), 'approach: no arrows over the model');
+  const ctxL = {}; require('vm').runInNewContext(gl.slice(gl.indexOf('function nightFade('), gl.indexOf('function globeLook(')) + ';this.f = nightLow;', ctxL);
+  const img = { img: { naturalWidth: 4096 } };
+  assert.ok(ctxL.f(1000, img) === 0 && ctxL.f(4000, img) === 1 && ctxL.f(9e5, null) === 1 && ctxL.f(100, null) === 0 && gl.includes('uniform float uNightLo;') && gl.includes("'uNightLo'") && v3.includes('u.uNightLo.value = U.nightLo;') && gl.includes('nightLo: b.night ? nightLow(r, ni && ni.e) : 0'), 'night side: a faint light up close, both renderers');
+  const pn = {}; require('vm').runInNewContext(m3.slice(m3.indexOf('const PLUME_NEAR'), m3.indexOf('function craft3(')) + ';this.f = plumeNear;', pn);
+  assert.ok(pn.f(1) === 0 && pn.f(20) === 1 && pn.f(6) > 0 && pn.f(6) < 1 && m3.includes('* (0.3 + 0.7 * nq) : 0, len: (1.0 + 2.0 * k) * fl * (0.5 + 0.5 * nq)'), 'plume: held down up close');
+  const fd = {}; require('vm').runInNewContext('const nf0 = new Intl.NumberFormat("tr", { maximumFractionDigits: 0 }), nf1 = new Intl.NumberFormat("tr", { minimumFractionDigits: 1, maximumFractionDigits: 1 }), nf2 = new Intl.NumberFormat("tr", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), nf3 = nf2; const _ = k => k;' + app.slice(app.indexOf('function fmtDist(m)'), app.indexOf('function fmtSpeed')) + ';this.f = fmtDist;', fd);
+  assert.ok(fd.f(5) === '5 m' && fd.f(0.5) === '0,50 m' && fd.f(200) === '200 m' && fd.f(2000) === '2,0 km', 'scale bar: metres up close');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {
