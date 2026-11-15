@@ -528,6 +528,7 @@ button.rail-mark:hover{color:var(--accent)}
 .snd-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linejoin:round}
 .snd-btn .x{display:none}.snd-btn.off .x{display:inline}.snd-btn.off .w{display:none}
 .snd-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:230px;padding:10px 12px;display:flex;flex-direction:column;gap:9px}
+.snd-kind{display:flex}.snd-kind button{flex:1}
 .snd-vol{display:flex;flex-direction:column;gap:4px;color:var(--dim);font-size:12px}
 .snd-note{margin:0;color:var(--faint);font-size:11px;line-height:1.35}
 .vw-follow{display:flex;gap:6px;align-items:center}

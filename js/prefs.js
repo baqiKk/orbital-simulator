@@ -221,12 +221,13 @@ function slowAdvance(t0, dt, r0, fires, tEnd = Infinity) {
 }
 
 // The simulator page's sound settings (2026-11-15, js/sim-audio.js): on (a quiet start at the first gesture), volume
-// 0 … 1 (default 0.35), the engine rumble effect; each field falls back on its own
-const SIM_AUDIO = { on: true, vol: 0.35, eng: true };
+// 0 … 1 (default 0.35), the engine rumble effect, the ambience ('deep' drone or 'rec' the NASA recordings); each field
+// falls back on its own
+const SIM_AUDIO = { on: true, vol: 0.35, eng: true, kind: 'deep' };
 function parseSimAudio(raw) {
   let o = null; try { o = JSON.parse(raw); } catch (e) { /* default */ }
   if (!o || typeof o !== 'object') return { ...SIM_AUDIO };
-  return { on: typeof o.on === 'boolean' ? o.on : SIM_AUDIO.on, vol: Number.isFinite(o.vol) ? Math.max(0, Math.min(1, o.vol)) : SIM_AUDIO.vol, eng: typeof o.eng === 'boolean' ? o.eng : SIM_AUDIO.eng };
+  return { on: typeof o.on === 'boolean' ? o.on : SIM_AUDIO.on, vol: Number.isFinite(o.vol) ? Math.max(0, Math.min(1, o.vol)) : SIM_AUDIO.vol, eng: typeof o.eng === 'boolean' ? o.eng : SIM_AUDIO.eng, kind: o.kind === 'rec' ? 'rec' : 'deep' };
 }
 
 // Opacity of the orbit trail by age in revolutions: the last keep revolutions are drawn; with fade the

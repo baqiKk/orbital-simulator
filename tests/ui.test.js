@@ -1303,10 +1303,10 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 {
   const v3 = read('js/view3d.js'), m3 = read('js/mode3d.js'), app = read('js/app.js'), ui = read('js/engine-ui.js');
   assert.ok(/export const CRAFT_VS/.test(v3) && /export const PLUME_FS/.test(v3) && v3.includes('new THREE.LatheGeometry(') && !/\.(glb|gltf|obj|fbx)['"]/.test(v3) && v3.includes('craft, dispose'), 'craft: procedural lathe model, no model files, exported');
-  const pl = v3.slice(v3.indexOf('// a plume: the flame quad'), v3.indexOf('// build the model for engine type'));
-  assert.ok(pl.includes('premultipliedAlpha: true, blending: THREE.AdditiveBlending, depthWrite: false') && pl.includes('vertexShader: PLUME_VS') && pl.includes('vertexShader: PGLOW_VS'), 'plume: added light, no depth writes, the nozzle glow');
-  const pfs = v3.slice(v3.indexOf('export const PLUME_FS'), v3.indexOf('export const PGLOW_VS'));
-  assert.ok(['float vnoise(', 'uT * 4.0', 'float body =', 'float halo =', 'float core =', 'if (uSimple < 0.5)'].every(k => pfs.includes(k)) && v3.includes('S = cross(A, V)'), 'plume: core, body and halo, drifting noise (none in the low quality), facing the camera about its axis');
+  const pl = v3.slice(v3.indexOf('// a plume (2026-11-15)'), v3.indexOf('// build the model for engine type'));
+  assert.ok(pl.includes('premultipliedAlpha: true, blending: THREE.AdditiveBlending, depthWrite: false') && pl.includes('vertexShader: PLUME_VS') && pl.includes('vertexShader: PCORE_VS') && pl.includes('m.rotation.y = k * Math.PI / planes;') && !v3.includes('PGLOW_'), 'plume: added light, no depth writes; crossing planes on the axis and the end-on disc, no camera-facing sprite');
+  const pfs = v3.slice(v3.indexOf('export const PLUME_FS'), v3.indexOf('export const PCORE_VS'));
+  assert.ok(['float vnoise(', 'uT * 4.0', 'float body =', 'float halo =', 'float core =', 'if (uSimple < 0.5)'].every(k => pfs.includes(k)) && v3.includes('smoothstep(0.05, 0.4, vF)'), 'plume: core, body and halo, drifting noise (none in the low quality), a plane seen edge on fades');
   for (const ty of ["ty === 'liq'", "ty === 'hyb'", "ty === 'sol'"]) assert.ok(v3.includes(ty), 'craft: a model for ' + ty);
   assert.ok(m3.includes("col: { metal: COL.dim, nozzle: COL.faint, fuel: COL.burn, ox: COL.cyan, // fuel and oxidizer as the engine window's charts") && ui.includes("fuel: tok('--burn'), ox: tok('--cyan')") && ui.includes("fuel: engTok('--burn'), ox: engTok('--cyan')"), 'cutaway: fuel and oxidizer in the charts\' tokens, in 3D and 2D');
   const vm2 = require('vm'), E2 = {}; vm2.createContext(E2); vm2.runInContext(read('js/engines.js') + ';this.PROPS = PROPS;', E2);
@@ -1314,7 +1314,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(['blue', 'orange', 'pink', 'white', 'faint', 'amber'].every(k => PAL.includes(k + ': { core: [')) && !/#[0-9a-f]{3,6}/i.test(PAL) && ui.includes('function plumeCols(cls)') && m3.includes('plumeCols(en.plume)') && app.includes('plumeCols(en.plume)'), 'plume: colours by propellant, from the tokens');
   assert.ok(E2.PROPS.lox_lh2.plume === 'blue' && E2.PROPS.lox_rp1.plume === 'orange' && E2.PROPS.nto_mmh.plume === 'pink' && E2.PROPS.nto_a50.plume === 'pink' && E2.PROPS.apcp.plume === 'white' && E2.PROPS.n2h4.plume === 'faint', 'plume: classes by propellant');
   assert.ok(m3.includes('const fl = reduceMotion ? 1 :') && m3.includes('simple: lowQ || FX.lvl >= 2'), 'plume: flicker except with reduced motion, plain in the low quality');
-  assert.ok(m3.includes('const td = !ext ? plumeTd(tNow, craft, en) : null') && m3.includes("if (S.follow === 'craft') return CRAFT.L * 0.9;"), 'craft: the nose along the thrust while burning (and through the plume fading); the camera kept outside it');
+  assert.ok(m3.includes('const td = craftAxis(tNow, craft, ext, en)') && read('js/app.js').includes('function craftAxis(tNow, craft, ext, en) {') && m3.includes("if (S.follow === 'craft') return CRAFT.L * 0.9;"), 'craft: the nose along the thrust while burning (and through the plume fading); the camera kept outside it');
   // the craft's look (2026-11-14): procedural canvas textures painted from the theme's colours (no image files, no hex
   // in the painters), lathe v by length; foam on cryogenic tanks, gold foil on storables, bare metal for RP-1, a
   // composite case for nitrous oxide and the hybrid's motor, a light case for a solid; cooling channels and heat tint
@@ -1445,10 +1445,18 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // playing; suspended in a hidden tab; the cabin page does not load it
 {
   const sa = read('js/sim-audio.js'), app = read('js/app.js'), cab = read('kabin.html');
-  assert.ok(!/\.(mp3|webm|ogg|wav)['"]/.test(sa) && !sa.includes('new Audio(') && sa.includes("for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, function first()") && sa.includes('if (SA.ctx || !SA.set.on) return;'), 'sound: generated, started by the first gesture');
-  assert.ok(sa.includes("SA.out.gain.setTargetAtTime(s.on ? 0.5 * s.vol * s.vol : 0, t, 0.4);") && P.SIM_AUDIO.vol <= 0.4 && sa.includes("if (document.hidden) SA.ctx.suspend();"), 'sound: a quiet start, suspended when hidden');
+  assert.ok(sa.includes("for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, function first()") && sa.includes('if (SA.ctx || !SA.set.on) return;'), 'sound: started by the first gesture');
+  // the ambience (2026-11-15): a deep drone (steep low-passes moved by a slow LFO, detuned low tones) by default, or the
+  // cabin's NASA recordings (the cabin's files, already credited); the rumble low-passed, no hiss
+  assert.ok(sa.includes('l1 = saLow(c, 110), l2 = saLow(c, 110)') && sa.includes('sweep.frequency.value = 0.035') && sa.includes("[[41, 'sine', 0.5], [41.6, 'sine', 0.45], [61.5, 'triangle', 0.25]]") && sa.includes("'audio/cabin/space/' + q.id + '.' + ext") && sa.includes('e1 = saLow(c, 85), e2 = saLow(c, 85)') && !sa.includes('frequency.value = 220'), 'sound: a deep drone or the NASA recordings, a muffled rumble');
+  assert.ok(P.SIM_AUDIO.kind === 'deep' && P.parseSimAudio('{"kind":"rec"}').kind === 'rec' && P.parseSimAudio('{"kind":"x"}').kind === 'deep' && html.includes('id="sndKind"') && ['snd.kind', 'snd.deep', 'snd.rec'].every(has) && html.indexOf('js/sounds.js') < html.indexOf('js/sim-audio.js'), 'sound: two ambiences to choose, the deep drone by default');
+  assert.ok(sa.includes("SA.out.gain.setTargetAtTime(s.on ? 0.5 * s.vol * s.vol : 0, t, 0.4);") && P.SIM_AUDIO.vol <= 0.4 && sa.includes("if (document.hidden) { SA.ctx.suspend(); saRec(false); }"), 'sound: a quiet start, suspended when hidden');
   const d = P.parseSimAudio('{"on":false,"vol":7,"eng":"x"}');
   assert.ok(d.on === false && d.vol === 1 && d.eng === true && P.parseSimAudio('nope').on === true && P.PREF_KEYS.simAudio, 'sound: saved settings, each field falls back');
+  // the city lights fade once magnified (globe.js nightFade: full to 2 px per texel, gone by 5)
+  const gl = read('js/globe.js'), ctxN = {}; require('vm').runInNewContext(gl.slice(gl.indexOf('function nightFade('), gl.indexOf('function globeLook(')) + ';this.f = nightFade;', ctxN);
+  const img = { img: { naturalWidth: 4096 } };
+  assert.ok(ctxN.f(1000, img) === 1 && ctxN.f(4000, img) === 0 && ctxN.f(2600, img) > 0 && ctxN.f(2600, img) < 1 && ctxN.f(9e5, null) === 1 && gl.includes('* uLayers.y *'), 'city lights: fade when magnified');
   assert.ok(['sndBtn', 'sndPop', 'sndOn', 'sndVol', 'sndEng'].every(id => html.includes('id="' + id + '"')) && ['snd.btn', 'snd.title', 'snd.on', 'snd.vol', 'snd.eng', 'snd.engTip', 'snd.note'].every(has), 'sound: the button and its panel');
   assert.ok(app.includes("simAudioTick(near > 0 ? engNow(tNowG).pl * near : 0);") && app.includes('!S.playing ? 0 :') && !cab.includes('sim-audio.js'), 'sound: the rumble by thrust and closeness, while playing; not on the cabin page');
 }
