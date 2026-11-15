@@ -1273,6 +1273,8 @@ function zoomAt(px, py, k) {
 // two-finger drag pan it and drop the follow, as a drag does in 2D
 const ptrs = new Map(); let pinch0 = null, gest = null, lastTap = null, hoverPt = null;
 const TAP_PX = { mouse: 5, touch: 10 }, HIT_PX = { mouse: 12, touch: 20 };
+// a double click on the plot selects no text nearby (the mode chip's)
+cv.addEventListener('mousedown', e => { if (e.detail > 1) e.preventDefault(); });
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
   if (ptrs.size === 1) gest = { x0: e.offsetX, y0: e.offsetY, moved: false, multi: false, touch: e.pointerType !== 'mouse', btn: e.button, pan: e.button === 1 || e.button === 2 || e.shiftKey };
@@ -1326,8 +1328,9 @@ function tap(x, y, touch) {
   const onPath = dbl && !tgt && !MAP.on && pathHit(x, y, touch ? 18 : 10);
   lastTap = dbl ? null : { t: now, x, y, h };
   // a double tap on the craft or on its path comes close to the craft; on empty space it goes back from there
-  if (dbl && !MAP.on && C && ((tgt && tgt.kind === 'c') || onPath)) { sceneTouch(); apprSet(true); return; }
+  if (dbl && (FREE.on || (!MAP.on && C)) && ((tgt && tgt.kind === 'c') || onPath)) { sceneTouch(); apprSet(true); return; }
   if (dbl && !tgt && APPR.on) { apprSet(false); return; }
+  if (FREE.on && tgt && tgt.kind === 'c') return; // free flight: one tap on the craft does nothing (two come close)
   if (tgt || dbl) sceneTouch();
   if (tgt) focusHit(tgt, dbl);
   else if (dbl) { if (MAP.on) fitMap(); else { S.follow = 'free'; renderFrameSeg(); fit(); } }
@@ -1346,6 +1349,7 @@ function tap(x, y, touch) {
 // camera, the lit side when there is a choice (apprAim, on the first frame drawn: the axis needs the frame).
 const APPR = { on: false, prev: null, tipAt: 0, aim: null, fold: [] }, APPR_K = 0.45, APPR_FOLD = ['mission', 'results', 'overview', 'engine'];
 function apprSet(on) {
+  if (FREE.on) { flyAppr(on); return; } // free flight: the map's camera on the craft (js/fly.js)
   if (on && (!C || MAP.on || SCENE.on)) return;
   if (on === APPR.on) return;
   const a = flyFrom(), v3 = is3d(), c = v3 ? cam3() : null;
@@ -1601,11 +1605,11 @@ function frameEnd() {
   setCaption(); liveTick(); apprTip(performance.now());
   engTick(); // the engine charts' playhead (O(1); js/engine-ui.js, loaded before this file)
   const fg = !FREE.on && !SCENE.on && !!C && S.model === 'real'; if ($('#flyGo').hidden === fg) $('#flyGo').hidden = !fg; // free flight from here (js/fly.js)
-  engPanelTick(tNowG, !!(C && simR && !MAP.on && !SCENE.on && !REC.busy)); // the engine panel (shown only with engine burns)
+  if (FREE.on) flyEngPanel(); else engPanelTick(tNowG, !!(C && simR && !MAP.on && !SCENE.on && !REC.busy)); // the engine panel (shown only with engine burns; free flight: its engine)
   // the engine rumble (js/sim-audio.js): while playing, the plume's strength times the camera's closeness to the craft
   // (3D: following it, gone by NEAR3's far end; 2D: in the close view)
   const near = !C || !simR || MAP.on || SCENE.on || !S.playing ? 0 : is3d() ? (S.follow === 'craft' ? 1 - nearFade3(CAM3.sim.dist) : 0) : APPR.on ? 1 : 0;
-  simAudioTick(near > 0 ? engNow(tNowG).pl * near : 0);
+  simAudioTick(FREE.on ? (FREE.appr ? FREE.pl : 0) : near > 0 ? engNow(tNowG).pl * near : 0);
   const n = focusName();
   if (n !== focusTxt) { focusTxt = n; $('#focusName').textContent = n; $('#focusTag').hidden = !n; $('#followTxt').textContent = _('vw.followOn', { name: n || _('fo.free') }); $('#followX').hidden = !n; INS = null; }
   const h = hoverPt && !ptrs.size ? hitAt(hoverPt.x, hoverPt.y, HIT_PX.mouse) : null;

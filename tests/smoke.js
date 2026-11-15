@@ -159,6 +159,8 @@ function watch(page, errs) {
       await page.evaluate(async () => { sceneEnd(true); loadScenario('mv_leo_geo'); S.playing = false; setPlayIcon(); await new Promise(r => setTimeout(r, 600)); S.u = tToU(600); slowJump(); });
       await page.waitForTimeout(300); await page.click('#flyGo'); await page.waitForTimeout(400);
       const t0 = await page.evaluate(() => FREE.on && FREE.st.t); if (!t0) throw new Error('not in free flight');
+      if (!(await page.isVisible('#flyTip')) || !(await page.isVisible('#flyHow'))) throw new Error('no hints the first time, or no "Nasıl uçulur?"');
+      await page.click('#flyTipSkip'); if (await page.isVisible('#flyTip')) throw new Error('the hints did not skip');
       // Phase 19c: a click on the path puts a node, its prograde handle dragged gives it Δv, the N-body refinement comes
       // back (solid path), U undoes the drag and then the node
       await page.click('#flyWarp [data-w="1"]');
@@ -174,6 +176,28 @@ function watch(page, errs) {
       await page.waitForFunction(() => FREE.ref && FREE.ref.ver === FREE.ver && !flyPath().prov, null, { timeout: 10000 });
       await page.keyboard.press('u'); await page.keyboard.press('u');
       if (await page.evaluate(() => FREE.nodes.length)) throw new Error('U did not undo the node');
+      // Phase 19d: a prograde node fired by "Otomatik ateşle" after "Düğüme hızlandır": the orbit the node promised; the
+      // engine panel; a double click on the craft comes close (the 3D model drawn), Esc goes back
+      const node = await page.evaluate(async () => {
+        const sl = ms => new Promise(r => setTimeout(r, ms));
+        const g = FREE.pred.segs[0], t = g.ts[Math.floor(g.n / 3)];
+        flyEdit(); FREE.nodes.push({ t, d: [150, 0, 0] }); FREE.sel = 0; flyChanged(); await sl(400);
+        const want = flyAfterOrbit(0);
+        document.querySelector('#fnWarp').click();
+        for (let i = 0; i < 300 && FREE.warpTo != null; i++) await sl(50);
+        flyWarp(10);
+        let fired = false; for (let i = 0; i < 600; i++) { await sl(50); if (FREE.burn) fired = true; if (fired && !FREE.burn) break; }
+        const b = FREE.tb, Pp = mapSys.P, Vv = mapSys.V; states(mapSys, FREE.st.t, Pp, Vv);
+        const el = rv2el(mapSys.mu[b], [0, 1, 2].map(j => FREE.st.r[j] - Pp[3 * b + j]), [0, 1, 2].map(j => FREE.st.v[j] - Vv[3 * b + j]));
+        return { fired, left: FREE.nodes.length, want: want && want.ap, ap: el.a * (1 + el.e) - mapSys.R[b], panel: !document.querySelector('#engPanel').hidden };
+      });
+      if (!node.fired || node.left || !(Math.abs(node.ap - node.want) < 20e3) || !node.panel) throw new Error('auto fire: ' + JSON.stringify(node));
+      await page.click('#flyWarp [data-w="1"]');
+      const cp = await page.evaluate(() => { const r = document.querySelector('#cv').getBoundingClientRect(); return { x: r.left + FREE.cx, y: r.top + FREE.cy }; });
+      await page.mouse.dblclick(cp.x, cp.y); await page.waitForTimeout(1500);
+      const ap = await page.evaluate(() => ({ appr: FREE.appr, lpx: FREE.lpx || 0, v3: is3d() }));
+      if (!ap.appr || (ap.v3 && !(ap.lpx > 100))) throw new Error('free flight, the craft up close: ' + JSON.stringify(ap));
+      await page.keyboard.press('Escape'); if (await page.evaluate(() => FREE.appr)) throw new Error('Esc did not go back');
       await page.click('#flyWarp [data-w="1000"]'); await page.waitForTimeout(1200);
       const r = await page.evaluate(() => ({ dt: FREE.st.t, segs: FREE.pred ? FREE.pred.segs.length : 0 }));
       if (!(r.dt - t0 > 200) || !(r.segs > 0)) throw new Error('the flight did not advance or predict: ' + JSON.stringify(r));

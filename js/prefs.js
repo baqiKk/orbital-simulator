@@ -1,7 +1,7 @@
 // Persisted UI preferences: view mode and window layout.
 // DOM-free: the storage object is passed in (localStorage, sessionStorage, a stub or null), so Node tests can run it.
 // Every storage access is wrapped: private windows, blocked site data and quota errors must never break the page.
-const PREF_KEYS = { apprTip: 'orbsim.apprTip', engPanel: 'orbsim.engPanel', flySnap: 'orbsim.flySnap.v1', simAudio: 'orbsim.simAudio.v1', engines: 'orbsim.engines.v1', rec: 'orbsim.rec', mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify', cabSaver: 'orbsim.cab.saver.v1', cabPanHint: 'orbsim.cab.panHint', cabBoot: 'orbsim.cab.boot', cabBox: 'orbsim.cab.box.v1', cabQ: 'orbsim.cab.q', simBoot: 'orbsim.boot', uiExpert: 'orbsim.ui.expert', start: 'orbsim.start', tour: 'orbsim.tour.v1', evStop: 'orbsim.evStop', liveTip: 'orbsim.liveTip', startSeen: 'orbsim.startSeen' };
+const PREF_KEYS = { flyTips: 'orbsim.flyTips', apprTip: 'orbsim.apprTip', engPanel: 'orbsim.engPanel', flySnap: 'orbsim.flySnap.v1', simAudio: 'orbsim.simAudio.v1', engines: 'orbsim.engines.v1', rec: 'orbsim.rec', mode: 'orbsim.mode', wins: 'orbsim.wins.v1', perfTip: 'orbsim.perfTip', venusRadar: 'orbsim.venusRadar', clouds: 'orbsim.clouds', sky: 'orbsim.sky', osc: 'orbsim.osc', slow: 'orbsim.slow', vehicles: 'orbsim.vehicles.v1', cabLamp: 'orbsim.cab.lamp', cabScene: 'orbsim.cab.scene', cabAudio: 'orbsim.cab.audio.v1', simSnap: 'orbsim.simSnap.v1', pomo: 'orbsim.cab.pomo.v1', pomoStats: 'orbsim.cab.pomoStats.v1', pomoHud: 'orbsim.cab.pomoHud', pomoNotify: 'orbsim.cab.pomoNotify', cabSaver: 'orbsim.cab.saver.v1', cabPanHint: 'orbsim.cab.panHint', cabBoot: 'orbsim.cab.boot', cabBox: 'orbsim.cab.box.v1', cabQ: 'orbsim.cab.q', simBoot: 'orbsim.boot', uiExpert: 'orbsim.ui.expert', start: 'orbsim.start', tour: 'orbsim.tour.v1', evStop: 'orbsim.evStop', liveTip: 'orbsim.liveTip', startSeen: 'orbsim.startSeen' };
 const VIEW_MODES = ['low', 'normal', '3d'];
 // placement order: overview's default spot sits under Results, so it comes after it
 const WIN_IDS = ['mission', 'bodies', 'results', 'overview', 'transfer', 'engine', 'gloss', 'model', 'credits'];
@@ -243,7 +243,9 @@ function parseFlySnap(raw, now = Date.now()) {
   if (!Number.isFinite(o.t) || !v3(o.r) || !v3(o.v) || !(o.m > 0) || !Number.isFinite(o.at) || now - o.at > 12 * 3600e3 || now < o.at) return null;
   // maneuver nodes (Phase 19c): [{ t, d: [prograde, radial, normal] m/s }], the broken ones dropped, at most FLY_NODES_MAX
   const nodes = Array.isArray(o.nodes) ? o.nodes.filter(q => q && Number.isFinite(q.t) && v3(q.d)).slice(0, FLY_NODES_MAX).map(q => ({ t: q.t, d: [...q.d] })) : [];
-  return { t: o.t, r: o.r, v: o.v, m: o.m, warp: Number.isFinite(o.warp) && o.warp >= 1 ? o.warp : 1, nodes };
+  // the engine (Phase 19d): its object (checked by the page with core.js engineSpec), clock τ, auto fire, direction lock
+  const eng = o.eng && typeof o.eng === 'object' && o.eng.E && typeof o.eng.E === 'object' && Number.isFinite(o.eng.tau) ? { E: o.eng.E, tau: Math.max(0, o.eng.tau), auto: o.eng.auto !== false, lock: typeof o.eng.lock === 'string' ? o.eng.lock : 'pro' } : null;
+  return { t: o.t, r: o.r, v: o.v, m: o.m, warp: Number.isFinite(o.warp) && o.warp >= 1 ? o.warp : 1, nodes, eng };
 }
 
 // The simulator page's sound settings (2026-11-15, js/sim-audio.js): on (a quiet start at the first gesture), volume

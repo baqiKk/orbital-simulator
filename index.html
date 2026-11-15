@@ -59,6 +59,7 @@
       </div>
       <div class="live-sub" id="liveSub" hidden></div>
     </div>
+    <div class="fly-help" id="flyHelp" hidden><div class="glass fly-tip" id="flyTip" role="status" aria-live="polite" hidden><span id="flyTipText"></span><button class="btn sm primary" type="button" id="flyTipNext"></button><button class="link" type="button" id="flyTipSkip" data-i18n="fly.tipSkip"></button></div><button class="link fly-how" type="button" id="flyHow" data-i18n="fly.how"></button></div>
     <div class="glass guide" id="guide" role="status" aria-live="polite" hidden><span id="guideText"></span><button class="btn sm primary" type="button" id="guideGo" data-i18n="guide.go" hidden></button></div>
     <div class="hud-top">
       <div class="ctrls" id="ctrls">
@@ -136,9 +137,13 @@
           <div class="fn-tot" id="fnTot"></div>
           <div class="fn-after" id="fnAfter"></div>
           <div class="fn-prov" id="fnProv"></div>
+          <div class="fn-burn" id="fnBurn"></div>
+          <div class="fn-warn" id="fnWarn" role="alert"></div>
           <p class="fn-tip" data-i18n="fn.tip"></p>
+          <button type="button" class="ghost fn-warpbtn" id="fnWarp" data-i18n="fn.warp" data-i18n-title="fn.warpTip"></button>
         </div>
-        <div class="fn-b"><button type="button" class="ghost" id="fnUndo" data-i18n-title="fn.undoTip" data-i18n-aria-label="fn.undoTip">↶</button><button type="button" class="ghost" id="fnDel" data-i18n="fn.del"></button></div>
+        <div class="fn-b"><label class="chk" data-i18n-title="fn.autoTip"><input type="checkbox" id="fnAuto" checked><span data-i18n="fn.auto"></span></label><button type="button" class="ghost" id="fnUndo" data-i18n-title="fn.undoTip" data-i18n-aria-label="fn.undoTip">↶</button><button type="button" class="ghost" id="fnDel" data-i18n="fn.del"></button></div>
+        <div class="fn-man"><span class="fn-ml" data-i18n="fn.man"></span><div class="seg fn-lock" id="fnLock" role="group" data-i18n-aria-label="fn.lockAria"></div><span class="fn-thr" id="fnThr" data-i18n-title="fn.thrTip"></span></div>
       </section>
       <div class="glass readout" id="readout">
         <div class="big" id="r-t" data-i18n="ui.tplusInit"></div>

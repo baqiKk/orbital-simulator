@@ -310,7 +310,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const app = read('js/app.js'), m3 = read('js/mode3d.js');
   assert.ok(/function centerBody[\s\S]*?const a = flyFrom\(\); followBody\(i\); flyTo\(a\);[\s\S]*?const a = flyFrom\(\); mapCenter\(k\); flyTo\(a\);/.test(app), 'overview pick: flyFrom, zoom, flyTo');
   assert.ok(/function flyTo\(a\) \{\n  FLY\.on = false;\n  if \(!Q\.glow \|\| reduceMotion/.test(app), 'instant without glow (low-resource) or with reduced motion');
-  assert.ok(/fly2\(S\.follow !== 'free'\)/.test(app) && /fly2\(MAP\.follow != null\)/.test(app) && /fly3\(c, S\.follow !== 'free'\)/.test(m3) && /fly3\(c, MAP\.follow != null\)/.test(m3), 'all four views apply the move');
+  assert.ok(/fly2\(S\.follow !== 'free'\)/.test(app) && /fly2\(MAP\.follow != null\)/.test(app) && /fly3\(c, S\.follow !== 'free'\)/.test(m3) && /fly3\(c, MAP\.follow != null \|\| FREE\.appr\)/.test(m3), 'all four views apply the move');
   assert.ok(/function sceneTouch\(\) \{ FLY\.on = false;/.test(app), 'camera input stops a move');
 }
 
@@ -1327,11 +1327,11 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(m3.includes('engTanks(en.s, rho)') && m3.includes('fo = V ? V.ox / (V.ox + V.fuel) : 0.5') && v3.includes('const span = 0.67, lo = Math.max(0.15, Math.min(span - 0.15, span * (fo > 0 ? fo : 0.5)))'), 'craft: a liquid\'s tanks as long as their volumes in 3D');
   // the cutaway fixed to the body (2026-11-15): the cut faces the local vertical (before: the frame's Z), never the camera; the
   // craft call's fields all live (none behind a comment)
-  const cc = m3.slice(m3.indexOf('V3.craft({ show: true'), m3.indexOf('return lpx;', m3.indexOf('V3.craft({ show: true')));
-  assert.ok(cc.includes('side: acrossUp(ax, craftUp3(tNow, craft, ext))') && cc.includes('cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,') && !cc.split('\n')[0].includes('//') && v3.includes('const sd = o.side || [0, 0, 1];') && !v3.includes('add(camera.position).normalize();'), 'cutaway: fixed to the body');
+  const cc = m3.slice(m3.indexOf('V3.craft({ show: true'), m3.indexOf('// the trail after capture')); // the call, in craftDraw (Phase 19d: shared with free flight)
+  assert.ok(m3.includes("craftDraw('sim', CR3, ax, acrossUp(ax, craftUp3(tNow, craft, ext)), L, sun, en, ext ? 0 : en.pl, CAM3.sim.dist);") && cc.includes('show: true, set, p, axis: ax, side, L, sun,') && cc.includes('cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,') && !cc.split('\n')[0].includes('//') && v3.includes('const sd = o.side || [0, 0, 1];') && !v3.includes('add(camera.position).normalize();'), 'cutaway: fixed to the body');
   // approaching the craft
   assert.ok(html.includes('id="apprBtn"') && html.includes('id="cutBtn"') && html.includes('id="engAppr"') && html.includes('id="engCut"') && html.includes('id="apprTip"') && ['appr.btn', 'appr.tip', 'appr.hint', 'appr.hintTouch', 'cut.btn', 'cut.tip', 'eng.play'].every(has), 'approach: the buttons, the hint, the words');
-  assert.ok(app.includes("if (dbl && !MAP.on && C && ((tgt && tgt.kind === 'c') || onPath)) { sceneTouch(); apprSet(true); return; }") && app.includes('if (dbl && !tgt && APPR.on) { apprSet(false); return; }') && app.includes("if (e.key === 'a' || e.key === 'A') apprSet(!APPR.on);") && app.includes("e.key === 'Escape' && APPR.on"), 'approach: double tap on the craft or its path, empty space back, A, Esc');
+  assert.ok(app.includes("if (dbl && (FREE.on || (!MAP.on && C)) && ((tgt && tgt.kind === 'c') || onPath)) { sceneTouch(); apprSet(true); return; }") && app.includes('if (dbl && !tgt && APPR.on) { apprSet(false); return; }') && app.includes("if (e.key === 'a' || e.key === 'A') apprSet(!APPR.on);") && app.includes("e.key === 'Escape' && APPR.on"), 'approach: double tap on the craft or its path, empty space back, A, Esc');
   assert.ok(P.PREF_KEYS.apprTip && app.includes('writePref(LS, PREF_KEYS.apprTip, \'1\')'), 'approach: the hint once');
   // the 2D cutaway and the 2D plume
   assert.ok(ui.includes("low = lowQ || MODE === 'low'") && ui.includes('function engSchematic(') && html.includes('id="engSch"') && html.includes('id="engPlay"'), 'cutaway 2D: in the engine window, plain in the low mode, "Oynat"');
@@ -1460,7 +1460,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const img = { img: { naturalWidth: 4096 } };
   assert.ok(ctxN.f(1000, img) === 1 && ctxN.f(4000, img) === 0 && ctxN.f(2600, img) > 0 && ctxN.f(2600, img) < 1 && ctxN.f(9e5, null) === 1 && gl.includes('* uLayers.y *'), 'city lights: fade when magnified');
   assert.ok(['sndBtn', 'sndPop', 'sndOn', 'sndVol', 'sndEng'].every(id => html.includes('id="' + id + '"')) && ['snd.btn', 'snd.title', 'snd.on', 'snd.vol', 'snd.eng', 'snd.engTip', 'snd.note'].every(has), 'sound: the button and its panel');
-  assert.ok(app.includes("simAudioTick(near > 0 ? engNow(tNowG).pl * near : 0);") && app.includes('!S.playing ? 0 :') && !cab.includes('sim-audio.js'), 'sound: the rumble by thrust and closeness, while playing; not on the cabin page');
+  assert.ok(app.includes("simAudioTick(FREE.on ? (FREE.appr ? FREE.pl : 0) : near > 0 ? engNow(tNowG).pl * near : 0);") && app.includes('!S.playing ? 0 :') && !cab.includes('sim-audio.js'), 'sound: the rumble by thrust and closeness, while playing; not on the cabin page');
 }
 // 49) Free flight, the mode (Phase 19b, js/fly.js): entered from the mission's moment (real model; "Serbest uçuş" by the
 // timeline), flown in the map's system (N-body below 1000×, on rails above), drawn on the map view with its prediction,
@@ -1471,7 +1471,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const fl = read('js/fly.js'), app = read('js/app.js'), now = Date.now(), ok = { t: 8.5e8, r: [1, 2, 3], v: [4, 5, 6], m: 1000, warp: 100, at: now - 1000 };
   assert.ok(P.parseFlySnap(JSON.stringify(ok), now).warp === 100 && P.parseFlySnap(JSON.stringify({ ...ok, at: now - 13 * 3600e3 }), now) === null && P.parseFlySnap(JSON.stringify({ ...ok, r: [1, 2] }), now) === null && P.parseFlySnap('x', now) === null && P.PREF_KEYS.flySnap, 'free flight: the snapshot');
   assert.ok(['flyBar', 'flyPause', 'flyWarp', 'flyNow', 'flyExit', 'flyDate', 'flyBody', 'flyGo'].every(id => html.includes('id="' + id + '"')) && ['fly.bar', 'fly.warp', 'fly.play', 'fly.pause', 'fly.now', 'fly.nowTip', 'fly.exit', 'fly.exitTip', 'fly.go', 'fly.goTip', 'fly.state', 'chip.fly'].every(has), 'free flight: the bar and its words');
-  assert.ok(fl.includes('flyAdvance(mapSys, s, Math.min(dt, 0.1) * FREE.warp, { rails: FREE.warp >= RAILS_W, maxSteps: 4000 })') && fl.includes('const RAILS_W = 1000') && fl.includes('flyPredict(mapSys, s.t, s.r, s.v, { revs: 1, T: 30 * DAY, K: 120, nodes: FREE.nodes })') && fl.includes("if (e.key === '.' || e.key === ',')") && fl.includes("e.code === 'Space'"), 'free flight: the advance, the prediction, the keys');
+  assert.ok(fl.includes('flyAdvance(mapSys, s, adv, { rails: !th && FREE.warp >= RAILS_W, thrust: th, maxSteps: 4000 })') && fl.includes('if (!FREE.paused) flyStep(Math.min(dt, 0.1), b);') && fl.includes('const RAILS_W = 1000') && fl.includes('flyPredict(mapSys, s.t, s.r, s.v, { revs: 1, T: 30 * DAY, K: 120, nodes: FREE.nodes })') && fl.includes("if (e.key === '.' || e.key === ',')") && fl.includes("e.code === 'Space'"), 'free flight: the advance, the prediction, the keys');
   assert.ok(app.includes('if (FREE.on) { flyFrame(dt, v3, glow, now);') && app.includes('if (flyRestore()) startClose();') && app.includes("$('#flyGo').addEventListener('click', () => flyEnter());") && app.includes('|| !sys || FREE.on) return null;') && read('css/style.css').includes('html[data-fly] #timeline,html[data-fly] #readout'), 'free flight: hooked into the draw loop, restored on start, the mission path off the map');
 }
 // 50) The craft up close, framed again (2026-11-15): the mission's windows fold and unfold again; the craft in the middle of
@@ -1496,7 +1496,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(Math.abs(lpx / 1440 - 0.45) < 0.02 && c.cx === 720 && c.cy === 100 + 550 / 2, `approach: the craft ${(lpx / 1440 * 100).toFixed(0)} % of the free area, in its middle`);
   sb.CRAFT.cut = true; sb.aim(c, ax, vert, [0, -1, 0]);
   assert.ok(dot(sb.cb(c).d, vert) > 0.85, 'approach: with the cutaway, onto its face (up)');
-  assert.ok(m3.includes('side: acrossUp(ax, craftUp3(tNow, craft, ext))') && app.includes("if (APPR.on && is3d() && !APPR.aim) APPR.aim = flyFrom();"), 'approach: the cut faces the local vertical; toggling it turns the camera');
+  assert.ok(m3.includes('acrossUp(ax, craftUp3(tNow, craft, ext))') && app.includes("if (APPR.on && is3d() && !APPR.aim) APPR.aim = flyFrom();"), 'approach: the cut faces the local vertical; toggling it turns the camera');
   assert.ok(m3.includes('function close3(p, o, R)') && m3.includes('behind3(BP3, 3 * b, b) || close3(BP3, 3 * b, sys.R[b])') && m3.includes('close3(pos, 3 * i, mapSys.R[i])') && app.includes('if (!h || h.r > 60) return;'), 'approach: no label, hit or ring on a body seen from close');
   assert.ok(m3.includes("const td = !ext && lpx < 14 ? thrustNow(tNow, craft) : null;") && m3.includes('vl > 1e-6 && lpx < 14'), 'approach: no arrows over the model');
   const ctxL = {}; require('vm').runInNewContext(gl.slice(gl.indexOf('function nightFade('), gl.indexOf('function globeLook(')) + ';this.f = nightLow;', ctxL);
@@ -1550,6 +1550,30 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(Math.abs(dvs.f(10, false) - 10.83) < 0.01 && dvs.f(240, false) > 700 && Math.abs(dvs.f(100, true) - dvs.f(100, false) / 10) < 1e-9 && dvs.f(-50, false) < 0, 'nodes: the handle mapping');
   assert.ok(fl.includes("if (nn && FREE.ref && FREE.ref.ver === FREE.ver && !FREE.drag) return { segs: FREE.ref.segs, prov: false };") && fl.includes('ctx.setLineDash(pa.prov ? [6, 5] : [])') && fl.includes("V3.dynSet('map', 'flyP' + k, B, m, FLY3.col, pa.prov ? 3 : 0)") && v3.includes('function dynOpacity(') && v3.includes('const gap = dash > 0'), 'nodes: dashed and faint until the refinement, then solid (2D and 3D)');
   assert.ok(app.includes('if (fly) { try { if (!self.FS) self.FS = buildSystem(list); postMessage({ done: flyRefine(self.FS, fly.t0, fly.r, fly.v, fly.opt), ver: fly.ver });') && fl.includes('now - FREE.editAt < FLY_REF_MS') && fl.includes('if (FREE.wkBusy && FREE.wk) { FREE.wk.terminate();'), 'nodes: the refinement in a worker, after a pause, a newer edit drops an old run');
+}
+// 53) Free flight's engine (Phase 19d, js/fly.js): the mission's engine at that moment (spec, clock, so the propellant
+// left), "Otomatik ateşle" (a burn centred on the node, along its Δv fixed in space, cut at its Δv), the warp never over a
+// burn's start and held at flyWarpMax while firing (steps above disabled), "Düğüme hızlandır", the throttle W/S/Z/X and
+// the direction locks, the budget (burn, propellant, a warning), the engine panel, the 3D model in the map's set,
+// "Araca yaklaş" and the double click, the hints the first time and "Nasıl uçulur?" under the mode chip; the snapshot
+// keeps the engine.
+{
+  const fl = read('js/fly.js'), app = read('js/app.js'), m3 = read('js/mode3d.js'), v3 = read('js/view3d.js'), css = read('css/style.css'), now = Date.now();
+  const snap = { t: 8.5e8, r: [1, 2, 3], v: [4, 5, 6], m: 1000, warp: 1, at: now - 1000 };
+  const q = P.parseFlySnap(JSON.stringify({ ...snap, eng: { E: { type: 'liq', F: 1 }, tau: 12, auto: false, lock: 'nor' } }), now);
+  assert.ok(q.eng && q.eng.tau === 12 && q.eng.auto === false && q.eng.lock === 'nor' && P.parseFlySnap(JSON.stringify({ ...snap, eng: { tau: 1 } }), now).eng === null && P.PREF_KEYS.flyTips, 'engine: kept in the snapshot');
+  assert.ok(fl.includes('else if (C && simR) { const en = engNow(tNowG); E = en.E; s = en.s; tau = Math.min(en.tau, s ? s.tb : 0); }') && fl.includes('FREE.st.m = s.md + Math.max(0, s.mp - u.fuel - u.ox);'), 'engine: the mission\'s, with what is left');
+  assert.ok(fl.includes('start: nd.t - b.T / 2') && fl.includes('const nd = FREE.nodes[0], q = FREE.nst[0], dvI = nodeDv(q.r, q.v, nd.d)') && fl.includes('if (rem < 1e-3 || r.out) flyBurnEnd(r.out);'), 'engine: the auto burn centred on its node, along its Δv, cut at it');
+  assert.ok(fl.includes('if (!th && nb && nb.start > s.t) adv = Math.min(adv, nb.start - s.t);') && fl.includes('FREE.cap = th ? (FREE.burn ? flyWarpMax(FREE.burn.T) : 10) : Infinity;') && fl.includes('bt.disabled = +bt.dataset.w > FREE.cap;') && fl.includes('rails: !th && FREE.warp >= RAILS_W'), 'engine: never over a burn\'s start, the warp held while firing, in the field');
+  assert.ok(['fnBurn', 'fnWarn', 'fnWarp', 'fnAuto', 'fnLock', 'fnThr', 'flyHelp', 'flyTip', 'flyTipText', 'flyTipNext', 'flyTipSkip', 'flyHow'].every(id => html.includes('id="' + id + '"')) &&
+    ['fn.burn', 'fn.short', 'fn.warp', 'fn.warpTip', 'fn.auto', 'fn.autoTip', 'fn.man', 'fn.lockAria', 'fn.thr', 'fn.thrTip', 'fly.how', 'fly.tipN', 'fly.tipNext', 'fly.tipDone', 'fly.tipSkip', 'fly.tip.appr', 'fly.tip.node', 'fly.tip.drag', 'fly.tip.warp', 'fly.tip.auto'].every(has) &&
+    ['pro', 'retro', 'radOut', 'radIn', 'nor', 'anti'].every(k => has('fn.lock.' + k) && has('fn.lockS.' + k)), 'engine: the controls and their words');
+  assert.ok(["e.key === 'w' || e.key === 'W'", "e.key === 's' || e.key === 'S'", "e.key === 'z' || e.key === 'Z'", "e.key === 'x' || e.key === 'X'"].every(k => fl.includes(k)), 'engine: the throttle keys');
+  assert.ok(app.includes('if (FREE.on) flyEngPanel(); else engPanelTick(') && !css.includes('html[data-fly] #engPanel') && fl.includes("engSchematic(engEl('epSch'), s, st, e.E,"), 'engine: the engine panel in free flight');
+  assert.ok(m3.includes("if (FREE.on) flyCraft3(c); else V3.craft({ show: false });") && v3.includes("root = roots[o.set || 'sim'];") && v3.includes('craftG.group.parent !== roots[set]') && fl.includes("craftDraw('map', p, ax, acrossUp(ax, up), L, sun,"), 'engine: the 3D model in the map\'s set');
+  assert.ok(app.includes('if (FREE.on) { flyAppr(on); return; }') && m3.includes('if (FREE.on && FREE.appr) c.t = flyCraftPos3();') && m3.includes('return FREE.appr ? CRAFT.L * 0.9 :') && fl.includes('apprAim(c, ax, up, sun)'), 'engine: "Araca yaklaş" and the double click in free flight');
+  assert.ok(fl.includes("flyTips(readPref(LS, PREF_KEYS.flyTips) ? -1 : 0);") && fl.includes("flyEl('flyHow').addEventListener('click', () => flyTips(0));") && fl.includes("else if (FREE.on) writePref(LS, PREF_KEYS.flyTips, '1');") && css.includes('.fly-help{position:absolute'), 'engine: the hints once, skippable, "Nasıl uçulur?" always');
+  assert.ok(app.includes("cv.addEventListener('mousedown', e => { if (e.detail > 1) e.preventDefault(); });"), 'a double click selects no text');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

@@ -15,9 +15,22 @@
 // "Sil" and ↶ (undo, U; FREE.undo: the nodes before each change); Delete removes the selected node. The path after the
 // first node is drawn in cyan. While a node is dragged, and until the N-body refinement of the edit is back (core.js
 // flyRefine in a worker, asked FLY_REF_MS after the last change), the path is the patched-conic prediction drawn dashed
-// and faint; the refinement draws it solid. A node the flight passes is dropped (the engine fires them in 19d).
+// and faint; the refinement draws it solid. A node the flight passes with "Otomatik ateşle" off is dropped.
+//
+// The engine (Phase 19d): the craft flies with the mission's engine as it was at that moment (engine-ui.js engNow: its
+// spec, its clock τ, so the propellant left; FREE.eng). "Otomatik ateşle" (on by default) fires each node: a burn of
+// length T (Tsiolkovsky at full thrust) centred on the node, along the node's Δv fixed in space, cut when that Δv is
+// delivered (or the propellant runs out), then the node goes. The time warp never steps over a burn's start and is held
+// at core.js flyWarpMax(T) while the engine fires (the warp buttons above it are disabled); "Düğüme hızlandır" warps to
+// a little before the burn. By hand: throttle W / S (±10 %), Z full, X cut, the direction locked to prograde, retrograde,
+// radial out / in, normal or antinormal (the node panel's buttons). The budget: the Δv left, each node's burn time and
+// propellant, a warning when the nodes need more than is left. The engine panel (#engPanel) shows the engine as in a
+// mission; the 3D model, "Araca yaklaş" (A, double click on the craft) and the cutaway work in free flight too
+// (mode3d.js drawMap3 calls flyCraft3). The first time, a short skippable run of hints (FLY_TIPS); "Nasıl uçulur?" under
+// the mode chip brings them back.
 const FREE = { on: false, hid: [], st: null, warp: 1, paused: false, pred: null, predAt: 0, trail: null, tb: -1, tn: 0, saveAt: 0, txt: {},
-  nodes: [], sel: -1, undo: [], ver: 0, editAt: 0, drag: null, ref: null, refVer: -1, wk: null, wkBusy: false, nst: [], hnd: [], nmk: [], predDirty: false };
+  nodes: [], sel: -1, undo: [], ver: 0, editAt: 0, drag: null, ref: null, refVer: -1, wk: null, wkBusy: false, nst: [], hnd: [], nmk: [], predDirty: false,
+  eng: null, burn: null, fire: 0, fdir: null, pl: 0, warpTo: null, cap: Infinity, appr: false, apprPrev: null, aim: null, tip: -1 };
 const RAILS_W = 1000, TRAIL_N = 720, FLY_REF_MS = 250, FLY_UNDO = 60, FLY_SS = (() => { try { return window.sessionStorage; } catch (e) { return null; } })();
 const flyEl = id => document.getElementById(id);
 // the craft's state now, from the mission on screen: its position and velocity about the dominant body (a maneuver's
@@ -42,6 +55,7 @@ function flyEnterState(q) {
   FREE.st = { t: q.t, r: [0, 1, 2].map(j => mapSys.P[3 * b + j] + q.r[j]), v: [0, 1, 2].map(j => mapSys.V[3 * b + j] + q.v[j]), m: q.m, h: 10 };
   FREE.on = true; FREE.paused = false; FREE.warp = q.warp || 1; FREE.pred = null; FREE.predAt = 0; FREE.trail = new Float64Array(3 * TRAIL_N); FREE.tn = 0; FREE.tb = -1; FREE.txt = {};
   FREE.nodes = (q.nodes || []).filter(nd => nd.t > q.t).map(nd => ({ t: nd.t, d: [...nd.d] })); FREE.sel = FREE.nodes.length ? 0 : -1; FREE.undo = []; FREE.ver++; FREE.ref = null; FREE.drag = null;
+  flyEngInit(q);
   if (SCENE.on) sceneEnd(false);
   S.playing = false; setPlayIcon();
   setMap(true); MAP.log = false; MAP.moons = true; syncMapUI();
@@ -53,12 +67,15 @@ function flyEnterState(q) {
   // the mission's windows step aside (as for the scene; they come back on exit)
   for (const id of ['mission', 'results', 'overview']) if (WINS[id].open && !SCENE.hide.has(id)) { SCENE.hide.add(id); winEl(id).classList.add('scene-hide'); FREE.hid.push(id); }
   railSync();
-  flyEl('flyBar').hidden = false; flyEl('flyNode').hidden = false; flyBarSync(); flyPanel(); INS = null;
+  flyEl('flyBar').hidden = false; flyEl('flyNode').hidden = false; flyEl('flyHelp').hidden = false; flyBarSync(); flyPanel(); INS = null;
+  flyTips(readPref(LS, PREF_KEYS.flyTips) ? -1 : 0);
   return true;
 }
 function flyEnter() { const q = flyFromMission(); if (q) flyEnterState(q); }
 function flyExit() {
-  FREE.on = false; delete document.documentElement.dataset.fly; flyEl('flyBar').hidden = true; flyEl('flyNode').hidden = true;
+  flyAppr(false); flyTips(-1);
+  FREE.on = false; delete document.documentElement.dataset.fly; flyEl('flyBar').hidden = true; flyEl('flyNode').hidden = true; flyEl('flyHelp').hidden = true;
+  FREE.burn = null; FREE.fire = 0; FREE.pl = 0; FREE.warpTo = null;
   clearPref(FLY_SS, PREF_KEYS.flySnap);
   if (V3 && is3d()) { for (let k = 0; k < FLY_LINES; k++) V3.dynHide('map', 'flyP' + k); V3.dynHide('map', 'flyTrail'); }
   if (FREE.wk) { FREE.wk.terminate(); FREE.wk = null; FREE.wkBusy = false; }
@@ -69,7 +86,8 @@ function flyExit() {
 // the session's one snapshot: every two seconds and when the page is hidden; a reload comes back to it
 function flySave() {
   if (!FREE.on) return;
-  const s = FREE.st; writePref(FLY_SS, PREF_KEYS.flySnap, JSON.stringify({ t: s.t, r: s.r, v: s.v, m: s.m, warp: FREE.warp, nodes: FREE.nodes, at: Date.now() }));
+  const s = FREE.st, e = FREE.eng;
+  writePref(FLY_SS, PREF_KEYS.flySnap, JSON.stringify({ t: s.t, r: s.r, v: s.v, m: s.m, warp: FREE.warp, nodes: FREE.nodes, eng: e && { E: e.E, tau: e.tau, auto: e.auto, lock: e.lock }, at: Date.now() }));
 }
 addEventListener('pagehide', flySave);
 function flyRestore() {
@@ -77,17 +95,19 @@ function flyRestore() {
   mapSys.P = mapSys.P || new Float64Array(3 * mapSys.N); mapSys.V = mapSys.V || new Float64Array(3 * mapSys.N);
   states(mapSys, q.t, mapSys.P, mapSys.V);
   const b = domBody(mapSys, mapSys.P, q.r[0], q.r[1], q.r[2]);
-  return flyEnterState({ t: q.t, key: MAPK[b], r: [0, 1, 2].map(j => q.r[j] - mapSys.P[3 * b + j]), v: [0, 1, 2].map(j => q.v[j] - mapSys.V[3 * b + j]), m: q.m, warp: q.warp, nodes: q.nodes });
+  return flyEnterState({ t: q.t, key: MAPK[b], r: [0, 1, 2].map(j => q.r[j] - mapSys.P[3 * b + j]), v: [0, 1, 2].map(j => q.v[j] - mapSys.V[3 * b + j]), m: q.m, warp: q.warp, nodes: q.nodes, eng: q.eng });
 }
 // one frame: advance (real seconds dt × warp), predict (twice a second, at once after an edit), draw the map at the
 // flight's time and the craft over it, the nodes, the bar's and the panel's numbers
 const FPR = new Float64Array(3);
 function flyFrame(dt, v3, glow, now) {
   const s = FREE.st, P = mapSys.P, V = mapSys.V;
-  if (!FREE.paused) flyAdvance(mapSys, s, Math.min(dt, 0.1) * FREE.warp, { rails: FREE.warp >= RAILS_W, maxSteps: 4000 });
-  flyPast();
   states(mapSys, s.t, P, V);
   const b = domBody(mapSys, P, s.r[0], s.r[1], s.r[2]);
+  if (!FREE.paused) flyStep(Math.min(dt, 0.1), b);
+  FREE.pl += ((FREE.fire > 0 ? FREE.fire : 0) - FREE.pl) * (reduceMotion ? 1 : 1 - Math.exp(-dt / 0.15)); // the plume's ignition and cut
+  flyPast();
+  states(mapSys, s.t, P, V);
   if (b !== FREE.tb) { FREE.tb = b; FREE.tn = 0; FREE.pred = null; }
   if (FREE.tn === 0 || now - FREE.trailAt > 40) { // the trail, relative to the dominant body
     const k = FREE.tn % TRAIL_N; for (let j = 0; j < 3; j++) FREE.trail[3 * k + j] = s.r[j] - P[3 * b + j]; FREE.tn++; FREE.trailAt = now;
@@ -99,11 +119,12 @@ function flyFrame(dt, v3, glow, now) {
   }
   flyRefineAsk(now);
   if (now - FREE.saveAt > 2000) { FREE.saveAt = now; flySave(); }
-  MAP.follow = b;
+  MAP.follow = FREE.appr ? null : b;
   if (v3) { flyLines3(b); drawMap3(s.t, glow, null, 0, 0); flyMark(b, true); flyNodes(true); }
-  else { drawMap(s.t, glow, null, 0, 0); flyLines2(b); flyMark(b, false); flyNodes(false); if (!MAP.log) drawScale(); }
+  else { if (FREE.appr) flyFollow2(); drawMap(s.t, glow, null, 0, 0); flyLines2(b); flyMark(b, false); flyNodes(false); if (!MAP.log) drawScale(); }
   flyBarTick(b);
   flyPanelTick();
+  if (now - (FREE.helpAt || 0) > 500) { FREE.helpAt = now; flyHelpPlace(); }
 }
 // map coordinates (heliocentric, as the map draws its bodies) of a point relative to body b, after states(mapSys, …)
 const flyMapAt = (b, x, y, z, out) => { out[0] = MP[3 * b] - MP[3 * MSUN] + x; out[1] = MP[3 * b + 1] - MP[3 * MSUN + 1] + y; out[2] = MP[3 * b + 2] - MP[3 * MSUN + 2] + z; return out; };
@@ -169,9 +190,13 @@ function flyMark(b, v3) {
   let x, y;
   if (v3) { mapXYZ(o[0], o[1], o[2], o); FPR[0] = o[0]; FPR[1] = o[1]; FPR[2] = o[2]; proj3(FPR, PJ); if (!(PJ[2] > 0)) return; x = PJ[0]; y = PJ[1]; }
   else { mapXY(o[0], o[1], o); x = sx(o[0]); y = sy(o[1]); }
-  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
-  ctx.strokeStyle = COL.traj; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.2832); ctx.stroke();
-  addHit('c', 0, x, y, 3.2);
+  const lpx = FREE.lpx || 0; // the 3D model's length on screen (flyCraft3): the marker gives way to it
+  if (lpx < 14) {
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = FREE.fire > 0 ? COL.burn : COL.traj; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.2832); ctx.stroke();
+  }
+  FREE.cx = x; FREE.cy = y;
+  addHit('c', 0, x, y, Math.max(3.2, lpx / 2));
 }
 
 // ----- maneuver nodes (Phase 19c) -----
@@ -240,7 +265,9 @@ function flyDel(i = FREE.sel) { if (i < 0 || i >= FREE.nodes.length) return; fly
 // nodes the flight has passed go (19d fires them with the engine)
 function flyPast() {
   const t = FREE.st.t, n = FREE.nodes.length; if (!n || FREE.nodes[0].t > t) return;
-  FREE.nodes = FREE.nodes.filter(nd => nd.t > t); FREE.sel = Math.min(FREE.sel, FREE.nodes.length - 1); if (FREE.sel < 0 && FREE.nodes.length) FREE.sel = 0;
+  const keep = FREE.burn ? FREE.burn.t : NaN; // the node being fired stays until its burn ends
+  if (FREE.nodes.every(nd => nd.t > t || nd.t === keep)) return;
+  FREE.nodes = FREE.nodes.filter(nd => nd.t > t || nd.t === keep); FREE.sel = Math.min(FREE.sel, FREE.nodes.length - 1); if (FREE.sel < 0 && FREE.nodes.length) FREE.sel = 0;
   flyChanged();
 }
 // a time on the path under a screen point (within r px): the patched prediction's points, projected; null when none
@@ -266,10 +293,13 @@ function flyPathAt(px, py, r) {
 function flyTap(x, y, touch) {
   if (!FREE.on) return false;
   const rr = touch ? 16 : 10;
+  if (Math.hypot((FREE.cx || -1e9) - x, (FREE.cy || -1e9) - y) < Math.max(rr, (FREE.lpx || 0) / 2)) return false; // the craft: the app's (a double tap comes close)
+  if (FREE.appr) return false; // up close the path is not for placing nodes
   for (const m of FREE.nmk) if (Math.hypot(m.x - x, m.y - y) < rr) { FREE.sel = m.i; flyPanel(); return true; }
   if (FREE.nodes.length >= FLY_NODES_MAX) return false;
   const t = flyPathAt(x, y, touch ? 18 : 9); if (t == null) return false;
   flyEdit(); FREE.nodes.push({ t, d: [0, 0, 0] }); FREE.nodes.sort((a, b) => a.t - b.t); FREE.sel = FREE.nodes.findIndex(nd => nd.t === t); flyChanged();
+  flyTipDid(1);
   return true;
 }
 // dragging a handle (on the stage, before the camera's own pointer handling): along itself, faster the further (Shift:
@@ -290,7 +320,7 @@ addEventListener('pointermove', e => {
   nd.d[D.k] = Math.round((D.d0[D.k] + D.s * flyDv(p, e.shiftKey)) * 10) / 10;
   flyChanged();
 }, true);
-const flyDragEnd = e => { if (FREE.drag && e.pointerId === FREE.drag.id) { FREE.drag = null; FREE.editAt = performance.now(); e.stopImmediatePropagation(); } };
+const flyDragEnd = e => { if (FREE.drag && e.pointerId === FREE.drag.id) { FREE.drag = null; FREE.editAt = performance.now(); e.stopImmediatePropagation(); flyTipDid(2); } };
 addEventListener('pointerup', flyDragEnd, true); addEventListener('pointercancel', flyDragEnd, true);
 // the N-body refinement of the current nodes, in a worker of its own (a newer edit drops a run still going)
 function flyRefineAsk(now) {
@@ -327,6 +357,12 @@ function flyPanelTick() {
   const o = flyAfterOrbit(sel);
   flyTxt('fnAfter', !o ? '' : o.impact ? _('fn.impact', { body: _('body.' + MAPK[o.b]) }) : o.vinf != null ? _('fn.escape', { body: _('body.' + MAPK[o.b]), v: fmtSpeed(o.vinf) }) : _('fn.orbit', { body: _('body.' + MAPK[o.b]), pe: fmtDist(o.pe), ap: fmtDist(o.ap) }));
   flyTxt('fnProv', flyPath().prov ? _('fn.prov') : '');
+  // the budget: this node's burn and propellant; a warning when all the nodes need more than is left
+  const e = FREE.eng; if (!e) return;
+  const b = flyBurnOf(dv), all = FREE.nodes.reduce((a, q) => a + Math.hypot(...q.d), 0), left = flyDvLeft();
+  flyTxt('fnBurn', b ? _('fn.burn', { t: fmtIn(b.T), kg: NFdv.format(b.mp) }) : '');
+  const short = all > left + 0.05;
+  flyTxt('fnWarn', short ? _('fn.short', { need: NFdv.format(all), left: NFdv.format(left) }) : '');
 }
 FN_IN.forEach((id, k) => {
   flyEl(id).addEventListener('focus', () => { FREE.fieldUndo = false; });
@@ -336,6 +372,193 @@ FN_IN.forEach((id, k) => {
     nd.d[k] = Math.max(-1e5, Math.min(1e5, v)); flyChanged();
   });
 });
+// ----- the engine (Phase 19d) -----
+// the engine at the start of the flight: restored from the snapshot, else the mission's at this moment, else the craft's
+function flyEngInit(q) {
+  let E = null, s = null, tau = 0, auto = true, lock = 'pro';
+  if (q.eng && q.eng.E) { E = q.eng.E; s = engSpecOf(E); tau = +q.eng.tau || 0; auto = q.eng.auto !== false; lock = FLY_LOCKS.includes(q.eng.lock) ? q.eng.lock : 'pro'; }
+  else if (C && simR) { const en = engNow(tNowG); E = en.E; s = en.s; tau = Math.min(en.tau, s ? s.tb : 0); }
+  if (!s || s.error) { E = engCraftE(); s = engSpecOf(E); tau = 0; }
+  if (!s || s.error) { E = ENG_DEF; s = engSpecOf(ENG_DEF); tau = 0; }
+  if (!q.eng) { const u = engUsed(s, Math.min(tau, s.tb)); FREE.st.m = s.md + Math.max(0, s.mp - u.fuel - u.ox); } // the mass of what is left
+  FREE.eng = { E, s, tau: Math.max(0, Math.min(s.tb, tau)), thr: 0, auto, lock };
+  FREE.burn = null; FREE.fire = 0; FREE.pl = 0; FREE.warpTo = null; FREE.cap = Infinity;
+  flyEl('fnAuto').checked = auto; flyLockSync();
+}
+const FLY_LOCKS = ['pro', 'retro', 'radOut', 'radIn', 'nor', 'anti'];
+const flyDvLeft = () => { const e = FREE.eng; return e ? e.s.ve * Math.log(Math.max(FREE.st.m, e.s.md) / e.s.md) : 0; };
+// a burn of Δv dv at full thrust from the mass now: its length T (s) and propellant mp (kg); null when there is no engine
+function flyBurnOf(dv) {
+  const e = FREE.eng; if (!e) return null;
+  const m = FREE.st.m, mp = m * (1 - Math.exp(-dv / e.s.ve)), F = engAt(e.s, Math.min(e.tau, e.s.tb * (1 - 1e-9))).F || e.s.F;
+  return { T: mp * e.s.ve / F, mp };
+}
+// the next node's burn under "Otomatik ateşle": its start, the inertial direction and size of its Δv, its length
+function flyNextBurn() {
+  const e = FREE.eng; if (!e || !e.auto || !FREE.nodes.length || !FREE.nst[0]) return null;
+  const nd = FREE.nodes[0], q = FREE.nst[0], dvI = nodeDv(q.r, q.v, nd.d), dv = Math.hypot(...dvI);
+  if (!(dv > 0.01)) return null;
+  const b = flyBurnOf(dv);
+  return { t: nd.t, start: nd.t - b.T / 2, T: b.T, dir: dvI.map(x => x / dv), dv };
+}
+// one frame of flight (dt real seconds): the warp, an auto burn's start never stepped over and its end exactly, the
+// throttle by hand, "Düğüme hızlandır"; then core.js flyAdvance (in the field while the engine fires, else on rails
+// above RAILS_W)
+function flyStep(dt, b) {
+  const s = FREE.st, e = FREE.eng, nb = !FREE.burn ? flyNextBurn() : null;
+  // the warp to a node: as fast as leaves room to slow down, then real time a little before the burn
+  if (FREE.warpTo != null) {
+    const rem = FREE.warpTo - s.t;
+    if (rem <= 0.05) { FREE.warpTo = null; flyWarp(1, true); }
+    else { let w = 1; for (const q of FLY_WARPS) if (q * 0.1 <= rem / 3) w = q; if (w !== FREE.warp) flyWarp(w, true); }
+  }
+  // an auto burn starts
+  if (nb && s.t >= nb.start - 1e-6) { FREE.burn = { t: nb.t, dir: nb.dir, goal: nb.dv, m0: s.m, T: nb.T }; flyChanged(); }
+  const th = flyThrust(b);
+  FREE.cap = th ? (FREE.burn ? flyWarpMax(FREE.burn.T) : 10) : Infinity;
+  if (FREE.warp > FREE.cap) flyWarp(FREE.cap, true);
+  flyBarCap();
+  let adv = dt * FREE.warp;
+  if (!th && nb && nb.start > s.t) adv = Math.min(adv, nb.start - s.t); // never over a burn's start
+  if (FREE.warpTo != null) adv = Math.min(adv, Math.max(0, FREE.warpTo - s.t));
+  if (th && FREE.burn) { // the burn's end: exactly its Δv
+    const rem = FREE.burn.goal - e.s.ve * Math.log(FREE.burn.m0 / s.m), tr = s.m * (1 - Math.exp(-Math.max(0, rem) / e.s.ve)) / th.mdot;
+    adv = Math.min(adv, tr);
+  }
+  if (!(adv > 0)) { FREE.fire = th ? FREE.fire : 0; if (FREE.burn) flyBurnEnd(false); return; }
+  const m0 = s.m, r = flyAdvance(mapSys, s, adv, { rails: !th && FREE.warp >= RAILS_W, thrust: th, maxSteps: 4000 });
+  FREE.fire = th ? th.k : 0; FREE.fdir = th ? FREE.fdirNow : null;
+  if (th) e.tau = Math.min(e.s.tb, e.tau + (m0 - s.m) / e.s.mdot); // the engine's clock by the propellant it used
+  if (FREE.burn) { const rem = FREE.burn.goal - e.s.ve * Math.log(FREE.burn.m0 / s.m); if (rem < 1e-3 || r.out) flyBurnEnd(r.out); }
+  else if (th && r.out) { e.thr = 0; flyLockSync(); }
+}
+function flyBurnEnd(out) {
+  const t = FREE.burn.t; FREE.burn = null; FREE.fire = 0;
+  const i = FREE.nodes.findIndex(nd => nd.t === t); if (i >= 0) { FREE.nodes.splice(i, 1); FREE.sel = Math.min(FREE.sel, FREE.nodes.length - 1); if (FREE.sel < 0 && FREE.nodes.length) FREE.sel = 0; }
+  if (out) FREE.eng.thr = 0;
+  flyChanged();
+}
+// the thrust for this frame ({ F, mdot, dir, mDry, k (throttle) } for flyAdvance) or null: an auto burn along its node's
+// Δv, else the throttle by hand along the locked direction about the dominant body b
+function flyThrust(b) {
+  const e = FREE.eng, s = FREE.st; if (!e || s.m <= e.s.md * (1 + 1e-9) || e.tau >= e.s.tb) return null;
+  const k = FREE.burn ? 1 : e.thr; if (!(k > 0)) return null;
+  const q = engAt(e.s, Math.min(e.tau, e.s.tb * (1 - 1e-9))), F = (q.F || e.s.F) * k, mdot = F / e.s.ve;
+  let dir;
+  if (FREE.burn) { const d = FREE.burn.dir; dir = () => d; FREE.fdirNow = d; }
+  else {
+    const P = mapSys.P, V = mapSys.V, bp = [P[3 * b], P[3 * b + 1], P[3 * b + 2]], bv = [V[3 * b], V[3 * b + 1], V[3 * b + 2]], lock = e.lock;
+    dir = (t, y) => {
+      const r = [y[0] - bp[0], y[1] - bp[1], y[2] - bp[2]], v = [y[3] - bv[0], y[4] - bv[1], y[5] - bv[2]], F3 = nodeFrame(r, v);
+      const d = lock === 'retro' ? F3.pro.map(x => -x) : lock === 'radOut' ? F3.rad : lock === 'radIn' ? F3.rad.map(x => -x) : lock === 'nor' ? F3.nor : lock === 'anti' ? F3.nor.map(x => -x) : F3.pro;
+      FREE.fdirNow = d; return d;
+    };
+    dir(s.t, [...s.r, ...s.v]);
+  }
+  return { F, mdot, dir, mDry: e.s.md, k };
+}
+function flyThr(k) { const e = FREE.eng; if (!e) return; e.thr = Math.max(0, Math.min(1, Math.round(k * 10) / 10)); flyLockSync(); }
+function flyLockSync() {
+  const e = FREE.eng; if (!e) return;
+  for (const bt of flyEl('fnLock').querySelectorAll('button')) bt.setAttribute('aria-pressed', String(bt.dataset.v === e.lock));
+  flyTxt('fnThr', _('fn.thr', { p: Math.round(e.thr * 100) }));
+}
+flyEl('fnLock').innerHTML = FLY_LOCKS.map(v => `<button type="button" data-v="${v}" data-i18n-title="fn.lock.${v}" data-i18n-aria-label="fn.lock.${v}">${_('fn.lockS.' + v)}</button>`).join('');
+flyEl('fnLock').addEventListener('click', e => { const bt = e.target.closest('button'); if (bt && FREE.eng) { FREE.eng.lock = bt.dataset.v; flyLockSync(); } });
+flyEl('fnAuto').addEventListener('change', e => { if (FREE.eng) FREE.eng.auto = e.target.checked; if (!e.target.checked && FREE.burn) flyBurnEnd(false); flyTipDid(4); });
+// "Düğüme hızlandır": to a little before the selected node's burn (all of the warp until then)
+flyEl('fnWarp').addEventListener('click', () => {
+  const nd = FREE.nodes[FREE.sel]; if (!nd) return;
+  const b = flyBurnOf(Math.hypot(...nd.d)), start = nd.t - (b ? b.T / 2 : 0);
+  FREE.warpTo = Math.max(FREE.st.t, start - Math.max(10, b ? 0.5 * b.T : 0)); FREE.paused = false; flyBarSync(); flyTipDid(3);
+});
+// the engine panel in free flight (as engine-ui.js engPanelTick for a mission): firing or coasting, the burn's end or
+// the next one, the bars, the Δv left, the thrust, the small cutaway
+function flyEngPanel() {
+  const p = engEl('engPanel'), e = FREE.eng;
+  if (!e) { if (!p.hidden) { p.hidden = true; INS = null; } return; }
+  if (p.hidden) { p.hidden = false; INS = null; }
+  if (EP.fold == null) { const sv = readPref(ENG_LS, PREF_KEYS.engPanel); epFold(sv ? sv === '1' : VW.phone.matches, false); }
+  const s = e.s, on = FREE.fire > 0, st = engStOf(s, e.tau, on), t = FREE.st.t, bi = s.mox > 0;
+  engEl('epState').classList.toggle('on', on); epSet('epState', _(on ? 'ep.burn' : 'ep.coast'));
+  const nb = !FREE.burn ? flyNextBurn() : null;
+  epSet('epNext', FREE.burn ? _('ep.left', { t: fmtIn(Math.max(0, FREE.burn.T - (FREE.burn.m0 - FREE.st.m) / s.mdot)) }) : nb && nb.start > t ? _('ep.next', { t: fmtIn(nb.start - t) }) : '');
+  const bar = (id, show2, lab, v) => {
+    const b = engEl(id); if (b.hidden === show2) b.hidden = !show2; if (!show2) return;
+    epSet(id + 'L', lab); const pc = Math.round(v * 100) + '%';
+    if (EP.txt[id] !== pc) { EP.txt[id] = pc; b.querySelector('b').textContent = pc; b.querySelector('i').style.width = (v * 100).toFixed(1) + '%'; }
+  };
+  bar('epOx', bi, _('ep.ox'), st.ox); bar('epFuel', true, _(bi ? 'ep.fuel' : 'ep.prop'), st.fuel);
+  epSet('epDv', fmtSpeed(flyDvLeft())); epSet('epF', on ? fmtF(st.F * FREE.fire) : '0 N');
+  const key = [s.tb, E2K(e.E), Math.round(e.tau / s.tb * 400), on, EP.fold].join('|');
+  if (!EP.fold && (on || FREE.pl > 0.004 || key !== EP.key)) { EP.key = key; engSchematic(engEl('epSch'), s, st, e.E, performance.now() / 1000, FREE.pl, { k: 0.55, mini: true }); }
+}
+// ----- the craft in free flight: the 3D model (from mode3d.js drawMap3, before it renders), "Araca yaklaş" -----
+const FLY_OWN = new Set(['flyTrail', ...Array.from({ length: 8 }, (_, k) => 'flyP' + k)]);
+// the craft in the map's coordinates (after states(mapSys, FREE.st.t, MP, MV))
+function flyCraftPos3(out = [0, 0, 0]) { const s = FREE.st; flyMapAt(MSUN, s.r[0] - MP[3 * MSUN], s.r[1] - MP[3 * MSUN + 1], s.r[2] - MP[3 * MSUN + 2], out); return mapXYZ(out[0], out[1], out[2], out); }
+function flyCraft3(c) {
+  if (!FREE.on || !FREE.eng) { V3.craft({ show: false }); return; }
+  const s = FREE.st, b = FREE.tb, e = FREE.eng;
+  states(mapSys, s.t, MP, MV);
+  const p = flyCraftPos3(), r = [s.r[0] - MP[3 * b], s.r[1] - MP[3 * b + 1], s.r[2] - MP[3 * b + 2]], v = [s.v[0] - MV[3 * b], s.v[1] - MV[3 * b + 1], s.v[2] - MV[3 * b + 2]];
+  const up = unit3(r) || [0, 0, 1], ax = (FREE.pl > 0.004 && FREE.fdir) || FREE.burn && FREE.burn.dir || unit3(v) || [1, 0, 0], sun = unit3(p.map(x => -x)) || [1, 0, 0];
+  const L = CRAFT.L = craftLen({ m0: s.m });
+  if (FREE.aim) { APPR.aim = FREE.aim; FREE.aim = null; apprAim(c, ax, up, sun); }
+  else if (FREE.appr) apprKeep(c, 1 / 60);
+  // close to the craft the map's lines fade as in a mission (its own path kept, faint)
+  const nk = FREE.appr ? nearFade3(c.dist) : 1; V3.fadeSet('map', nk, FLY_OWN, 0.15 + 0.85 * nk); if (FREE.appr) grid3(c, false);
+  proj3(p, PJ); const lpx = FREE.lpx = PJ[2] > 0 ? L * CB.f / PJ[2] : 0;
+  if (!(lpx > 6)) { V3.craft({ show: false }); return; }
+  const st = engStOf(e.s, e.tau, FREE.fire > 0);
+  craftDraw('map', p, ax, acrossUp(ax, up), L, sun, { E: e.E, s: e.s, st, plume: (PROPS[e.E.prop] || {}).plume || 'amber' }, FREE.pl, c.dist);
+}
+// 2D, close to the craft: the view's middle on it (the free area's), the map's camera following it
+function flyFollow2() {
+  const s = FREE.st, o = [0, 0, 0]; states(mapSys, s.t, MP, MV);
+  flyMapAt(MSUN, s.r[0] - MP[3 * MSUN], s.r[1] - MP[3 * MSUN + 1], s.r[2] - MP[3 * MSUN + 2], o); mapXY(o[0], o[1], o);
+  const q = insets(); cam.cx = o[0] - (q.l - q.r) / 2 / cam.scale; cam.cy = o[1] + (q.t - q.b) / 2 / cam.scale;
+}
+// "Araca yaklaş" in free flight (app.js apprSet hands over): the map's camera on the craft, the model ≈ 45 % of the free
+// area (3D: aimed on the next frame by app.js apprAim; 2D: a view 400 km across); back to the view before
+function flyAppr(on) {
+  if (!FREE.on || on === FREE.appr) return;
+  const a = flyFrom(), v3 = is3d(), c = CAM3.map;
+  if (on) {
+    FREE.apprPrev = { follow: MAP.follow, cam: { cx: cam.cx, cy: cam.cy, scale: cam.scale }, c: { t: [...c.t], dist: c.dist, yaw: c.yaw, elev: c.elev, roll: c.roll, cx: c.cx, cy: c.cy } };
+    FREE.appr = true; APPR.on = true; MAP.follow = null;
+    if (v3) { FREE.aim = a; c.t = flyCraftPos3(); }
+    else { const q = apprBox(); cam.scale = Math.min(q.w, q.h) / 4e5; flyFollow2(); flyTo(a); }
+    flyTipDid(0);
+  } else {
+    const p = FREE.apprPrev; FREE.apprPrev = null; FREE.appr = false; APPR.on = false; FREE.aim = null; FREE.lpx = 0;
+    if (p) { Object.assign(cam, p.cam); Object.assign(c, { ...p.c, t: [...p.c.t] }); MAP.follow = FREE.tb >= 0 ? FREE.tb : p.follow; }
+    if (V3) V3.fadeSet('map', 1, FLY_OWN, 1);
+    flyTo(a);
+  }
+  apprSync();
+}
+// ----- hints (the first free flight; "Nasıl uçulur?" brings them back) -----
+const FLY_TIPS = ['fly.tip.appr', 'fly.tip.node', 'fly.tip.drag', 'fly.tip.warp', 'fly.tip.auto'];
+function flyTips(i) {
+  FREE.tip = i >= 0 && i < FLY_TIPS.length ? i : -1;
+  const on = FREE.tip >= 0;
+  flyEl('flyTip').hidden = !on;
+  if (on) { flyEl('flyTipText').textContent = _('fly.tipN', { i: FREE.tip + 1, n: FLY_TIPS.length, t: _(FLY_TIPS[FREE.tip]) }); flyEl('flyTipNext').textContent = _(FREE.tip === FLY_TIPS.length - 1 ? 'fly.tipDone' : 'fly.tipNext'); }
+  else if (FREE.on) writePref(LS, PREF_KEYS.flyTips, '1');
+  flyHelpPlace();
+}
+// the hint being shown is done when its action is (a double click, a node, a drag, a warp, the switch)
+function flyTipDid(i) { if (FREE.tip === i) flyTips(i + 1); }
+function flyHelpPlace() {
+  const g = flyEl('flyHelp'); if (g.hidden) return;
+  const st = flyEl('stage').getBoundingClientRect(), r = el => el && el.getClientRects().length ? el.getBoundingClientRect().bottom - st.top : 0;
+  g.style.top = Math.round(Math.max(r(flyEl('modeChip')), VW.phone.matches ? r(flyEl('ctrls')) : 0) + 6) + 'px';
+}
+addEventListener('resize', flyHelpPlace);
+flyEl('flyTipNext').addEventListener('click', () => flyTips(FREE.tip + 1));
+flyEl('flyTipSkip').addEventListener('click', () => flyTips(-1));
+flyEl('flyHow').addEventListener('click', () => flyTips(0));
 flyEl('fnDel').addEventListener('click', () => flyDel());
 flyEl('fnUndo').addEventListener('click', flyUndo);
 flyEl('fnPrev').addEventListener('click', () => { if (FREE.sel > 0) { FREE.sel--; flyPanel(); } });
@@ -344,6 +567,7 @@ flyEl('fnNext').addEventListener('click', () => { if (FREE.sel < FREE.nodes.leng
 // ----- the bar -----
 function flyBarSync() {
   for (const bt of flyEl('flyWarp').querySelectorAll('button')) bt.setAttribute('aria-pressed', String(+bt.dataset.w === FREE.warp));
+  FREE.capShown = null; flyBarCap();
   flyEl('flyPause').setAttribute('aria-pressed', String(FREE.paused)); flyEl('flyPause').setAttribute('aria-label', _(FREE.paused ? 'fly.play' : 'fly.pause'));
   flyEl('flyPause').innerHTML = FREE.paused ? playSvg : pauseSvg;
 }
@@ -355,7 +579,13 @@ function flyBarTick(b) {
   flyTxt('flyBody', _('fly.state', { body: _('body.' + MAPK[b]), alt: fmtDist(r - mapSys.R[b]), v: fmtSpeed(v) }));
 }
 const FLY_KEYS = FLY_WARPS;
-function flyWarp(w) { FREE.warp = w; flyBarSync(); }
+// a warp step (auto: by "Düğüme hızlandır" or the burn's cap; a step by hand ends the warp to a node), never above the cap
+function flyWarp(w, auto) { if (!auto) FREE.warpTo = null; FREE.warp = Math.min(w, FREE.cap); flyBarSync(); }
+// while the engine fires the steps above its cap are disabled
+function flyBarCap() {
+  if (FREE.capShown === FREE.cap) return; FREE.capShown = FREE.cap;
+  for (const bt of flyEl('flyWarp').querySelectorAll('button')) bt.disabled = +bt.dataset.w > FREE.cap;
+}
 flyEl('flyWarp').innerHTML = FLY_KEYS.map(w => `<button type="button" data-w="${w}">${w >= 1e6 ? (w / 1e6) + 'M' : w >= 1e3 ? (w / 1e3) + 'k' : w}×</button>`).join('');
 flyEl('flyWarp').addEventListener('click', e => { const bt = e.target.closest('button'); if (bt) flyWarp(+bt.dataset.w); });
 flyEl('flyPause').addEventListener('click', () => { FREE.paused = !FREE.paused; flyBarSync(); });
@@ -365,6 +595,10 @@ addEventListener('keydown', e => {
   if (!FREE.on || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
   const i = FLY_KEYS.indexOf(FREE.warp);
   if (e.key === '.' || e.key === ',') { e.preventDefault(); flyWarp(FLY_KEYS[Math.max(0, Math.min(FLY_KEYS.length - 1, i + (e.key === '.' ? 1 : -1)))]); }
+  else if (e.key === 'w' || e.key === 'W') { e.preventDefault(); flyThr(FREE.eng ? FREE.eng.thr + 0.1 : 0); }
+  else if (e.key === 's' || e.key === 'S') { e.preventDefault(); flyThr(FREE.eng ? FREE.eng.thr - 0.1 : 0); }
+  else if (e.key === 'z' || e.key === 'Z') { e.preventDefault(); flyThr(1); }
+  else if (e.key === 'x' || e.key === 'X') { e.preventDefault(); flyThr(0); }
   else if (e.code === 'Space') { e.preventDefault(); e.stopImmediatePropagation(); FREE.paused = !FREE.paused; flyBarSync(); }
   else if (e.key === 'u' || e.key === 'U') { e.preventDefault(); flyUndo(); }
   else if ((e.key === 'Delete' || e.key === 'Backspace') && FREE.sel >= 0) { e.preventDefault(); flyDel(); }

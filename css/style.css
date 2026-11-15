@@ -101,7 +101,24 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-conten
 .hud-row>.readout{pointer-events:auto;margin-left:auto}
 /* the free flight's bar (Phase 19b): in place of the timeline */
 .fly-bar{align-self:stretch;display:flex;align-items:center;gap:10px;padding:7px 11px;flex-wrap:wrap}
-html[data-fly] #timeline,html[data-fly] #readout,html[data-fly] #engPanel,html[data-fly] #liveBar{display:none}
+html[data-fly] #timeline,html[data-fly] #readout,html[data-fly] #liveBar{display:none}
+.fly-help{position:absolute;z-index:12;top:52px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;max-width:min(560px,calc(100% - 24px))}
+.fly-help>*{pointer-events:auto}
+.fly-help[hidden],html:not([data-fly]) .fly-help{display:none}
+.fly-tip{display:flex;gap:10px;align-items:center;padding:7px 12px;font-size:12.5px;line-height:1.4;color:var(--ink);border-left:2px solid var(--accent)}
+.fly-tip[hidden]{display:none}
+.fly-how{font-size:11.5px}
+.fn-burn{font-variant-numeric:tabular-nums}
+.fn-warn{color:var(--warn)}
+.fn-burn:empty,.fn-warn:empty{display:none}
+.fn-warpbtn{align-self:flex-start}
+.fn-b .chk{margin-right:auto}
+.fn-man{display:flex;align-items:center;gap:6px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:6px}
+.fn-ml{font:600 10px/1 var(--f-disp);letter-spacing:.08em;text-transform:uppercase}
+.fn-lock{order:3;width:100%;display:flex}
+.fn-lock button{flex:1;padding:4px 2px;font-size:10.5px}
+.fn-thr{margin-left:auto;color:var(--ink);font-variant-numeric:tabular-nums}
+@media (max-width:560px){.fly-help{left:8px;right:8px;transform:none;max-width:none}}
 .fly-warp button{padding:6px 8px;font-variant-numeric:tabular-nums}
 .fly-node{pointer-events:auto;width:280px;margin-left:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px;font:500 11px/1.3 var(--f-mono);color:var(--dim)}
 .fly-node[hidden],html:not([data-fly]) .fly-node{display:none}

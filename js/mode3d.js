@@ -104,7 +104,7 @@ function pan3(dx, dy) {
 }
 // nearest the camera may come to the target: outside a followed body
 function minDist3() {
-  if (MAP.on) return MAP.follow != null ? mapSys.R[MAP.follow] * 1.15 : 1e3;
+  if (MAP.on) return FREE.appr ? CRAFT.L * 0.9 : MAP.follow != null ? mapSys.R[MAP.follow] * 1.15 : 1e3;
   const i = S.follow === 'A' ? 0 : S.follow === 'B' ? 1 : S.follow[0] === 'b' ? +S.follow.slice(1) : -1;
   if (S.follow === 'craft') return CRAFT.L * 0.9; // close enough to see the craft's model, not inside it
   return sys && i >= 0 && i < sys.N ? sys.R[i] * 1.15 : 50;
@@ -495,21 +495,26 @@ function craft3(tNow, craft, ext, sunIdx) {
   const ax = craftAxis3(tNow, craft, ext, en);
   let sun = SUN3;
   if (sunIdx >= 0) { const v = [BP3[3 * sunIdx] - CR3[0], BP3[3 * sunIdx + 1] - CR3[1], BP3[3 * sunIdx + 2] - CR3[2]], l = Math.hypot(...v) || 1; sun = v.map(q => q / l); }
-  const pc = plumeCols(en.plume), k = ext ? 0 : en.pl, ts = reduceMotion ? 0 : (performance.now() / 1000) % 600; // wrapped: the noise's inputs stay small
+  // the cut faces up, the local vertical across the nose (2026-11-15; fixed to the orbit, not to the camera; before: the
+  // frame's Z), so from the default close view it looks at the camera and the body below shows behind it
+  craftDraw('sim', CR3, ax, acrossUp(ax, craftUp3(tNow, craft, ext)), L, sun, en, ext ? 0 : en.pl, CAM3.sim.dist);
+  return lpx;
+}
+// the model's call (a mission's view and free flight's map, set): at p, nose ax, cut side, length L, the Sun's direction
+// sun; en: { E, s, st, plume } the engine and its state; k the plume's strength; dist the camera's distance
+function craftDraw(set, p, ax, side, L, sun, en, k, dist) {
+  const pc = plumeCols(en.plume), ts = reduceMotion ? 0 : (performance.now() / 1000) % 600; // wrapped: the noise's inputs stay small
   const fl = reduceMotion ? 1 : 1 + 0.045 * Math.sin(ts * 37.7) + 0.03 * Math.sin(ts * 61.3 + 1.3) + 0.02 * Math.sin(ts * 97.1 + 2.1);
   // a liquid engine's tanks as long as their volumes (core.js engTanks, js/engines.js densities), as in the 2D cutaway
   const rho = (PROPS[en.E.prop] || {}).rho, V = rho && en.E.type === 'liq' ? engTanks(en.s, rho) : null, fo = V ? V.ox / (V.ox + V.fuel) : 0.5;
   // Up close (2026-11-15) the flame keeps out of the way: seen from a few craft lengths its length and brightness are
   // held down (half the length and 30 % of the brightness within PLUME_NEAR[0] lengths, full from PLUME_NEAR[1]), so it
   // reads as the nozzle's flame and does not fill the screen with an orange glow
-  const nq = plumeNear(CAM3.sim.dist / L);
-  // the cut faces up, the local vertical across the nose (2026-11-15; fixed to the orbit, not to the camera; before: the
-  // frame's Z), so from the default close view it looks at the camera and the body below shows behind it
-  V3.craft({ show: true, p: CR3, axis: ax, side: acrossUp(ax, craftUp3(tNow, craft, ext)), L, sun, cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,
+  const nq = plumeNear(dist / L);
+  V3.craft({ show: true, set, p, axis: ax, side, L, sun, cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,
     col: { metal: COL.dim, nozzle: COL.faint, fuel: COL.burn, ox: COL.cyan, // fuel and oxidizer as the engine window's charts
       tex: { ink: COL.ink, dim: COL.dim, faint: COL.faint, solid: COL.solid, accent: COL.accent, warn: COL.warn, burn: COL.burn, bad: COL.bad, orbit: COL.orbit } },
     plume: { core: pc.core, body: pc.body, I: k > 0.004 ? 0.85 * pc.k * (0.3 + 0.7 * k) * Math.min(1, 3 * k) * fl * (0.3 + 0.7 * nq) : 0, len: (1.0 + 2.0 * k) * fl * (0.5 + 0.5 * nq), t: ts, simple: lowQ || FX.lvl >= 2 } });
-  return lpx;
 }
 // the trail after capture (fading oldest revolutions), up to the craft
 function trail3() {
@@ -637,9 +642,10 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
   if (MAP.needFit) fitMap3();
   const c = CAM3.map;
   if (MAP.follow != null) c.t = [pos[3 * MAP.follow], pos[3 * MAP.follow + 1], pos[3 * MAP.follow + 2]];
+  if (FREE.on && FREE.appr) c.t = flyCraftPos3(); // free flight, close to the craft (js/fly.js)
   if (SCENE.on) sceneAim3(pos, c);
-  if (!(SCENE.on && !SCENE.free && SCENE.kind === 'saturn')) camLevel3(c, SCENE.on ? SCENE.dt : 0);
-  fly3(c, MAP.follow != null);
+  if (!(SCENE.on && !SCENE.free && SCENE.kind === 'saturn') && !FREE.appr) camLevel3(c, SCENE.on ? SCENE.dt : 0);
+  fly3(c, MAP.follow != null || FREE.appr);
   c.dist = Math.max(c.dist, minDist3());
   const B = camBasis(c);
   V3.view(c.t, B.r, B.u, B.d, c.dist, B.cx, B.cy, B.fov);
@@ -669,6 +675,7 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
   sky3();
   const glm = glow ? glare3([pos[3 * MSUN], pos[3 * MSUN + 1], pos[3 * MSUN + 2]], false, rpx[MSUN], MSUN) : null;
   if (glm) skySun(glm.i, rpx[MSUN]);
+  if (FREE.on) flyCraft3(c); else V3.craft({ show: false }); // the craft's model in free flight (js/fly.js)
   V3.render({ stars: Q.stars && !skyRec(), sky: null, skyGain: skyGain(), glare: glm });
 
   // overlay: nodes, craft, labels (Sun and planets first, a label overlapping another is skipped)

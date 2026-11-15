@@ -858,7 +858,8 @@ export function create(canvas, opts) {
     if (!o.show) { if (craftG.group) craftG.group.visible = false; return; }
     const fo = Math.round((o.fo || 0.5) * 100) / 100, key = [o.type, o.grain, o.prop, fo, o.col.metal, o.col.fuel, o.col.ox, o.col.nozzle].join('|');
     if (craftG.key !== key) { craftBuild(o.type, o.grain, o.col, o.prop, fo); craftG.key = key; }
-    const g = craftG.group, L = o.L * KM, st = o.st || {};
+    const g = craftG.group, L = o.L * KM, st = o.st || {}, root = roots[o.set || 'sim'];
+    if (g.parent !== root) root.add(g); // a mission's view or free flight's map (Phase 19d)
     g.visible = true; g.scale.setScalar(L); g.position.set((o.p[0] - T[0]) * KM, (o.p[1] - T[1]) * KM, (o.p[2] - T[2]) * KM); // after view(): T is this frame's
     for (const m of Object.values(craftG.mats)) m.uniforms.uSun.value.set(o.sun[0], o.sun[1], o.sun[2]);
     // orientation: +y the nose, +x the body's side (o.side square to the nose; the cut opens towards it)
@@ -923,7 +924,7 @@ export function create(canvas, opts) {
     camera.updateProjectionMatrix();
   }
   const _q = new THREE.Quaternion();
-  function setActive(set) { active = set; for (const k in roots) roots[k].visible = k === set; if (set !== 'sim' && craftG.group) craftG.group.visible = false; }
+  function setActive(set) { active = set; for (const k in roots) roots[k].visible = k === set; if (craftG.group && craftG.group.parent !== roots[set]) craftG.group.visible = false; }
   // opts: stars (draw the sky), sky (ecliptic -> view frame, row-major; null: the ecliptic axes), skyGain (the viewer's
   // gain × the eye adaptation), glare ({ x, y px from the top left, L px, i intensity } or null)
   const _sk = new THREE.Matrix4();
