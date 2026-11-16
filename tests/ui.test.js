@@ -1484,7 +1484,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(app.includes("APPR_K = 0.45, APPR_FOLD = ['mission', 'results', 'overview', 'engine']") && app.includes('WINS[id].collapsed = true; applyWin(id); APPR.fold.push(id);') && app.includes('for (const id of APPR.fold) if (WINS[id].open && WINS[id].collapsed) { WINS[id].collapsed = false; applyWin(id); }'), 'approach: windows fold and come back');
   assert.ok(m3.includes('apprAim(c, craftAxis3(tNow, craft, ext), craftUp3(tNow, craft, ext), sd || [1, 0, 0]);') && m3.includes('} else apprKeep(c, 1 / 60);') && m3.includes('if (needFit && !APPR.on) fit3();'), 'approach: aimed on the first frame, kept in the free area, no refit');
   // the aim itself (sandboxed): the craft across the view, the camera above and behind, the local vertical up on screen
-  const sb = { Math, APPR_K: 0.45, FOV3: 45, W: 1440, H: 900, CRAFT: { L: 3, cut: false }, APPR: { aim: null }, FLY: {}, reduceMotion: false, flyTo() {}, insets: () => ({ l: 0, r: 0, t: 100, b: 250 }) };
+  const sb = { Math, APPR_K: 0.45, APPR_EL: 85 * Math.PI / 180, FOV3: 45, W: 1440, H: 900, CRAFT: { L: 3, cut: false }, APPR: { aim: null }, FLY: {}, reduceMotion: false, flyTo() {}, insets: () => ({ l: 0, r: 0, t: 100, b: 250 }) };
   require('vm').runInNewContext('const clamp = (x, a, b) => Math.min(b, Math.max(a, x));' + app.slice(app.indexOf('const unit3 = '), app.indexOf('\n', app.indexOf('const unit3 = '))) + m3.slice(m3.indexOf('const CB = {'), m3.indexOf('// screen position of view-frame point p')) +
     app.slice(app.indexOf('function apprBox()'), app.indexOf('// while close: the craft stays')) + ';this.aim = apprAim; this.cb = camBasis;', sb);
   const ax = [1, 0, 0], vert = [0, 0.6, 0.8], c = { t: [0, 0, 0], yaw: 0, elev: 0, dist: 1, roll: 0, fov: 45 };
@@ -1571,7 +1571,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(["e.key === 'w' || e.key === 'W'", "e.key === 's' || e.key === 'S'", "e.key === 'z' || e.key === 'Z'", "e.key === 'x' || e.key === 'X'"].every(k => fl.includes(k)), 'engine: the throttle keys');
   assert.ok(app.includes('if (FREE.on) flyEngPanel(); else engPanelTick(') && !css.includes('html[data-fly] #engPanel') && fl.includes("engSchematic(engEl('epSch'), s, st, e.E,"), 'engine: the engine panel in free flight');
   assert.ok(m3.includes("if (FREE.on) flyCraft3(c); else V3.craft({ show: false });") && v3.includes("root = roots[o.set || 'sim'];") && v3.includes('craftG.group.parent !== roots[set]') && fl.includes("craftDraw('map', p, ax, acrossUp(ax, up), L, sun,"), 'engine: the 3D model in the map\'s set');
-  assert.ok(app.includes('if (FREE.on) { flyAppr(on); return; }') && m3.includes('if (FREE.on && FREE.appr) c.t = flyCraftPos3();') && m3.includes('return FREE.appr ? CRAFT.L * 0.9 :') && fl.includes('apprAim(c, ax, up, sun)'), 'engine: "Araca yaklaş" and the double click in free flight');
+  assert.ok(app.includes('if (FREE.on) { flyAppr(on); return; }') && m3.includes('if (FREE.on && FREE.appr) flyApprCam(c);') && m3.includes('return FREE.appr ? CRAFT.L * 0.9 :') && fl.includes('apprAim(c, ax, unit3(r) || [0, 0, 1], sun)'), 'engine: "Araca yaklaş" and the double click in free flight');
   assert.ok(fl.includes("flyTips(readPref(LS, PREF_KEYS.flyTips) ? -1 : 0);") && fl.includes("flyEl('flyHow').addEventListener('click', () => flyTips(0));") && fl.includes("else if (FREE.on) writePref(LS, PREF_KEYS.flyTips, '1');") && css.includes('.fly-help{position:absolute'), 'engine: the hints once, skippable, "Nasıl uçulur?" always');
   assert.ok(app.includes("cv.addEventListener('mousedown', e => { if (e.detail > 1) e.preventDefault(); });"), 'a double click selects no text');
 }
@@ -1613,6 +1613,50 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const gl = DICT.gloss.find(g => g[0] === 'Serbest uçuş');
   assert.ok(gl && ['Manevra düğümü', 'Zaman hızlandırma', 'Yamalı konik', 'Transfer penceresi', 'B-düzlemi', 'Yol düzeltmesi'].every(t => gl[1].some(e => e[0] === t)) && html.includes('data-i18n="ui.model12"') && has('ui.model12'), 'finished: the glossary and the model');
   assert.ok(fl.includes('if (FREE.burn && !FREE.nodes.some(nd => nd.t === FREE.burn.t)) flyBurnEnd(false);'), 'finished: a burn stops with its node');
+}
+// 57) The approach camera (2026-11-16): close to the craft the camera orbits it in the craft's local frame (e3 the local
+// vertical, e2 the orbit normal): a sideways drag turns it on a level circle about the craft (its height over the local
+// horizon kept, the vertical up, no roll), a drag up or down stops short of the pole, the wheel moves towards the craft;
+// all eased; a pan turns instead (the craft stays the centre); leaving the frame keeps the view where it is.
+{
+  const m3 = read('js/mode3d.js'), app = read('js/app.js'), fl = read('js/fly.js');
+  const sb = { Math, FOV3: 45, ROT3: 0.006, W: 1440, H: 900, reduceMotion: false, FLY: { on: false }, performance: { t: 0, now() { return this.t; } }, MAP: { on: false }, FREE: {}, S: { follow: 'craft' }, CRAFT: { L: 3 / 0.9 }, cam3: () => sb.c };
+  require('vm').runInNewContext('const clamp = (x, a, b) => Math.min(b, Math.max(a, x));' + app.slice(app.indexOf('const unit3 = '), app.indexOf('\n', app.indexOf('const unit3 = '))) +
+    app.slice(app.indexOf('function acrossUp('), app.indexOf('// 3D, the first frame after')) + m3.slice(m3.indexOf('const CB = {'), m3.indexOf('// screen position of view-frame point p')) +
+    m3.slice(m3.indexOf('// ---------- the approach camera'), m3.indexOf('// top-down view')) + ';this.api = { camLocal, camBasis, camEase3, camRebase, camFrame3, rot3, zoom3 };', sb);
+  const A = sb.api, dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+  const c = sb.c = { t: [0, 0, 0], yaw: 0.4, elev: 0.3, dist: 10, roll: 0, fov: 45, cx: null, cy: null };
+  const r = [7e6, 1e5, 2e5], v = [-100, 7600, 300];
+  A.camLocal(c, r, v, 3);
+  const e3 = c.lb[2], n = c.lb[1];
+  assert.ok(Math.abs(dot(e3, r) / Math.hypot(...r) - 1) < 1e-12 && Math.abs(dot(n, v)) < 1e-9 && Math.abs(dot(c.lb[0], e3)) < 1e-12, 'approach camera: the local frame (vertical, orbit normal)');
+  const step = k => { for (let i = 0; i < k; i++) { sb.performance.t += 16; A.camEase3(c); } };
+  step(2); const h0 = dot(A.camBasis(c).d, e3);
+  A.rot3(150, 0); step(3);
+  const mid = c.yaw; step(120);
+  const B1 = A.camBasis(c);
+  assert.ok(Math.abs(c.yaw - (0.4 - 150 * 0.006)) < 1e-6 && mid > c.yaw && mid < 0.4, 'approach camera: a sideways drag turns it, eased');
+  assert.ok(Math.abs(dot(B1.d, e3) - h0) < 1e-9 && dot(B1.u, e3) > 0.9 && c.roll === 0, 'approach camera: a level circle about the craft, the local vertical up');
+  A.rot3(0, 2000); step(120);
+  assert.ok(Math.abs(c.elev - 85 * Math.PI / 180) < 1e-6 && dot(A.camBasis(c).u, e3) > 0, 'approach camera: stops short of the pole, no flip');
+  A.zoom3(0, 0, 0.01); step(120);
+  assert.ok(Math.abs(c.dist - 3) < 1e-6, 'approach camera: the wheel towards the craft, not inside it');
+  // the frame turning with the orbit (here a quarter turn) carries the camera along; a new body blends
+  const d0 = A.camBasis(c).d.slice(), loc = c.lb.map(e => dot(e, d0));
+  sb.performance.t += 16; A.camLocal(c, [-1e5, 7e6, 2e5], [-7600, -100, 300], 3);
+  assert.ok(c.lb.every((e, k) => Math.abs(dot(e, A.camBasis(c).d) - loc[k]) < 1e-9), 'approach camera: keeps its place relative to the orbit');
+  sb.performance.t += 16; A.camLocal(c, [0, 0, 1e7], [7000, 0, 0], 9);
+  assert.ok(c.lbFrom && Math.abs(dot(c.lb[2], [0, 0, 1])) < 0.99, 'approach camera: a sphere left or entered blends');
+  for (let i = 0; i < 60; i++) { sb.performance.t += 16; A.camLocal(c, [0, 0, 1e7], [7000, 0, 0], 9); }
+  assert.ok(!c.lbFrom && Math.abs(dot(c.lb[2], [0, 0, 1]) - 1) < 1e-12, 'approach camera: … and settles');
+  // leaving the frame: the same view in the view frame's axes
+  const Bx = A.camBasis(c), dx = Bx.d.slice(), rx = Bx.r.slice(); A.camFrame3(c);
+  const By = A.camBasis(c);
+  assert.ok(!c.lb && dot(By.d, dx) > 1 - 1e-9 && dot(By.r, rx) > 1 - 1e-9, 'approach camera: leaving the frame keeps the view');
+  const q = A.camRebase(1.1, -0.4, 0.3, null, [[0, 1, 0], [0, 0, 1], [1, 0, 0]]), q2 = A.camRebase(q.yaw, q.el, q.roll, [[0, 1, 0], [0, 0, 1], [1, 0, 0]], null);
+  assert.ok(Math.abs(q2.yaw - 1.1) < 1e-9 && Math.abs(q2.el + 0.4) < 1e-9 && Math.abs(q2.roll - 0.3) < 1e-9, 'approach camera: re-expressed in another frame and back');
+  assert.ok(app.includes('if (!is3d() || (gest.pan && !APPR.on)) unfollow();') && app.includes('else if (gest.pan && !APPR.on) pan3(dx, dy); else rot3(dx, dy);') && app.includes('if (APPR.on) return; // close to the craft two fingers only zoom'), 'approach camera: a pan turns instead, the craft stays the centre');
+  assert.ok(m3.includes('const q = craftRV3(tNow, craft, ext); camLocal(c, q.r, q.v, q.b);') && m3.includes('if (!APPR.on && c.lb) camFrame3(c);') && m3.includes('if (FREE.on && FREE.appr) flyApprCam(c);') && fl.includes('camLocal(c, r, v, b);') && app.includes('if (c && a.lb !== c.lb) { const q = camRebase('), 'approach camera: in missions and in free flight; the smooth moves re-expressed');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

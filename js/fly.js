@@ -545,21 +545,33 @@ function flyEngPanel() {
 const FLY_OWN = new Set(['flyTrail', ...Array.from({ length: 8 }, (_, k) => 'flyP' + k)]);
 // the craft in the map's coordinates (after states(mapSys, FREE.st.t, MP, MV))
 function flyCraftPos3(out = [0, 0, 0]) { const s = FREE.st; flyMapAt(MSUN, s.r[0] - MP[3 * MSUN], s.r[1] - MP[3 * MSUN + 1], s.r[2] - MP[3 * MSUN + 2], out); return mapXYZ(out[0], out[1], out[2], out); }
+// the nose: along the thrust while it fires (and while the plume dies), else null (prograde)
+function flyNose() { return (FREE.pl > 0.004 && FREE.fdir) || (FREE.burn && FREE.burn.dir) || null; }
 function flyCraft3(c) {
   if (!FREE.on || !FREE.eng) { V3.craft({ show: false }); return; }
   const s = FREE.st, b = FREE.tb, e = FREE.eng;
   states(mapSys, s.t, MP, MV);
   const p = flyCraftPos3(), r = [s.r[0] - MP[3 * b], s.r[1] - MP[3 * b + 1], s.r[2] - MP[3 * b + 2]], v = [s.v[0] - MV[3 * b], s.v[1] - MV[3 * b + 1], s.v[2] - MV[3 * b + 2]];
-  const up = unit3(r) || [0, 0, 1], ax = (FREE.pl > 0.004 && FREE.fdir) || FREE.burn && FREE.burn.dir || unit3(v) || [1, 0, 0], sun = unit3(p.map(x => -x)) || [1, 0, 0];
+  const up = unit3(r) || [0, 0, 1], ax = flyNose() || unit3(v) || [1, 0, 0], sun = unit3(p.map(x => -x)) || [1, 0, 0];
   const L = CRAFT.L = craftLen({ m0: s.m });
-  if (FREE.aim) { APPR.aim = FREE.aim; FREE.aim = null; apprAim(c, ax, up, sun); }
-  else if (FREE.appr) apprKeep(c, 1 / 60);
   // close to the craft the map's lines fade as in a mission (its own path kept, faint)
   const nk = FREE.appr ? nearFade3(c.dist) : 1; V3.fadeSet('map', nk, FLY_OWN, 0.15 + 0.85 * nk); if (FREE.appr) grid3(c, false);
   proj3(p, PJ); const lpx = FREE.lpx = PJ[2] > 0 ? L * CB.f / PJ[2] : 0;
   if (!(lpx > 6)) { V3.craft({ show: false }); return; }
   const st = engStOf(e.s, e.tau, FREE.fire > 0);
   craftDraw('map', p, ax, acrossUp(ax, up), L, sun, { E: e.E, s: e.s, st, plume: (PROPS[e.E.prop] || {}).plume || 'amber' }, FREE.pl, c.dist);
+}
+// 3D, close to the craft (mode3d.js drawMap3, before the camera is set): the camera in the craft's local frame about the
+// dominant body (mode3d.js camLocal), on the craft, aimed the first frame (app.js apprAim), then kept in the free area
+function flyApprCam(c) {
+  const s = FREE.st, b = FREE.tb >= 0 ? FREE.tb : MSUN; states(mapSys, s.t, MP, MV);
+  const r = [s.r[0] - MP[3 * b], s.r[1] - MP[3 * b + 1], s.r[2] - MP[3 * b + 2]], v = [s.v[0] - MV[3 * b], s.v[1] - MV[3 * b + 1], s.v[2] - MV[3 * b + 2]];
+  camLocal(c, r, v, b);
+  c.t = flyCraftPos3();
+  if (FREE.aim) {
+    const ax = flyNose() || unit3(v) || [1, 0, 0], sun = unit3(c.t.map(x => -x)) || [1, 0, 0];
+    CRAFT.L = craftLen({ m0: s.m }); APPR.aim = FREE.aim; FREE.aim = null; apprAim(c, ax, unit3(r) || [0, 0, 1], sun);
+  } else apprKeep(c, 1 / 60);
 }
 // 2D, close to the craft: the view's middle on it (the free area's), the map's camera following it
 function flyFollow2() {
@@ -580,6 +592,7 @@ function flyAppr(on) {
     flyTipDid(0);
   } else {
     const p = FREE.apprPrev; FREE.apprPrev = null; FREE.appr = false; APPR.on = false; FREE.aim = null; FREE.lpx = 0;
+    c.lb = null; c.lbFrom = null; c.yawT = null; // back in the view frame's axes (flyTo re-expresses the start)
     if (p) { Object.assign(cam, p.cam); Object.assign(c, { ...p.c, t: [...p.c.t] }); MAP.follow = FREE.tb >= 0 ? FREE.tb : p.follow; }
     if (V3) V3.fadeSet('map', 1, FLY_OWN, 1);
     flyTo(a);

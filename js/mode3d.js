@@ -53,6 +53,7 @@ function camBasis(c) {
   const r = CB.r, u = CB.u, d = CB.d;
   r[0] = cy; r[1] = sy; r[2] = 0;
   d[0] = sy * ce; d[1] = -cy * ce; d[2] = se;
+  if (c.lb) { const L = c.lb; for (const v of [r, d]) { const x = v[0], y = v[1], z = v[2]; for (let k = 0; k < 3; k++) v[k] = x * L[0][k] + y * L[1][k] + z * L[2][k]; } } // the approach camera's local axes
   u[0] = d[1] * r[2] - d[2] * r[1]; u[1] = d[2] * r[0] - d[0] * r[2]; u[2] = d[0] * r[1] - d[1] * r[0];
   if (c.roll) { const cr = Math.cos(c.roll), sr = Math.sin(c.roll); for (let k = 0; k < 3; k++) { const a = r[k], b = u[k]; r[k] = a * cr + b * sr; u[k] = b * cr - a * sr; } }
   for (let k = 0; k < 3; k++) CB.e[k] = c.t[k] + d[k] * c.dist;
@@ -96,8 +97,63 @@ function behind3(p, o, skip) {
 // label, hit target or highlight ring (2026-11-15: from 400 km the Earth's hit ring circled the craft)
 function close3(p, o, R) { const e = CB.e; return R > 0.3 * Math.hypot(p[o] - e[0], p[o + 1] - e[1], p[o + 2] - e[2]); }
 
+// ---------- the approach camera (2026-11-16) ----------
+// Close to the craft the camera orbits it in the craft's local frame instead of the view frame's: c.lb = [e1, e2, e3]
+// (view-frame unit vectors) with e3 the local vertical (away from the body below), e2 the orbit normal and e1 = e2 × e3
+// (horizontal, prograde); yaw and elevation are about e3, so the local vertical is always up on screen, a drag turns the
+// camera round the craft on a level circle (no roll, no flip at the poles: the elevation stops at ±APPR_EL) and the
+// camera keeps its place relative to the orbit while the craft turns or burns. A sudden change of the frame (a sphere
+// left or entered) blends over LB_BLEND s. The drag and the wheel set targets (yawT, elevT, distT) the camera eases to.
+const APPR_EL = 85 * Math.PI / 180, LB_BLEND = 0.6, CAM_EASE = 0.12;
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+// r, v: the craft about the body below (view-frame axes); key: that body (a change blends)
+function camLocal(c, r, v, key) {
+  const now = performance.now(), dt = Math.min(0.1, Math.max(0, (now - (c.lbAt || now)) / 1000)); c.lbAt = now;
+  const e3 = unit3(r); if (!e3) return;
+  const h = unit3(cross3(r, v)), prev = c.lb;
+  let e1 = h ? cross3(h, e3) : null;
+  if (!e1 && prev) { const k = prev[0][0] * e3[0] + prev[0][1] * e3[1] + prev[0][2] * e3[2]; e1 = unit3(prev[0].map((x, i) => x - k * e3[i])); }
+  if (!e1) e1 = acrossUp(e3, [1, 0, 0]);
+  if (prev && c.lbKey !== key) { c.lbFrom = prev.map(q => [...q]); c.lbT = 0; }
+  let E3 = e3, E1 = e1;
+  if (c.lbFrom) {
+    c.lbT += dt; const x = reduceMotion ? 1 : Math.min(1, c.lbT / LB_BLEND), k = x * x * (3 - 2 * x), F = c.lbFrom;
+    E3 = unit3(F[2].map((q, i) => q + (e3[i] - q) * k)) || e3; E1 = F[0].map((q, i) => q + (e1[i] - q) * k);
+    if (x >= 1) c.lbFrom = null;
+  }
+  const d = E1[0] * E3[0] + E1[1] * E3[1] + E1[2] * E3[2]; E1 = unit3(E1.map((q, i) => q - d * E3[i])) || acrossUp(E3, [1, 0, 0]);
+  c.lb = [E1, cross3(E3, E1), E3]; c.lbKey = key;
+}
+// leave the local frame: the camera's yaw, elevation and roll in the view frame's axes, so it does not move
+function camFrame3(c) { if (!c.lb) return; const q = camRebase(c.yaw, c.elev, c.roll || 0, c.lb, null); c.lb = null; c.lbFrom = null; c.yaw = q.yaw; c.elev = q.el; c.roll = q.roll; c.yawT = null; }
+// the same orientation (yaw, elevation, roll in basis A; null: the view frame) in basis B
+function camRebase(yaw, el, roll, A, B) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), ce = Math.cos(el), se = Math.sin(el), cr = Math.cos(roll), sr = Math.sin(roll);
+  const tw = (v, L) => (L ? [0, 1, 2].map(k => v[0] * L[0][k] + v[1] * L[1][k] + v[2] * L[2][k]) : v), fr = (v, L) => (L ? L.map(e => e[0] * v[0] + e[1] * v[1] + e[2] * v[2]) : v);
+  const r0 = [cy, sy, 0], d0 = [sy * ce, -cy * ce, se], u0 = cross3(d0, r0), rr = r0.map((x, k) => x * cr + u0[k] * sr);
+  const d = fr(tw(d0, A), B), r = fr(tw(rr, A), B);
+  const e = Math.asin(clamp(d[2], -1, 1)), y = Math.atan2(d[0], -d[1]), R0 = [Math.cos(y), Math.sin(y), 0], U0 = cross3(d, R0);
+  return { yaw: y, el: e, roll: Math.abs(Math.cos(e)) < 1e-6 ? 0 : Math.atan2(r[0] * U0[0] + r[1] * U0[1] + r[2] * U0[2], r[0] * R0[0] + r[1] * R0[1] + r[2] * R0[2]) };
+}
+// the targets the drag and the wheel move (first use: where the camera is)
+function camT3(c) { if (c.yawT == null) { c.yawT = c.yaw; c.elevT = c.elev; c.distT = c.dist; } }
+// each frame in the local frame: towards the targets (at once with reduced motion; a smooth move of the app's FLY wins)
+function camEase3(c) {
+  const now = performance.now(), dt = Math.min(0.1, Math.max(0, (now - (c.easeAt || now)) / 1000)); c.easeAt = now;
+  if (!c.lb) return dt;
+  if (FLY.on || c.yawT == null) { c.yawT = c.yaw; c.elevT = c.elev; c.distT = c.dist; return dt; }
+  const k = reduceMotion ? 1 : 1 - Math.exp(-dt / CAM_EASE);
+  c.yaw += (c.yawT - c.yaw) * k; c.elev += (c.elevT - c.elev) * k;
+  c.distT = Math.max(c.distT, minDist3()); c.dist = Math.exp(Math.log(c.dist) + (Math.log(c.distT) - Math.log(c.dist)) * k);
+  return dt;
+}
+
 // ---------- camera input ----------
-function rot3(dx, dy) { const c = cam3(); c.yaw -= dx * ROT3; c.elev = clamp(c.elev + dy * ROT3, -Math.PI / 2, Math.PI / 2); }
+function rot3(dx, dy) {
+  const c = cam3();
+  if (c.lb) { camT3(c); c.yawT -= dx * ROT3; c.elevT = clamp(c.elevT + dy * ROT3, -APPR_EL, APPR_EL); return; } // about the craft, eased
+  c.yaw -= dx * ROT3; c.elev = clamp(c.elev + dy * ROT3, -Math.PI / 2, Math.PI / 2);
+}
 function pan3(dx, dy) {
   const c = cam3(), b = camBasis(c), w = c.dist / b.f;
   for (let k = 0; k < 3; k++) c.t[k] += (-dx * b.r[k] + dy * b.u[k]) * w;
@@ -111,7 +167,9 @@ function minDist3() {
 }
 // zoom by k about screen point (px, py): the point under it stays put while nothing is followed
 function zoom3(px, py, k) {
-  const c = cam3(), b = camBasis(c), nd = clamp(c.dist * k, minDist3(), 1e14), kk = nd / c.dist;
+  const c = cam3();
+  if (c.lb) { camT3(c); c.distT = clamp(c.distT * k, minDist3(), 1e14); return; } // towards the craft, eased
+  const b = camBasis(c), nd = clamp(c.dist * k, minDist3(), 1e14), kk = nd / c.dist;
   const free = MAP.on ? MAP.follow == null : S.follow === 'free';
   if (free) {
     const w = c.dist / b.f, ox = (px - b.cx) * w, oy = -(py - b.cy) * w;
@@ -342,7 +400,8 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   frameAt(tNow); tf3(craft[0], craft[1], craft[2], CR3);
   const N = sys.N, c = CAM3.sim;
   for (let b = 0; b < N; b++) { BP3[3 * b] = 0; tf3(SP[3 * b], SP[3 * b + 1], SP[3 * b + 2], PJ); BP3[3 * b] = PJ[0]; BP3[3 * b + 1] = PJ[1]; BP3[3 * b + 2] = PJ[2]; }
-  if (APPR.on) { // "Araca yaklaş": aimed once the frame is set (app.js apprAim), then kept in the free area's middle
+  if (APPR.on) { // "Araca yaklaş": the camera in the craft's local frame (camLocal), aimed once the frame is set (app.js apprAim), then kept in the free area's middle
+    const q = craftRV3(tNow, craft, ext); camLocal(c, q.r, q.v, q.b);
     if (APPR.aim) {
       const sI = S.bodies.findIndex(q => q.key === 'sun'), sd = sI >= 0 ? unit3([BP3[3 * sI] - CR3[0], BP3[3 * sI + 1] - CR3[1], BP3[3 * sI + 2] - CR3[2]]) : sunDir3(0, -1, tNow, [0, 0, 0]);
       apprAim(c, craftAxis3(tNow, craft, ext), craftUp3(tNow, craft, ext), sd || [1, 0, 0]);
@@ -351,7 +410,9 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   const fb = S.follow === 'A' ? 0 : S.follow === 'B' ? 1 : S.follow[0] === 'b' ? +S.follow.slice(1) : -1;
   if (S.follow === 'craft') c.t = [...CR3];
   else if (fb >= 0 && fb < N) c.t = [BP3[3 * fb], BP3[3 * fb + 1], BP3[3 * fb + 2]];
+  if (!APPR.on && c.lb) camFrame3(c);
   fly3(c, S.follow !== 'free');
+  camEase3(c);
   c.dist = Math.max(c.dist, minDist3());
   const B = camBasis(c);
   V3.view(c.t, B.r, B.u, B.d, c.dist, B.cx, B.cy, B.fov);
@@ -481,6 +542,11 @@ const PLUME_NEAR = [2.5, 12];
 const toFrame3 = v => { const X = FP.X, Y = FP.Y, Z = FP.Z; return [v[0] * X[0] + v[1] * X[1] + v[2] * X[2], v[0] * Y[0] + v[1] * Y[1] + v[2] * Y[2], v[0] * Z[0] + v[1] * Z[1] + v[2] * Z[2]]; };
 function craftAxis3(tNow, craft, ext, en) { return unit3(toFrame3(craftAxis(tNow, craft, ext, en || engNow(tNow)))) || [0, 0, 1]; }
 // the local vertical: away from the body the craft moves about (a maneuver's body, else the dominant one), frame axes
+// the craft about the body below, view-frame axes: { r, v, b } (the approach camera's local frame)
+function craftRV3(tNow, craft, ext) {
+  if (ext) { C.orbit.rel(tNow - C.T, AXr); return { r: toFrame3([AXr[0], AXr[1], AXr[2]]), v: toFrame3([AXr[3], AXr[4], AXr[5]]), b: C.orbit.body }; }
+  const q = craftRel(tNow, craft); return { r: toFrame3(q.r), v: toFrame3(q.v), b: q.b };
+}
 function craftUp3(tNow, craft, ext) {
   let r;
   if (ext) { C.orbit.rel(tNow - C.T, AXr); r = [AXr[0], AXr[1], AXr[2]]; } else r = craftRel(tNow, craft).r;
@@ -642,10 +708,12 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
   if (MAP.needFit) fitMap3();
   const c = CAM3.map;
   if (MAP.follow != null) c.t = [pos[3 * MAP.follow], pos[3 * MAP.follow + 1], pos[3 * MAP.follow + 2]];
-  if (FREE.on && FREE.appr) c.t = flyCraftPos3(); // free flight, close to the craft (js/fly.js)
+  if (FREE.on && FREE.appr) flyApprCam(c); // free flight, close to the craft (js/fly.js): the craft's local frame, aimed
+  else if (c.lb) camFrame3(c);
   if (SCENE.on) sceneAim3(pos, c);
   if (!(SCENE.on && !SCENE.free && SCENE.kind === 'saturn') && !FREE.appr) camLevel3(c, SCENE.on ? SCENE.dt : 0);
   fly3(c, MAP.follow != null || FREE.appr);
+  camEase3(c);
   c.dist = Math.max(c.dist, minDist3());
   const B = camBasis(c);
   V3.view(c.t, B.r, B.u, B.d, c.dist, B.cx, B.cy, B.fov);

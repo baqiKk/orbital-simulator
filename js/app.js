@@ -1291,16 +1291,17 @@ cv.addEventListener('pointermove', e => {
       dx = e.offsetX - gest.x0; dy = e.offsetY - gest.y0;
       if (Math.hypot(dx, dy) < TAP_PX[gest.touch ? 'touch' : 'mouse']) return;
       gest.moved = true; cv.classList.add('drag'); hoverPt = null; sceneTouch();
-      if (!is3d() || gest.pan) unfollow();
+      if (!is3d() || (gest.pan && !APPR.on)) unfollow();
     }
     if (!is3d()) { cam.cx -= dx / cam.scale; cam.cy += dy / cam.scale; }
-    else if (gest.pan) pan3(dx, dy); else rot3(dx, dy);
+    else if (gest.pan && !APPR.on) pan3(dx, dy); else rot3(dx, dy);
   } else if (ptrs.size === 2 && pinch0) {
     const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
     if (!is3d()) { zoomAt(mx, my, (pinch0.s * d / pinch0.d) / cam.scale); return; }
     zoom3(mx, my, (pinch0.dist * pinch0.d / Math.max(1, d)) / cam3().dist);
     // the two fingers moving together pan, once past twice the tap distance
     const pdx = mx - pinch0.mx, pdy = my - pinch0.my; pinch0.mx = mx; pinch0.my = my;
+    if (APPR.on) return; // close to the craft two fingers only zoom: it stays the centre
     if (pinch0.pan < 2 * TAP_PX.touch) { pinch0.pan += Math.hypot(pdx, pdy); if (pinch0.pan >= 2 * TAP_PX.touch) unfollow(); }
     else pan3(pdx, pdy);
   }
@@ -1364,6 +1365,7 @@ function apprSet(on) {
     const q = apprBox(); cam.scale = Math.min(q.w, q.h) / 4e5; // 2D: a view ≈ 400 km across the free area
   } else {
     const p = APPR.prev; APPR.prev = null; APPR.aim = null;
+    if (c) camFrame3(c);
     for (const id of APPR.fold) if (WINS[id].open && WINS[id].collapsed) { WINS[id].collapsed = false; applyWin(id); }
     APPR.fold = []; INS = null;
     if (p) {
@@ -1394,9 +1396,11 @@ function apprAim(c, ax, vert, sun) {
   if (dot(w, sun) < 0) w = w.map(v => -v); // the lit side
   // across the axis, a little from above (with the cutaway: onto its face, which looks up) and a little from behind
   const d = unit3(CRAFT.cut ? up.map((u, k) => 0.9 * u + 0.3 * w[k] - 0.3 * ax[k]) : w.map((v, k) => 0.85 * v + 0.42 * up[k] - 0.3 * ax[k]));
-  c.elev = Math.asin(clamp(d[2], -1, 1)); c.yaw = Math.atan2(d[0], -d[1]); c.roll = 0; c.fov = FOV3;
+  // in the camera's local frame (mode3d.js camLocal: its up is the local vertical, so no roll is needed), else the view frame's
+  const dl = c.lb ? c.lb.map(e => dot(e, d)) : d;
+  c.elev = clamp(Math.asin(clamp(dl[2], -1, 1)), -APPR_EL, APPR_EL); c.yaw = Math.atan2(dl[0], -dl[1]); c.roll = 0; c.fov = FOV3; c.yawT = null;
   let B = camBasis(c);
-  const vu = vert ? vert.map((v, k) => v - dot(vert, B.d) * B.d[k]) : null; // the local vertical on screen
+  const vu = vert && !c.lb ? vert.map((v, k) => v - dot(vert, B.d) * B.d[k]) : null; // the local vertical on screen
   if (vu && Math.hypot(...vu) > 1e-3 && Math.abs(c.elev) < 1.45) { c.roll = Math.atan2(-dot(B.r, vu), dot(B.u, vu)); B = camBasis(c); }
   const px = dot(ax, B.r), py = dot(ax, B.u), sl = Math.hypot(px, py) || 1, box = apprBox();
   const span = Math.min(box.w / Math.max(Math.abs(px / sl), 1e-3), box.h / Math.max(Math.abs(py / sl), 1e-3)); // the area's extent along the craft on screen
@@ -1464,7 +1468,7 @@ function craftRel(tNow, craft, b0) {
   states(sys, S.M.t0 * DAY + tNow, SPo, SVo);
   const bd = b0 != null ? b0 : S.kind === 'man' ? 0 : domBody(sys, SPo, craft[0], craft[1], craft[2]), i = segAtTime(tNow), h = simR.t[i + 1] - simR.t[i];
   const v = h > 0 ? hermV(i, clamp((tNow - simR.t[i]) / h, 0, 1), AXv) : [simR.vx[i + 1], simR.vy[i + 1], simR.vz[i + 1]];
-  return { r: [craft[0] - SPo[3 * bd], craft[1] - SPo[3 * bd + 1], craft[2] - SPo[3 * bd + 2]], v: [v[0] - SVo[3 * bd], v[1] - SVo[3 * bd + 1], v[2] - SVo[3 * bd + 2]] };
+  return { b: bd, r: [craft[0] - SPo[3 * bd], craft[1] - SPo[3 * bd + 1], craft[2] - SPo[3 * bd + 2]], v: [v[0] - SVo[3 * bd], v[1] - SVo[3 * bd + 1], v[2] - SVo[3 * bd + 2]] };
 }
 function craftAxis(tNow, craft, ext, en) {
   if (!ext && en && en.m && en.j >= 0 && (en.on || en.pl > 0)) {
@@ -1529,12 +1533,13 @@ function focusHit(h, zoom) {
 // Instant in the low-resource mode and with reduced motion; any camera input of the viewer stops it.
 const FLY = { on: false, t0: 0, a: null, b: null }, FLY_MS = 850;
 // the camera now: call before the zoom, hand the result to flyTo after it
-function flyFrom() { const v3 = is3d(), c = v3 ? cam3() : null; return { v3, map: MAP.on, cx: cam.cx, cy: cam.cy, s: cam.scale, t: c && [...c.t], d: c && c.dist, px: c ? (c.cx == null ? W / 2 : c.cx) : 0, py: c ? (c.cy == null ? H / 2 : c.cy) : 0, yaw: c && c.yaw, el: c && c.elev, roll: c && c.roll }; }
+function flyFrom() { const v3 = is3d(), c = v3 ? cam3() : null; return { v3, map: MAP.on, cx: cam.cx, cy: cam.cy, s: cam.scale, t: c && [...c.t], d: c && c.dist, px: c ? (c.cx == null ? W / 2 : c.cx) : 0, py: c ? (c.cy == null ? H / 2 : c.cy) : 0, yaw: c && c.yaw, el: c && c.elev, roll: c && c.roll, lb: c && c.lb }; }
 function flyTo(a) {
   FLY.on = false;
   if (!Q.glow || reduceMotion || a.v3 !== is3d() || a.map !== MAP.on) return;
   const c = a.v3 ? cam3() : null;
   FLY.b = { cx: cam.cx, cy: cam.cy, s: cam.scale, t: c && [...c.t], d: c && c.dist, px: c ? (c.cx == null ? W / 2 : c.cx) : 0, py: c ? (c.cy == null ? H / 2 : c.cy) : 0, yaw: c && c.yaw, el: c && c.elev, roll: c && c.roll };
+  if (c && a.lb !== c.lb) { const q = camRebase(a.yaw, a.el, a.roll || 0, a.lb, c.lb); a = { ...a, yaw: q.yaw, el: q.el, roll: q.roll, lb: c.lb }; } // the start in the camera's axes now (the approach's local frame or the view frame)
   FLY.a = a; FLY.t0 = performance.now(); FLY.on = true;
   if (c) { c.t = [...a.t]; c.dist = a.d; c.cx = a.px; c.cy = a.py; c.yaw = a.yaw; c.elev = a.el; c.roll = a.roll || 0; } else { cam.cx = a.cx; cam.cy = a.cy; cam.scale = a.s; }
 }
@@ -1561,6 +1566,7 @@ function fly3(c, followed) {
   const a = FLY.a, b = FLY.b, d = flyLog(a.d, b.d, e), k = (1 - e) * d / a.d, T = followed ? c.t : b.t;
   c.t = T.map((v, i) => v + (a.t[i] - v) * k); c.dist = d; c.cx = a.px + (b.px - a.px) * e; c.cy = a.py + (b.py - a.py) * e;
   if (a.yaw != null && b.yaw != null) { const dy = Math.atan2(Math.sin(b.yaw - a.yaw), Math.cos(b.yaw - a.yaw)); c.yaw = a.yaw + dy * e; c.elev = a.el + (b.el - a.el) * e; c.roll = (a.roll || 0) + ((b.roll || 0) - (a.roll || 0)) * e; } // the turn, the short way
+  if (!FLY.on) c.yawT = null; // the move is over: the eased camera's targets start from here (mode3d.js camEase3)
 }
 // drop the follow of the current view; the camera stays where it is
 function unfollow() {
