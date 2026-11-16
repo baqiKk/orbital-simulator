@@ -719,7 +719,7 @@ export function create(canvas, opts) {
   // reference-plane normal made square to the nose; before, +x faced the camera): one side is cut open, and turning the
   // camera round shows the whole shell on the other. The cutaway's contents are flat faces in the plane x = 0 (tank liquids filling from the aft end,
   // a hybrid's grain on both sides of its port, a solid's grain about its core) and half cylinders for the port walls.
-  const craftG = { group: null, key: '', shells: [], fills: {}, mats: {}, plumes: [], ports: [] };
+  const craftG = { group: null, key: '', shells: [], fills: {}, mats: {}, plumes: [], ports: [], rcs: [] };
   // a lathe surface; its v runs by length along the profile (three.js spaces it by point), so the textures are not
   // squeezed into a tank's few cylinder points
   // A profile running downwards (a nozzle: throat to exit) is turned round so the outside is the front face (the
@@ -767,6 +767,7 @@ export function create(canvas, opts) {
   // a plume (2026-11-15): crossing planes on its axis (−y of the model, from the nozzle exit) sharing one material, and
   // for a main engine the end-on disc; additive: blending ONE, ONE (premultiplied), no depth writes, after the model
   const flameQuad = new THREE.PlaneGeometry(1, 1, 1, 20).translate(0.5, 0.5, 0), coreDisc = new THREE.CircleGeometry(1, 32).rotateX(-Math.PI / 2);
+  const rcsBlock = new THREE.BoxGeometry(0.03, 0.028, 0.03), rcsNoz = new THREE.CylinderGeometry(0.0035, 0.0075, 0.012, 10, 1, true), _Y = new THREE.Vector3(0, 1, 0), _nY = new THREE.Vector3(0, -1, 0);
   const ADD = { transparent: true, premultipliedAlpha: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false };
   function plumeMesh(planes, disc) {
     const grp = new THREE.Group(), mat = new THREE.ShaderMaterial({ vertexShader: PLUME_VS, fragmentShader: PLUME_FS, ...ADD, uniforms: { uCore: { value: new THREE.Color() }, uBody: { value: new THREE.Color() },
@@ -784,7 +785,7 @@ export function create(canvas, opts) {
   // for RP-1, a composite case for a hybrid's nitrous oxide); fo: the oxidizer tank's share of a liquid engine's tank
   // length (their volumes)
   function craftBuild(ty, grain, col, prop, fo) {
-    if (craftG.group) { roots.sim.remove(craftG.group); craftG.group.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry && ![quad, halfCyl, flameQuad, coreDisc].includes(o.geometry)) o.geometry.dispose(); }); }
+    if (craftG.group) { roots.sim.remove(craftG.group); craftG.group.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry && ![quad, halfCyl, flameQuad, coreDisc, rcsBlock, rcsNoz].includes(o.geometry)) o.geometry.dispose(); }); }
     const g = new THREE.Group(); g.visible = false;
     const C = col.tex, cryo = /^lox/.test(prop || ''), T = (k, o) => craftMat(col.metal, false, k, o ? { ...C, ...o } : C, k === 'foam' ? 0.06 : k.startsWith('quilt') ? 0.18 : 0.25);
     const fin = TANK_FIN;
@@ -846,10 +847,22 @@ export function create(canvas, opts) {
       for (const [x, z] of [[0.12, 0.12], [-0.12, 0.12], [0.12, -0.12], [-0.12, -0.12]]) { const t = new THREE.Mesh(lathe(bellPts(0.012, 0.03, -0.25, -0.33), false), M.nozzle); t.position.set(x, 0, z); g.add(t); }
     }
     craftG.exitR = exitR;
+    // the RCS (2026-11-16): four quads round the body near the nose and four near the tail ([radius, y nose, y tail]),
+    // each a block with a nozzle pointing out and a small puff along its exhaust; a nozzle's torque on the craft
+    // p × (−e) picks which fire for a turn (js/fly.js flyRcs: a pair at the nose and the opposite pair at the tail)
+    const RQ = craftG.rcsAt || { liq: [0.12, 0.4, -0.15], hyb: [0.12, 0.4, -0.28], sol: [0.15, 0.33, -0.27], mono: [0.2, 0.2, -0.12] }[ty] || [0.12, 0.4, -0.15], rcs = [];
+    for (const y of [RQ[1], RQ[2]]) for (const [cx, cz] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+      const r = RQ[0] + 0.012, e = new THREE.Vector3(cx, 0, cz), p = new THREE.Vector3(cx * r, y, cz * r);
+      add(new THREE.Mesh(rcsBlock, M.valve), p.x, y, p.z);
+      const nz = add(new THREE.Mesh(rcsNoz, M.nozzle), cx * (r + 0.019), y, cz * (r + 0.019)); nz.quaternion.setFromUnitVectors(_Y, e);
+      const pm = plumeMesh(2, false); pm.position.set(cx * (r + 0.025), y, cz * (r + 0.025)); pm.quaternion.setFromUnitVectors(_nY, e); g.add(pm);
+      rcs.push({ m: pm, tau: new THREE.Vector3().crossVectors(p, e.clone().negate()).normalize() });
+    }
+    craftG.rcsAt = null;
     const nPl = ty === 'mono' ? 4 : 1;
     for (let i = 0; i < nPl; i++) { const p = plumeMesh(nPl === 1 ? 3 : 2, nPl === 1); g.add(p); plumes.push(p); }
     roots.sim.add(g);
-    Object.assign(craftG, { group: g, shells, fills, ports, plumes, mats: M, ty, grain });
+    Object.assign(craftG, { group: g, shells, fills, ports, plumes, mats: M, ty, grain, rcs });
   }
   // o: { show, p (metres), axis (unit, the nose), L (m), sun (unit, world), cut, type, grain, col, st: core.js engState,
   //      plume: { color, a, len (model lengths) } }
@@ -889,6 +902,15 @@ export function create(canvas, opts) {
       const zc = craftG.grain === 'rod' && craftG.ty === 'sol' ? 0 : (name === 'grainA' ? 1 : -1) * (ri * f.r + w / 2);
       m.position.set(0.001, (f.y0 + f.y1) / 2, zc);
       if (name === 'grainB' && craftG.grain === 'rod' && craftG.ty === 'sol') m.visible = false;
+    }
+    // the RCS puffs (o.rcs: { a (the angular acceleration's axis, model axes), k, core, body }): the nozzles whose torque
+    // lies along it
+    const rc = o.rcs, al = rc ? Math.hypot(rc.a[0], rc.a[1], rc.a[2]) || 1 : 1;
+    for (const q of craftG.rcs) {
+      const f = rc && rc.k > 0.01 ? (q.tau.x * rc.a[0] + q.tau.y * rc.a[1] + q.tau.z * rc.a[2]) / al : 0, I = rc ? rc.k * Math.max(0, Math.min(1, (f - 0.5) / 0.4)) : 0;
+      q.m.visible = I > 0.01; if (!q.m.visible) continue;
+      const U = q.m.userData.mat.uniforms; U.uCore.value.set(rc.core); U.uBody.value.set(rc.body); U.uI.value = 0.9 * I; U.uT.value = (o.plume && o.plume.t) || 0;
+      U.uSimple.value = o.plume && o.plume.simple ? 1 : 0; U.uLen.value = 0.06 + 0.05 * I; U.uR0.value = 0.006; U.uR1.value = 0.018 + 0.014 * I;
     }
     // the plume(s): while the engine burns and the moment after its cut (o.plume.I goes to 0); length, width and
     // brightness by thrust (o.plume: { core, body (colours), I, len (model lengths), t (s, the noise's drift), simple })

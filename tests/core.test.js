@@ -575,6 +575,31 @@ const sEM = realSys(['earth', 'mars', 'sun']);
     assert.ok(C.flyCorrect(sw, t0, Rw, Vw0, 2).error === 'err.flyCorNone' && C.flyHArr(sw, 2) === 100e3 && C.flyHArr(sw, 3) === 300e3, 'free flight: no correction without the sphere; the passes wanted');
     assert.ok(C.flyWindow(sw, t0, Rw, Vw0, 1).error === 'err.flyWinSame' && C.flyWindow(sw, t0, Rw, Vw0, 5).error === 'err.flyWinCase' && C.flyWindow(sw, t0, Rw, [Vw[3], Vw[4] + 2 * vc, Vw[5]], 2).error === 'err.flyWinOrbit', 'free flight: the window refuses the body itself, another system, an open orbit');
   }
+  // the attitude slew (2026-11-16): prograde → retrograde turns at most SLEW.w, speeding up and braking at SLEW.a (no
+  // jump: the nose moves at most w·dt a frame), arrives at rest on the target in about slewTime(π); the RCS share is
+  // + at the start, − at the end, 0 while it coasts; a step longer than SLEW.maxT (a high warp) arrives at once; a slowly
+  // turning target (prograde about a low orbit) is tracked closely
+  {
+    const S0 = C.SLEW, att = { n: [1, 0, 0], w: 0 }, d = [-1, 0, 0], dt = 1 / 60;
+    let t = 0, maxStep = 0, maxW = 0, accs = [], aligned = null;
+    while (t < 30) {
+      const n0 = att.n.slice(), a = C.slewStep(att, d, dt); t += dt; accs.push(a);
+      maxStep = Math.max(maxStep, Math.acos(Math.max(-1, Math.min(1, n0[0] * att.n[0] + n0[1] * att.n[1] + n0[2] * att.n[2]))));
+      maxW = Math.max(maxW, att.w);
+      if (aligned == null && Math.acos(Math.max(-1, Math.min(1, -att.n[0]))) < 5 * Math.PI / 180) aligned = t;
+      if (att.w === 0 && att.n[0] < -1 + 1e-12) break;
+    }
+    const T = C.slewTime(Math.PI);
+    assert.ok(maxW <= S0.w + 1e-12 && maxStep <= S0.w * dt + 1e-9, `slew: at most ${(S0.w * 180 / Math.PI).toFixed(0)}°/s, no jump`);
+    assert.ok(Math.abs(t - T) < 0.3 && aligned > T - 2 && aligned < T, `slew: 180° in ${t.toFixed(2)} s (slewTime ${T.toFixed(2)} s), within 5° at ${aligned.toFixed(2)} s`);
+    const mid = accs[Math.floor(accs.length / 2)];
+    assert.ok(accs[0] > 0.9 && accs[accs.length - 3] < -0.5 && Math.abs(mid) < 1e-9, 'slew: the RCS starts the turn, coasts, stops it');
+    const a2 = { n: [1, 0, 0], w: 0 }; C.slewStep(a2, [0, 1, 0], S0.maxT + 1);
+    assert.ok(a2.n[1] === 1 && a2.w === 0, 'slew: a high warp arrives at once');
+    const a3 = { n: [1, 0, 0], w: 0 }, om = 2 * Math.PI / 5554; let lag = 0;
+    for (let k = 1; k <= 6000; k++) { const g = om * k * dt; C.slewStep(a3, [Math.cos(g), Math.sin(g), 0], dt); if (k > 600) lag = Math.max(lag, Math.acos(Math.min(1, a3.n[0] * Math.cos(g) + a3.n[1] * Math.sin(g)))); }
+    assert.ok(lag < 0.1 * Math.PI / 180, `slew: a low orbit's prograde tracked within ${(lag * 180 / Math.PI * 3600).toFixed(1)}″`);
+  }
   console.log('free flight ok');
 }
 

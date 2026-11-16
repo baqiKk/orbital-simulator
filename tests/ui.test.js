@@ -1564,7 +1564,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(q.eng && q.eng.tau === 12 && q.eng.auto === false && q.eng.lock === 'nor' && P.parseFlySnap(JSON.stringify({ ...snap, eng: { tau: 1 } }), now).eng === null && P.PREF_KEYS.flyTips, 'engine: kept in the snapshot');
   assert.ok(fl.includes('else if (C && simR) { const en = engNow(tNowG); E = en.E; s = en.s; tau = Math.min(en.tau, s ? s.tb : 0); }') && fl.includes('FREE.st.m = s.md + Math.max(0, s.mp - u.fuel - u.ox);'), 'engine: the mission\'s, with what is left');
   assert.ok(fl.includes('start: nd.t - b.T / 2') && fl.includes('const nd = FREE.nodes[0], q = FREE.nst[0], dvI = nodeDv(q.r, q.v, nd.d)') && fl.includes('else done = done || B.goal - got < 1e-3;') && fl.includes('done = done || (B.up ? q.E >= B.E - 1e-3 : q.E <= B.E + 1e-3)'), 'engine: the auto burn centred on its node, along its Δv, cut at it');
-  assert.ok(fl.includes('if (!th && nb && nb.start > s.t) adv = Math.min(adv, nb.start - s.t);') && fl.includes('FREE.cap = th ? (FREE.burn ? flyWarpMax(FREE.burn.T) : 10) : Infinity;') && fl.includes('bt.disabled = +bt.dataset.w > FREE.cap;') && fl.includes('rails: !th && FREE.warp >= RAILS_W'), 'engine: never over a burn\'s start, the warp held while firing, in the field');
+  assert.ok(fl.includes('if (!th && nb && nb.start > s.t) adv = Math.min(adv, nb.start - s.t);') && fl.includes('FREE.cap = th || FREE.burn ? (FREE.burn ? flyWarpMax(FREE.burn.T) : 10) : Infinity;') && fl.includes('bt.disabled = +bt.dataset.w > FREE.cap;') && fl.includes('rails: !th && FREE.warp >= RAILS_W'), 'engine: never over a burn\'s start, the warp held while firing, in the field');
   assert.ok(['fnBurn', 'fnWarn', 'fnWarp', 'fnAuto', 'fnLock', 'fnThr', 'flyHelp', 'flyTip', 'flyTipText', 'flyTipNext', 'flyTipSkip', 'flyHow'].every(id => html.includes('id="' + id + '"')) &&
     ['fn.burn', 'fn.short', 'fn.warp', 'fn.warpTip', 'fn.auto', 'fn.autoTip', 'fn.thrL', 'fn.lockAria', 'fn.thr', 'fn.thrTip', 'fly.how', 'fly.tipN', 'fly.tipNext', 'fly.tipDone', 'fly.tipSkip', 'fly.tip.appr', 'fly.tip.node', 'fly.tip.drag', 'fly.tip.warp', 'fly.tip.auto'].every(has) &&
     ['pro', 'retro', 'radOut', 'radIn', 'nor', 'anti'].every(k => has('fn.lock.' + k) && has('fn.lockS.' + k)), 'engine: the controls and their words');
@@ -1690,6 +1690,22 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(set.includes('FREE.st.m = s.m0;') && !/FREE\.st\.(r|v|t)\s*=/.test(set) && set.includes("flyNote(_('fly.engSet'") && !/engApply|rebuild|loadScenario/.test(set), 'engine in flight: full, same place and velocity, a notice, no mission');
   assert.ok(eu.includes('if (FREE.on) flySetEngine({ ...ENGW.E }); else engApply({ ...ENGW.E });') && eu.includes("FREE.on ? 'eng.applyFly' : 'eng.apply'") && eu.includes('engOpenFrom(FREE.on && FREE.eng ? FREE.eng.E :'), 'engine window: in free flight it applies to the flying craft');
   assert.ok(fl.includes("if (v === 'w') { flyEngList();") && fl.includes("'<option value=\"w\">' + esc(_('fn.engDesign'))"), 'engine picker: "Motor tasarla…" opens the window');
+}
+// 60) The craft turns (2026-11-16): free flight's nose turns at a finite rate (core.js slewStep, in game time; at a high
+// warp at once) towards the locked direction or an auto burn's (ahead of its start); the main engine fires only within
+// FLY_ALIGN ("Yönleniyor… 37°" until then; an auto burn waits too, holding its warp cap); the nose of the 3D model is the
+// attitude; RCS quads at the nose and the tail puff for the turn's acceleration (the nozzles whose torque lies along it).
+{
+  const fl = read('js/fly.js'), v3 = read('js/view3d.js'), m3 = read('js/mode3d.js');
+  assert.ok(fl.includes('const FLY_ALIGN = 5 * Math.PI / 180') && fl.includes('if (FREE.att && !FREE.att.ok) return null;') && fl.includes('flyAttStep(dt * FREE.warp, b, FREE.burn ? null : nb);') && fl.includes("A.acc = slewStep(A, d, dtg);"), 'turn: slewed in game time, the engine waits for the nose');
+  assert.ok(fl.includes('nb.start - FREE.st.t <= slewTime(flyAng(A.n, nb.dir)) + FLY_LEAD') && fl.includes('- slewTime(Math.PI)); FREE.paused = false;'), 'turn: ahead of an auto burn, and "Düğüme hızlandır" leaves room for it');
+  assert.ok(fl.includes("flyTxt('fnAtt', A && A.want && !A.ok ? _('fn.att'") && has('fn.att') && html.includes('id="fnAtt"'), 'turn: "Yönleniyor…" in the panel');
+  assert.ok(fl.includes('function flyNose() { return FREE.att ? FREE.att.n : null; }') && fl.includes('FREE.pl, c.dist, flyRcs(1 / 60));') && m3.includes('rcs: rcs ? { a: craftLocal(rcs.a, ax, side)'), 'turn: the model\'s nose is the attitude, the puffs passed on');
+  assert.ok(v3.includes('rcs.push({ m: pm, tau: new THREE.Vector3().crossVectors(p, e.clone().negate()).normalize() });') && v3.includes('const pm = plumeMesh(2, false);') && (v3.match(/for \(const \[cx, cz\] of \[\[1, 0\], \[0, 1\], \[-1, 0\], \[0, -1\]\]\)/g) || []).length === 1, 'turn: four RCS quads at the nose and four at the tail, puffs by torque');
+  // the model axes: x the side made square to the nose, y the nose, z = x × y (as view3d.js builds them)
+  const cl = {}; require('vm').runInNewContext(read('js/app.js').slice(read('js/app.js').indexOf('const unit3 = '), read('js/app.js').indexOf('\n', read('js/app.js').indexOf('const unit3 = '))) + m3.slice(m3.indexOf('function craftLocal('), m3.indexOf('// the trail after capture')) + ';this.f = craftLocal;', cl);
+  const q = cl.f([0, 0, 1], [1, 0, 0], [0.4, 1, 0]), qn = cl.f([1, 0, 0], [1, 0, 0], [0.4, 1, 0]);
+  assert.ok(Math.abs(q[0]) < 1e-12 && Math.abs(q[1]) < 1e-12 && Math.abs(q[2] + 1) < 1e-12 && Math.abs(qn[1] - 1) < 1e-12, 'turn: a direction in the model\'s axes');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

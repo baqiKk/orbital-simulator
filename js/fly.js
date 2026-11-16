@@ -37,7 +37,7 @@
 // dominant body changes (a sphere left or entered) the map's camera frames the new one.
 const FREE = { on: false, hid: [], st: null, target: -1, tca: null, tcaAt: 0, win: null, winBusy: null, warp: 1, paused: false, pred: null, predAt: 0, trail: null, tb: -1, tn: 0, saveAt: 0, txt: {},
   nodes: [], sel: -1, undo: [], ver: 0, editAt: 0, drag: null, ref: null, refVer: -1, wk: null, wkBusy: false, nst: [], hnd: [], nmk: [], predDirty: false,
-  eng: null, burn: null, fire: 0, fdir: null, pl: 0, warpTo: null, cap: Infinity, appr: false, apprPrev: null, aim: null, tip: -1 };
+  eng: null, burn: null, fire: 0, fdir: null, pl: 0, warpTo: null, cap: Infinity, appr: false, apprPrev: null, aim: null, tip: -1, att: null };
 const RAILS_W = 1000, TRAIL_N = 720, FLY_REF_MS = 250, FLY_UNDO = 60, FLY_SS = (() => { try { return window.sessionStorage; } catch (e) { return null; } })();
 const flyEl = id => document.getElementById(id);
 // the craft's state now, from the mission on screen: its position and velocity about the dominant body (a maneuver's
@@ -60,6 +60,7 @@ function flyEnterState(q) {
   mapSys.P = mapSys.P || new Float64Array(3 * mapSys.N); mapSys.V = mapSys.V || new Float64Array(3 * mapSys.N);
   states(mapSys, q.t, mapSys.P, mapSys.V);
   FREE.st = { t: q.t, r: [0, 1, 2].map(j => mapSys.P[3 * b + j] + q.r[j]), v: [0, 1, 2].map(j => mapSys.V[3 * b + j] + q.v[j]), m: q.m, h: 10 };
+  FREE.att = { n: unit3(q.v) || [1, 0, 0], w: 0, u: null, ok: true, err: 0, want: false, acc: 0, puff: 0, pu: null }; // the nose prograde, at rest
   FREE.on = true; FREE.paused = false; FREE.warp = q.warp || 1; FREE.pred = null; FREE.predAt = 0; FREE.trail = new Float64Array(3 * TRAIL_N); FREE.tn = 0; FREE.tb = -1; FREE.txt = {};
   FREE.nodes = (q.nodes || []).filter(nd => nd.t > q.t).map(nd => ({ t: nd.t, d: [...nd.d] })); FREE.sel = FREE.nodes.length ? 0 : -1; FREE.undo = []; FREE.ver++; FREE.ref = null; FREE.drag = null;
   flyEngInit(q);
@@ -375,7 +376,8 @@ const NFdv = new Intl.NumberFormat(DICT['meta.locale'] || 'tr', { maximumFractio
 function flyFold(on) { flyEl('flyNode').classList.toggle('fold', on); flyEl('fnTop').setAttribute('aria-expanded', String(!on)); INS = null; }
 flyEl('fnTop').addEventListener('click', () => flyFold(!flyEl('flyNode').classList.contains('fold')));
 function flyPanelTick() {
-  const n = FREE.nodes.length, sel = FREE.sel;
+  const n = FREE.nodes.length, sel = FREE.sel, A = FREE.att;
+  flyTxt('fnAtt', A && A.want && !A.ok ? _('fn.att', { a: Math.round(A.err * 180 / Math.PI) }) : '');
   flyTxt('fnSum', sel >= 0 && sel < n ? _('fn.sum', { title: _('fn.title', { i: sel + 1, n }), dv: NFdv.format(Math.hypot(...FREE.nodes[sel].d)), t: fmtIn(Math.max(0, FREE.nodes[sel].t - FREE.st.t)) })
     : FREE.target >= 0 ? _('fn.sumTgt', { body: _('body.' + MAPK[FREE.target]) }) : _('fn.sumNone'));
   if (sel < 0 || sel >= n) { flyTxt('fnHint', _(FREE.nodes.length ? 'fn.pick' : 'fn.hint')); return; }
@@ -433,6 +435,40 @@ function flyNextBurn() {
   const E = along > 0.5 ? (va[0] ** 2 + va[1] ** 2 + va[2] ** 2) / 2 - mu / Math.hypot(...q.r) : null;
   return { t: nd.t, start: nd.t - b.T / 2, T: b.T, dir: dvI.map(x => x / dv), dv, b: q.b, E, up: E != null && E > (vh * vh) / 2 - mu / Math.hypot(...q.r) };
 }
+// ----- the attitude (2026-11-16) -----
+// The nose turns at a finite rate (core.js slewStep: at most SLEW.w, speeding up and braking at SLEW.a, in game time;
+// at a high warp it arrives at once) towards: an auto burn's direction while it fires, and ahead of its start by the
+// turn's time (core.js slewTime) and FLY_LEAD; else the locked direction (prograde, retrograde, …) about the dominant
+// body. The main engine fires only once the nose is within FLY_ALIGN of where it should push ("Yönleniyor… 37°" until
+// then; an auto burn waits too). The RCS puffs (nose and tail quads, js/view3d.js) follow the turn's angular
+// acceleration: a pair starts the turn, the opposite pair stops it.
+const FLY_ALIGN = 5 * Math.PI / 180, FLY_LEAD = 3;
+const flyAng = (p, q) => Math.acos(Math.max(-1, Math.min(1, p[0] * q[0] + p[1] * q[1] + p[2] * q[2])));
+function flyLockDir(b) {
+  const s = FREE.st, P = mapSys.P, V = mapSys.V, e = FREE.eng, lock = e ? e.lock : 'pro';
+  const F = nodeFrame([s.r[0] - P[3 * b], s.r[1] - P[3 * b + 1], s.r[2] - P[3 * b + 2]], [s.v[0] - V[3 * b], s.v[1] - V[3 * b + 1], s.v[2] - V[3 * b + 2]]);
+  return lock === 'retro' ? F.pro.map(x => -x) : lock === 'radOut' ? F.rad : lock === 'radIn' ? F.rad.map(x => -x) : lock === 'nor' ? F.nor : lock === 'anti' ? F.nor.map(x => -x) : F.pro;
+}
+// one step of dtg game seconds; nb: the next auto burn (not yet started)
+function flyAttStep(dtg, b, nb) {
+  const A = FREE.att, e = FREE.eng; if (!A) return;
+  let d, want;
+  if (FREE.burn) { d = FREE.burn.dir; want = true; }
+  else if (nb && nb.start - FREE.st.t <= slewTime(flyAng(A.n, nb.dir)) + FLY_LEAD) { d = nb.dir; want = true; } // turning ahead of the burn
+  else { d = flyLockDir(b); want = !!(e && e.thr > 0); }
+  A.acc = slewStep(A, d, dtg);
+  A.err = flyAng(A.n, d); A.ok = A.err < FLY_ALIGN; A.want = want;
+}
+// the RCS puffs this frame (real seconds dt): their strength (pulsed) and the angular acceleration's axis (inertial)
+function flyRcs(dt) {
+  const A = FREE.att; if (!A) return null;
+  const k = Math.abs(A.acc) > 0.15 && FREE.warp < 1000 ? Math.min(1, Math.abs(A.acc)) : 0;
+  A.puff += (k - A.puff) * (reduceMotion ? 1 : 1 - Math.exp(-dt / 0.06));
+  if (k > 0 && A.u) A.pu = A.u.map(x => x * Math.sign(A.acc));
+  if (!(A.puff > 0.02) || !A.pu) return null;
+  const tt = performance.now() / 1000, pulse = reduceMotion ? 1 : 0.55 + 0.45 * Math.max(0, Math.sin(tt * 2 * Math.PI * 6));
+  return { a: A.pu, k: A.puff * pulse };
+}
 // the craft's orbital energy about body b now (after states(mapSys, FREE.st.t, …))
 function flyEnergy(b) { const s = FREE.st, P = mapSys.P, V = mapSys.V, r = Math.hypot(s.r[0] - P[3 * b], s.r[1] - P[3 * b + 1], s.r[2] - P[3 * b + 2]), v = [0, 1, 2].map(j => s.v[j] - V[3 * b + j]); return { E: (v[0] ** 2 + v[1] ** 2 + v[2] ** 2) / 2 - mapSys.mu[b] / r, v }; }
 // one frame of flight (dt real seconds): the warp, an auto burn's start never stepped over and its end exactly, the
@@ -449,8 +485,9 @@ function flyStep(dt, b) {
   }
   // an auto burn starts
   if (nb && s.t >= nb.start - 1e-6) { FREE.burn = { t: nb.t, dir: nb.dir, goal: nb.dv, m0: s.m, T: nb.T, b: nb.b, E: nb.E, up: nb.up }; flyChanged(); }
+  flyAttStep(dt * FREE.warp, b, FREE.burn ? null : nb);
   const th = flyThrust(b);
-  FREE.cap = th ? (FREE.burn ? flyWarpMax(FREE.burn.T) : 10) : Infinity;
+  FREE.cap = th || FREE.burn ? (FREE.burn ? flyWarpMax(FREE.burn.T) : 10) : Infinity;
   if (FREE.warp > FREE.cap) flyWarp(FREE.cap, true);
   flyBarCap();
   let adv = dt * FREE.warp;
@@ -492,6 +529,7 @@ function flyBurnEnd(out) {
 function flyThrust(b) {
   const e = FREE.eng, s = FREE.st; if (!e || s.m <= e.s.md * (1 + 1e-9) || e.tau >= e.s.tb) return null;
   const k = FREE.burn ? 1 : e.thr; if (!(k > 0)) return null;
+  if (FREE.att && !FREE.att.ok) return null; // the main engine waits until the nose is within FLY_ALIGN of its direction
   const q = engAt(e.s, Math.min(e.tau, e.s.tb * (1 - 1e-9))), F = (q.F || e.s.F) * k, mdot = F / e.s.ve;
   let dir;
   if (FREE.burn) { const d = FREE.burn.dir; dir = () => d; FREE.fdirNow = d; }
@@ -564,7 +602,7 @@ flyEl('fnAuto').addEventListener('change', e => { if (FREE.eng) FREE.eng.auto = 
 flyEl('fnWarp').addEventListener('click', () => {
   const nd = FREE.nodes[FREE.sel]; if (!nd) return;
   const b = flyBurnOf(Math.hypot(...nd.d)), start = nd.t - (b ? b.T / 2 : 0);
-  FREE.warpTo = Math.max(FREE.st.t, start - Math.max(10, b ? 0.5 * b.T : 0)); FREE.paused = false; flyBarSync(); flyTipDid(3);
+  FREE.warpTo = Math.max(FREE.st.t, start - Math.max(10, b ? 0.5 * b.T : 0) - slewTime(Math.PI)); FREE.paused = false; flyBarSync(); flyTipDid(3); // room to turn the nose
 });
 // the engine panel in free flight (as engine-ui.js engPanelTick for a mission): firing or coasting, the burn's end or
 // the next one, the bars, the Δv left, the thrust, the small cutaway
@@ -592,7 +630,7 @@ const FLY_OWN = new Set(['flyTrail', ...Array.from({ length: 8 }, (_, k) => 'fly
 // the craft in the map's coordinates (after states(mapSys, FREE.st.t, MP, MV))
 function flyCraftPos3(out = [0, 0, 0]) { const s = FREE.st; flyMapAt(MSUN, s.r[0] - MP[3 * MSUN], s.r[1] - MP[3 * MSUN + 1], s.r[2] - MP[3 * MSUN + 2], out); return mapXYZ(out[0], out[1], out[2], out); }
 // the nose: along the thrust while it fires (and while the plume dies), else null (prograde)
-function flyNose() { return (FREE.pl > 0.004 && FREE.fdir) || (FREE.burn && FREE.burn.dir) || null; }
+function flyNose() { return FREE.att ? FREE.att.n : null; }
 function flyCraft3(c) {
   if (!FREE.on || !FREE.eng) { V3.craft({ show: false }); return; }
   const s = FREE.st, b = FREE.tb, e = FREE.eng;
@@ -606,7 +644,7 @@ function flyCraft3(c) {
   if (FREE.appr) apprWatch(lpx); // zoomed out by hand: back to the map's view (app.js)
   if (!(lpx > 6)) { V3.craft({ show: false }); return; }
   const st = engStOf(e.s, e.tau, FREE.fire > 0);
-  craftDraw('map', p, ax, acrossUp(ax, up), L, sun, { E: e.E, s: e.s, st, plume: (PROPS[e.E.prop] || {}).plume || 'amber' }, FREE.pl, c.dist);
+  craftDraw('map', p, ax, acrossUp(ax, up), L, sun, { E: e.E, s: e.s, st, plume: (PROPS[e.E.prop] || {}).plume || 'amber' }, FREE.pl, c.dist, flyRcs(1 / 60));
 }
 // 3D, close to the craft (mode3d.js drawMap3, before the camera is set): the camera in the craft's local frame about the
 // dominant body (mode3d.js camLocal), on the craft, aimed the first frame (app.js apprAim), then kept in the free area

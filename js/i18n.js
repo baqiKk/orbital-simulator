@@ -585,6 +585,7 @@ const I18N = {
     'fn.thrCut': 'Kes',
     'fn.thrCutTip': 'Motoru kes (X)',
     'fn.dirL': 'Yön',
+    'fn.att': 'Yönleniyor… {a}°',
     'fn.gEng': 'Motor ve gaz',
     'fn.gTgt': 'Hedef',
     'fn.gNode': 'Manevra düğümleri',

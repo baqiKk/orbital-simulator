@@ -2279,6 +2279,39 @@ const dvLocal = (r, v, dv) => { const F = nodeFrame(r, v), dot = (a, b) => a[0] 
 // The highest time warp allowed while the engine fires, by the burn's length T (s): a short burn 10×, a long one up to
 // 100× (a thirtieth of its length per screen second: 10 min → 20×, an hour or more → 100×), on the warp steps
 const FLY_WARPS = [1, 2, 5, 10, 20, 50, 100, 1e3, 1e4, 1e5, 1e6];
+// The craft's attitude (2026-11-16): the nose n (unit) turns towards a direction d along the great circle, at most
+// SLEW.w rad/s, speeding up and braking at SLEW.a rad/s² so it comes to rest on d (accelerate, coast, brake; the RCS's
+// pulses start and stop the turn). att = { n, w (rad/s), u (the turn's axis) }; dt in game seconds, sub-stepped by
+// SLEW.dt; a step longer than SLEW.maxT (a high time warp) arrives at once. Returns the mean angular acceleration over
+// dt as a share of SLEW.a (+ speeding up about u, − braking; 0 coasting or at rest).
+const SLEW = { w: 12 * Math.PI / 180, a: 10 * Math.PI / 180, dt: 0.05, maxT: 12 };
+function slewTime(th, o = SLEW) { return th <= o.w * o.w / o.a ? 2 * Math.sqrt(th / o.a) : th / o.w + o.w / o.a; }
+function slewStep(att, d, dt, o = SLEW) {
+  if (!(dt > 0)) return 0;
+  const dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2], cr = (p, q) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
+  if (dt > o.maxT) { att.n = d.slice(); att.w = 0; return 0; }
+  let n = att.n.slice(), t = 0, acc = 0;
+  while (t < dt - 1e-12) {
+    const h = Math.min(o.dt, dt - t); t += h;
+    const th = Math.acos(Math.max(-1, Math.min(1, dot(n, d))));
+    if (th < 1e-6) { n = d.slice(); acc -= att.w > 0 ? Math.min(1, att.w / (o.a * h)) * h : 0; att.w = 0; continue; }
+    let u = cr(n, d), ul = Math.hypot(u[0], u[1], u[2]);
+    if (ul < 1e-9) { // opposite: keep the turn's axis if it is still across the nose, else any axis across it
+      const p = att.u && Math.abs(dot(att.u, n)) < 0.5 ? att.u : Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], k = dot(p, n);
+      u = [p[0] - k * n[0], p[1] - k * n[1], p[2] - k * n[2]]; ul = Math.hypot(u[0], u[1], u[2]);
+    }
+    u = u.map(x => x / ul);
+    const wd = Math.min(o.w, Math.sqrt(2 * o.a * th)), dw = Math.max(-o.a * h, Math.min(o.a * h, wd - att.w)), w1 = att.w + dw;
+    const rot = Math.min(th, 0.5 * (att.w + w1) * h), un = cr(u, n), c = Math.cos(rot), s = Math.sin(rot);
+    n = [n[0] * c + un[0] * s, n[1] * c + un[1] * s, n[2] * c + un[2] * s];
+    const l = Math.hypot(n[0], n[1], n[2]); n = n.map(x => x / l);
+    // arrived: the nose now follows the target at the rate it moved (tracking a turning prograde needs no puffs)
+    const w2 = rot >= th - 1e-12 ? Math.min(o.w, th / h) : w1;
+    acc += Math.max(-1, Math.min(1, (w2 - att.w) / (o.a * h))) * h; att.w = w2; att.u = u;
+  }
+  att.n = n;
+  return acc / dt;
+}
 function flyWarpMax(T) {
   const cap = Math.max(10, Math.min(100, T / 30));
   let w = 10; for (const q of FLY_WARPS) if (q <= cap) w = q;
@@ -2716,7 +2749,7 @@ function flyClosest(s, pred, c) {
 }
 
 if (typeof module !== 'undefined') module.exports = {
-  stumpff, uniStep, nodeFrame, nodeDv, dvLocal, FLY_WARPS, flyWarpMax, flyDeriv, flyAdvance, flyPredict, flyRefine, flyWindow, flyHArr, flyCorrect, flyClosest,
+  stumpff, uniStep, nodeFrame, nodeDv, dvLocal, FLY_WARPS, SLEW, slewTime, slewStep, flyWarpMax, flyDeriv, flyAdvance, flyPredict, flyRefine, flyWindow, flyHArr, flyCorrect, flyClosest,
   G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, clockAt, clockSet, keplerE, laplaceFrame, bodyFrame, orbitElements, orbitState, orbitPath,
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed, SOLVE_KM, missionMiss, solveMission,

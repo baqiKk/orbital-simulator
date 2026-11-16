@@ -569,7 +569,8 @@ function craft3(tNow, craft, ext, sunIdx) {
 }
 // the model's call (a mission's view and free flight's map, set): at p, nose ax, cut side, length L, the Sun's direction
 // sun; en: { E, s, st, plume } the engine and its state; k the plume's strength; dist the camera's distance
-function craftDraw(set, p, ax, side, L, sun, en, k, dist) {
+// rcs (free flight's turns, js/fly.js flyRcs): { a (the angular acceleration's axis, inertial), k (strength) } or null
+function craftDraw(set, p, ax, side, L, sun, en, k, dist, rcs) {
   const pc = plumeCols(en.plume), ts = reduceMotion ? 0 : (performance.now() / 1000) % 600; // wrapped: the noise's inputs stay small
   const fl = reduceMotion ? 1 : 1 + 0.045 * Math.sin(ts * 37.7) + 0.03 * Math.sin(ts * 61.3 + 1.3) + 0.02 * Math.sin(ts * 97.1 + 2.1);
   // a liquid engine's tanks as long as their volumes (core.js engTanks, js/engines.js densities), as in the 2D cutaway
@@ -581,7 +582,14 @@ function craftDraw(set, p, ax, side, L, sun, en, k, dist) {
   V3.craft({ show: true, set, p, axis: ax, side, L, sun, cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,
     col: { metal: COL.dim, nozzle: COL.faint, fuel: COL.burn, ox: COL.cyan, // fuel and oxidizer as the engine window's charts
       tex: { ink: COL.ink, dim: COL.dim, faint: COL.faint, solid: COL.solid, accent: COL.accent, warn: COL.warn, burn: COL.burn, bad: COL.bad, orbit: COL.orbit } },
+    rcs: rcs ? { a: craftLocal(rcs.a, ax, side), k: rcs.k, core: COL.ink, body: COL.dim } : null,
     plume: { core: pc.core, body: pc.body, I: k > 0.004 ? 0.85 * pc.k * (0.3 + 0.7 * k) * Math.min(1, 3 * k) * fl * (0.3 + 0.7 * nq) : 0, len: (1.0 + 2.0 * k) * fl * (0.5 + 0.5 * nq), t: ts, simple: lowQ || FX.lvl >= 2 } });
+}
+// a direction in the model's axes (view3d.js craft: y the nose, x the side made square to it, z = x × y)
+function craftLocal(v, ax, side) {
+  const k = side[0] * ax[0] + side[1] * ax[1] + side[2] * ax[2], x = unit3([side[0] - k * ax[0], side[1] - k * ax[1], side[2] - k * ax[2]]) || [1, 0, 0];
+  const z = [x[1] * ax[2] - x[2] * ax[1], x[2] * ax[0] - x[0] * ax[2], x[0] * ax[1] - x[1] * ax[0]];
+  return [v[0] * x[0] + v[1] * x[1] + v[2] * x[2], v[0] * ax[0] + v[1] * ax[1] + v[2] * ax[2], v[0] * z[0] + v[1] * z[1] + v[2] * z[2]];
 }
 // the trail after capture (fading oldest revolutions), up to the craft
 function trail3() {

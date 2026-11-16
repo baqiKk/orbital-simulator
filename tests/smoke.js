@@ -240,6 +240,20 @@ function watch(page, errs) {
         return { a, lab, b };
       });
       if (!eng.a.ok || !eng.a.full || !eng.a.same || !eng.a.note || eng.lab !== 'Serbest uçuştaki araca uygula' || !eng.b.on || eng.b.mode !== 'fly' || eng.b.id !== 'p:rl10' || !eng.b.same || !eng.b.mission) throw new Error('the engine changed in flight: ' + JSON.stringify(eng));
+      // 2026-11-16: a turn takes time: prograde → retrograde with the throttle up, the nose is still far from retrograde
+      // a moment later, the main engine waits ("Yönleniyor…"), then fires once the nose is on it
+      const turn = await page.evaluate(async () => {
+        const sl = ms => new Promise(r => setTimeout(r, ms));
+        flyWarp(1); FREE.eng.lock = 'pro'; flyLockSync(); for (let i = 0; i < 40 && !FREE.att.ok; i++) await sl(50);
+        const retro = () => { const b = FREE.tb, V = mapSys.V; states(mapSys, FREE.st.t, mapSys.P, V); const v = [0, 1, 2].map(j => FREE.st.v[j] - V[3 * b + j]), l = Math.hypot(...v), n = FREE.att.n; return Math.acos(Math.max(-1, Math.min(1, -(n[0] * v[0] + n[1] * v[1] + n[2] * v[2]) / l))) * 180 / Math.PI; };
+        document.querySelector('#fnLock [data-v="retro"]').click(); flyThr(1); await sl(500);
+        const a = { off: retro(), fire: FREE.fire, att: document.querySelector('#fnAtt').textContent };
+        for (let i = 0; i < 400 && !(FREE.fire > 0); i++) await sl(50);
+        const b = { off: retro(), fire: FREE.fire };
+        flyThr(0); FREE.eng.lock = 'pro'; flyLockSync();
+        return { a, b };
+      });
+      if (!(turn.a.off > 120) || turn.a.fire !== 0 || !/Yönleniyor/.test(turn.a.att) || !(turn.b.fire > 0) || !(turn.b.off < 5)) throw new Error('the turn: ' + JSON.stringify(turn));
       await page.click('#flyWarp [data-w="1000"]'); await page.waitForTimeout(1200);
       const r = await page.evaluate(() => ({ dt: FREE.st.t, segs: FREE.pred ? FREE.pred.segs.length : 0 }));
       if (!(r.dt - t0 > 200) || !(r.segs > 0)) throw new Error('the flight did not advance or predict: ' + JSON.stringify(r));
