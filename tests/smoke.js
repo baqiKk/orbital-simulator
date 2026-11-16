@@ -7,8 +7,11 @@
 //   PLAYWRIGHT_MODULE=/tmp/pw/node_modules/playwright node tests/smoke.js
 // (playwright-core works too.) A page fails on any uncaught exception (pageerror) or console error; network errors of
 // the outside resources (Google Fonts) are ignored, the site's own requests must all succeed.
+// A slow runner (a GPU-less CI machine draws a few frames a second) can be imitated: SMOKE_CPU=6 slows the page's CPU six
+// times (CDP Emulation.setCPUThrottlingRate); SMOKE_MODE=normal | 3d | low starts the simulator in that view mode (the
+// auto mode picks 2D on a slow machine).
 const http = require('http'), fs = require('fs'), path = require('path');
-const ROOT = path.join(__dirname, '..'), WAIT = +(process.env.SMOKE_WAIT || 5000);
+const ROOT = path.join(__dirname, '..'), WAIT = +(process.env.SMOKE_WAIT || 5000), ONLY = process.env.SMOKE_ONLY || ''; // SMOKE_ONLY=pages | wizard | phone runs one part
 function loadPw() {
   for (const m of [process.env.PLAYWRIGHT_MODULE, 'playwright', 'playwright-core'].filter(Boolean)) { try { return require(m); } catch (e) { /* next */ } }
   console.error('Playwright not found: set PLAYWRIGHT_MODULE (see the head of tests/smoke.js).'); process.exit(2);
@@ -28,6 +31,8 @@ function serve() {
 const outside = url => /^https?:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\//.test(url || '');
 // collect what goes wrong on a page
 function watch(page, errs) {
+  if (+process.env.SMOKE_CPU > 1) page.context().newCDPSession(page).then(c => c.send('Emulation.setCPUThrottlingRate', { rate: +process.env.SMOKE_CPU })).catch(() => {});
+  if (process.env.SMOKE_MODE) page.addInitScript(m => { try { localStorage.setItem('orbsim.mode', m); } catch (e) { /* no storage */ } }, process.env.SMOKE_MODE);
   page.on('pageerror', e => errs.push('pageerror: ' + (e && e.stack || e)));
   page.on('console', m => { if (m.type() === 'error' && !outside(m.location() && m.location().url)) errs.push('console: ' + m.text() + (m.location() && m.location().url ? ' @ ' + m.location().url : '')); });
   page.on('requestfailed', q => { if (!outside(q.url())) errs.push('request failed: ' + q.url() + ' ' + (q.failure() && q.failure().errorText)); });
@@ -44,7 +49,7 @@ function watch(page, errs) {
     failed++; console.error(`✗ ${name}\n  ` + errs.join('\n  '));
     if (process.env.GITHUB_ACTIONS) for (const e of errs.slice(0, 8)) console.log(`::error title=smoke ${name.replace(/[:,]/g, ' ')}::${String(e).replace(/\r?\n/g, ' ').slice(0, 400)}`);
   };
-  for (const [vw, label] of [[{ width: 1280, height: 800 }, 'desktop'], [{ width: 390, height: 844 }, 'phone']]) {
+  if (!ONLY || ONLY === 'pages') for (const [vw, label] of [[{ width: 1280, height: 800 }, 'desktop'], [{ width: 390, height: 844 }, 'phone']]) {
     for (const f of pages) {
       const ctx = await browser.newContext({ viewport: vw, deviceScaleFactor: 1 }), page = await ctx.newPage(), errs = [];
       watch(page, errs);
@@ -57,7 +62,7 @@ function watch(page, errs) {
   // a short design session: the wizard flies a maneuver (Earth 600 → 1300 km), the engine window opens on a ready-made
   // engine and applies it (the finite burns fly on it), the result card lists the burns; then the craft up close (the
   // button, the cutaway, Esc, A, double clicks) and the engine window's cutaway
-  {
+  if (!ONLY || ONLY === 'wizard') {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 }), page = await ctx.newPage(), errs = [];
     watch(page, errs);
     const step = async (what, fn) => { try { await fn(); } catch (e) { errs.push(what + ': ' + e.message.split('\n').slice(0, 6).join(' | ')); } };
@@ -92,16 +97,31 @@ function watch(page, errs) {
     // 2026-11-16: up close a drag turns the camera round the craft (it stays in the free area's middle, the camera's
     // direction changes); zooming out by hand ends the approach (the button "Araca yaklaş" again) and the next press
     // comes close again
-    await step('a drag turns the camera round the craft', async () => {
-      const p = await page.evaluate(() => { const r = document.querySelector('#cv').getBoundingClientRect(), b = apprBox(); return { x: r.left + b.x, y: r.top + b.y, yaw: is3d() ? cam3().yaw : 0, v3: is3d() }; });
+    // the drag in the mode the page runs in, then in the other one (2026-11-16: in 2D a drag while close used to pan the
+    // craft away; a slow GPU-less runner may start in 2D or in 3D)
+    const dragCheck = async () => {
+      const p = await page.evaluate(() => { const r = document.querySelector('#cv').getBoundingClientRect(), b = apprBox(); return { x: r.left + b.x, y: r.top + b.y, yaw: is3d() ? cam3().yaw : 0, v3: is3d(), mode: MODE }; });
       await page.mouse.move(p.x + 60, p.y + 40); await page.mouse.down();
       for (let i = 1; i <= 20; i++) await page.mouse.move(p.x + 60 + i * 12, p.y + 40 + i * 3);
-      await page.mouse.up(); await page.waitForTimeout(900);
+      await page.mouse.up();
+      // the camera eases to the drag's end and the free area's middle (whatever the frame rate): wait until it is there, then a frame more
+      await page.waitForFunction(() => { const c = is3d() ? cam3() : null, b = apprBox(); return !FLY.on && (!c || ((c.yawT == null || Math.abs(c.yawT - c.yaw) < 1e-3) && Math.abs((c.cx == null ? W / 2 : c.cx) - b.x) < 0.5 && Math.abs((c.cy == null ? H / 2 : c.cy) - b.y) < 0.5)); }, null, { timeout: 30000 });
+      await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
       const q = await page.evaluate(() => { const h = HITS.find(q => q.kind === 'c'), b = apprBox(); return { h: h && [h.x, h.y], b, yaw: is3d() ? cam3().yaw : 0, on: APPR.on }; });
-      if (!q.on || !q.h) throw new Error('the approach or the craft is gone after the drag');
+      if (!q.on || !q.h) throw new Error(`${p.mode}: the approach or the craft is gone after the drag`);
       const dx = Math.abs(q.h[0] - q.b.x) / q.b.w, dy = Math.abs(q.h[1] - q.b.y) / q.b.h;
-      if (dx > 0.03 || dy > 0.03) throw new Error(`after the drag the craft is at ${q.h.map(Math.round)}, the middle at ${[q.b.x, q.b.y].map(Math.round)}`);
+      if (dx > 0.03 || dy > 0.03) throw new Error(`${p.mode}: after the drag the craft is at ${q.h.map(Math.round)}, the middle at ${[q.b.x, q.b.y].map(Math.round)}`);
       if (p.v3 && !(Math.abs(q.yaw - p.yaw) > 0.5)) throw new Error('the drag did not turn the camera: ' + (q.yaw - p.yaw).toFixed(3));
+      return p.mode;
+    };
+    const reApproach = async m => {
+      await page.evaluate(async m => { const sl = ms => new Promise(r => setTimeout(r, ms)); apprSet(false); setMode(m); for (let i = 0; i < 200 && MODE !== m; i++) await sl(50); await sl(300); apprSet(true); }, m);
+      await page.waitForFunction(() => APPR.on && !APPR.aim && !FLY.on, null, { timeout: 30000 }); await page.waitForTimeout(300);
+    };
+    await step('a drag turns the camera round the craft', async () => {
+      const m0 = await dragCheck(), other = m0 === '3d' ? 'normal' : await page.evaluate(() => (GL2 ? '3d' : null));
+      if (!other) return;
+      await reApproach(other); await dragCheck(); await reApproach(m0);
     });
     await step('zooming out ends the approach; the button comes close again', async () => {
       const p = await page.evaluate(() => { const r = document.querySelector('#cv').getBoundingClientRect(), b = apprBox(); return { x: r.left + b.x + 50, y: r.top + b.y + 50 }; });
@@ -220,14 +240,14 @@ function watch(page, errs) {
       // Phase 19d: a prograde node fired by "Otomatik ateşle" after "Düğüme hızlandır": the orbit the node promised; the
       // engine panel; a double click on the craft comes close (the 3D model drawn), Esc goes back
       const node = await page.evaluate(async () => {
-        const sl = ms => new Promise(r => setTimeout(r, ms));
+        const sl = ms => new Promise(r => setTimeout(r, ms)), until = async (f, ms) => { const t0 = performance.now(); while (!f()) { if (performance.now() - t0 > ms) return false; await sl(50); } return true; };
         const g = FREE.pred.segs[0], t = g.ts[Math.floor(g.n / 3)];
         flyEdit(); FREE.nodes.push({ t, d: [150, 0, 0] }); FREE.sel = 0; flyChanged(); await sl(400);
         const want = flyAfterOrbit(0);
         document.querySelector('#fnWarp').click();
-        for (let i = 0; i < 300 && FREE.warpTo != null; i++) await sl(50);
+        await until(() => FREE.warpTo == null, 180e3);
         flyWarp(10);
-        let fired = false; for (let i = 0; i < 600; i++) { await sl(50); if (FREE.burn) fired = true; if (fired && !FREE.burn) break; }
+        let fired = false; await until(() => { if (FREE.burn) fired = true; return fired && !FREE.burn; }, 300e3);
         const b = FREE.tb, Pp = mapSys.P, Vv = mapSys.V; states(mapSys, FREE.st.t, Pp, Vv);
         const el = rv2el(mapSys.mu[b], [0, 1, 2].map(j => FREE.st.r[j] - Pp[3 * b + j]), [0, 1, 2].map(j => FREE.st.v[j] - Vv[3 * b + j]));
         return { fired, left: FREE.nodes.length, want: want && want.ap, ap: el.a * (1 + el.e) - mapSys.R[b], panel: !document.querySelector('#engPanel').hidden };
@@ -241,24 +261,27 @@ function watch(page, errs) {
       await page.keyboard.press('Escape'); if (await page.evaluate(() => FREE.appr)) throw new Error('Esc did not go back');
       // Phase 19e: the Moon as the target, its transfer window from the worker, its node laid: the path meets the Moon
       const win = await page.evaluate(async () => {
-        const sl = ms => new Promise(r => setTimeout(r, ms));
+        const sl = ms => new Promise(r => setTimeout(r, ms)), until = async (f, ms) => { const t0 = performance.now(); while (!f()) { if (performance.now() - t0 > ms) return false; await sl(50); } return true; };
         FREE.nodes = []; FREE.sel = -1; flyChanged();
         const sel = document.querySelector('#fnTgt'); sel.value = String(MAPK.indexOf('moon')); sel.dispatchEvent(new Event('change'));
-        document.querySelector('#fnWin').click(); for (let i = 0; i < 300 && FREE.winBusy; i++) await sl(50);
-        const ok = !document.querySelector('#fnWinGo').hidden; document.querySelector('#fnWinGo').click(); FREE.tcaAt = 0; await sl(2200);
+        document.querySelector('#fnWin').click(); await until(() => !FREE.winBusy, 120e3);
+        const ok = !document.querySelector('#fnWinGo').hidden; document.querySelector('#fnWinGo').click(); FREE.tcaAt = 0; FREE.tcaDirty = true;
+        await until(() => FREE.tca && FREE.tca.soi, 30e3);
         return { ok, nodes: FREE.nodes.length, soi: !!(FREE.tca && FREE.tca.soi), info: document.querySelector('#fnTgtInfo').textContent };
       });
       if (!win.ok || win.nodes !== 1 || !win.soi) throw new Error('the transfer window to the Moon: ' + JSON.stringify(win));
       // fly it (warp to the node, auto fire): a correction is suggested by itself; laid, the pass is within ±20 km of 100 km
       const cor = await page.evaluate(async () => {
-        const sl = ms => new Promise(r => setTimeout(r, ms));
-        document.querySelector('#fnWarp').click(); for (let i = 0; i < 400 && FREE.warpTo != null; i++) await sl(50);
-        flyWarp(10); let f = false; for (let i = 0; i < 600; i++) { await sl(50); if (FREE.burn) f = true; if (f && !FREE.burn) break; }
-        flyWarp(1); FREE.tcaAt = 0; FREE.tcaDirty = true;
-        for (let i = 0; i < 150 && !(FREE.cor && (FREE.cor.node || FREE.cor.error)); i++) await sl(100);
+        const sl = ms => new Promise(r => setTimeout(r, ms)), until = async (f, ms) => { const t0 = performance.now(); while (!f()) { if (performance.now() - t0 > ms) return false; await sl(50); } return true; };
+        document.querySelector('#fnWarp').click(); await until(() => FREE.warpTo == null, 180e3);
+        flyWarp(10); let f = false; await until(() => { if (FREE.burn) f = true; return f && !FREE.burn; }, 300e3);
+        flyWarp(1);
+        // the suggestion comes by itself once the path after the burn meets the Moon (fly.js flyCorTick)
+        await until(() => FREE.cor && (FREE.cor.node || FREE.cor.error), 120e3);
         const info = document.querySelector('#fnCorInfo').textContent;
         if (!document.querySelector('#fnCorGo').hidden) document.querySelector('#fnCorGo').click();
-        await sl(300); FREE.tcaAt = 0; FREE.tcaDirty = true; await sl(2000);
+        await sl(100); await until(() => !FREE.predDirty, 10e3); FREE.tcaAt = 0; FREE.tcaDirty = true; const a0 = performance.now();
+        await until(() => FREE.tcaAt > a0 && !FREE.tcaDirty, 30e3);
         return { f, info, alt: FREE.tca && FREE.tca.soi ? FREE.tca.alt : null };
       });
       if (!cor.f || cor.alt == null || Math.abs(cor.alt - 100e3) > 20e3) throw new Error('the course correction: ' + JSON.stringify(cor));
@@ -309,7 +332,7 @@ function watch(page, errs) {
   // Phase 19f: free flight on a phone. "Kendin uç" on the start screen: a flight in a low Earth orbit, the node panel
   // folded to its line, the panels leave most of the screen to the view, no sideways scroll; unfolded it scrolls inside;
   // a node and a target survive a reload (the session's snapshot)
-  {
+  if (!ONLY || ONLY === 'phone') {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true }), page = await ctx.newPage(), errs = [];
     watch(page, errs);
     const step = async (name, fn) => { try { await fn(); } catch (e) { errs.push(name + ': ' + (e && e.message || e)); } };

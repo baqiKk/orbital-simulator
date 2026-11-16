@@ -405,7 +405,7 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
     if (APPR.aim) {
       const sI = S.bodies.findIndex(q => q.key === 'sun'), sd = sI >= 0 ? unit3([BP3[3 * sI] - CR3[0], BP3[3 * sI + 1] - CR3[1], BP3[3 * sI + 2] - CR3[2]]) : sunDir3(0, -1, tNow, [0, 0, 0]);
       apprAim(c, craftAxis3(tNow, craft, ext), craftUp3(tNow, craft, ext), sd || [1, 0, 0]);
-    } else apprKeep(c, 1 / 60);
+    } else apprKeep(c);
   }
   const fb = S.follow === 'A' ? 0 : S.follow === 'B' ? 1 : S.follow[0] === 'b' ? +S.follow.slice(1) : -1;
   if (S.follow === 'craft') c.t = [...CR3];

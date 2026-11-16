@@ -124,7 +124,7 @@ function flyFrame(dt, v3, glow, now) {
   const s = FREE.st, P = mapSys.P, V = mapSys.V;
   states(mapSys, s.t, P, V);
   const b = domBody(mapSys, P, s.r[0], s.r[1], s.r[2]);
-  if (!FREE.paused) flyStep(Math.min(dt, 0.1), b);
+  if (!FREE.paused) flyStep(Math.min(dt, PLAY_DT_MAX), b); // the wall clock's frame time (a low frame rate keeps real time)
   FREE.pl += ((FREE.fire > 0 ? FREE.fire : 0) - FREE.pl) * (reduceMotion ? 1 : 1 - Math.exp(-dt / 0.15)); // the plume's ignition and cut
   flyPast();
   states(mapSys, s.t, P, V);
@@ -563,7 +563,7 @@ function flyStep(dt, b) {
 function flyBurnEnd(out) {
   const t = FREE.burn.t; FREE.burn = null; FREE.fire = 0;
   if (FREE.flow && FREE.flow.placed && FREE.flow.warped) FREE.flow.fired = true;
-  if (FREE.target >= 0) { FREE.corAuto = { at: performance.now() + 1500, from: FREE.st.t, mid: false }; FREE.cor = null; } // a correction suggested once the path settles, and again ~30 % of the way
+  if (FREE.target >= 0) { FREE.corAuto = { at: performance.now() + 1500, after: performance.now(), from: FREE.st.t, mid: false }; FREE.cor = null; FREE.tcaDirty = true; } // a correction suggested once the path settles, and again ~30 % of the way
   const i = FREE.nodes.findIndex(nd => nd.t === t); if (i >= 0) { FREE.nodes.splice(i, 1); FREE.sel = Math.min(FREE.sel, FREE.nodes.length - 1); if (FREE.sel < 0 && FREE.nodes.length) FREE.sel = 0; }
   if (out) FREE.eng.thr = 0;
   flyChanged();
@@ -700,7 +700,7 @@ function flyApprCam(c) {
   if (FREE.aim) {
     const ax = flyNose() || unit3(v) || [1, 0, 0], sun = unit3(c.t.map(x => -x)) || [1, 0, 0];
     CRAFT.L = craftLen({ m0: s.m }); APPR.aim = FREE.aim; FREE.aim = null; apprAim(c, ax, unit3(r) || [0, 0, 1], sun);
-  } else apprKeep(c, 1 / 60);
+  } else apprKeep(c);
 }
 // 2D, close to the craft: the view's middle on it (the free area's), the map's camera following it
 function flyFollow2() {
@@ -875,7 +875,9 @@ function flyCorShow() {
 // the suggestions by themselves: after a burn (once the prediction is the new one), and once ~30 % of the way to the pass
 function flyCorTick(now) {
   const a = FREE.corAuto, q = FREE.tca; if (!a || FREE.target < 0) return;
-  if (a.at && now >= a.at && FREE.pred && !FREE.predDirty) { a.at = 0; if (q && q.soi) flyCorAsk(); }
+  // after the burn: only once the meeting has been worked out on the new path (2026-11-16: at a few frames a second the
+  // old one, from before the burn, decided and the suggestion was lost); a path that misses the target's sphere waits
+  if (a.at && now >= a.at && FREE.pred && !FREE.predDirty && FREE.tcaAt > a.after && !FREE.tcaDirty) { if (q && q.soi) { a.at = 0; flyCorAsk(); } }
   if (!a.mid && q && q.soi && FREE.st.t >= a.from + 0.3 * (q.t - a.from)) { a.mid = true; flyCorAsk(); }
   flyCorShow();
 }

@@ -1291,9 +1291,9 @@ cv.addEventListener('pointermove', e => {
       dx = e.offsetX - gest.x0; dy = e.offsetY - gest.y0;
       if (Math.hypot(dx, dy) < TAP_PX[gest.touch ? 'touch' : 'mouse']) return;
       gest.moved = true; cv.classList.add('drag'); hoverPt = null; sceneTouch();
-      if (!is3d() || (gest.pan && !APPR.on)) unfollow();
+      if ((!is3d() || gest.pan) && !APPR.on) unfollow(); // close to the craft it stays followed (2D too: a drag does not pan it away)
     }
-    if (!is3d()) { cam.cx -= dx / cam.scale; cam.cy += dy / cam.scale; }
+    if (!is3d()) { if (!APPR.on) { cam.cx -= dx / cam.scale; cam.cy += dy / cam.scale; } }
     else if (gest.pan && !APPR.on) pan3(dx, dy); else rot3(dx, dy);
   } else if (ptrs.size === 2 && pinch0) {
     const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
@@ -1409,7 +1409,8 @@ function apprAim(c, ax, vert, sun) {
   const a = APPR.aim; APPR.aim = null; flyTo(a);
 }
 // while close: the craft stays in the middle of the free area as windows open, fold or move (gently)
-function apprKeep(c, dt) {
+function apprKeep(c) {
+  const now = performance.now(), dt = Math.min(PLAY_DT_MAX, Math.max(0, (now - (APPR.keepAt || now)) / 1000)); APPR.keepAt = now; // the frame's own time: a low frame rate settles as fast
   if (FLY.on) return;
   const box = apprBox(), k = reduceMotion ? 1 : 1 - Math.exp(-dt / 0.25), x = c.cx == null ? W / 2 : c.cx, y = c.cy == null ? H / 2 : c.cy;
   c.cx = x + (box.x - x) * k; c.cy = y + (box.y - y) * k;
@@ -3364,10 +3365,14 @@ function hexA(hex, a) { const k = hex + a; let v = _hx.get(k); if (!v) { v = hex
 function hexA0(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
 
 // one frame; once: drawn on demand (the mission recording, js/record.js), the loop not scheduled again
+const PLAY_DT_MAX = 0.5;
 function drawBody(now, once) {
   // frame cap (low-resource mode); the small slack keeps 60 Hz displays at an even 30 fps
   if (Q.fpsCap && now - last < 1000 / Q.fpsCap - 4) { if (!once) requestAnimationFrame(draw); return; }
-  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  // dt (capped at 0.1 s) for animations and measurements; dtw, the wall clock's frame time capped only for a stall (a
+  // hidden tab, a long pause), runs the mission and free flight, so real time stays real at a low frame rate (2026-11-16:
+  // on a GPU-less runner at ~3 frames/s real time ran at 0.29×)
+  const dtw = Math.min(PLAY_DT_MAX, Math.max(0, (now - last) / 1000)), dt = Math.min(0.1, dtw); last = now;
   autoFrame(now, dt);
   // adaptive quality (normal and 3D modes): if frames stay slow, the ladder (FX) turns effects off one step at a time,
   // then drops glow, renders at 1x pixel ratio and suggests a lighter mode
@@ -3398,7 +3403,7 @@ function drawBody(now, once) {
     if (now - ovLast > 500) { ovLast = now; ovDist(); }
     skyAdapt(dt); frameEnd(); if (!once) requestAnimationFrame(draw); return;
   }
-  if (FREE.on) { flyFrame(dt, v3, glow, now); skyAdapt(dt); frameEnd(); if (!once) requestAnimationFrame(draw); return; } // free flight (js/fly.js)
+  if (FREE.on) { flyFrame(dtw, v3, glow, now); skyAdapt(dt); frameEnd(); if (!once) requestAnimationFrame(draw); return; } // free flight (js/fly.js)
   if (!sys || !simR || !C) {
     if (MAP.on) { if (v3) drawMap3(mapTime(0), glow, null, 0, 0); else { drawMap(mapTime(0), glow, null, 0, 0); if (!MAP.log) drawScale(); } }
     else if (v3) { V3.setActive('none'); V3.render({ stars: Q.stars && !skyRec(), skyGain: skyGain() }); }
@@ -3414,7 +3419,7 @@ function drawBody(now, once) {
       else if (C.orbit) S.ext += dt * (S.rate || S.speed * C.orbit.P / 8);
       else { S.playing = false; setPlayIcon(); }
     } else {
-      const u0 = S.u, u1 = playStep(dt), e = guideStopAt(uToT(u0), u1 >= 1 ? C.T : uToT(u1));
+      const u0 = S.u, u1 = playStep(dtw), e = guideStopAt(uToT(u0), u1 >= 1 ? C.T : uToT(u1));
       if (e) { S.u = tToU(e.t); S.playing = false; GUIDE.held = e; setPlayIcon(); } else S.u = u1;
     }
   } else if (!$('#slowTag').hidden) $('#slowTag').hidden = true;
