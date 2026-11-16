@@ -147,6 +147,7 @@ html[data-fly] #timeline,html[data-fly] #readout,html[data-fly] #liveBar{display
 .fn-b{display:flex;gap:6px;align-items:center}
 .fn-b .chk{margin-right:auto}
 .fn-att{color:var(--warn);font-variant-numeric:tabular-nums}
+.fn-attrow:has(.fn-att:empty){display:none}
 .fn-att:empty{display:none}
 .fn-hint,.fn-tip{margin:0;font:400 11.5px/1.4 var(--f-body);color:var(--dim)}
 .fn-tip{color:var(--faint);font-size:11px}

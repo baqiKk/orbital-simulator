@@ -370,6 +370,8 @@ Kararlar: gerçek model, gezegenler arası dahil (19e), basit model sonra; uçu�
   3. Katı motor: şekil motordan ve itki maddesinden (engine-ui.js `solShape`); STAR 48B yayımlanmış ölçüleriyle (NG kataloğu: çap 49,0 in, boy 80,0 in, boğaz 3,98 in, çıkış 29,5 in; toplam boy/çap 1,63, çıkış 0,60 D), diğer katılar kubbeli silindir (gövde L/D 1,5–3, itki maddesiyle), bağlantı halkaları ve lüle; motor penceresinin kesit şeması aynı oranlarla (önceden uzun dikdörtgen). Ekran görüntüleri önce/sonra `shots/fix5/solid/`.
   Testler: core.test.js tutma (dairesel/düzensiz/eliptik), ui.test.js 64 ve güncellenen 55, 57–60; duman testi prograd tutarken RCS sessiz.
 
+- Dönüş hızı (2026-11-17): pro → retro 1×'te 16 s idi. Artık 180° dönüş aracın kütlesine göre 3 s (küçük sonda, 300 kg) ile 4 s (büyük kademe, 30 t) arası (core.js `slewParams(T)`: dörtte bir hızlanma, yarı süzülme, dörtte bir fren), oyun zamanında (10×'te on kat hızlı; ateşleme hız sınırı ayrı); panelde "Hızlı dönüş" (varsayılan kapalı, kaydedilir) ≈ 1 s. Tarayıcıda: RL10 kademesi (23 t) 3,8 s, 22 N hidrazin sondası 2,9 s, hızlı 1,0 s, 10×'te kademe 0,31 s gerçek zaman; RCS püfleri sürüyor. Testler: core.test.js dönüş hızı, ui.test.js 65, duman testinde dönüş aracın süresi içinde ve hızlı dönüş ≈ 1 s.
+
 ## Notlar
 - Hibrit OTV hazır aracı: itki, Isp, kütle ve tek ateşleme süresini birlikte veren yayımlanmış birincil bir kaynak bulununca eklenecek. Yayımlanmamış şirket verileri kullanılmayacak.
 

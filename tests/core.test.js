@@ -594,6 +594,11 @@ const sEM = realSys(['earth', 'mars', 'sun']);
     assert.ok(Math.abs(t - T) < 0.3 && aligned > T - 2 && aligned < T, `slew: 180° in ${t.toFixed(2)} s (slewTime ${T.toFixed(2)} s), within 5° at ${aligned.toFixed(2)} s`);
     const mid = accs[Math.floor(accs.length / 2)];
     assert.ok(accs[0] > 0.9 && accs[accs.length - 3] < -0.5 && Math.abs(mid) < 1e-9, 'slew: the RCS starts the turn, coasts, stops it');
+    // the pace (2026-11-17): slewParams(T) turns 180° in about T s (1 s fast, 3 s a small probe, 4 s a heavy stage), still
+    // speeding up and braking; in game time, so at 10× it takes a tenth of the real time
+    const flip = (T, warp) => { const o = C.slewParams(T), at = { n: [1, 0, 0], w: 0 }; let k = 0; while (k < 6000) { C.slewStep(at, [-1, 0, 0], warp / 60, '', null, o); k++; if (at.w === 0 && at.n[0] < -1 + 1e-9) break; } return k / 60; };
+    for (const T of [1, 3, 4]) { const r = flip(T, 1); assert.ok(Math.abs(r - T) < 0.2 && Math.abs(C.slewTime(Math.PI, C.slewParams(T)) - T) < 1e-12, `slew pace: 180° in ${r.toFixed(2)} s for T = ${T} s`); }
+    assert.ok(Math.abs(flip(4, 10) - flip(4, 1) / 10) < 0.05, 'slew pace: ten times faster at 10×');
     const a2 = { n: [1, 0, 0], w: 0 }; C.slewStep(a2, [0, 1, 0], S0.maxT + 1);
     assert.ok(a2.n[1] === 1 && a2.w === 0, 'slew: a high warp arrives at once');
     const a3 = { n: [1, 0, 0], w: 0 }, om = 2 * Math.PI / 5554; let lag = 0;

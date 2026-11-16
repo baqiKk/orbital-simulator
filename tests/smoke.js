@@ -310,10 +310,14 @@ function watch(page, errs) {
         const sl = ms => new Promise(r => setTimeout(r, ms));
         flyWarp(1); FREE.eng.lock = 'pro'; flyLockSync(); for (let i = 0; i < 40 && !FREE.att.ok; i++) await sl(50);
         const retro = () => { const b = FREE.tb, V = mapSys.V; states(mapSys, FREE.st.t, mapSys.P, V); const v = [0, 1, 2].map(j => FREE.st.v[j] - V[3 * b + j]), l = Math.hypot(...v), n = FREE.att.n; return Math.acos(Math.max(-1, Math.min(1, -(n[0] * v[0] + n[1] * v[1] + n[2] * v[2]) / l))) * 180 / Math.PI; };
-        document.querySelector('#fnLock [data-v="retro"]').click(); flyThr(1); await sl(500);
+        const tq = FREE.st.t; document.querySelector('#fnLock [data-v="retro"]').click(); flyThr(1); await sl(300);
         const a = { off: retro(), fire: FREE.fire, att: document.querySelector('#fnAtt').textContent };
-        for (let i = 0; i < 400 && !(FREE.fire > 0); i++) await sl(50);
-        const b = { off: retro(), fire: FREE.fire };
+        for (let i = 0; i < 400 && !(FREE.fire > 0); i++) await sl(20);
+        const b = { off: retro(), fire: FREE.fire, took: FREE.st.t - tq, T: flySlewT() };
+        // 2026-11-17: the turn takes the craft's 3–4 s; "Hızlı dönüş" turns back in about a second (game seconds)
+        flyThr(0); document.querySelector('#fnFast').click(); const tf = FREE.st.t; FREE.eng.lock = 'pro'; flyLockSync();
+        for (let i = 0; i < 400 && !(FREE.att.hold && FREE.att.ok); i++) await sl(20);
+        b.fast = FREE.st.t - tf; document.querySelector('#fnFast').click();
         flyThr(0); FREE.eng.lock = 'pro'; flyLockSync();
         // holding prograde on a near-circular orbit: once back on it, the nose turns with the orbit by itself, the RCS quiet
         for (let i = 0; i < 600 && !(FREE.att.hold && FREE.att.ok); i++) await sl(50);
@@ -321,7 +325,7 @@ function watch(page, errs) {
         const hold = { fires: FREE.att.fires - f0, dt: FREE.st.t - t0, ok: FREE.att.ok }; flyWarp(1);
         return { a, b, hold };
       });
-      if (!(turn.a.off > 120) || turn.a.fire !== 0 || !/Yönleniyor/.test(turn.a.att) || !(turn.b.fire > 0) || !(turn.b.off < 5) || turn.hold.fires > 1 || !(turn.hold.dt > 20) || !turn.hold.ok) throw new Error('the turn: ' + JSON.stringify(turn));
+      if (!(turn.a.off > 120) || turn.a.fire !== 0 || !/Yönleniyor/.test(turn.a.att) || !(turn.b.fire > 0) || !(turn.b.off < 5) || !(turn.b.took < turn.b.T + 1) || !(turn.b.fast < 1.8) || turn.hold.fires > 1 || !(turn.hold.dt > 20) || !turn.hold.ok) throw new Error('the turn: ' + JSON.stringify(turn));
       await page.click('#flyWarp [data-w="1000"]'); await page.waitForTimeout(1200);
       const r = await page.evaluate(() => ({ dt: FREE.st.t, segs: FREE.pred ? FREE.pred.segs.length : 0 }));
       if (!(r.dt - t0 > 200) || !(r.segs > 0)) throw new Error('the flight did not advance or predict: ' + JSON.stringify(r));

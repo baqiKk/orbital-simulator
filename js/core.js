@@ -2290,7 +2290,11 @@ const FLY_WARPS = [1, 2, 5, 10, 20, 50, 100, 1e3, 1e4, 1e5, 1e6];
 // new hold rate taken) }; dt in game seconds, sub-stepped by SLEW.dt; a step longer than SLEW.maxT (a high time warp)
 // arrives at once. Returns the mean angular acceleration over dt as a share of SLEW.a (+ speeding up, − braking; 0
 // coasting, holding or at rest).
-const SLEW = { w: 12 * Math.PI / 180, a: 10 * Math.PI / 180, dt: 0.05, maxT: 12, db: 1.5 * Math.PI / 180 };
+// The turn's pace (2026-11-17): slewParams(T) makes a 180° turn take T s (a quarter speeding up, half coasting, a quarter
+// braking: w = 4π/(3T), a = 16π/(3T²)); the craft picks T (js/fly.js flySlewT: 3 s for a small probe … 4 s for a heavy
+// stage, 1 s with "Hızlı dönüş"). SLEW is the heavy stage's.
+function slewParams(T) { return { w: 4 * Math.PI / (3 * T), a: 16 * Math.PI / (3 * T * T), dt: Math.min(0.02, T / 100), maxT: 12, db: 1.5 * Math.PI / 180, T }; }
+const SLEW = slewParams(4);
 function slewTime(th, o = SLEW) { return th <= o.w * o.w / o.a ? 2 * Math.sqrt(th / o.a) : th / o.w + o.w / o.a; }
 const sDot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2], sCross = (p, q) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
 // v turned by the rotation vector w·t (Rodrigues)
@@ -2779,7 +2783,7 @@ function flyClosest(s, pred, c) {
 }
 
 if (typeof module !== 'undefined') module.exports = {
-  stumpff, uniStep, nodeFrame, nodeDv, dvLocal, FLY_WARPS, SLEW, slewTime, slewStep, flyWarpMax, flyDeriv, flyAdvance, flyPredict, flyRefine, flyWindow, flyHArr, flyCorrect, flyClosest,
+  stumpff, uniStep, nodeFrame, nodeDv, dvLocal, FLY_WARPS, SLEW, slewParams, slewTime, slewStep, flyWarpMax, flyDeriv, flyAdvance, flyPredict, flyRefine, flyWindow, flyHArr, flyCorrect, flyClosest,
   G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, clockAt, clockSet, keplerE, laplaceFrame, bodyFrame, orbitElements, orbitState, orbitPath,
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,
   lambert, lambertTransfer, lambertSeed, porkchop, arcDv, aeroOn, aeroRaise, depFrame, asymAngles, initialState, propagateTo, refineSeed, SOLVE_KM, missionMiss, solveMission,

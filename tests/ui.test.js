@@ -1697,8 +1697,8 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // attitude; RCS quads at the nose and the tail puff for the turn's acceleration (the nozzles whose torque lies along it).
 {
   const fl = read('js/fly.js'), v3 = read('js/view3d.js'), m3 = read('js/mode3d.js');
-  assert.ok(fl.includes('const FLY_ALIGN = 5 * Math.PI / 180') && fl.includes('if (FREE.att && !FREE.att.ok) return null;') && fl.includes('flyAttStep(dt * FREE.warp, b, FREE.burn ? null : nb);') && fl.includes("A.acc = slewStep(A, d, dtg, key, FREE.st.t);") && fl.includes('FREE.warp <= FLY_RCS_WARP'), 'turn: slewed in game time, the engine waits for the nose');
-  assert.ok(fl.includes('nb.start - FREE.st.t <= slewTime(flyAng(A.n, nb.dir)) + FLY_LEAD') && fl.includes('- slewTime(Math.PI)); FREE.paused = false;'), 'turn: ahead of an auto burn, and "Düğüme hızlandır" leaves room for it');
+  assert.ok(fl.includes('const FLY_ALIGN = 5 * Math.PI / 180') && fl.includes('if (FREE.att && !FREE.att.ok) return null;') && fl.includes('flyAttStep(dt * FREE.warp, b, FREE.burn ? null : nb);') && fl.includes("A.acc = slewStep(A, d, dtg, key, FREE.st.t, flySlew());") && fl.includes('FREE.warp <= FLY_RCS_WARP'), 'turn: slewed in game time, the engine waits for the nose');
+  assert.ok(fl.includes('nb.start - FREE.st.t <= slewTime(flyAng(A.n, nb.dir), flySlew()) + FLY_LEAD') && fl.includes('- slewTime(Math.PI, flySlew())); FREE.paused = false;'), 'turn: ahead of an auto burn, and "Düğüme hızlandır" leaves room for it');
   assert.ok(fl.includes("flyTxt('fnAtt', A && A.want && !A.ok ? _('fn.att'") && has('fn.att') && html.includes('id="fnAtt"'), 'turn: "Yönleniyor…" in the panel');
   assert.ok(fl.includes('function flyNose() { return FREE.att ? FREE.att.n : null; }') && fl.includes('FREE.pl, c.dist, flyRcs(1 / 60));') && m3.includes('rcs: rcs ? { a: craftLocal(rcs.a, ax, side)'), 'turn: the model\'s nose is the attitude, the puffs passed on');
   assert.ok(v3.includes('rcs.push({ m: pm, tau: new THREE.Vector3().crossVectors(p, e.clone().negate()).normalize() });') && v3.includes('const pm = plumeMesh();') && (v3.match(/for \(const \[cx, cz\] of \[\[1, 0\], \[0, 1\], \[-1, 0\], \[0, -1\]\]\)/g) || []).length === 1, 'turn: four RCS quads at the nose and four at the tail, puffs by torque');
@@ -1763,6 +1763,15 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const lds = [10, 100, 1000, 1e4, 1e5, 1e6].map(mp => c.f({ id: '', mp }).caseLD);
   assert.ok(lds.every(v => v >= 1.5 && v <= 3) && lds.every((v, i) => !i || v >= lds[i - 1]) && lds[5] === 3 && lds[1] === 1.5 && c.f({ id: '', mp: 1e4 }).k === 0.5, `solid shape: a domed cylinder, case L/D ${lds.map(v => v.toFixed(2)).join(' → ')} with the propellant`);
   assert.ok(m3.includes("sol: en.E.type === 'sol' ? solShape(en.E, en.s) : null,") && v3.includes('const S = sol || {') && v3.includes('Dm = 0.94 / (S.caseLD + S.noz)') && v3.includes('o.sol ? [o.sol.caseLD,') && ui.includes('const S = solShape(E, s), Dp = Math.min(76, (w - 16) / (S.caseLD + S.noz))'), 'solid shape: the 3D model (rebuilt when it changes) and the cutaway share it');
+}
+// 65) The pace of a turn (2026-11-17): a 180° turn takes 3 s for a small probe up to 4 s for a heavy stage (by mass), 1 s
+// with "Hızlı dönüş" (off by default, remembered); in game time (it scales with the warp).
+{
+  const fl = read('js/fly.js'), sb = { Math, FREE: { fast: false, st: { m: 296 } } };
+  require('vm').runInNewContext(fl.slice(fl.indexOf('const flySlewT = '), fl.indexOf('\n', fl.indexOf('const flySlewT = '))) + ';this.f = flySlewT;', sb);
+  const p = sb.f(); sb.FREE.st.m = 23000; const s = sb.f(); sb.FREE.st.m = 3e5; const h = sb.f(); sb.FREE.fast = true; const q = sb.f();
+  assert.ok(Math.abs(p - 3) < 0.01 && s > 3.8 && s < 4 && h === 4 && q === 1, `turn pace: probe ${p.toFixed(2)} s, stage ${s.toFixed(2)} s, fast ${q} s`);
+  assert.ok(html.includes('id="fnFast"') && has('fn.fast') && has('fn.fastTip') && P.PREF_KEYS.flyFast && fl.includes("FREE.fast = readPref(FLY_LS, PREF_KEYS.flyFast) === '1';") && fl.includes('flyAttStep(dt * FREE.warp, b,'), 'turn pace: the switch, remembered; in game time');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {

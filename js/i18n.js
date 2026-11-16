@@ -586,6 +586,8 @@ const I18N = {
     'fn.thrCutTip': 'Motoru kes (X)',
     'fn.dirL': 'Yön',
     'fn.att': 'Yönleniyor… {a}°',
+    'fn.fast': 'Hızlı dönüş',
+    'fn.fastTip': 'Yön değişimi yaklaşık 1 saniyede tamamlanır (kapalıyken aracın büyüklüğüne göre 3–4 s; zaman hızıyla ölçeklenir)',
     'fn.flowAria': 'Hedefe giden adımlar',
     'fn.flow1': 'Transfer penceresi',
     'fn.flow1Busy': 'Transfer penceresi aranıyor…',

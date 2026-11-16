@@ -479,7 +479,17 @@ function flyNextBurn() {
   return { t: nd.t, start: nd.t - b.T / 2, T: b.T, dir: dvI.map(x => x / dv), dv, b: q.b, E, up: E != null && E > (vh * vh) / 2 - mu / Math.hypot(...q.r) };
 }
 // ----- the attitude (2026-11-16) -----
-// The nose turns at a finite rate (core.js slewStep: at most SLEW.w, speeding up and braking at SLEW.a, in game time;
+// The pace of a turn (2026-11-17): a 180° turn takes flySlewT() s of game time (so 10× warp turns ten times as fast; the
+// burn's warp cap is its own): 3 s for a small probe up to 4 s for a heavy stage (by mass, 300 kg … 30 t, in its
+// logarithm), 1 s with "Hızlı dönüş" (#fnFast, PREF_KEYS.flyFast; off by default). core.js slewParams makes the profile.
+const FLY_LS = (() => { try { return window.localStorage; } catch (e) { return null; } })(); // its own (app.js's LS loads later)
+FREE.fast = readPref(FLY_LS, PREF_KEYS.flyFast) === '1';
+const flySlewT = () => (FREE.fast ? 1 : 3 + Math.max(0, Math.min(1, Math.log10(Math.max(1, FREE.st ? FREE.st.m : 1000) / 300) / 2)));
+const FLY_SLEW = { T: 0, p: null };
+function flySlew() { const T = Math.round(flySlewT() * 100) / 100; if (FLY_SLEW.T !== T) { FLY_SLEW.T = T; FLY_SLEW.p = slewParams(T); } return FLY_SLEW.p; }
+flyEl('fnFast').checked = FREE.fast;
+flyEl('fnFast').addEventListener('change', e => { FREE.fast = e.target.checked; writePref(FLY_LS, PREF_KEYS.flyFast, FREE.fast ? '1' : '0'); });
+// The nose turns at a finite rate (core.js slewStep: at most w, speeding up and braking at a, in game time;
 // at a high warp it arrives at once) towards: an auto burn's direction while it fires, and ahead of its start by the
 // turn's time (core.js slewTime) and FLY_LEAD; else the locked direction (prograde, retrograde, …) about the dominant
 // body. The main engine fires only once the nose is within FLY_ALIGN of where it should push ("Yönleniyor… 37°" until
@@ -499,9 +509,9 @@ function flyAttStep(dtg, b, nb) {
   const A = FREE.att, e = FREE.eng; if (!A) return;
   let d, want, key; // key: what is held (a change starts its turn rate afresh)
   if (FREE.burn) { d = FREE.burn.dir; want = true; key = 'b' + FREE.burn.t; }
-  else if (nb && nb.start - FREE.st.t <= slewTime(flyAng(A.n, nb.dir)) + FLY_LEAD) { d = nb.dir; want = true; key = 'n' + nb.t; } // turning ahead of the burn
+  else if (nb && nb.start - FREE.st.t <= slewTime(flyAng(A.n, nb.dir), flySlew()) + FLY_LEAD) { d = nb.dir; want = true; key = 'n' + nb.t; } // turning ahead of the burn
   else { d = flyLockDir(b); want = !!(e && e.thr > 0); key = 'l' + (e ? e.lock : 'pro') + b; }
-  A.acc = slewStep(A, d, dtg, key, FREE.st.t);
+  A.acc = slewStep(A, d, dtg, key, FREE.st.t, flySlew());
   A.err = flyAng(A.n, d); A.ok = A.err < FLY_ALIGN; A.want = want;
 }
 // the RCS puffs this frame (real seconds dt): their strength (pulsed) and the angular acceleration's axis (inertial)
@@ -648,7 +658,7 @@ flyEl('fnAuto').addEventListener('change', e => { if (FREE.eng) FREE.eng.auto = 
 flyEl('fnWarp').addEventListener('click', () => {
   const nd = FREE.nodes[FREE.sel]; if (!nd) return;
   const b = flyBurnOf(Math.hypot(...nd.d)), start = nd.t - (b ? b.T / 2 : 0);
-  FREE.warpTo = Math.max(FREE.st.t, start - Math.max(10, b ? 0.5 * b.T : 0) - slewTime(Math.PI)); FREE.paused = false; flyBarSync(); flyTipDid(3); // room to turn the nose
+  FREE.warpTo = Math.max(FREE.st.t, start - Math.max(10, b ? 0.5 * b.T : 0) - slewTime(Math.PI, flySlew())); FREE.paused = false; flyBarSync(); flyTipDid(3); // room to turn the nose
 });
 // the engine panel in free flight (as engine-ui.js engPanelTick for a mission): firing or coasting, the burn's end or
 // the next one, the bars, the Δv left, the thrust, the small cutaway
