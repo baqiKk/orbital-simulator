@@ -380,85 +380,70 @@ function craftTex(kind, C) {
   }
   return t;
 }
-// The plume (Phase 18c; redone 2026-11-14, 2026-11-15): a flame along the thrust axis, not a sprite. Three planes
-// crossing on the axis (at 0°, 60°, 120° about it, fixed to the craft), each carrying the flame's side view; a plane seen
-// edge on fades (vF), the others carry the look. Its half width grows wide out of the nozzle (uR0 → uR1 over uLen,
-// model units). Layers: a short bright core at the exit, the body widening and fading, a faint wide halo; the body broken
-// up by value noise drifting outwards (uT) and wavering; no shock diamonds. Seen end on, a disc across the nozzle exit
-// (PCORE) shows the bright ring and core. Additive (ONE, ONE), no depth writes. uSimple: no noise (the low quality).
+// The plume (Phase 18c; redone 2026-11-14, 2026-11-15; a volume 2026-11-16): a flame along the thrust axis drawn as a
+// volume, not as planes or a sprite. One hull (a cone round the axis, −y of the plume from the nozzle exit, sized by
+// uniforms in the vertex shader) only gives the pixels; for each one the fragment shader marches the view ray through
+// an axisymmetric density between its entry and exit (the bounding cylinder and the two end planes, found
+// analytically), so from the side, obliquely and end on the flame has no edges or crossings to show. Its width grows
+// out of the nozzle (uR0 → uR1 over uLen, model units); layers: a dense bright core at the exit, the body widening,
+// thinning and wavering with 3D value noise drifting downstream (uT), a faint wide halo; the light adds up and
+// saturates softly. Additive (ONE, ONE), no depth writes; the hull's front faces, its back faces when the camera is
+// inside it (uCam: the camera in the plume's axes). uSimple: fewer steps, no noise (the low quality).
 export const PLUME_VS = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_vertex>
-uniform float uLen, uR0, uR1;
-varying vec2 vP;
-varying float vF;
+uniform float uLen, uRh0, uRh1;
+varying vec3 vL;
 void main() {
-  float a = uv.y, x = uv.x * 2.0 - 1.0, r = mix(uR0, uR1, pow(a, 0.7)) * 1.6;
-  vec4 w = modelMatrix * vec4(x * r, -a * uLen, 0.0, 1.0);
-  vec3 N = normalize(mat3(modelMatrix) * vec3(0.0, 0.0, 1.0));
-  vF = abs(dot(N, normalize(cameraPosition - w.xyz)));
-  vP = vec2(x * 1.6, a);
-  gl_Position = projectionMatrix * viewMatrix * w;
+  float a = -position.y, rh = mix(uRh0, uRh1, a);
+  vL = vec3(position.x * rh, position.y * uLen, position.z * rh);
+  gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(vL, 1.0);
   #include <logdepthbuf_vertex>
 }`;
 export const PLUME_FS = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_fragment>
-uniform vec3 uCore, uBody;
-uniform float uI, uT, uSimple, uSeed;
-varying vec2 vP;
-varying float vF;
+uniform vec3 uCore, uBody, uCam;
+uniform float uI, uT, uSimple, uSeed, uLen, uR0, uR1, uRh1;
+varying vec3 vL;
 // a hash without sin (float precision holds on every GPU; the clock is wrapped in mode3d.js)
-float h21(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
-float vnoise(vec2 p) {
-  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+float h31(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+float vnoise(vec3 p) {
+  vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(h31(i), h31(i + vec3(1.0, 0.0, 0.0)), f.x), mix(h31(i + vec3(0.0, 1.0, 0.0)), h31(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+             mix(mix(h31(i + vec3(0.0, 0.0, 1.0)), h31(i + vec3(1.0, 0.0, 1.0)), f.x), mix(h31(i + vec3(0.0, 1.0, 1.0)), h31(i + vec3(1.0, 1.0, 1.0)), f.x), f.y), f.z);
 }
 void main() {
   #include <logdepthbuf_fragment>
-  float a = vP.y, x = vP.x, n = 0.5;
-  if (uSimple < 0.5) {
-    float n1 = vnoise(vec2(a * 7.0 - uT * 4.0, x * 1.4 + uSeed)), n2 = vnoise(vec2(a * 16.0 - uT * 9.0, x * 3.0 - uSeed));
-    n = 0.62 * n1 + 0.38 * n2;
-    x += (n1 - 0.5) * 0.45 * a;
+  vec3 ro = uCam, rd = normalize(vL - uCam);
+  // the ray's stretch inside the bounding cylinder (radius uRh1) between the exit plane y = 0 and the tip y = −uLen
+  float t0 = 0.0, t1 = 1e9, A = dot(rd.xz, rd.xz), B = dot(ro.xz, rd.xz), C = dot(ro.xz, ro.xz) - uRh1 * uRh1;
+  if (A > 1e-9) { float D = B * B - A * C; if (D <= 0.0) discard; float q = sqrt(D); t0 = (-B - q) / A; t1 = (-B + q) / A; }
+  else if (C > 0.0) discard;
+  if (abs(rd.y) > 1e-7) { float ta = -ro.y / rd.y, tb = (-uLen - ro.y) / rd.y; t0 = max(t0, min(ta, tb)); t1 = min(t1, max(ta, tb)); }
+  else if (ro.y > 0.0 || ro.y < -uLen) discard;
+  t0 = max(t0, 0.0); if (t1 <= t0) discard;
+  const int N = 28;
+  int n = uSimple > 0.5 ? 10 : N;
+  float dt = (t1 - t0) / float(n), j = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); // per-pixel offset: no banding
+  vec3 acc = vec3(0.0); float tot = 0.0;
+  for (int i = 0; i < N; i++) {
+    if (i >= n) break;
+    vec3 p = ro + rd * (t0 + (float(i) + j) * dt);
+    float a = clamp(-p.y / uLen, 0.0, 1.0), w = mix(uR0, uR1, pow(a, 0.65)), r = length(p.xz) / w, nz = 0.5;
+    if (uSimple < 0.5) {
+      vec3 q = vec3(p.x / uR1 * 2.2, (p.y + uT * uLen * 1.4) / uLen * 5.0, p.z / uR1 * 2.2) + uSeed;
+      nz = 0.65 * vnoise(q) + 0.35 * vnoise(q * 2.3 + 7.1);
+      r *= 1.0 + (nz - 0.5) * 0.5 * a; // the envelope wavers, more downstream
+    }
+    float fade = (1.0 - a) * (1.0 - a), core = exp(-r * r * 7.0) * (exp(-a * 6.0) * 4.5 + exp(-a * 1.8) * 0.45 * fade);
+    float body = exp(-r * r * 3.2) * pow(1.0 - a, 1.9) * (0.25 + 0.95 * nz);
+    float halo = exp(-r * r * 0.9) * pow(1.0 - a, 3.0) * 0.1;
+    float d = (core + body + halo) * dt / w * smoothstep(0.0, 0.02, a) * smoothstep(1.0, 0.85, a); // no edge at the exit plane or the tip
+    acc += mix(uBody, uCore, clamp(core / (core + body + 0.4 * halo + 1e-4), 0.0, 1.0)) * d; tot += d;
   }
-  float start = smoothstep(0.0, 0.015, a);
-  float body = exp(-x * x * 3.0) * pow(1.0 - a, 1.8) * (0.3 + 0.8 * n) * 0.75;
-  float halo = exp(-x * x * 0.9) * pow(1.0 - a, 2.6) * 0.12;
-  float core = exp(-x * x * 9.0) * exp(-a * 9.0) * 1.3;
-  float tot = body + halo + core;
-  float I = tot * start * uI * smoothstep(0.05, 0.4, vF) * 0.6;
-  vec3 c = mix(uBody, uCore, clamp(core / (tot + 1e-4), 0.0, 1.0));
-  gl_FragColor = vec4(c * I, I);
-  #include <colorspace_fragment>
-}`;
-// the end-on view: a disc across the nozzle exit (uR, model units; in the model's xz plane), a bright core and ring,
-// strongest seen along the axis
-export const PCORE_VS = /* glsl */`
-#include <common>
-#include <logdepthbuf_pars_vertex>
-uniform float uR;
-varying vec2 vQ;
-varying float vC;
-void main() {
-  vec4 w = modelMatrix * vec4(position.x * uR, 0.0, position.z * uR, 1.0);
-  vec3 A = normalize(mat3(modelMatrix) * vec3(0.0, 1.0, 0.0));
-  vC = abs(dot(A, normalize(cameraPosition - w.xyz)));
-  vQ = position.xz;
-  gl_Position = projectionMatrix * viewMatrix * w;
-  #include <logdepthbuf_vertex>
-}`;
-export const PCORE_FS = /* glsl */`
-#include <common>
-#include <logdepthbuf_pars_fragment>
-uniform vec3 uCore;
-uniform float uI;
-varying vec2 vQ;
-varying float vC;
-void main() {
-  #include <logdepthbuf_fragment>
-  float d = length(vQ), I = (exp(-d * d * 6.0) * 0.9 + exp(-pow((d - 0.72) * 7.0, 2.0)) * 0.55) * uI * smoothstep(0.3, 0.9, vC);
-  gl_FragColor = vec4(uCore * I, I);
+  float I = (1.0 - exp(-tot * 1.1)) * uI;
+  gl_FragColor = vec4(acc / max(tot, 1e-5) * I, I);
   #include <colorspace_fragment>
 }`;
 
@@ -780,28 +765,32 @@ export function create(canvas, opts) {
       uniforms: { uColor: { value: new THREE.Color(tex ? '#ffffff' : color) }, uBack: { value: new THREE.Color(color) }, uSun: { value: new THREE.Vector3(1, 0, 0) }, uFlat: { value: flat ? 1 : 0 },
         uTex: { value: tex ? 1 : 0 }, uMap: { value: tex ? craftTex(tex, C) : null }, uSpec: { value: flat ? 0 : spec }, uClip: { value: 1e9 }, uPort: { value: -1 }, uRod: { value: 1e9 } } });
   }
-  // a plume (2026-11-15): crossing planes on its axis (−y of the model, from the nozzle exit) sharing one material, and
-  // for a main engine the end-on disc; additive: blending ONE, ONE (premultiplied), no depth writes, after the model
-  const flameQuad = new THREE.PlaneGeometry(1, 1, 1, 20).translate(0.5, 0.5, 0), coreDisc = new THREE.CircleGeometry(1, 32).rotateX(-Math.PI / 2);
+  // a plume (2026-11-16: a volume): one hull along its axis (−y of the model, from the nozzle exit), the fragment shader
+  // marches it; additive: blending ONE, ONE (premultiplied), no depth writes, after the model
   const rcsBlock = new THREE.BoxGeometry(0.03, 0.028, 0.03), rcsNoz = new THREE.CylinderGeometry(0.0035, 0.0075, 0.012, 10, 1, true), _Y = new THREE.Vector3(0, 1, 0), _nY = new THREE.Vector3(0, -1, 0);
   const ADD = { transparent: true, premultipliedAlpha: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false };
-  function plumeMesh(planes, disc) {
-    const grp = new THREE.Group(), mat = new THREE.ShaderMaterial({ vertexShader: PLUME_VS, fragmentShader: PLUME_FS, ...ADD, uniforms: { uCore: { value: new THREE.Color() }, uBody: { value: new THREE.Color() },
-      uI: { value: 0 }, uT: { value: 0 }, uSimple: { value: 0 }, uSeed: { value: Math.random() * 50 }, uLen: { value: 1 }, uR0: { value: 0.1 }, uR1: { value: 0.6 } } });
-    for (let k = 0; k < planes; k++) { const m = new THREE.Mesh(flameQuad, mat); m.rotation.y = k * Math.PI / planes; m.renderOrder = 2; m.frustumCulled = false; grp.add(m); }
-    grp.userData.mat = mat;
-    if (disc) {
-      const d = new THREE.Mesh(coreDisc, new THREE.ShaderMaterial({ vertexShader: PCORE_VS, fragmentShader: PCORE_FS, ...ADD, uniforms: { uCore: { value: new THREE.Color() }, uI: { value: 0 }, uR: { value: 0.1 } } }));
-      d.renderOrder = 2; d.frustumCulled = false; d.position.y = 0.004; grp.add(d); grp.userData.disc = d;
-    }
-    grp.visible = false; return grp;
+  const plumeHull = new THREE.CylinderGeometry(1, 1, 1, 32, 1, false).translate(0, -0.5, 0);
+  function plumeMesh() {
+    const grp = new THREE.Group(), mat = new THREE.ShaderMaterial({ vertexShader: PLUME_VS, fragmentShader: PLUME_FS, ...ADD, side: THREE.FrontSide, uniforms: { uCore: { value: new THREE.Color() }, uBody: { value: new THREE.Color() },
+      uI: { value: 0 }, uT: { value: 0 }, uSimple: { value: 0 }, uSeed: { value: Math.random() * 50 }, uLen: { value: 1 }, uR0: { value: 0.1 }, uR1: { value: 0.6 }, uRh0: { value: 0.3 }, uRh1: { value: 1.5 }, uCam: { value: new THREE.Vector3() } } });
+    const h = new THREE.Mesh(plumeHull, mat); h.renderOrder = 2; h.frustumCulled = false; grp.add(h);
+    grp.userData.mat = mat; grp.userData.hull = h; grp.visible = false; return grp;
+  }
+  // a plume's shape (model units: its length, its half width at the exit and at the tip) and the camera in its axes
+  // (after the craft's transform): the hull 2.6 half widths out, its back faces when the camera is inside it
+  const _pc = new THREE.Vector3();
+  function plumeSet(p, len, r0, r1) {
+    const U = p.userData.mat.uniforms; U.uLen.value = len; U.uR0.value = r0; U.uR1.value = r1; U.uRh0.value = 2.6 * r0; U.uRh1.value = 2.6 * r1;
+    p.userData.hull.worldToLocal(_pc.copy(camera.position)); U.uCam.value.copy(_pc);
+    const a = -_pc.y / len, inside = a >= 0 && a <= 1 && Math.hypot(_pc.x, _pc.z) < 2.6 * (r0 + (r1 - r0) * a);
+    const side = inside ? THREE.BackSide : THREE.FrontSide; if (p.userData.mat.side !== side) { p.userData.mat.side = side; p.userData.mat.needsUpdate = true; }
   }
   // build the model for engine type ty (grain for a solid); col: { metal, nozzle, fuel, ox, tex (the theme's colours for
   // the textures) }; prop: the propellant (the tanks' finish: foam on cryogenic ones, gold foil on storables, bare metal
   // for RP-1, a composite case for a hybrid's nitrous oxide); fo: the oxidizer tank's share of a liquid engine's tank
   // length (their volumes)
   function craftBuild(ty, grain, col, prop, fo) {
-    if (craftG.group) { if (craftG.group.parent) craftG.group.parent.remove(craftG.group); /* a mission's set or free flight's map */ craftG.group.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry && ![quad, halfCyl, flameQuad, coreDisc, rcsBlock, rcsNoz].includes(o.geometry)) o.geometry.dispose(); }); }
+    if (craftG.group) { if (craftG.group.parent) craftG.group.parent.remove(craftG.group); /* a mission's set or free flight's map */ craftG.group.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry && ![quad, halfCyl, plumeHull, rcsBlock, rcsNoz].includes(o.geometry)) o.geometry.dispose(); }); }
     const g = new THREE.Group(); g.visible = false;
     const C = col.tex, cryo = /^lox/.test(prop || ''), T = (k, o) => craftMat(col.metal, false, k, o ? { ...C, ...o } : C, k === 'foam' ? 0.06 : k.startsWith('quilt') ? 0.18 : 0.25);
     const fin = TANK_FIN;
@@ -993,12 +982,12 @@ export function create(canvas, opts) {
       const r = rq + 0.012, e = new THREE.Vector3(cx, 0, cz), p = new THREE.Vector3(cx * r, y, cz * r);
       add(new THREE.Mesh(rcsBlock, M.valve), p.x, y, p.z);
       const nz = add(new THREE.Mesh(rcsNoz, M.nozzle), cx * (r + 0.019), y, cz * (r + 0.019)); nz.quaternion.setFromUnitVectors(_Y, e);
-      const pm = plumeMesh(2, false); pm.position.set(cx * (r + 0.025), y, cz * (r + 0.025)); pm.quaternion.setFromUnitVectors(_nY, e); g.add(pm);
+      const pm = plumeMesh(); pm.position.set(cx * (r + 0.025), y, cz * (r + 0.025)); pm.quaternion.setFromUnitVectors(_nY, e); g.add(pm);
       rcs.push({ m: pm, tau: new THREE.Vector3().crossVectors(p, e.clone().negate()).normalize() });
     }
     craftG.rcsAt = null;
     const nPl = ty === 'mono' ? 4 : 1;
-    for (let i = 0; i < nPl; i++) { const p = plumeMesh(nPl === 1 ? 3 : 2, nPl === 1); g.add(p); plumes.push(p); }
+    for (let i = 0; i < nPl; i++) { const p = plumeMesh(); g.add(p); plumes.push(p); }
     roots.sim.add(g);
     Object.assign(craftG, { group: g, shells, fills, ports, plumes, mats: M, ty, grain, rcs });
   }
@@ -1045,6 +1034,7 @@ export function create(canvas, opts) {
       m.position.set(0.001, (f.y0 + f.y1) / 2, zc);
       if (name === 'grainB' && craftG.grain === 'rod' && craftG.ty === 'sol') m.visible = false;
     }
+    g.updateMatrixWorld(true); // the plumes need the camera in their axes
     // the RCS puffs (o.rcs: { a (the angular acceleration's axis, model axes), k, core, body }): the nozzles whose torque
     // lies along it
     const rc = o.rcs, al = rc ? Math.hypot(rc.a[0], rc.a[1], rc.a[2]) || 1 : 1;
@@ -1052,7 +1042,7 @@ export function create(canvas, opts) {
       const f = rc && rc.k > 0.01 ? (q.tau.x * rc.a[0] + q.tau.y * rc.a[1] + q.tau.z * rc.a[2]) / al : 0, I = rc ? rc.k * Math.max(0, Math.min(1, (f - 0.5) / 0.4)) : 0;
       q.m.visible = I > 0.01; if (!q.m.visible) continue;
       const U = q.m.userData.mat.uniforms; U.uCore.value.set(rc.core); U.uBody.value.set(rc.body); U.uI.value = 0.9 * I; U.uT.value = (o.plume && o.plume.t) || 0;
-      U.uSimple.value = o.plume && o.plume.simple ? 1 : 0; U.uLen.value = 0.06 + 0.05 * I; U.uR0.value = 0.006; U.uR1.value = 0.018 + 0.014 * I;
+      U.uSimple.value = o.plume && o.plume.simple ? 1 : 0; plumeSet(q.m, 0.06 + 0.05 * I, 0.005, 0.016 + 0.012 * I);
     }
     // the plume(s): while the engine burns and the moment after its cut (o.plume.I goes to 0); length, width and
     // brightness by thrust (o.plume: { core, body (colours), I, len (model lengths), t (s, the noise's drift), simple })
@@ -1061,9 +1051,8 @@ export function create(canvas, opts) {
       p.visible = on; if (!on) return;
       const U = p.userData.mat.uniforms, len = mono ? pl.len * 0.3 : pl.len, r0 = mono ? 0.024 : craftG.exitR || 0.095;
       U.uCore.value.set(pl.core); U.uBody.value.set(pl.body); U.uI.value = pl.I; U.uT.value = pl.t || 0; U.uSimple.value = pl.simple ? 1 : 0;
-      U.uLen.value = len; U.uR0.value = r0 * 0.9; U.uR1.value = r0 + len * 0.3;
       if (mono && craftG.thr) { const q = craftG.thr[i]; p.position.copy(q.p); p.quaternion.setFromUnitVectors(_nY, q.d); } else p.position.set(0, -0.5, 0);
-      const d = p.userData.disc; if (d) { const D = d.material.uniforms; D.uCore.value.set(pl.core); D.uI.value = pl.I; D.uR.value = r0 * 0.95; }
+      p.updateMatrixWorld(true); plumeSet(p, len, r0 * 0.8, r0 + len * 0.17);
     });
   }
 
