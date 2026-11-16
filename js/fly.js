@@ -523,7 +523,7 @@ function flyStep(dt, b) {
   // the warp to a node: as fast as leaves room to slow down, then real time a little before the burn
   if (FREE.warpTo != null) {
     const rem = FREE.warpTo - s.t;
-    if (rem <= 0.05) { FREE.warpTo = null; flyWarp(1, true); }
+    if (rem <= 0.05) { FREE.warpTo = null; flyWarp(1, true); if (FREE.flow && FREE.flow.placed) FREE.flow.warped = true; }
     else { let w = 1; for (const q of FLY_WARPS) if (q * 0.1 <= rem / 3) w = q; if (w !== FREE.warp) flyWarp(w, true); }
   }
   // an auto burn starts
@@ -562,6 +562,7 @@ function flyStep(dt, b) {
 }
 function flyBurnEnd(out) {
   const t = FREE.burn.t; FREE.burn = null; FREE.fire = 0;
+  if (FREE.flow && FREE.flow.placed && FREE.flow.warped) FREE.flow.fired = true;
   if (FREE.target >= 0) { FREE.corAuto = { at: performance.now() + 1500, from: FREE.st.t, mid: false }; FREE.cor = null; } // a correction suggested once the path settles, and again ~30 % of the way
   const i = FREE.nodes.findIndex(nd => nd.t === t); if (i >= 0) { FREE.nodes.splice(i, 1); FREE.sel = Math.min(FREE.sel, FREE.nodes.length - 1); if (FREE.sel < 0 && FREE.nodes.length) FREE.sel = 0; }
   if (out) FREE.eng.thr = 0;
@@ -728,7 +729,7 @@ function flyAppr(on) {
   apprSync();
 }
 // ----- hints (the first free flight; "Nasıl uçulur?" brings them back) -----
-const FLY_TIPS = ['fly.tip.appr', 'fly.tip.node', 'fly.tip.drag', 'fly.tip.warp', 'fly.tip.auto'];
+const FLY_TIPS = ['fly.tip.appr', 'fly.tip.node', 'fly.tip.drag', 'fly.tip.warp', 'fly.tip.auto', 'fly.tip.flow'];
 function flyTips(i) {
   FREE.tip = i >= 0 && i < FLY_TIPS.length ? i : -1;
   const on = FREE.tip >= 0;
@@ -767,7 +768,7 @@ function flyTgtList() {
   sel.value = String(FREE.target);
   flyEl('fnWin').disabled = FREE.target < 0 || !!FREE.winBusy;
 }
-flyEl('fnTgt').addEventListener('change', e => { FREE.target = +e.target.value; FREE.tca = null; FREE.tcaDirty = true; FREE.win = null; FREE.cor = null; FREE.corAuto = null; flyWinShow(); flyCorShow(); flyTgtList(); });
+flyEl('fnTgt').addEventListener('change', e => { FREE.target = +e.target.value; FREE.tca = null; FREE.tcaDirty = true; FREE.win = null; FREE.cor = null; FREE.corAuto = null; FREE.flow = {}; flyWinShow(); flyCorShow(); flyTgtList(); flyTipDid(5); });
 // how the path meets the target (after the prediction; at most every FLY_CA_MS): its sphere and pass, else the closest
 // approach with the target's and the craft's places then (relative to the segment's body, drawn where it is now)
 function flyTca(now) {
@@ -802,7 +803,26 @@ function flyTcaDraw(v3) {
   ctx.font = LABEL_FONT; ctx.fillStyle = hexA(col, 0.9);
   ctx.fillText(_(q.soi ? (q.impact ? 'fn.tgtHitS' : 'fn.tgtPassS') : 'fn.tgtCaS', { d: fmtDist(q.soi ? Math.max(0, q.alt) : q.d) }), B[0] + 9, B[1] - 8);
 }
+// The target's steps (2026-11-16): 1 Transfer penceresi (aranıyor… while the worker runs) → 2 Düğümleri koy → 3 Düğüme
+// hızlandır → 4 Otomatik ateşle → 5 Düzeltme öner; each is done by its own action or by what it leads to (FREE.flow:
+// placed, warped, fired, corrected; a found window), the first not done is the current one, its button marked (fn-next)
+const FLY_FLOW_BTN = ['fnWin', 'fnWinGo', 'fnWarp', 'fnAuto', 'fnCor'];
+function flyFlowTick() {
+  const el = flyEl('fnFlow'), F = FREE.flow || (FREE.flow = {}), on = FREE.target >= 0;
+  if (el.hidden === on) el.hidden = !on;
+  const r = FREE.cor, corOk = !!(r && r.node && !r.busy && !r.error && flyEl('fnCorGo').hidden);
+  if (FREE.burn && F.placed) F.warped = true;
+  const done = [F.placed || !!(FREE.win && FREE.win.node), !!F.placed, !!F.warped, !!F.fired, !!F.corrected || (F.fired && corOk)];
+  const cur = on ? done.indexOf(false) : -1, busy = !!FREE.winBusy;
+  const key = [on, cur, done.join(), busy, FREE.eng && FREE.eng.auto, flyEl('fnCorGo').hidden, flyEl('fnWinGo').hidden].join('|');
+  if (FREE.flowKey === key) return; FREE.flowKey = key;
+  [...el.children].forEach((li, i) => { li.className = done[i] ? 'done' : i === cur ? 'cur' : ''; li.textContent = _(i === 0 && busy ? 'fn.flow1Busy' : 'fn.flow' + (i + 1)); });
+  FLY_FLOW_BTN.slice(0, 4).forEach((id, i) => { const b = id === 'fnAuto' ? flyEl(id).closest('label') : flyEl(id); b.classList.toggle('fn-next', i === cur && !(i === 3 && FREE.eng && FREE.eng.auto)); }); // step 4 with auto fire on: nothing to press
+  flyEl('fnCorGo').classList.toggle('fn-next', cur === 4 && !flyEl('fnCorGo').hidden);
+  flyEl('fnCor').classList.toggle('fn-next', cur === 4 && flyEl('fnCorGo').hidden);
+}
 function flyTgtTick() {
+  flyFlowTick();
   const q = FREE.tca, c = FREE.target;
   if (c < 0 || !q) { flyTxt('fnTgtInfo', c >= 0 && FREE.pred ? _('fn.tgtWait') : ''); return; }
   const t = fmtIn(Math.max(0, q.t - FREE.st.t)), body = _('body.' + MAPK[c]);
@@ -862,11 +882,13 @@ function flyCorTick(now) {
 flyEl('fnCor').addEventListener('click', flyCorAsk);
 flyEl('fnCorGo').addEventListener('click', () => {
   const r = FREE.cor; if (!r || !r.node || r.node.t <= FREE.st.t) return;
+  (FREE.flow || (FREE.flow = {})).corrected = true;
   flyEdit(); FREE.nodes.push({ t: r.node.t, d: r.node.d.map(x => Math.round(x * 100) / 100) }); FREE.nodes.sort((a, b) => a.t - b.t);
   FREE.sel = FREE.nodes.findIndex(nd => nd.t === r.node.t); FREE.cor = null; flyCorShow(); flyChanged();
 });
 flyEl('fnWinGo').addEventListener('click', () => {
   const r = FREE.win; if (!r || !r.node || r.node.t <= FREE.st.t) return;
+  FREE.flow = { placed: true }; // the steps from here (a new window starts them over)
   flyEdit(); for (const nd of r.nodes || [r.node]) FREE.nodes.push({ t: nd.t, d: nd.d.map(x => Math.round(x * 10) / 10) }); // the ejection and (between planets) the course correction
   FREE.nodes.sort((a, b) => a.t - b.t); FREE.nodes = FREE.nodes.slice(0, FLY_NODES_MAX);
   FREE.sel = FREE.nodes.findIndex(nd => nd.t === r.node.t); FREE.win = null; flyWinShow(); flyChanged();

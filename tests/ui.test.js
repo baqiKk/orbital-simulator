@@ -1737,6 +1737,18 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(fl.includes('if (mv) { FREE.moveEnd = performance.now(); flyChanged(); return; }') && fl.includes('if (performance.now() - (FREE.moveEnd || 0) < 120) return true;') && /function flyPathAt\(px, py, r, pred = FREE\.pred, lo = -Infinity, hi = Infinity\)/.test(fl), 'node slide: the release keeps the app\'s bookkeeping, its tap swallowed');
   assert.ok(DICT['fn.tip'].includes('yörünge boyunca sürükleyerek zamanını değiştir'), 'node slide: said in the panel');
 }
+// 63) The target's steps (2026-11-16): with a target, the Hedef group lists 1 Transfer penceresi ("aranıyor…" while the
+// worker runs) → 2 Düğümleri koy → 3 Düğüme hızlandır → 4 Otomatik ateşle → 5 Düzeltme öner; done ones ticked, the
+// first not done current, its button marked (none to press for step 4 while auto fire is on); a new target or window
+// starts over; "Nasıl uçulur?" says the same.
+{
+  const fl = read('js/fly.js'), css = read('css/style.css');
+  assert.ok(html.includes('<ol class="fn-flow" id="fnFlow"') && (html.match(/<li data-k="\d"><\/li>/g) || []).length === 5 && [1, 2, 3, 4, 5].every(i => has('fn.flow' + i)) && has('fn.flow1Busy') && has('fn.flowAria'), 'target steps: five, worded');
+  assert.ok(DICT['fn.flow1'] === 'Transfer penceresi' && DICT['fn.flow1Busy'] === 'Transfer penceresi aranıyor…' && DICT['fn.flow2'] === 'Düğümleri koy' && DICT['fn.flow3'] === 'Düğüme hızlandır' && DICT['fn.flow4'] === 'Otomatik ateşle' && DICT['fn.flow5'] === 'Düzeltme öner', 'target steps: the words asked for');
+  assert.ok(fl.includes("const FLY_FLOW_BTN = ['fnWin', 'fnWinGo', 'fnWarp', 'fnAuto', 'fnCor'];") && fl.includes("li.className = done[i] ? 'done' : i === cur ? 'cur' : '';") && fl.includes('FREE.flow = { placed: true };') && fl.includes('if (FREE.flow && FREE.flow.placed && FREE.flow.warped) FREE.flow.fired = true;') && fl.includes('(FREE.flow || (FREE.flow = {})).corrected = true;') && fl.includes('FREE.flow = {}; flyWinShow();'), 'target steps: each done by its action, a new target starts over');
+  assert.ok(css.includes('.fn-flow li.done::before{content:"✓"') && css.includes('.fn-flow li.cur::before{') && css.includes('.fn-next:not(.primary){color:var(--accent)!important}') && css.includes('@media (prefers-reduced-motion:no-preference){.fn-next{animation:'), 'target steps: ticked, current, the next button marked (still with reduced motion)');
+  assert.ok(fl.includes("'fly.tip.auto', 'fly.tip.flow']") && DICT['fly.tip.flow'].includes('1 Transfer penceresi → 2 Düğümleri koy → 3 Düğüme hızlandır → 4 Otomatik ateşle → 5 Düzeltme öner') && fl.includes('flyTipDid(5); });'), 'target steps: in "Nasıl uçulur?"');
+}
 // the encoder itself (an ES module): a real GIF
 (async () => {
   const G = await import(require('url').pathToFileURL(path.join(__dirname, '..', 'js', 'rec-worker.mjs')).href);

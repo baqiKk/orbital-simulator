@@ -175,6 +175,20 @@ html[data-fly] #timeline,html[data-fly] #readout,html[data-fly] #liveBar{display
 .fn-cor[hidden]{display:none}
 .fn-win{display:flex;flex-direction:column;align-items:flex-start;gap:5px;color:var(--dim)}
 .fn-tgtinfo:empty,.fn-win:has(#fnWinInfo:empty):has(#fnWinGo[hidden]){display:none}
+/* the target's steps (2026-11-16): done ones ticked, the current one in the accent, the next button marked */
+.fn-flow{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;counter-reset:fl}
+.fn-flow[hidden]{display:none}
+.fn-flow li{display:flex;align-items:center;gap:7px;color:var(--faint);font:500 11px/1.3 var(--f-body)}
+.fn-flow li::before{counter-increment:fl;content:counter(fl);flex:none;width:16px;height:16px;display:grid;place-items:center;border:1px solid var(--line2);font:600 9.5px/1 var(--f-mono);color:var(--faint)}
+.fn-flow li.done{color:var(--dim)}
+.fn-flow li.done::before{content:"✓";color:var(--good);border-color:var(--good)}
+.fn-flow li.cur{color:var(--ink)}
+.fn-flow li.cur::before{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}
+.fn-next{border-color:var(--accent)!important;box-shadow:0 0 0 1px var(--accent)}
+.fn-next:not(.primary){color:var(--accent)!important}
+.chk.fn-next{box-shadow:none;outline:1px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){.fn-next{animation:fnNext 1.6s ease-in-out infinite}}
+@keyframes fnNext{50%{box-shadow:0 0 0 3px var(--accent-soft)}}
 .fly-note{border-left-color:var(--cyan)}
 .fly-note[hidden]{display:none}
 @media (max-width:560px){
