@@ -143,7 +143,7 @@ function flyFrame(dt, v3, glow, now) {
   MAP.follow = FREE.appr ? null : b;
   flyTca(now);
   if (v3) { flyLines3(b); drawMap3(s.t, glow, null, 0, 0); flyTcaDraw(true); flyMark(b, true); flyNodes(true); }
-  else { if (FREE.appr) flyFollow2(); drawMap(s.t, glow, null, 0, 0); flyLines2(b); flyTcaDraw(false); flyMark(b, false); flyNodes(false); if (!MAP.log) drawScale(); }
+  else { if (FREE.appr) { flyFollow2(); apprWatch(0); } drawMap(s.t, glow, null, 0, 0); flyLines2(b); flyTcaDraw(false); flyMark(b, false); flyNodes(false); if (!MAP.log) drawScale(); }
   flyBarTick(b);
   flyPanelTick(); flyTgtTick(); flyCorTick(now);
   if (now - (FREE.helpAt || 0) > 500) { FREE.helpAt = now; flyHelpPlace(); }
@@ -557,6 +557,7 @@ function flyCraft3(c) {
   // close to the craft the map's lines fade as in a mission (its own path kept, faint)
   const nk = FREE.appr ? nearFade3(c.dist) : 1; V3.fadeSet('map', nk, FLY_OWN, 0.15 + 0.85 * nk); if (FREE.appr) grid3(c, false);
   proj3(p, PJ); const lpx = FREE.lpx = PJ[2] > 0 ? L * CB.f / PJ[2] : 0;
+  if (FREE.appr) apprWatch(lpx); // zoomed out by hand: back to the map's view (app.js)
   if (!(lpx > 6)) { V3.craft({ show: false }); return; }
   const st = engStOf(e.s, e.tau, FREE.fire > 0);
   craftDraw('map', p, ax, acrossUp(ax, up), L, sun, { E: e.E, s: e.s, st, plume: (PROPS[e.E.prop] || {}).plume || 'amber' }, FREE.pl, c.dist);

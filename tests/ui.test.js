@@ -1658,6 +1658,22 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(app.includes('if (!is3d() || (gest.pan && !APPR.on)) unfollow();') && app.includes('else if (gest.pan && !APPR.on) pan3(dx, dy); else rot3(dx, dy);') && app.includes('if (APPR.on) return; // close to the craft two fingers only zoom'), 'approach camera: a pan turns instead, the craft stays the centre');
   assert.ok(m3.includes('const q = craftRV3(tNow, craft, ext); camLocal(c, q.r, q.v, q.b);') && m3.includes('if (!APPR.on && c.lb) camFrame3(c);') && m3.includes('if (FREE.on && FREE.appr) flyApprCam(c);') && fl.includes('camLocal(c, r, v, b);') && app.includes('if (c && a.lb !== c.lb) { const q = camRebase('), 'approach camera: in missions and in free flight; the smooth moves re-expressed');
 }
+// 58) The approach button follows the view (2026-11-16): zoomed out by hand until the craft is under APPR_OUT_PX on screen
+// (2D: a view ten times the approach's), the approach ends by itself (the button "Araca yaklaş" again, the windows back,
+// the view where it is), so the next press comes close; not during a smooth move or before the first aim.
+{
+  const app = read('js/app.js'), m3 = read('js/mode3d.js'), fl = read('js/fly.js');
+  const sb = { Math, APPR: { on: true, aim: null, fold: [] }, FLY: { on: false }, FREE: { on: false, aim: null }, W: 1440, H: 900, cam: { scale: 1e-3 }, left: 0, is3d: () => true, insets: () => ({ l: 0, r: 0, t: 0, b: 0 }) };
+  require('vm').runInNewContext(app.slice(app.indexOf('function apprBox()'), app.indexOf('\n', app.indexOf('function apprBox()'))) + app.slice(app.indexOf('const APPR_OUT_PX'), app.indexOf('function apprLeave()')) + ';function apprLeave() { left++; APPR.on = false; } this.w = apprWatch;', sb);
+  sb.w(200); assert.ok(sb.left === 0, 'approach: a large craft keeps it');
+  sb.FLY.on = true; sb.w(10); assert.ok(sb.left === 0, 'approach: not during a smooth move');
+  sb.FLY.on = false; sb.APPR.aim = {}; sb.w(10); assert.ok(sb.left === 0, 'approach: not before the first aim');
+  sb.APPR.aim = null; sb.w(10); assert.ok(sb.left === 1 && !sb.APPR.on, 'approach: zoomed out by hand, it ends');
+  sb.APPR.on = true; sb.is3d = () => false; sb.cam.scale = 900 / 4e5; sb.w(0); assert.ok(sb.left === 1, 'approach 2D: the approach view keeps it');
+  sb.cam.scale = 900 / 5e6; sb.w(0); assert.ok(sb.left === 2, 'approach 2D: ten times wider ends it');
+  assert.ok(m3.includes('apprWatch(lpx); // the viewer zoomed out') && fl.includes('if (FREE.appr) apprWatch(lpx);') && fl.includes('if (FREE.appr) { flyFollow2(); apprWatch(0); }') && app.includes('if (!MAP.on && APPR.on) apprWatch(0);'), 'approach: watched in 3D, 2D and free flight');
+  assert.ok(app.includes('if (FREE.on) { flyAppr(false); return; }') && /function apprLeave\(\)[\s\S]{0,400}if \(is3d\(\)\) camFrame3\(cam3\(\)\);\s+apprSync\(\);/.test(app), 'approach: leaving keeps the view, the button follows');
+}
 // the encoder itself (an ES module): a real GIF
 (async () => {
   const G = await import(require('url').pathToFileURL(path.join(__dirname, '..', 'js', 'rec-worker.mjs')).href);

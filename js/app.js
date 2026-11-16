@@ -1414,6 +1414,25 @@ function apprKeep(c, dt) {
   const box = apprBox(), k = reduceMotion ? 1 : 1 - Math.exp(-dt / 0.25), x = c.cx == null ? W / 2 : c.cx, y = c.cy == null ? H / 2 : c.cy;
   c.cx = x + (box.x - x) * k; c.cy = y + (box.y - y) * k;
 }
+// The approach follows the view (2026-11-16): once the viewer's own zoom takes the craft below APPR_OUT_PX on screen (3D:
+// the model's length; 2D: a view APPR_OUT_2D times wider than the approach's), the approach is over and the button says
+// "Araca yaklaş" again, so the next press comes close instead of going back. A mission's view stays where it is (still
+// following the craft, the folded windows back, the camera out of the craft's local frame); free flight hands back to
+// the map's view (js/fly.js flyAppr). Not while a smooth move or the first aim runs.
+const APPR_OUT_PX = 30, APPR_OUT_2D = 10;
+function apprWatch(lpx) {
+  if (!APPR.on || FLY.on || APPR.aim || FREE.aim) return;
+  const v3 = is3d(), q = apprBox();
+  if (v3 ? lpx < APPR_OUT_PX : Math.min(q.w, q.h) / cam.scale > APPR_OUT_2D * 4e5) apprLeave();
+}
+function apprLeave() {
+  if (FREE.on) { flyAppr(false); return; }
+  APPR.on = false; APPR.prev = null; APPR.aim = null;
+  for (const id of APPR.fold) if (WINS[id].open && WINS[id].collapsed) { WINS[id].collapsed = false; applyWin(id); }
+  APPR.fold = []; INS = null;
+  if (is3d()) camFrame3(cam3());
+  apprSync();
+}
 function apprSync() { for (const id of ['#apprBtn', '#engAppr', '#epAppr']) $(id).setAttribute('aria-pressed', String(APPR.on)); for (const id of ['#cutBtn', '#engCut', '#epCut']) $(id).setAttribute('aria-pressed', String(CRAFT.cut)); }
 // 2D: the cutaway is the engine panel's (unfolded), else the engine window's
 function cutToggle() {
@@ -3432,6 +3451,7 @@ function drawBody(now, once) {
     else if (S.follow[0] === 'b' && bpos[+S.follow.slice(1)]) { const p = bpos[+S.follow.slice(1)]; cam.cx = p[0]; cam.cy = p[1]; }
     if (!MAP.on && S.follow !== 'free') followOff2();
     if (!MAP.on) fly2(S.follow !== 'free');
+    if (!MAP.on && APPR.on) apprWatch(0);
 
     if (MAP.on) drawMap(mapTime(tNow), glow, craft, tNow, pathIdx);
     else {

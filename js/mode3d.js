@@ -459,6 +459,7 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
     : S.model === 'real' ? glare3(SUN3, true, CB.f * sunAngOf(S.bodies[0].key), -1) : null;
   if (gl3) skySun(gl3.i, sunIdx >= 0 ? rpx[sunIdx] : CB.f * sunAngOf(S.bodies[0].key));
   const lpx = craft3(tNow, craft, ext, sunIdx);
+  apprWatch(lpx); // the viewer zoomed out: the approach is over (app.js)
   V3.render({ stars: Q.stars && !skyRec(), sky: ROT9, skyGain: skyGain(), glare: glow ? gl3 : null });
 
   // ---- overlay ----
