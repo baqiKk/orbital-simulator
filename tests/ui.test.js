@@ -1697,7 +1697,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 // attitude; RCS quads at the nose and the tail puff for the turn's acceleration (the nozzles whose torque lies along it).
 {
   const fl = read('js/fly.js'), v3 = read('js/view3d.js'), m3 = read('js/mode3d.js');
-  assert.ok(fl.includes('const FLY_ALIGN = 5 * Math.PI / 180') && fl.includes('if (FREE.att && !FREE.att.ok) return null;') && fl.includes('flyAttStep(dt * FREE.warp, b, FREE.burn ? null : nb);') && fl.includes("A.acc = slewStep(A, d, dtg);"), 'turn: slewed in game time, the engine waits for the nose');
+  assert.ok(fl.includes('const FLY_ALIGN = 5 * Math.PI / 180') && fl.includes('if (FREE.att && !FREE.att.ok) return null;') && fl.includes('flyAttStep(dt * FREE.warp, b, FREE.burn ? null : nb);') && fl.includes("A.acc = slewStep(A, d, dtg, key, FREE.st.t);") && fl.includes('FREE.warp <= FLY_RCS_WARP'), 'turn: slewed in game time, the engine waits for the nose');
   assert.ok(fl.includes('nb.start - FREE.st.t <= slewTime(flyAng(A.n, nb.dir)) + FLY_LEAD') && fl.includes('- slewTime(Math.PI)); FREE.paused = false;'), 'turn: ahead of an auto burn, and "Düğüme hızlandır" leaves room for it');
   assert.ok(fl.includes("flyTxt('fnAtt', A && A.want && !A.ok ? _('fn.att'") && has('fn.att') && html.includes('id="fnAtt"'), 'turn: "Yönleniyor…" in the panel');
   assert.ok(fl.includes('function flyNose() { return FREE.att ? FREE.att.n : null; }') && fl.includes('FREE.pl, c.dist, flyRcs(1 / 60));') && m3.includes('rcs: rcs ? { a: craftLocal(rcs.a, ax, side)'), 'turn: the model\'s nose is the attitude, the puffs passed on');

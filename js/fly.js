@@ -483,9 +483,11 @@ function flyNextBurn() {
 // at a high warp it arrives at once) towards: an auto burn's direction while it fires, and ahead of its start by the
 // turn's time (core.js slewTime) and FLY_LEAD; else the locked direction (prograde, retrograde, …) about the dominant
 // body. The main engine fires only once the nose is within FLY_ALIGN of where it should push ("Yönleniyor… 37°" until
-// then; an auto burn waits too). The RCS puffs (nose and tail quads, js/view3d.js) follow the turn's angular
-// acceleration: a pair starts the turn, the opposite pair stops it.
-const FLY_ALIGN = 5 * Math.PI / 180, FLY_LEAD = 3;
+// then; an auto burn waits too). Holding a direction, its own turn rate is fed forward (core.js slewStep: a locked
+// prograde turns with the orbit by itself, no RCS inside the 1.5° dead band, a short correction past it). The RCS puffs
+// (nose and tail quads, js/view3d.js) follow the turn's angular acceleration: a pair starts the turn, the opposite pair
+// stops it; none are shown above FLY_RCS_WARP.
+const FLY_ALIGN = 5 * Math.PI / 180, FLY_LEAD = 3, FLY_RCS_WARP = 20;
 const flyAng = (p, q) => Math.acos(Math.max(-1, Math.min(1, p[0] * q[0] + p[1] * q[1] + p[2] * q[2])));
 function flyLockDir(b) {
   const s = FREE.st, P = mapSys.P, V = mapSys.V, e = FREE.eng, lock = e ? e.lock : 'pro';
@@ -495,17 +497,17 @@ function flyLockDir(b) {
 // one step of dtg game seconds; nb: the next auto burn (not yet started)
 function flyAttStep(dtg, b, nb) {
   const A = FREE.att, e = FREE.eng; if (!A) return;
-  let d, want;
-  if (FREE.burn) { d = FREE.burn.dir; want = true; }
-  else if (nb && nb.start - FREE.st.t <= slewTime(flyAng(A.n, nb.dir)) + FLY_LEAD) { d = nb.dir; want = true; } // turning ahead of the burn
-  else { d = flyLockDir(b); want = !!(e && e.thr > 0); }
-  A.acc = slewStep(A, d, dtg);
+  let d, want, key; // key: what is held (a change starts its turn rate afresh)
+  if (FREE.burn) { d = FREE.burn.dir; want = true; key = 'b' + FREE.burn.t; }
+  else if (nb && nb.start - FREE.st.t <= slewTime(flyAng(A.n, nb.dir)) + FLY_LEAD) { d = nb.dir; want = true; key = 'n' + nb.t; } // turning ahead of the burn
+  else { d = flyLockDir(b); want = !!(e && e.thr > 0); key = 'l' + (e ? e.lock : 'pro') + b; }
+  A.acc = slewStep(A, d, dtg, key, FREE.st.t);
   A.err = flyAng(A.n, d); A.ok = A.err < FLY_ALIGN; A.want = want;
 }
 // the RCS puffs this frame (real seconds dt): their strength (pulsed) and the angular acceleration's axis (inertial)
 function flyRcs(dt) {
   const A = FREE.att; if (!A) return null;
-  const k = Math.abs(A.acc) > 0.15 && FREE.warp < 1000 ? Math.min(1, Math.abs(A.acc)) : 0;
+  const k = Math.abs(A.acc) > 0.15 && FREE.warp <= FLY_RCS_WARP ? Math.min(1, Math.abs(A.acc)) : 0; // none shown at a high warp
   A.puff += (k - A.puff) * (reduceMotion ? 1 : 1 - Math.exp(-dt / 0.06));
   if (k > 0 && A.u) A.pu = A.u.map(x => x * Math.sign(A.acc));
   if (!(A.puff > 0.02) || !A.pu) return null;

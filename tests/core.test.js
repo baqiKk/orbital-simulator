@@ -599,6 +599,27 @@ const sEM = realSys(['earth', 'mars', 'sun']);
     const a3 = { n: [1, 0, 0], w: 0 }, om = 2 * Math.PI / 5554; let lag = 0;
     for (let k = 1; k <= 6000; k++) { const g = om * k * dt; C.slewStep(a3, [Math.cos(g), Math.sin(g), 0], dt); if (k > 600) lag = Math.max(lag, Math.acos(Math.min(1, a3.n[0] * Math.cos(g) + a3.n[1] * Math.sin(g)))); }
     assert.ok(lag < 0.1 * Math.PI / 180, `slew: a low orbit's prograde tracked within ${(lag * 180 / Math.PI * 3600).toFixed(1)}″`);
+    // holding a locked prograde (the same day, redone): its turn rate fed forward, a dead band, so over one revolution of a
+    // circular low orbit the RCS fires at most once or twice (taking the hold rate), with no puffs to show, at 1×, 10× and
+    // 100×; an ellipse's prograde turns at a changing rate: a few short corrections a revolution, the error kept within
+    // the band (plus a step's drift)
+    const orbit = (warp, e, jit) => { // jit: uneven frames (0.4 … 1.6 of the step), each target stamped with its game time
+      let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      const mu = 3.986004418e14, rp = 6771e3, a = rp / (1 - e), T = 2 * Math.PI * Math.sqrt(a ** 3 / mu), q = new Float64Array(6);
+      let r = [rp, 0, 0], v = [0, Math.sqrt(mu * (1 + e) / rp), 0], mx = 0, err = 0; const at = { n: [0, 1, 0], w: 0 };
+      for (let t = 0, h = warp / 60; t < T; t += h) {
+        if (jit) h = warp / 60 * (0.4 + 1.2 * rnd());
+        const l = Math.hypot(v[0], v[1], v[2]), d = v.map(x => x / l); mx = Math.max(mx, Math.abs(C.slewStep(at, d, h, 'pro', t)));
+        err = Math.max(err, Math.acos(Math.min(1, at.n[0] * d[0] + at.n[1] * d[1] + at.n[2] * d[2])));
+        C.uniStep(mu, r, v, h, q); r = [q[0], q[1], q[2]]; v = [q[3], q[4], q[5]];
+      }
+      return { fires: at.fires, mx, err };
+    };
+    for (const w of [1, 10, 100]) { const o = orbit(w, 0); assert.ok(o.fires <= 2 && o.mx < 0.15 && o.err < 0.01 * Math.PI / 180, `hold: a circular orbit's prograde at ${w}×: ${o.fires} RCS firing(s), no puffs (${o.mx.toFixed(3)})`); }
+    const jt = orbit(5, 0, true);
+    assert.ok(jt.fires <= 2 && jt.mx < 0.15 && jt.err < 0.05 * Math.PI / 180, `hold: uneven frames: ${jt.fires} RCS firing(s), within ${(jt.err * 180 / Math.PI).toFixed(3)}°`);
+    const el = orbit(10, 0.1);
+    assert.ok(el.fires >= 1 && el.fires <= 12 && el.err < S0.db + 0.2 * Math.PI / 180, `hold: an ellipse (e = 0.1): ${el.fires} short corrections a revolution, within ${(el.err * 180 / Math.PI).toFixed(2)}°`);
   }
   console.log('free flight ok');
 }

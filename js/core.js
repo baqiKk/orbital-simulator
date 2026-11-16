@@ -2279,35 +2279,65 @@ const dvLocal = (r, v, dv) => { const F = nodeFrame(r, v), dot = (a, b) => a[0] 
 // The highest time warp allowed while the engine fires, by the burn's length T (s): a short burn 10×, a long one up to
 // 100× (a thirtieth of its length per screen second: 10 min → 20×, an hour or more → 100×), on the warp steps
 const FLY_WARPS = [1, 2, 5, 10, 20, 50, 100, 1e3, 1e4, 1e5, 1e6];
-// The craft's attitude (2026-11-16): the nose n (unit) turns towards a direction d along the great circle, at most
-// SLEW.w rad/s, speeding up and braking at SLEW.a rad/s² so it comes to rest on d (accelerate, coast, brake; the RCS's
-// pulses start and stop the turn). att = { n, w (rad/s), u (the turn's axis) }; dt in game seconds, sub-stepped by
-// SLEW.dt; a step longer than SLEW.maxT (a high time warp) arrives at once. Returns the mean angular acceleration over
-// dt as a share of SLEW.a (+ speeding up about u, − braking; 0 coasting or at rest).
-const SLEW = { w: 12 * Math.PI / 180, a: 10 * Math.PI / 180, dt: 0.05, maxT: 12 };
+// The craft's attitude (2026-11-16; holding a direction redone the same day): the nose n (unit) turns with an angular
+// velocity wf (rad/s, a vector) and, to reach a direction d, slews along the great circle relative to it at most SLEW.w,
+// speeding up and braking at SLEW.a so it comes to rest on d (accelerate, coast, brake: the RCS starts and stops the
+// turn). Holding: the target's own turn rate (estimated from the last call's target with the same key: a locked
+// prograde turns at the orbit's rate, a burn's direction not at all) is fed forward: once on the target the nose turns
+// at that rate by itself (a turn, once started, needs no thrust to keep), and inside the dead band SLEW.db nothing
+// fires; only past it a short correction (an ellipse's prograde turns at a changing rate: now and then). att = { n, w
+// (the relative slew rate), u (its axis), wf, hold, fires (the RCS firings counted: a turn or a correction started, a
+// new hold rate taken) }; dt in game seconds, sub-stepped by SLEW.dt; a step longer than SLEW.maxT (a high time warp)
+// arrives at once. Returns the mean angular acceleration over dt as a share of SLEW.a (+ speeding up, − braking; 0
+// coasting, holding or at rest).
+const SLEW = { w: 12 * Math.PI / 180, a: 10 * Math.PI / 180, dt: 0.05, maxT: 12, db: 1.5 * Math.PI / 180 };
 function slewTime(th, o = SLEW) { return th <= o.w * o.w / o.a ? 2 * Math.sqrt(th / o.a) : th / o.w + o.w / o.a; }
-function slewStep(att, d, dt, o = SLEW) {
+const sDot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2], sCross = (p, q) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
+// v turned by the rotation vector w·t (Rodrigues)
+function sRot(v, w, t) {
+  const wl = Math.hypot(w[0], w[1], w[2]), a = wl * t; if (!(a > 0)) return v.slice();
+  const k = w.map(x => x / wl), c = Math.cos(a), s = Math.sin(a), kv = sCross(k, v), kd = sDot(k, v);
+  return [0, 1, 2].map(j => v[j] * c + kv[j] * s + k[j] * kd * (1 - c));
+}
+// tg: the game time the target d is for (its turn rate is measured over the time between two targets, not over dt:
+// frames are uneven); without it dt is taken
+function slewStep(att, d, dt, key = '', tg = null, o = SLEW) {
   if (!(dt > 0)) return 0;
-  const dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2], cr = (p, q) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
-  if (dt > o.maxT) { att.n = d.slice(); att.w = 0; return 0; }
+  if (!att.wf) att.wf = [0, 0, 0];
+  att.fires = att.fires || 0;
+  // the target's own turn: from the last target of the same kind (a new kind, or a jump, gives none this time)
+  let wd = [0, 0, 0], ok = false;
+  const dtt = tg != null && att.tp != null ? tg - att.tp : dt;
+  if (att.k === key && att.dp && dtt > 0) {
+    const c = sCross(att.dp, d), s = Math.hypot(c[0], c[1], c[2]), ang = Math.atan2(s, sDot(att.dp, d));
+    if (ang < 0.5) { ok = true; if (s > 1e-15) wd = c.map(x => x * ang / s / dtt); }
+  }
+  att.dp = d.slice(); att.k = key; att.tp = tg;
+  if (dt > o.maxT) { att.n = d.slice(); att.w = 0; att.wf = wd; att.hold = true; att.ff = !ok; return 0; }
+  if (att.hold && att.ff && ok) { // a hold started on a new kind of target: its rate, now known, taken once
+    const dw = Math.hypot(wd[0] - att.wf[0], wd[1] - att.wf[1], wd[2] - att.wf[2]); att.wf = wd; att.ff = false; if (dw > 1e-6) att.fires++;
+  }
   let n = att.n.slice(), t = 0, acc = 0;
   while (t < dt - 1e-12) {
     const h = Math.min(o.dt, dt - t); t += h;
-    const th = Math.acos(Math.max(-1, Math.min(1, dot(n, d))));
-    if (th < 1e-6) { n = d.slice(); acc -= att.w > 0 ? Math.min(1, att.w / (o.a * h)) * h : 0; att.w = 0; continue; }
-    let u = cr(n, d), ul = Math.hypot(u[0], u[1], u[2]);
-    if (ul < 1e-9) { // opposite: keep the turn's axis if it is still across the nose, else any axis across it
-      const p = att.u && Math.abs(dot(att.u, n)) < 0.5 ? att.u : Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], k = dot(p, n);
+    n = sRot(n, att.wf, h); // the turn it has keeps going by itself
+    const dt1 = sRot(d, wd, t), th = Math.acos(Math.max(-1, Math.min(1, sDot(n, dt1))));
+    if (att.hold && th < o.db) continue; // inside the dead band: no torque
+    if (att.hold) { att.hold = false; att.fires++; } // a correction (or a new direction) starts
+    let u = sCross(n, dt1), ul = Math.hypot(u[0], u[1], u[2]);
+    if (ul < 1e-9) { // on it already, or opposite: keep the turn's axis if it is still across the nose, else any axis across it
+      const p = att.u && Math.abs(sDot(att.u, n)) < 0.5 ? att.u : Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], k = sDot(p, n);
       u = [p[0] - k * n[0], p[1] - k * n[1], p[2] - k * n[2]]; ul = Math.hypot(u[0], u[1], u[2]);
     }
     u = u.map(x => x / ul);
-    const wd = Math.min(o.w, Math.sqrt(2 * o.a * th)), dw = Math.max(-o.a * h, Math.min(o.a * h, wd - att.w)), w1 = att.w + dw;
-    const rot = Math.min(th, 0.5 * (att.w + w1) * h), un = cr(u, n), c = Math.cos(rot), s = Math.sin(rot);
+    const w0 = att.w || 0, wdes = Math.min(o.w, Math.sqrt(2 * o.a * th)), dw = Math.max(-o.a * h, Math.min(o.a * h, wdes - w0)), w1 = w0 + dw;
+    const rot = Math.min(th, 0.5 * (w0 + w1) * h), un = sCross(u, n), c = Math.cos(rot), s = Math.sin(rot);
     n = [n[0] * c + un[0] * s, n[1] * c + un[1] * s, n[2] * c + un[2] * s];
-    const l = Math.hypot(n[0], n[1], n[2]); n = n.map(x => x / l);
-    // arrived: the nose now follows the target at the rate it moved (tracking a turning prograde needs no puffs)
-    const w2 = rot >= th - 1e-12 ? Math.min(o.w, th / h) : w1;
-    acc += Math.max(-1, Math.min(1, (w2 - att.w) / (o.a * h))) * h; att.w = w2; att.u = u;
+    const l = Math.hypot(n[0], n[1], n[2]); n = n.map(x => x / l); att.u = u;
+    if (rot >= th - 1e-12) { // arrived: at rest relative to the target, turning with it from now on (the stopping pair)
+      n = dt1.slice(); const dff = Math.hypot(wd[0] - att.wf[0], wd[1] - att.wf[1], wd[2] - att.wf[2]);
+      acc -= Math.min(1, (w0 + dff) / (o.a * h)) * h; att.w = 0; att.wf = wd; att.hold = true; att.ff = !ok;
+    } else { att.w = w1; acc += dw / (o.a * h) * h; }
   }
   att.n = n;
   return acc / dt;
