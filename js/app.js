@@ -1205,7 +1205,7 @@ function measureFree() {
   const sr = stage.getBoundingClientRect(), gap = 12;
   const rel = el => { const r = el.getBoundingClientRect(); return { x0: r.left - sr.left, x1: r.right - sr.left, y0: r.top - sr.top, y1: r.bottom - sr.top }; };
   const shown = el => !el.hidden && el.getClientRects().length > 0;
-  const hud = [...$('#ctrls').children, $('#readout'), $('#engPanel'), $('#timeline'), $('#caption'), $('#modeChip'), $('#liveBar')].filter(shown).map(rel);
+  const hud = [...$('#ctrls').children, $('#readout'), $('#engPanel'), $('#flyNode'), $('#timeline'), $('#caption'), $('#modeChip'), $('#liveBar')].filter(shown).map(rel);
   const wins = floating() ? [...document.querySelectorAll('.win:not([hidden])')].filter(shown).map(rel) : [];
   const rects = freeRects(W, H, [...hud, ...wins], gap);
   // too little room left between the windows: let them overlap the plot instead (HUD still counts)

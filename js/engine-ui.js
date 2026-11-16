@@ -517,7 +517,7 @@ function epFold(f, save) {
   if (save) writePref(ENG_LS, PREF_KEYS.engPanel, f ? '1' : '0');
   INS = null;
 }
-engEl('epTog').addEventListener('click', () => epFold(!EP.fold, true));
+engEl('epTog').addEventListener('click', () => { if (!FREE.on) epFold(!EP.fold, true); }); // in free flight's panel it stays open
 function engPanelTick(t, show) {
   const p = engEl('engPanel'), en = show ? engNow(t) : null, m = en && en.m;
   const on = !!(m && m.burns && m.burns.length);
@@ -588,7 +588,9 @@ for (const f of ENG_NUM) engEl('eng-' + f).addEventListener('input', e => {
 });
 // "Oynat": one whole burn in the cutaway (and on the charts), ≈ 6 s
 engEl('engPlay').addEventListener('click', () => { ENGW.play = ENGW.play ? 0 : performance.now(); engEl('engPlay').setAttribute('aria-pressed', String(!!ENGW.play)); engTick(true); });
-engEl('engApply').addEventListener('click', () => { if (!ENGW.s || ENGW.s.error) return; engApply({ ...ENGW.E }); });
+// in free flight the button changes the flying craft's engine (js/fly.js flySetEngine), never starts a mission
+engEl('engApply').addEventListener('click', () => { if (!ENGW.s || ENGW.s.error) return; if (FREE.on) flySetEngine({ ...ENGW.E }); else engApply({ ...ENGW.E }); });
+function engApplyLabel() { const b = engEl('engApply'), k = FREE.on ? 'eng.applyFly' : 'eng.apply'; b.dataset.i18n = k; b.textContent = _(k); }
 engEl('engSave').addEventListener('click', () => {
   const name = (engEl('eng-name').value.trim() || _('eng.auto', { n: SAVED_ENG.length + 1 })).slice(0, 40), q = { ...ENGW.E, name };
   delete q.id;
@@ -605,7 +607,7 @@ engEl('engDel').addEventListener('click', () => {
 });
 if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (!engEl('w-engine').hidden && ENGW.s && !ENGW.s.error) engChart(ENGW.s, ENGW.linked ? engMission() : null); }).observe(engEl('engCv').parentElement);
 // the window opens on the mission's engine when it has one
-function engWinOpened() { engOpenFrom(S.M && S.M.eng ? S.M.eng : null); }
+function engWinOpened() { engApplyLabel(); engOpenFrom(FREE.on && FREE.eng ? FREE.eng.E : S.M && S.M.eng ? S.M.eng : null); }
 // a finished result (app.js updateResults): the window follows when it shows the mission's engine
 function engAfterResults() { if (!engEl('w-engine').hidden) engCompute(); }
 // (no drawing at load: the window is drawn when it opens, engWinOpened from app.js applyWin)

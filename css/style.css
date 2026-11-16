@@ -99,8 +99,6 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-conten
 .hud-bot>*{pointer-events:auto}
 .hud-row{align-self:stretch;display:flex;justify-content:space-between;align-items:flex-end;gap:10px;pointer-events:none}
 .hud-row>.readout{pointer-events:auto;margin-left:auto}
-/* the free flight's bar (Phase 19b): in place of the timeline */
-.fly-bar{align-self:stretch;display:flex;align-items:center;gap:10px;padding:7px 11px;flex-wrap:wrap}
 html[data-fly] #timeline,html[data-fly] #readout,html[data-fly] #liveBar{display:none}
 .fly-help{position:absolute;z-index:12;top:52px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;max-width:min(560px,calc(100% - 24px))}
 .fly-help>*{pointer-events:auto}
@@ -108,28 +106,48 @@ html[data-fly] #timeline,html[data-fly] #readout,html[data-fly] #liveBar{display
 .fly-tip{display:flex;gap:10px;align-items:center;padding:7px 12px;font-size:12.5px;line-height:1.4;color:var(--ink);border-left:2px solid var(--accent)}
 .fly-tip[hidden]{display:none}
 .fly-how{font-size:11.5px}
-.fn-burn{font-variant-numeric:tabular-nums}
-.fn-tgt{display:flex;align-items:flex-end;gap:6px}
-.fn-tgt label{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;font:500 10px/1 var(--f-disp);letter-spacing:.05em;text-transform:uppercase}
-.fn-tgt select{width:100%;min-width:0}
-.fn-tgtinfo{color:var(--ink)}
-.fn-cor{display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--cyan)}
-.fn-cor[hidden]{display:none}
-.fn-win{display:flex;flex-direction:column;align-items:flex-start;gap:5px;color:var(--dim)}
-.fn-tgtinfo:empty,.fn-win:has(#fnWinInfo:empty):has(#fnWinGo[hidden]){display:none}
-.fn-warn{color:var(--warn)}
-.fn-burn:empty,.fn-warn:empty{display:none}
-.fn-warpbtn{align-self:flex-start}
-.fn-b .chk{margin-right:auto}
-.fn-man{display:flex;align-items:center;gap:6px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:6px}
-.fn-ml{font:600 10px/1 var(--f-disp);letter-spacing:.08em;text-transform:uppercase}
-.fn-lock{order:3;width:100%;display:flex;flex-wrap:nowrap}
-.fn-lock button{flex:1;padding:4px 2px;font-size:10.5px}
-.fn-thr{margin-left:auto;color:var(--ink);font-variant-numeric:tabular-nums}
 @media (max-width:560px){.fly-help{left:8px;right:8px;transform:none;max-width:none}}
-.fly-warp button{padding:6px 8px;font-variant-numeric:tabular-nums}
-.fly-node{pointer-events:auto;width:280px;margin-left:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px;font:500 11px/1.3 var(--f-mono);color:var(--dim)}
+/* The free flight's panel (Phase 19c–f; one panel 2026-11-16): bottom right, the flight's every control in groups:
+   the header (what is selected, "Serbest uçuştan çık"), the time row (pause, warp, real time) and the state line, then
+   Motor (the engine picker, the engine panel moved in, throttle, direction, auto fire), Hedef, Düğümler. Folds to its
+   header and time row; the groups scroll inside when the screen is short. Phones: full width, folded at first. */
+.fly-node{pointer-events:auto;width:308px;margin-left:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px;font:500 11px/1.3 var(--f-mono);color:var(--dim);max-height:calc(100vh - 150px);max-height:calc(100dvh - 150px)}
 .fly-node[hidden],html:not([data-fly]) .fly-node{display:none}
+.fn-head{display:flex;align-items:center;gap:8px}
+.fn-top{flex:1;display:flex;align-items:center;gap:8px;background:none;border:0;padding:0;color:var(--ink);cursor:pointer;font:600 11px/1.2 var(--f-disp);letter-spacing:.06em;text-align:left;min-width:0}
+.fn-top span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fn-exit{flex:none;padding:4px 8px;font-size:10.5px}
+.fn-time{display:grid;grid-template-columns:32px repeat(6,minmax(0,1fr));gap:3px;min-width:0}
+.fn-time .play{grid-row:span 2;width:auto;height:auto;align-self:stretch}
+.fn-time .fly-warp{display:contents}
+.fn-time .fly-warp button,.fn-time #flyNow{border:1px solid var(--line2);padding:5px 0;font:500 10.5px/1 var(--f-disp);letter-spacing:.02em;text-align:center;font-variant-numeric:tabular-nums;min-width:0;white-space:nowrap}
+.fn-time .fly-warp button[aria-pressed=true]{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.fly-info{display:flex;flex-wrap:wrap;gap:1px 10px;font:500 11px/1.25 var(--f-mono);color:var(--dim);font-variant-numeric:tabular-nums}
+.fly-info span:first-child{color:var(--ink)}
+.fn-main{display:flex;flex-direction:column;gap:0;min-height:0;overflow:auto;overscroll-behavior:contain;margin:0 -4px;padding:0 4px}
+.fly-node.fold .fn-main{display:none}
+.fly-node.fold .fn-top .ep-chev{transform:rotate(180deg)}
+.fn-g{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding:7px 0 8px}
+.fn-gh{margin:0;display:flex;align-items:center;gap:6px;font:600 10px/1 var(--f-disp);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+.fn-ghb{margin-left:auto;display:flex;gap:5px}
+.fn-ghb .ghost{padding:3px 8px;font-size:10.5px}
+.fn-eng{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px;font:500 10px/1 var(--f-disp);letter-spacing:.05em;text-transform:uppercase}
+.fn-eng select{width:100%;min-width:0}
+.fly-node .eng-panel{width:auto;padding:0;background:none;border:0;backdrop-filter:none;-webkit-backdrop-filter:none;order:0;display:flex}
+.fly-node .eng-panel .ep-chev{display:none}
+.fly-node .eng-panel .ep-h{cursor:default}
+.fn-man,.fn-dir{display:flex;align-items:center;gap:6px}
+.fn-ml{flex:none;width:30px;font:600 10px/1 var(--f-disp);letter-spacing:.08em;text-transform:uppercase}
+.fn-tb{flex:none;padding:3px 7px;font-size:10.5px;min-width:24px}
+.fn-thrbar{flex:1;height:6px;background:var(--raise2);position:relative;overflow:hidden;min-width:30px}
+.fn-thrbar i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--burn)}
+.fn-thr{flex:none;min-width:34px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
+.fn-dir .fn-lock{flex:1;display:flex;flex-wrap:nowrap}
+.fn-dir .fn-lock button{flex:1;padding:5px 1px;font-size:10px;letter-spacing:.02em;min-width:0}
+.fn-b{display:flex;gap:6px;align-items:center}
+.fn-b .chk{margin-right:auto}
+.fn-att{color:var(--warn);font-variant-numeric:tabular-nums}
+.fn-att:empty{display:none}
 .fn-hint,.fn-tip{margin:0;font:400 11.5px/1.4 var(--f-body);color:var(--dim)}
 .fn-tip{color:var(--faint);font-size:11px}
 .fn-body{display:flex;flex-direction:column;gap:6px}
@@ -145,24 +163,24 @@ html[data-fly] #timeline,html[data-fly] #readout,html[data-fly] #liveBar{display
 .fn-after{color:var(--cyan)}
 .fn-prov:empty,.fn-after:empty{display:none}
 .fn-prov{color:var(--faint);font-size:10.5px}
-.fn-b{display:flex;gap:6px;justify-content:flex-end}
-.fn-top{display:flex;align-items:center;gap:8px;background:none;border:0;padding:0;color:var(--ink);cursor:pointer;font:600 11px/1.2 var(--f-disp);letter-spacing:.06em;text-align:left;min-width:0}
-.fn-top span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fn-main{display:flex;flex-direction:column;gap:6px}
-.fly-node.fold .fn-main{display:none}
-.fly-node.fold .ep-chev{transform:rotate(180deg)}
+.fn-burn{font-variant-numeric:tabular-nums}
+.fn-warn{color:var(--warn)}
+.fn-burn:empty,.fn-warn:empty{display:none}
+.fn-warpbtn{align-self:flex-start}
+.fn-tgt{display:flex;align-items:flex-end;gap:6px}
+.fn-tgt label{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;font:500 10px/1 var(--f-disp);letter-spacing:.05em;text-transform:uppercase}
+.fn-tgt select{width:100%;min-width:0}
+.fn-tgtinfo{color:var(--ink)}
+.fn-cor{display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--cyan)}
+.fn-cor[hidden]{display:none}
+.fn-win{display:flex;flex-direction:column;align-items:flex-start;gap:5px;color:var(--dim)}
+.fn-tgtinfo:empty,.fn-win:has(#fnWinInfo:empty):has(#fnWinGo[hidden]){display:none}
+.fly-note{border-left-color:var(--cyan)}
+.fly-note[hidden]{display:none}
 @media (max-width:560px){
-  .fly-node{width:auto;margin-left:0;padding:6px 9px}
-  .fly-node:not(.fold) .fn-main{max-height:42vh;overflow:auto;overscroll-behavior:contain}
-  .fly-bar{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center}
-  .fly-bar .fly-warp{display:flex;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
-  .fly-bar .fly-warp button{flex:none}
-  .fly-bar .fly-info{grid-column:1 / -1;grid-row:2;flex-direction:row;flex-wrap:wrap;gap:2px 10px;margin:0;font-size:11px}
-  .fly-bar #flyExit{grid-row:1;grid-column:4}
+  .fly-node{width:auto;margin-left:0;padding:6px 9px;max-height:none}
+  .fly-node:not(.fold) .fn-main{max-height:38vh}
 }
-.fly-info{display:flex;flex-direction:column;gap:2px;font:500 11.5px/1.2 var(--f-mono);color:var(--dim);margin-left:auto;font-variant-numeric:tabular-nums}
-.fly-info span:first-child{color:var(--ink)}
-@media (max-width:560px){.fly-bar{gap:6px;padding:6px 8px}.fly-warp{overflow-x:auto;max-width:100%}.fly-info{margin-left:0;width:100%}}
 /* the engine panel (2026-11-15): bottom left, above the timeline (clear of the results window), ≈ 260 × 180 px, folds to its header; phones: a strip */
 .eng-panel{pointer-events:auto;width:260px;order:-1;flex:none;padding:6px 8px 7px;display:flex;flex-direction:column;gap:5px;font:500 11px/1.2 var(--f-mono)}
 .ep-h{display:flex;align-items:center;gap:8px;background:none;border:0;padding:0;color:var(--dim);cursor:pointer;font:inherit;text-align:left}

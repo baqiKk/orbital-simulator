@@ -222,6 +222,24 @@ function watch(page, errs) {
       });
       if (!cor.f || cor.alt == null || Math.abs(cor.alt - 100e3) > 20e3) throw new Error('the course correction: ' + JSON.stringify(cor));
       await page.evaluate(() => { FREE.nodes = []; FREE.sel = -1; flyChanged(); });
+      // 2026-11-16: the engine changed in flight (the panel's picker, then the engine window's button): the same moment,
+      // place and velocity, the new engine full, a notice; the mission is not touched and no new one starts
+      const eng = await page.evaluate(async () => {
+        const sl = ms => new Promise(r => setTimeout(r, ms));
+        FREE.paused = true; flyBarSync(); await sl(100);
+        const s0 = { t: FREE.st.t, r: [...FREE.st.r], v: [...FREE.st.v] }, M0 = S.M, E0 = S.M.eng, same = () => FREE.st.t === s0.t && FREE.st.r.every((x, j) => x === s0.r[j]) && FREE.st.v.every((x, j) => x === s0.v[j]);
+        const sel = document.querySelector('#fnEng'), mono = 'p:' + ENGINES.find(e => e.type === 'mono').id;
+        sel.value = mono; sel.dispatchEvent(new Event('change')); await sl(300);
+        const a = { id: FREE.eng.E.id, full: FREE.st.m === FREE.eng.s.m0, same: same(), note: !document.querySelector('#flyNote').hidden, ok: FREE.eng.E.id === mono };
+        sel.value = 'w'; sel.dispatchEvent(new Event('change')); await sl(300);
+        const lab = document.querySelector('#engApply').textContent;
+        const pre = document.querySelector('#engPre'); pre.value = 'p:rl10'; pre.dispatchEvent(new Event('change')); await sl(100);
+        document.querySelector('#engApply').click(); await sl(400);
+        const b = { on: FREE.on, mode: APP.mode, id: FREE.eng.E.id, same: same(), mission: S.M === M0 && S.M.eng === E0 };
+        setWin('engine', { open: false }); FREE.paused = false; flyBarSync();
+        return { a, lab, b };
+      });
+      if (!eng.a.ok || !eng.a.full || !eng.a.same || !eng.a.note || eng.lab !== 'Serbest uçuştaki araca uygula' || !eng.b.on || eng.b.mode !== 'fly' || eng.b.id !== 'p:rl10' || !eng.b.same || !eng.b.mission) throw new Error('the engine changed in flight: ' + JSON.stringify(eng));
       await page.click('#flyWarp [data-w="1000"]'); await page.waitForTimeout(1200);
       const r = await page.evaluate(() => ({ dt: FREE.st.t, segs: FREE.pred ? FREE.pred.segs.length : 0 }));
       if (!(r.dt - t0 > 200) || !(r.segs > 0)) throw new Error('the flight did not advance or predict: ' + JSON.stringify(r));
@@ -249,7 +267,7 @@ function watch(page, errs) {
     });
     await step('the view stays free on a phone', async () => {
       if (await page.isVisible('#flyTip')) await page.click('#flyTipSkip');
-      const q = await page.evaluate(() => { const top = Math.min(...['#flyNode', '#flyBar', '#engPanel'].map(s => document.querySelector(s)).filter(e => !e.hidden && e.getClientRects().length).map(e => e.getBoundingClientRect().top)); return { top, h: innerHeight, sw: document.documentElement.scrollWidth, w: innerWidth }; });
+      const q = await page.evaluate(() => { const top = Math.min(...['#flyNode', '#engPanel'].map(s => document.querySelector(s)).filter(e => !e.hidden && e.getClientRects().length).map(e => e.getBoundingClientRect().top)); return { top, h: innerHeight, sw: document.documentElement.scrollWidth, w: innerWidth }; });
       if (q.sw > q.w) throw new Error('sideways scroll: ' + q.sw);
       if (q.top < q.h * 0.55) throw new Error(`the panels start at ${Math.round(q.top)} px of ${q.h}`);
     });

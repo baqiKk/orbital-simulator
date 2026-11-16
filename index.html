@@ -59,7 +59,7 @@
       </div>
       <div class="live-sub" id="liveSub" hidden></div>
     </div>
-    <div class="fly-help" id="flyHelp" hidden><div class="glass fly-tip" id="flyTip" role="status" aria-live="polite" hidden><span id="flyTipText"></span><button class="btn sm primary" type="button" id="flyTipNext"></button><button class="link" type="button" id="flyTipSkip" data-i18n="fly.tipSkip"></button></div><button class="link fly-how" type="button" id="flyHow" data-i18n="fly.how"></button></div>
+    <div class="fly-help" id="flyHelp" hidden><div class="glass fly-tip" id="flyTip" role="status" aria-live="polite" hidden><span id="flyTipText"></span><button class="btn sm primary" type="button" id="flyTipNext"></button><button class="link" type="button" id="flyTipSkip" data-i18n="fly.tipSkip"></button></div><button class="link fly-how" type="button" id="flyHow" data-i18n="fly.how"></button><div class="glass fly-tip fly-note" id="flyNote" role="status" aria-live="polite" hidden></div></div>
     <div class="glass guide" id="guide" role="status" aria-live="polite" hidden><span id="guideText"></span><button class="btn sm primary" type="button" id="guideGo" data-i18n="guide.go" hidden></button></div>
     <div class="hud-top">
       <div class="ctrls" id="ctrls">
@@ -126,30 +126,48 @@
         <div class="ep-btns"><button type="button" class="ghost" id="epAppr" aria-pressed="false" data-i18n="appr.btn" data-i18n-title="appr.tip"></button><button type="button" class="ghost" id="epCut" aria-pressed="false" data-i18n="cut.btn" data-i18n-title="cut.tip"></button></div>
       </section>
       <section class="glass fly-node" id="flyNode" data-i18n-aria-label="fn.aria" hidden>
-        <button type="button" class="fn-top" id="fnTop" aria-expanded="true" aria-controls="fnMain" data-i18n-title="fn.fold"><span id="fnSum"></span><svg class="ep-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5 5 3.5l3 3"/></svg></button>
-        <div class="fn-main" id="fnMain">
-        <div class="fn-tgt"><label><span data-i18n="fn.tgt"></span><select id="fnTgt" data-i18n-aria-label="fn.tgt"></select></label><button type="button" class="ghost" id="fnWin" data-i18n="fn.win" data-i18n-title="fn.winTip" disabled></button></div>
-        <div class="fn-tgtinfo" id="fnTgtInfo"></div>
-        <div class="fn-win"><span id="fnWinInfo"></span><button type="button" class="btn sm primary" id="fnWinGo" data-i18n="fn.winGo" hidden></button></div>
-        <div class="fn-cor" id="fnCorRow" hidden><button type="button" class="ghost" id="fnCor" data-i18n="fn.cor" data-i18n-title="fn.corTip"></button><span id="fnCorInfo"></span><button type="button" class="btn sm primary" id="fnCorGo" data-i18n="fn.corGo" hidden></button></div>
-        <p class="fn-hint" id="fnHint"></p>
-        <div class="fn-body" id="fnBody" hidden>
-          <div class="fn-h"><button type="button" class="ghost fn-nav" id="fnPrev" data-i18n-aria-label="fn.prev">‹</button><b id="fnTitle"></b><button type="button" class="ghost fn-nav" id="fnNext" data-i18n-aria-label="fn.next">›</button><span id="fnIn"></span></div>
-          <div class="fn-f">
-            <label class="pro"><span data-i18n="fn.pro"></span><input type="number" id="fnPro" step="1" inputmode="decimal"></label>
-            <label class="rad"><span data-i18n="fn.rad"></span><input type="number" id="fnRad" step="1" inputmode="decimal"></label>
-            <label class="nor"><span data-i18n="fn.nor"></span><input type="number" id="fnNor" step="1" inputmode="decimal"></label>
-          </div>
-          <div class="fn-tot" id="fnTot"></div>
-          <div class="fn-after" id="fnAfter"></div>
-          <div class="fn-prov" id="fnProv"></div>
-          <div class="fn-burn" id="fnBurn"></div>
-          <div class="fn-warn" id="fnWarn" role="alert"></div>
-          <p class="fn-tip" data-i18n="fn.tip"></p>
-          <button type="button" class="ghost fn-warpbtn" id="fnWarp" data-i18n="fn.warp" data-i18n-title="fn.warpTip"></button>
+        <div class="fn-head"><button type="button" class="fn-top" id="fnTop" aria-expanded="true" aria-controls="fnMain" data-i18n-title="fn.fold"><span id="fnSum"></span><svg class="ep-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5 5 3.5l3 3"/></svg></button><button type="button" class="ghost fn-exit" id="flyExit" data-i18n="fly.exit" data-i18n-title="fly.exitTip"></button></div>
+        <div class="fn-time" role="toolbar" data-i18n-aria-label="fly.bar">
+          <button class="play" id="flyPause" type="button"></button>
+          <div class="seg fly-warp" id="flyWarp" role="group" data-i18n-aria-label="fly.warp"></div>
+          <button type="button" class="ghost" id="flyNow" data-i18n="fly.now" data-i18n-title="fly.nowTip"></button>
         </div>
-        <div class="fn-b"><label class="chk" data-i18n-title="fn.autoTip"><input type="checkbox" id="fnAuto" checked><span data-i18n="fn.auto"></span></label><button type="button" class="ghost" id="fnUndo" data-i18n-title="fn.undoTip" data-i18n-aria-label="fn.undoTip">↶</button><button type="button" class="ghost" id="fnDel" data-i18n="fn.del"></button></div>
-        <div class="fn-man"><span class="fn-ml" data-i18n="fn.man"></span><div class="seg fn-lock" id="fnLock" role="group" data-i18n-aria-label="fn.lockAria"></div><span class="fn-thr" id="fnThr" data-i18n-title="fn.thrTip"></span></div>
+        <div class="fly-info"><span id="flyDate"></span><span id="flyBody"></span></div>
+        <div class="fn-main" id="fnMain">
+        <section class="fn-g fn-geng" aria-labelledby="fnGEng">
+          <h3 class="fn-gh" id="fnGEng" data-i18n="fn.gEng"></h3>
+          <label class="fn-eng"><span data-i18n="fn.eng"></span><select id="fnEng" data-i18n-aria-label="fn.engAria"></select></label>
+          <div class="fn-engslot" id="fnEngSlot"></div>
+          <div class="fn-man"><span class="fn-ml" data-i18n="fn.thrL"></span><button type="button" class="ghost fn-tb" id="fnThrDn" data-i18n-aria-label="fn.thrDn" data-i18n-title="fn.thrDn">−</button><span class="fn-thrbar" aria-hidden="true"><i id="fnThrBar"></i></span><span class="fn-thr" id="fnThr" data-i18n-title="fn.thrTip"></span><button type="button" class="ghost fn-tb" id="fnThrUp" data-i18n-aria-label="fn.thrUp" data-i18n-title="fn.thrUp">+</button><button type="button" class="ghost fn-tb" id="fnThrFull" data-i18n="fn.thrFull" data-i18n-title="fn.thrFullTip"></button><button type="button" class="ghost fn-tb" id="fnThrCut" data-i18n="fn.thrCut" data-i18n-title="fn.thrCutTip"></button></div>
+          <div class="fn-dir"><span class="fn-ml" data-i18n="fn.dirL"></span><div class="seg fn-lock" id="fnLock" role="group" data-i18n-aria-label="fn.lockAria"></div></div>
+          <div class="fn-b"><label class="chk" data-i18n-title="fn.autoTip"><input type="checkbox" id="fnAuto" checked><span data-i18n="fn.auto"></span></label><span class="fn-att" id="fnAtt" role="status" aria-live="polite"></span></div>
+        </section>
+        <section class="fn-g fn-gtgt" aria-labelledby="fnGTgt">
+          <h3 class="fn-gh" id="fnGTgt" data-i18n="fn.gTgt"></h3>
+          <div class="fn-tgt"><label><select id="fnTgt" data-i18n-aria-label="fn.tgt"></select></label><button type="button" class="ghost" id="fnWin" data-i18n="fn.win" data-i18n-title="fn.winTip" disabled></button></div>
+          <div class="fn-tgtinfo" id="fnTgtInfo"></div>
+          <div class="fn-win"><span id="fnWinInfo"></span><button type="button" class="btn sm primary" id="fnWinGo" data-i18n="fn.winGo" hidden></button></div>
+          <div class="fn-cor" id="fnCorRow" hidden><button type="button" class="ghost" id="fnCor" data-i18n="fn.cor" data-i18n-title="fn.corTip"></button><span id="fnCorInfo"></span><button type="button" class="btn sm primary" id="fnCorGo" data-i18n="fn.corGo" hidden></button></div>
+        </section>
+        <section class="fn-g fn-gnode" aria-labelledby="fnGNode">
+          <h3 class="fn-gh" id="fnGNode"><span data-i18n="fn.gNode"></span><span class="fn-ghb"><button type="button" class="ghost" id="fnUndo" data-i18n-title="fn.undoTip" data-i18n-aria-label="fn.undoTip">↶</button><button type="button" class="ghost" id="fnDel" data-i18n="fn.del"></button></span></h3>
+          <p class="fn-hint" id="fnHint"></p>
+          <div class="fn-body" id="fnBody" hidden>
+            <div class="fn-h"><button type="button" class="ghost fn-nav" id="fnPrev" data-i18n-aria-label="fn.prev">‹</button><b id="fnTitle"></b><button type="button" class="ghost fn-nav" id="fnNext" data-i18n-aria-label="fn.next">›</button><span id="fnIn"></span></div>
+            <div class="fn-f">
+              <label class="pro"><span data-i18n="fn.pro"></span><input type="number" id="fnPro" step="1" inputmode="decimal"></label>
+              <label class="rad"><span data-i18n="fn.rad"></span><input type="number" id="fnRad" step="1" inputmode="decimal"></label>
+              <label class="nor"><span data-i18n="fn.nor"></span><input type="number" id="fnNor" step="1" inputmode="decimal"></label>
+            </div>
+            <div class="fn-tot" id="fnTot"></div>
+            <div class="fn-after" id="fnAfter"></div>
+            <div class="fn-prov" id="fnProv"></div>
+            <div class="fn-burn" id="fnBurn"></div>
+            <div class="fn-warn" id="fnWarn" role="alert"></div>
+            <p class="fn-tip" data-i18n="fn.tip"></p>
+            <button type="button" class="ghost fn-warpbtn" id="fnWarp" data-i18n="fn.warp" data-i18n-title="fn.warpTip"></button>
+          </div>
+        </section>
         </div>
       </section>
       <div class="glass readout" id="readout">
@@ -160,13 +178,6 @@
         <span class="lbl" id="r-l3"></span><b id="r-v3">—</b>
         <span class="lbl" id="r-l4" hidden></span><b id="r-v4" hidden>—</b>
       </div>
-      </div>
-      <div class="glass fly-bar" id="flyBar" role="toolbar" data-i18n-aria-label="fly.bar" hidden>
-        <button class="play" id="flyPause" type="button"></button>
-        <div class="seg fly-warp" id="flyWarp" role="group" data-i18n-aria-label="fly.warp"></div>
-        <button type="button" class="ghost" id="flyNow" data-i18n="fly.now" data-i18n-title="fly.nowTip"></button>
-        <div class="fly-info"><span id="flyDate"></span><span id="flyBody"></span></div>
-        <button type="button" class="ghost" id="flyExit" data-i18n="fly.exit" data-i18n-title="fly.exitTip"></button>
       </div>
       <div class="glass timeline" id="timeline">
         <button class="play" id="play" type="button"></button>

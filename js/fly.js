@@ -75,7 +75,7 @@ function flyEnterState(q) {
   // the mission's windows step aside (as for the scene; they come back on exit)
   for (const id of ['mission', 'results', 'overview']) if (WINS[id].open && !SCENE.hide.has(id)) { SCENE.hide.add(id); winEl(id).classList.add('scene-hide'); FREE.hid.push(id); }
   railSync();
-  flyEl('flyBar').hidden = false; flyEl('flyNode').hidden = false; flyEl('flyHelp').hidden = false; flyBarSync(); flyPanel(); INS = null;
+  flyEl('flyNode').hidden = false; flyEl('flyHelp').hidden = false; flyEngMount(true); flyEngList(); engApplyLabel(); flyBarSync(); flyPanel(); INS = null;
   flyFold(matchMedia('(max-width: 560px)').matches); // folded to its one line on phones
   flyTips(readPref(LS, PREF_KEYS.flyTips) ? -1 : 0);
   return true;
@@ -92,7 +92,8 @@ function flyStartLEO() {
 }
 function flyExit() {
   flyAppr(false); flyTips(-1);
-  FREE.on = false; delete document.documentElement.dataset.fly; flyEl('flyBar').hidden = true; flyEl('flyNode').hidden = true; flyEl('flyHelp').hidden = true;
+  FREE.on = false; delete document.documentElement.dataset.fly; flyEl('flyNode').hidden = true; flyEl('flyHelp').hidden = true; flyEl('flyNote').hidden = true;
+  flyEngMount(false); engApplyLabel();
   FREE.burn = null; FREE.fire = 0; FREE.pl = 0; FREE.warpTo = null;
   clearPref(FLY_SS, PREF_KEYS.flySnap);
   if (V3 && is3d()) { for (let k = 0; k < FLY_LINES; k++) V3.dynHide('map', 'flyP' + k); V3.dynHide('map', 'flyTrail'); }
@@ -509,7 +510,52 @@ function flyThr(k) { const e = FREE.eng; if (!e) return; e.thr = Math.max(0, Mat
 function flyLockSync() {
   const e = FREE.eng; if (!e) return;
   for (const bt of flyEl('fnLock').querySelectorAll('button')) bt.setAttribute('aria-pressed', String(bt.dataset.v === e.lock));
-  flyTxt('fnThr', _('fn.thr', { p: Math.round(e.thr * 100) }));
+  flyTxt('fnThr', _('fn.thr', { p: Math.round(e.thr * 100) })); flyEl('fnThrBar').style.width = Math.round(e.thr * 100) + '%';
+}
+flyEl('fnThrDn').addEventListener('click', () => flyThr(FREE.eng ? FREE.eng.thr - 0.1 : 0));
+flyEl('fnThrUp').addEventListener('click', () => flyThr(FREE.eng ? FREE.eng.thr + 0.1 : 0));
+flyEl('fnThrFull').addEventListener('click', () => flyThr(1));
+flyEl('fnThrCut').addEventListener('click', () => flyThr(0));
+// ----- changing the engine in flight (2026-11-16): the panel's "Motor" picker (presets, saved engines, "Motor tasarla…"
+// opens the engine window, whose button then reads "Serbest uçuştaki araca uygula"); the flight goes on from the same
+// place and velocity, the craft now the new engine with its propellant full (its mass m₀); a notice says so -----
+function flyEngList() {
+  const sel = flyEl('fnEng'), e = FREE.eng, cur = e ? e.E.id || '' : '', known = /^[ps]:/.test(cur);
+  const html = (known ? '' : '<option value="">' + esc(e ? engName(e.E) : _('eng.custom')) + '</option>')
+    + '<optgroup label="' + esc(_('eng.presets')) + '">' + ENGINES.map(p => '<option value="p:' + p.id + '">' + esc(_('eng.' + p.id)) + '</option>').join('') + '</optgroup>'
+    + (SAVED_ENG.length ? '<optgroup label="' + esc(_('eng.saved')) + '">' + SAVED_ENG.map((q, j) => '<option value="s:' + j + '">' + esc(q.name) + '</option>').join('') + '</optgroup>' : '')
+    + '<option value="w">' + esc(_('fn.engDesign')) + '</option>';
+  if (sel.dataset.k !== html) { sel.dataset.k = html; sel.innerHTML = html; }
+  sel.value = known ? cur : '';
+}
+flyEl('fnEng').addEventListener('change', e => {
+  const v = e.target.value;
+  if (v === 'w') { flyEngList(); if (WINS.engine.open && !WINS.engine.collapsed) engOpenFrom(FREE.eng ? FREE.eng.E : null); else setWin('engine', { open: true, collapsed: false }); return; }
+  const E = v.startsWith('p:') ? engPreset(v.slice(2)) : v.startsWith('s:') && SAVED_ENG[+v.slice(2)] ? { ...ENG_DEF, ...SAVED_ENG[+v.slice(2)], id: v } : null;
+  if (E) flySetEngine(E); else flyEngList();
+});
+function flySetEngine(E) {
+  if (!FREE.on) return false;
+  const s = engSpecOf(E);
+  if (!s || s.error) { flyNote(_('fly.engBad', { err: _(s ? s.error : 'err.engType') })); flyEngList(); return false; }
+  const e = FREE.eng || {};
+  FREE.burn = null; FREE.fire = 0; FREE.cap = Infinity; // a burn going on stops; its node stays (auto fire takes it up with the new engine)
+  FREE.eng = { E: { ...E }, s, tau: 0, thr: 0, auto: e.auto !== false, lock: e.lock || 'pro' };
+  FREE.st.m = s.m0; FREE.predDirty = true; EP.key = '';
+  flyEngList(); flyLockSync(); flyBarSync(); flySave();
+  flyNote(_('fly.engSet', { name: engName(E), kg: NFdv.format(Math.round(s.mp)), m: NFdv.format(Math.round(s.m0)) }));
+  return true;
+}
+// the engine panel moves into the flight's panel (and back on exit, folded as it was)
+function flyEngMount(on) {
+  const p = engEl('engPanel'), slot = flyEl('fnEngSlot');
+  if (on) { if (p.parentElement !== slot) { FREE.epFold = EP.fold; slot.appendChild(p); } epFold(false, false); }
+  else if (p.parentElement === slot) { flyEl('flyNode').before(p); EP.fold = null; if (FREE.epFold != null) epFold(FREE.epFold, false); p.hidden = true; }
+}
+// a short notice under "Nasıl uçulur?"
+function flyNote(t) {
+  const el = flyEl('flyNote'); el.textContent = t; el.hidden = false; clearTimeout(FREE.noteT);
+  FREE.noteT = setTimeout(() => { el.hidden = true; }, 5000);
 }
 flyEl('fnLock').innerHTML = FLY_LOCKS.map(v => `<button type="button" data-v="${v}" data-i18n-title="fn.lock.${v}" data-i18n-aria-label="fn.lock.${v}">${_('fn.lockS.' + v)}</button>`).join('');
 flyEl('fnLock').addEventListener('click', e => { const bt = e.target.closest('button'); if (bt && FREE.eng) { FREE.eng.lock = bt.dataset.v; flyLockSync(); } });
@@ -538,7 +584,7 @@ function flyEngPanel() {
   };
   bar('epOx', bi, _('ep.ox'), st.ox); bar('epFuel', true, _(bi ? 'ep.fuel' : 'ep.prop'), st.fuel);
   epSet('epDv', fmtSpeed(flyDvLeft())); epSet('epF', on ? fmtF(st.F * FREE.fire) : '0 N');
-  const key = [s.tb, E2K(e.E), Math.round(e.tau / s.tb * 400), on, EP.fold].join('|');
+  const key = [s.tb, E2K(e.E), Math.round(e.tau / s.tb * 400), on, EP.fold, engEl('epSch').parentElement.clientWidth].join('|'); // the width too: the panel unfolds
   if (!EP.fold && (on || FREE.pl > 0.004 || key !== EP.key)) { EP.key = key; engSchematic(engEl('epSch'), s, st, e.E, performance.now() / 1000, FREE.pl, { k: 0.55, mini: true }); }
 }
 // ----- the craft in free flight: the 3D model (from mode3d.js drawMap3, before it renders), "Araca yaklaş" -----
