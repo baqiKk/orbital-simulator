@@ -295,18 +295,19 @@ function flyPast() {
   flyChanged();
 }
 // a time on the path under a screen point (within r px): the patched prediction's points, projected; null when none
-function flyPathAt(px, py, r) {
-  if (!FREE.pred) return null;
+function flyPathAt(px, py, r, pred = FREE.pred, lo = -Infinity, hi = Infinity) {
+  if (!pred) return null;
   const v3 = is3d(), t = FREE.st.t; let best = null;
   states(mapSys, t, MP, MV);
-  for (const g of FREE.pred.segs) {
+  for (const g of pred.segs) {
     let q = null;
     const step = Math.max(1, Math.floor(g.n / 600));
     for (let k = 0; k < g.n; k += step) {
       const P = flyScr(g.b, g.pts[3 * k], g.pts[3 * k + 1], g.pts[3 * k + 2], v3);
       if (P && q) {
         const dx = P[0] - q[0], dy = P[1] - q[1], l2 = dx * dx + dy * dy, f = l2 > 0 ? Math.max(0, Math.min(1, ((px - q[0]) * dx + (py - q[1]) * dy) / l2)) : 0, d = Math.hypot(q[0] + f * dx - px, q[1] + f * dy - py);
-        if (d < r && (!best || d < best.d)) best = { d, t: g.ts[q[2]] + f * (g.ts[k] - g.ts[q[2]]) };
+        const tk = g.ts[q[2]] + f * (g.ts[k] - g.ts[q[2]]);
+        if (d < r && tk >= lo && tk <= hi && (!best || d < best.d)) best = { d, t: tk };
       }
       q = P ? [P[0], P[1], k] : null;
     }
@@ -316,6 +317,7 @@ function flyPathAt(px, py, r) {
 // a tap in free flight (app.js tap calls this first): a node's mark selects it, the path takes a new node
 function flyTap(x, y, touch) {
   if (!FREE.on) return false;
+  if (performance.now() - (FREE.moveEnd || 0) < 120) return true; // the end of a node's slide along the orbit
   const rr = touch ? 16 : 10;
   if (Math.hypot((FREE.cx || -1e9) - x, (FREE.cy || -1e9) - y) < Math.max(rr, (FREE.lpx || 0) / 2)) return false; // the craft: the app's (a double tap comes close)
   if (FREE.appr) return false; // up close the path is not for placing nodes
@@ -336,15 +338,56 @@ flyEl('stage').addEventListener('pointerdown', e => {
   flyEdit(); FREE.drag = { ...h, x0: x, y0: y, d0: [...FREE.nodes[FREE.sel].d], id: e.pointerId };
   try { flyEl('stage').setPointerCapture(e.pointerId); } catch (err) { /* no capture */ }
 }, true);
+// Sliding a node along the orbit (2026-11-16): its mark pressed and moved (past TAP_PX) follows the path under the
+// pointer: the node's time changes, its Δv components stay; the path is the prediction without this node and the ones
+// after it (what the craft flies up to the node), the new time kept between the nodes before and after it; the
+// prediction is redone every frame while it moves (dashed, the refinement after the release); one undo step. A press
+// that does not move stays a tap (it selects the node).
+flyEl('stage').addEventListener('pointerdown', e => {
+  if (!FREE.on || e.button || FREE.drag || FREE.appr) return;
+  const [x, y] = flyDragAt(e), rr = e.pointerType === 'touch' ? 16 : 10, m = FREE.nmk.find(q => Math.hypot(q.x - x, q.y - y) < rr);
+  FREE.mdown = m ? { i: m.i, x0: x, y0: y, id: e.pointerId, touch: e.pointerType !== 'mouse' } : null;
+}, true);
+function flyMoveStart(D) {
+  const i = D.i, nd = FREE.nodes[i]; if (!nd) return false;
+  flyEdit(); FREE.sel = i; flyPanel();
+  const s = FREE.st, before = FREE.nodes.slice(0, i), last = FREE.nodes.length ? FREE.nodes[FREE.nodes.length - 1].t - s.t : 0;
+  const far = FREE.target >= 0 && MPAR[FREE.target] !== FREE.tb;
+  FREE.drag = { move: true, i, id: D.id, touch: D.touch, lo: Math.max(s.t + 1, i > 0 ? FREE.nodes[i - 1].t + 1 : -Infinity), hi: i < FREE.nodes.length - 1 ? FREE.nodes[i + 1].t - 1 : Infinity,
+    base: flyPredict(mapSys, s.t, s.r, s.v, { revs: 1, T: Math.max(0, last) + (far ? 400 : 30) * DAY, K: 160, nodes: before, maxSeg: 10 }) };
+  return true;
+}
+function flyMoveTo(x, y) {
+  const D = FREE.drag, nd = FREE.nodes[D.i]; if (!nd) return;
+  // near the node's time first (an orbit seen edge on passes under the pointer twice), else anywhere on the path
+  const g0 = D.base.segs.find(q => nd.t >= q.t0 && nd.t <= q.t1) || D.base.segs[0], el = g0 && g0.el;
+  const P = el && el.e < 1 && el.a > 0 ? 2 * Math.PI * Math.sqrt(el.a ** 3 / mapSys.mu[g0.b]) : g0 ? g0.t1 - g0.t0 : Infinity, r = D.touch ? 90 : 70;
+  let t = flyPathAt(x, y, r, D.base, nd.t - P / 4, nd.t + P / 4); if (t == null) t = flyPathAt(x, y, r, D.base); if (t == null) return;
+  const tt = Math.max(D.lo, Math.min(D.hi, t)); if (Math.abs(tt - nd.t) < 1e-3) return;
+  nd.t = tt; flyChanged();
+}
 const flyDv = (p, fine) => (fine ? 0.1 : 1) * p * (1 + Math.abs(p) / 120); // m/s for p px along the handle
 addEventListener('pointermove', e => {
+  const M = FREE.mdown;
+  if (M && !FREE.drag && e.pointerId === M.id) {
+    const [x, y] = flyDragAt(e);
+    if (Math.hypot(x - M.x0, y - M.y0) < (M.touch ? 10 : 5)) return;
+    FREE.mdown = null; if (!flyMoveStart(M)) return;
+  }
   const D = FREE.drag; if (!D || e.pointerId !== D.id) return;
   e.stopImmediatePropagation();
+  if (D.move) { const [x, y] = flyDragAt(e); flyMoveTo(x, y); return; }
   const [x, y] = flyDragAt(e), p = (x - D.x0) * D.ux + (y - D.y0) * D.uy, nd = FREE.nodes[FREE.sel]; if (!nd) return;
   nd.d[D.k] = Math.round((D.d0[D.k] + D.s * flyDv(p, e.shiftKey)) * 10) / 10;
   flyChanged();
 }, true);
-const flyDragEnd = e => { if (FREE.drag && e.pointerId === FREE.drag.id) { FREE.drag = null; FREE.editAt = performance.now(); e.stopImmediatePropagation(); flyTipDid(2); } };
+const flyDragEnd = e => {
+  if (FREE.mdown && e.pointerId === FREE.mdown.id) FREE.mdown = null;
+  if (!FREE.drag || e.pointerId !== FREE.drag.id) return;
+  const mv = FREE.drag.move; FREE.drag = null; FREE.editAt = performance.now();
+  if (mv) { FREE.moveEnd = performance.now(); flyChanged(); return; } // the app's own pointer bookkeeping still runs (its tap is swallowed)
+  e.stopImmediatePropagation(); flyTipDid(2);
+};
 addEventListener('pointerup', flyDragEnd, true); addEventListener('pointercancel', flyDragEnd, true);
 // the N-body refinement of the current nodes, in a worker of its own (a newer edit drops a run still going)
 function flyRefineAsk(now) {

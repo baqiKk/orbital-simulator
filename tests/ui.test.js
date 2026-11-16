@@ -1725,6 +1725,18 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(b.includes('if (craftG.group.parent) craftG.group.parent.remove(craftG.group);') && !b.includes('roots.sim.remove(craftG.group)'), 'models: a rebuilt model replaces the old one in any scene');
   assert.ok(["skirt(", "deck("].every(k => v3.slice(v3.indexOf('const PAINT = {'), v3.indexOf('const TEXC = new Map();')).includes(k)), 'models: skirt and deck textures');
 }
+// 62) A node slid along the orbit (2026-11-16): its mark pressed and moved past the tap distance follows the path under
+// the pointer (the prediction without it and the later nodes, near its own time first: an orbit seen edge on passes
+// under the pointer twice), between its neighbours; the Δv components stay; the path is redone (dashed) while it moves;
+// one undo step; a press that does not move still selects; the app's own pointer bookkeeping still ends the gesture.
+{
+  const fl = read('js/fly.js');
+  assert.ok(fl.includes('FREE.mdown = m ? { i: m.i, x0: x, y0: y, id: e.pointerId') && fl.includes("if (Math.hypot(x - M.x0, y - M.y0) < (M.touch ? 10 : 5)) return;") && fl.includes('if (D.move) { const [x, y] = flyDragAt(e); flyMoveTo(x, y); return; }'), 'node slide: a press on the mark, moved past the tap distance');
+  const mv = fl.slice(fl.indexOf('function flyMoveStart('), fl.indexOf('const flyDv ='));
+  assert.ok(mv.includes('flyEdit();') && mv.includes('nodes: before') && mv.includes('before = FREE.nodes.slice(0, i)') && mv.includes('nd.t = tt; flyChanged();') && !/nd\.d\s*=/.test(mv) && mv.includes('nd.t - P / 4, nd.t + P / 4'), 'node slide: the path before it, its time only (Δv kept), near its own time, one undo step');
+  assert.ok(fl.includes('if (mv) { FREE.moveEnd = performance.now(); flyChanged(); return; }') && fl.includes('if (performance.now() - (FREE.moveEnd || 0) < 120) return true;') && /function flyPathAt\(px, py, r, pred = FREE\.pred, lo = -Infinity, hi = Infinity\)/.test(fl), 'node slide: the release keeps the app\'s bookkeeping, its tap swallowed');
+  assert.ok(DICT['fn.tip'].includes('yörünge boyunca sürükleyerek zamanını değiştir'), 'node slide: said in the panel');
+}
 // the encoder itself (an ES module): a real GIF
 (async () => {
   const G = await import(require('url').pathToFileURL(path.join(__dirname, '..', 'js', 'rec-worker.mjs')).href);

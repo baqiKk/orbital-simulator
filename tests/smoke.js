@@ -176,6 +176,22 @@ function watch(page, errs) {
       await page.waitForFunction(() => FREE.ref && FREE.ref.ver === FREE.ver && !flyPath().prov, null, { timeout: 10000 });
       await page.keyboard.press('u'); await page.keyboard.press('u');
       if (await page.evaluate(() => FREE.nodes.length)) throw new Error('U did not undo the node');
+      // 2026-11-16: a node's mark slid along the orbit: its time moves on, its Δv stays, the path follows (dashed) while it moves
+      const t7 = await page.evaluate(() => { const g = FREE.pred.segs[0], t = g.ts[Math.floor(g.n / 5)]; flyEdit(); FREE.nodes.push({ t, d: [120, 0, 0] }); FREE.sel = 0; flyChanged(); return t; });
+      await page.waitForTimeout(600);
+      const way7 = await page.evaluate(() => {
+        const s = FREE.st, g = flyPredict(mapSys, s.t, s.r, s.v, { revs: 1, T: 30 * DAY, K: 160, nodes: [], maxSeg: 10 }).segs[0], r = document.querySelector('#cv').getBoundingClientRect(), m = FREE.nmk[0];
+        states(mapSys, s.t, MP, MV); const k0 = g.ts.findIndex(t => t >= FREE.nodes[0].t), pts = [];
+        for (let i = 1; i <= 12; i++) { const k = Math.min(g.n - 1, k0 + Math.floor(g.n * 0.015 * i)), P = flyScr(g.b, g.pts[3 * k], g.pts[3 * k + 1], g.pts[3 * k + 2], is3d()); if (P) pts.push({ x: r.left + P[0], y: r.top + P[1] }); }
+        return m && { x: r.left + m.x, y: r.top + m.y, pts };
+      });
+      if (!way7 || way7.pts.length < 6) throw new Error('the node mark or the path is not on screen');
+      await page.mouse.move(way7.x, way7.y); await page.mouse.down();
+      let prov7 = false; for (const p of way7.pts) { await page.mouse.move(p.x, p.y); await page.waitForTimeout(30); prov7 = prov7 || await page.evaluate(() => flyPath().prov && !!FREE.drag); }
+      await page.mouse.up(); await page.waitForTimeout(300);
+      const r7 = await page.evaluate(() => ({ t: FREE.nodes[0] && FREE.nodes[0].t, d: FREE.nodes[0] && FREE.nodes[0].d.join(','), n: FREE.nodes.length }));
+      if (!(r7.t > t7 + 60) || r7.d !== '120,0,0' || r7.n !== 1 || !prov7) throw new Error('the node slid along the orbit: ' + JSON.stringify({ ...r7, t7, prov7 }));
+      await page.evaluate(() => { FREE.nodes = []; FREE.sel = -1; flyChanged(); });
       // Phase 19d: a prograde node fired by "Otomatik ateşle" after "Düğüme hızlandır": the orbit the node promised; the
       // engine panel; a double click on the craft comes close (the 3D model drawn), Esc goes back
       const node = await page.evaluate(async () => {

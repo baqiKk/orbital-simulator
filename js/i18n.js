@@ -554,7 +554,7 @@ const I18N = {
     'fn.escape': 'Sonra: {body} etkisinden kaçış · v∞ {v}',
     'fn.impact': 'Sonra: {body} yüzeyine çarpar',
     'fn.prov': 'Kesikli çizgi: yaklaşık tahmin; N-cisim hesabı gelince düz çizgi',
-    'fn.tip': 'Tutamaçları kendi yönlerinde sürükle (Shift: ince) ya da değerleri yaz (m/s). Del: düğümü sil.',
+    'fn.tip': 'Tutamaçları kendi yönlerinde sürükle (Shift: ince) ya da değerleri yaz (m/s). Düğümün işaretini yörünge boyunca sürükleyerek zamanını değiştir. Del: düğümü sil.',
     'fn.del': 'Sil',
     'fn.undoTip': 'Geri al (U)',
     'fn.burn': 'Yanma {t} · {kg} kg itki maddesi',
