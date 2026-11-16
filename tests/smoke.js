@@ -89,6 +89,31 @@ function watch(page, errs) {
       if (q.fold.length) throw new Error('still unfolded: ' + q.fold.join(', '));
     });
     await step('the cutaway', async () => { await page.click('#cutBtn'); if (!(await cut())) throw new Error('no cutaway'); await page.waitForTimeout(800); await page.click('#cutBtn'); });
+    // 2026-11-16: up close a drag turns the camera round the craft (it stays in the free area's middle, the camera's
+    // direction changes); zooming out by hand ends the approach (the button "Araca yaklaş" again) and the next press
+    // comes close again
+    await step('a drag turns the camera round the craft', async () => {
+      const p = await page.evaluate(() => { const r = document.querySelector('#cv').getBoundingClientRect(), b = apprBox(); return { x: r.left + b.x, y: r.top + b.y, yaw: is3d() ? cam3().yaw : 0, v3: is3d() }; });
+      await page.mouse.move(p.x + 60, p.y + 40); await page.mouse.down();
+      for (let i = 1; i <= 20; i++) await page.mouse.move(p.x + 60 + i * 12, p.y + 40 + i * 3);
+      await page.mouse.up(); await page.waitForTimeout(900);
+      const q = await page.evaluate(() => { const h = HITS.find(q => q.kind === 'c'), b = apprBox(); return { h: h && [h.x, h.y], b, yaw: is3d() ? cam3().yaw : 0, on: APPR.on }; });
+      if (!q.on || !q.h) throw new Error('the approach or the craft is gone after the drag');
+      const dx = Math.abs(q.h[0] - q.b.x) / q.b.w, dy = Math.abs(q.h[1] - q.b.y) / q.b.h;
+      if (dx > 0.03 || dy > 0.03) throw new Error(`after the drag the craft is at ${q.h.map(Math.round)}, the middle at ${[q.b.x, q.b.y].map(Math.round)}`);
+      if (p.v3 && !(Math.abs(q.yaw - p.yaw) > 0.5)) throw new Error('the drag did not turn the camera: ' + (q.yaw - p.yaw).toFixed(3));
+    });
+    await step('zooming out ends the approach; the button comes close again', async () => {
+      const p = await page.evaluate(() => { const r = document.querySelector('#cv').getBoundingClientRect(), b = apprBox(); return { x: r.left + b.x + 50, y: r.top + b.y + 50 }; });
+      await page.mouse.move(p.x, p.y);
+      for (let i = 0; i < 30; i++) { await page.mouse.wheel(0, 400); await page.waitForTimeout(40); }
+      await page.waitForTimeout(800);
+      const a = await page.evaluate(() => ({ on: APPR.on, pressed: document.querySelector('#apprBtn').getAttribute('aria-pressed') }));
+      if (a.on || a.pressed !== 'false') throw new Error('still "close" after zooming out: ' + JSON.stringify(a));
+      await page.click('#apprBtn'); await page.waitForTimeout(1500);
+      const b = await page.evaluate(() => ({ on: APPR.on, near: is3d() ? cam3().dist < CRAFT.L * 6 : true }));
+      if (!b.on || !b.near) throw new Error('the button did not come close again: ' + JSON.stringify(b));
+    });
     await step('Esc goes back', async () => {
       await page.click('#cv', { position: { x: 5, y: 5 } }).catch(() => {}); await page.keyboard.press('Escape'); if (await appr()) throw new Error('still close');
       const back = await page.evaluate(ids => ids.filter(id => !(WINS[id].open && !WINS[id].collapsed)), open0);
