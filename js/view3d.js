@@ -232,11 +232,11 @@ export const CRAFT_VS = /* glsl */`
 #include <logdepthbuf_pars_vertex>
 varying vec3 vN, vW;
 varying vec2 vUv;
-varying float vY;
+varying float vY, vZ;
 void main() {
   vN = normalize(mat3(modelMatrix) * normal);
   vec4 w = modelMatrix * vec4(position, 1.0);
-  vW = w.xyz; vUv = uv; vY = position.y;
+  vW = w.xyz; vUv = uv; vY = position.y; vZ = position.z;
   gl_Position = projectionMatrix * viewMatrix * w;
   #include <logdepthbuf_vertex>
 }`;
@@ -244,14 +244,15 @@ export const CRAFT_FS = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_fragment>
 uniform vec3 uColor, uSun, uBack;
-uniform float uFlat, uTex, uSpec, uClip;
+uniform float uFlat, uTex, uSpec, uClip, uPort, uRod;
 uniform sampler2D uMap;
 varying vec3 vN, vW;
 varying vec2 vUv;
-varying float vY;
+varying float vY, vZ;
 void main() {
   #include <logdepthbuf_fragment>
   if (vY > uClip) discard; // a liquid's surface (the cutaway's fills)
+  if (abs(vZ) < uPort || abs(vZ) > uRod) discard; // a solid grain's bore, a rod's outside
   vec3 n = normalize(vN) * (gl_FrontFacing ? 1.0 : -1.0);
   float d = dot(n, uSun), l = 0.3 + 0.7 * max(d, 0.0);
   vec3 base = uColor * (uTex > 0.5 && gl_FrontFacing ? texture2D(uMap, vUv).rgb : vec3(1.0));
@@ -309,6 +310,21 @@ const PAINT = {
     x.fillStyle = rgba(C.ink, 0.25); x.fillRect(0, h * 0.42, w, h * 0.1);
     x.strokeStyle = rgba(C.faint, 0.9); x.lineWidth = 2;
     for (const v of [0.08, 0.3, 0.7, 0.92]) { x.beginPath(); x.moveTo(0, h * (1 - v)); x.lineTo(w, h * (1 - v)); x.stroke(); }
+  },
+  // a skirt (2026-11-16: forward, intertank, payload fitting): aluminium with vertical stringers, frames and rivet rows
+  skirt(x, w, h, C) {
+    const r = rnd(9), b = hx(C.dim, C.ink, 0.38); x.fillStyle = b; x.fillRect(0, 0, w, h);
+    for (let i = 0; i < 260; i++) { x.fillStyle = rgba(r() < 0.5 ? C.solid : '#ffffff', 0.04 * r()); x.fillRect(r() * w, 0, 1, h); }
+    for (let i = 0; i < 32; i++) { const u = (i + 0.5) / 32 * w; x.fillStyle = rgba(C.solid, 0.32); x.fillRect(u - 1, 0, 2, h); x.fillStyle = rgba('#ffffff', 0.16); x.fillRect(u + 1, 0, 1, h); }
+    x.fillStyle = rgba(C.solid, 0.4);
+    for (const v of [0.08, 0.5, 0.92]) { x.fillRect(0, h * (1 - v) - 2, w, 4); for (let u = 4; u < w; u += 8) { x.fillStyle = rgba('#ffffff', 0.35); x.fillRect(u, h * (1 - v) - 5, 1.5, 1.5); x.fillRect(u, h * (1 - v) + 4, 1.5, 1.5); x.fillStyle = rgba(C.solid, 0.4); } }
+  },
+  // an equipment deck: a honeycomb panel's face sheet (faint cells), an edge closeout band
+  deck(x, w, h, C) {
+    x.fillStyle = hx(C.solid, C.dim, 0.6); x.fillRect(0, 0, w, h);
+    x.strokeStyle = rgba(C.solid, 0.25); x.lineWidth = 1;
+    for (let j = 0, k = 9; j * k * 0.87 < h + k; j++) for (let i = 0; i * k < w + k; i++) { const cx = i * k + (j % 2) * k / 2, cy = j * k * 0.87; x.beginPath(); for (let a = 0; a < 6; a++) { const t = a * Math.PI / 3 + Math.PI / 6; x.lineTo(cx + 0.55 * k * Math.cos(t), cy + 0.55 * k * Math.sin(t)); } x.closePath(); x.stroke(); }
+    x.fillStyle = rgba(C.ink, 0.25); x.fillRect(0, h * 0.42, w, h * 0.16);
   },
   // a regeneratively cooled nozzle: from the throat (v = 0) the cooling channels in heat tint, gold at the throat
   // turning blue, then bare metal; the radiatively cooled extension (v > 0.45) dark metal
@@ -726,7 +742,7 @@ export function create(canvas, opts) {
   // inside of an opened shell is drawn plain), its v still 0 at the profile's first point.
   const lathe = (pts0, half) => {
     const rev = pts0[0][1] > pts0[pts0.length - 1][1], pts = rev ? pts0.slice().reverse() : pts0;
-    const g = new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), 28, half ? Math.PI : 0, half ? Math.PI : Math.PI * 2);
+    const g = new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), 40, half ? Math.PI : 0, half ? Math.PI : Math.PI * 2);
     const cum = [0]; for (let j = 1; j < pts.length; j++) cum.push(cum[j - 1] + Math.hypot(pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1]));
     const uv = g.attributes.uv, np = pts.length, tot = cum[np - 1] || 1;
     for (let k = 0; k < uv.count; k++) uv.setY(k, rev ? 1 - cum[k % np] / tot : cum[k % np] / tot);
@@ -762,7 +778,7 @@ export function create(canvas, opts) {
   function craftMat(color, flat, tex, C, spec = 0.12) {
     return new THREE.ShaderMaterial({ vertexShader: CRAFT_VS, fragmentShader: CRAFT_FS, side: THREE.DoubleSide, toneMapped: false,
       uniforms: { uColor: { value: new THREE.Color(tex ? '#ffffff' : color) }, uBack: { value: new THREE.Color(color) }, uSun: { value: new THREE.Vector3(1, 0, 0) }, uFlat: { value: flat ? 1 : 0 },
-        uTex: { value: tex ? 1 : 0 }, uMap: { value: tex ? craftTex(tex, C) : null }, uSpec: { value: flat ? 0 : spec }, uClip: { value: 1e9 } } });
+        uTex: { value: tex ? 1 : 0 }, uMap: { value: tex ? craftTex(tex, C) : null }, uSpec: { value: flat ? 0 : spec }, uClip: { value: 1e9 }, uPort: { value: -1 }, uRod: { value: 1e9 } } });
   }
   // a plume (2026-11-15): crossing planes on its axis (−y of the model, from the nozzle exit) sharing one material, and
   // for a main engine the end-on disc; additive: blending ONE, ONE (premultiplied), no depth writes, after the model
@@ -785,14 +801,14 @@ export function create(canvas, opts) {
   // for RP-1, a composite case for a hybrid's nitrous oxide); fo: the oxidizer tank's share of a liquid engine's tank
   // length (their volumes)
   function craftBuild(ty, grain, col, prop, fo) {
-    if (craftG.group) { roots.sim.remove(craftG.group); craftG.group.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry && ![quad, halfCyl, flameQuad, coreDisc, rcsBlock, rcsNoz].includes(o.geometry)) o.geometry.dispose(); }); }
+    if (craftG.group) { if (craftG.group.parent) craftG.group.parent.remove(craftG.group); /* a mission's set or free flight's map */ craftG.group.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry && ![quad, halfCyl, flameQuad, coreDisc, rcsBlock, rcsNoz].includes(o.geometry)) o.geometry.dispose(); }); }
     const g = new THREE.Group(); g.visible = false;
     const C = col.tex, cryo = /^lox/.test(prop || ''), T = (k, o) => craftMat(col.metal, false, k, o ? { ...C, ...o } : C, k === 'foam' ? 0.06 : k.startsWith('quilt') ? 0.18 : 0.25);
     const fin = TANK_FIN;
     const M = { metal: craftMat(col.metal), nozzle: craftMat(col.nozzle), fuel: craftMat(col.fuel, true), ox: craftMat(col.ox, true), wall: craftMat(col.fuel),
       fuelL: craftMat(col.fuel, true), oxL: craftMat(col.ox, true), line: craftMat(col.tex.ink), valve: craftMat(col.nozzle),
       oxTank: T(cryo ? 'foam' : prop === 'n2o_htpb' ? 'carbon' : fin), fuelTank: T(prop === 'lox_lh2' ? 'foam' : prop === 'lox_rp1' ? 'alu' : fin),
-      caseC: T(ty === 'sol' ? 'case' : 'carbon') };
+      caseC: T(ty === 'sol' ? 'case' : 'carbon'), skirt: T('skirt'), deck: T('deck'), copv: T('carbon'), ductC: craftMat(hx(C.ink, C.warn, 0.12)) };
     M.wall.uniforms.uColor.value.multiplyScalar(0.4); // the port's burning wall, darker than the grain's cut face
     M.line.uniforms.uSpec.value = 0.5; M.valve.uniforms.uColor.value.multiplyScalar(0.8);
     const shells = [], fills = {}, ports = [], plumes = [];
@@ -806,53 +822,175 @@ export function create(canvas, opts) {
       const m = new THREE.Mesh(new THREE.ShapeGeometry(sh, 4).rotateY(-Math.PI / 2), mat); m.position.x = 0.001; m.visible = false; g.add(m);
       fills[name] = { m, liq: true, r: ri, y0: a0, y1: a1, k: ki };
     };
-    const port = (name, r, y0, y1) => { const m = new THREE.Mesh(halfCyl, M.wall); m.visible = false; g.add(m); ports.push(m); fills[name] = { m, r, y0, y1, wall: true }; };
+    const port = (name, r, y0, y1, k = 0) => { const m = new THREE.Mesh(halfCyl, M.wall); m.visible = false; g.add(m); ports.push(m); fills[name] = { m, r, y0, y1, wall: true, k }; };
+    // a solid's grain in the cut plane (2026-11-16): the case's inner outline (radius r, domes k·r), the bore and a rod's
+    // outside clipped in the shader (uPort, uRod), so the grain follows the domes
+    const grainFill = (name, mat0, r, y0, y1, k) => {
+      const mat = craftMat(col.fuel, true), P = tankPts(r, y0, y1, k), sh = new THREE.Shape();
+      P.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y))); for (let i = P.length - 1; i >= 0; i--) sh.lineTo(-P[i][0], P[i][1]);
+      const m = new THREE.Mesh(new THREE.ShapeGeometry(sh, 6).rotateY(-Math.PI / 2), mat); m.position.x = 0.001; m.visible = false; g.add(m);
+      M['grain_' + name] = mat; fills[name] = { m, grainO: true, r, y0, y1, k };
+    };
     const add = (m, x = 0, y = 0, z = 0) => { m.position.set(x, y, z); g.add(m); return m; };
     let exitR = 0.095;
+    // ---- shared parts (2026-11-16) ----
+    // a band (flange, joint or attach ring): inner radius r, at y, h tall, t thick; cut like the shells
+    const band = (r, y, h, t, mat = M.metal) => shell([[r, y - h / 2], [r + t, y - h / 2], [r + t, y + h / 2], [r, y + h / 2], [r, y - h / 2]], mat);
+    // a straight member between two points (struts, brackets, actuators)
+    const V3 = (p) => new THREE.Vector3(p[0], p[1], p[2]);
+    const strut = (a, b, r, mat = M.metal) => {
+      const A = V3(a), B = V3(b), d = B.clone().sub(A), m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 8), mat);
+      m.position.copy(A).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(_Y, d.normalize()); g.add(m); return m;
+    };
+    // a pipe along points (a smooth centripetal spline, so it does not overshoot its bends), flanges at both ends
+    const pipe = (P, r, mat = M.line, fl = true) => {
+      const cv = new THREE.CatmullRomCurve3(P.map(V3), false, 'centripetal');
+      g.add(new THREE.Mesh(new THREE.TubeGeometry(cv, Math.max(24, P.length * 14), r, 10, false), mat));
+      if (fl) for (const u of [0, 1]) { const f = new THREE.Mesh(new THREE.TorusGeometry(r * 1.35, r * 0.45, 6, 16), M.valve); f.position.copy(cv.getPointAt(u)); f.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), cv.getTangentAt(u)); g.add(f); }
+      return cv;
+    };
+    // a valve on a pipe at u: a body across it and an actuator box
+    const valve = (cv, u, r, mat = M.valve) => {
+      const p = cv.getPointAt(u), t = cv.getTangentAt(u), b = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.9, r * 1.9, r * 3.2, 12), mat);
+      b.position.copy(p); b.quaternion.setFromUnitVectors(_Y, t); g.add(b);
+      const side = new THREE.Vector3().crossVectors(t, Math.abs(t.y) < 0.9 ? _Y : new THREE.Vector3(1, 0, 0)).normalize(), a = new THREE.Mesh(new THREE.BoxGeometry(r * 2.4, r * 2.4, r * 2.4), M.metal);
+      a.position.copy(p).addScaledVector(side, r * 2.6); g.add(a);
+    };
+    const sphere = (r, p, mat) => add(new THREE.Mesh(new THREE.SphereGeometry(r, 20, 14), mat), p[0], p[1], p[2]);
+    // the point on a tank's dome (radius R, pole at yp, dome height kR, going up (+1) or down (−1) from the pole) at an angle a from the axis
+    const dome = (R, yp, k, s, a, az = 0) => [Math.cos(az) * R * Math.sin(a), yp + s * k * R * (1 - Math.cos(a)), Math.sin(az) * R * Math.sin(a)];
     if (ty === 'liq') {
-      // the two tanks share 0.48 … −0.22 (less a gap) in proportion to their volumes, each at least 0.15 long
-      const span = 0.67, lo = Math.max(0.15, Math.min(span - 0.15, span * (fo > 0 ? fo : 0.5))), y0 = 0.48 - lo, y1 = y0 - 0.03;
-      shell(tankPts(0.12, y0, 0.48), M.oxTank); liquid('ox', M.oxL, 0.12, y0, 0.48, 0.5);
-      shell(tankPts(0.12, -0.22, y1), M.fuelTank); liquid('fuel', M.fuelL, 0.12, -0.22, y1, 0.5);
-      // the engine (proportions after an RL10 under a Centaur-sized tank): thrust cone, gimbal block, injector dome,
-      // chamber, nozzle in one profile; feed lines with valves; a turbopump (cryogenic pairs) or pressurant bottles
-      shell([[0.105, -0.205], [0.03, -0.275]], M.metal); // the thrust cone under the tank
-      add(new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.018, 0.016, 16), M.valve), 0, -0.283, 0); // the gimbal block
-      add(new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.003, 6, 20).rotateX(Math.PI / 2), M.metal), 0, -0.29, 0);
-      const ep = engineProfile({ rc: 0.024, rt: 0.0115, re: 0.062, yc0: -0.302, Lc: 0.03, Lv: 0.022, dome: 0.01 });
+      // Upper stage after a Centaur / Delta upper stage: forward skirt and payload ring, the oxidizer tank, an intertank
+      // skirt over the two domes, the fuel tank, an aft ring and a truss thrust structure to the gimbal; the engine's one
+      // profile (injector dome, chamber, bell); a turbopump pair for a cryogenic engine (fuel and oxidizer pumps beside
+      // the chamber, their discharge into the injector) or, pressure-fed, a valve block and helium bottles. The
+      // oxidizer duct leaves the upper tank's aft dome, runs down the outside of the fuel tank on standoffs and along the
+      // truss into its pump (or valve); the fuel duct drops from the lower dome through the truss.
+      const R = 0.12, dh = 0.5 * R, top = 0.47, bot = -0.21, gap = 0.05, span = top - bot - gap;
+      const lo = Math.max(0.16, Math.min(span - 0.16, span * (fo > 0 ? fo : 0.5))), yO0 = top - lo, yF1 = yO0 - gap;
+      shell(tankPts(R, yO0, top), M.oxTank); liquid('ox', M.oxL, R, yO0, top, 0.5);
+      shell(tankPts(R, bot, yF1), M.fuelTank); liquid('fuel', M.fuelL, R, bot, yF1, 0.5);
+      shell([[R + 0.002, top - dh + 0.015], [R + 0.002, 0.492]], M.skirt); band(R - 0.012, 0.492, 0.012, 0.016); // forward skirt, payload interface ring
+      shell([[R + 0.002, yF1 - dh + 0.012], [R + 0.002, yO0 + dh - 0.012]], M.skirt); band(R, yF1 - dh + 0.012, 0.008, 0.006); band(R, yO0 + dh - 0.012, 0.008, 0.006); // intertank
+      const yA = bot + dh * 0.55; band(R - 0.014, yA, 0.01, 0.018); // the aft ring the thrust structure hangs from
+      const yG = -0.274; band(0.012, yG, 0.008, 0.014); // the gimbal mount ring
+      for (let i = 0; i < 8; i++) { const a0 = (i + 0.5) / 8 * 2 * Math.PI, a1 = a0 + (i % 2 ? -1 : 1) * Math.PI / 8; strut([Math.cos(a0) * (R - 0.01), yA - 0.004, Math.sin(a0) * (R - 0.01)], [Math.cos(a1) * 0.022, yG, Math.sin(a1) * 0.022], 0.0035); }
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.014, 0.012, 16), M.valve), 0, yG - 0.008, 0); // gimbal block
+      add(new THREE.Mesh(new THREE.TorusGeometry(0.0125, 0.0028, 6, 20).rotateZ(Math.PI / 2), M.metal), 0, yG - 0.008, 0); // its cross pin
+      const ep = engineProfile({ rc: 0.026, rt: 0.0122, re: 0.064, yc0: -0.302, Lc: 0.03, Lv: 0.022, dome: 0.012 });
       M.nozLiq = T('nozLiq', { vt: ep.vt, ve: ep.ve });
-      shell(ep.pts, M.nozLiq); exitR = 0.062;
-      const pump = cryo, ps = pump ? [0.045, -0.305, 0.02] : null;
-      // the fuel line from the fuel tank's aft dome; the oxidizer line down the outside of the fuel tank
-      g.add(tube([[0.03, -0.205, 0.05], [0.04, -0.25, 0.05], pump ? [0.045, -0.29, 0.03] : [0.03, -0.3, 0.03], [0.026, -0.31, 0.015]], 0.0045, M.line));
-      g.add(tube([[0.0, y0 - 0.0, -0.118], [0.0, (y0 + y1) / 2 - 0.15, -0.126], [0.0, -0.19, -0.126], [-0.02, -0.25, -0.07], [-0.025, -0.3, -0.025]], 0.0045, M.line));
-      add(new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.014, 12), M.valve), 0.04, -0.255, 0.05); // valves
-      add(new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.014, 12), M.valve), -0.02, -0.255, -0.068);
-      if (pump) { add(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.035, 14), M.metal), ...ps); add(new THREE.Mesh(new THREE.SphereGeometry(0.014, 14, 10), M.valve), ps[0], ps[1] - 0.02, ps[2]); }
-      else for (const z of [0.075, -0.075]) add(new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 12), M.line), 0.07, -0.245, z); // helium bottles
+      shell(ep.pts, M.nozLiq); exitR = 0.064;
+      band(0.026, -0.318, 0.006, 0.004); // the chamber collar the actuators hold
+      for (const z of [1, -1]) strut([0, yA - 0.006, z * (R - 0.02)], [0, -0.318, z * 0.031], 0.0042, M.valve); // gimbal actuators (pitch, yaw)
+      const duct = cryo ? M.ductC : M.line, rD = 0.0062, rF = 0.0058;
+      // the oxidizer duct: off the upper tank's aft dome, out through the intertank, down the fuel tank, along the truss
+      const o0 = dome(R, yO0, 0.5, 1, 1.05, Math.PI), xo = -(R + 0.017);
+      const oxIn = cryo ? [-0.067, -0.296, 0] : [-0.014, -0.286, 0];
+      const oxP = [o0, [o0[0] - 0.006, o0[1] - 0.02, 0], [xo, yO0 - 0.004, 0], [xo, (yO0 + yA) / 2, 0], [xo, yA + 0.01, 0], [xo + 0.012, yA - 0.03, 0], [-0.088, -0.255, 0], [oxIn[0] - 0.004, oxIn[1] + 0.014, 0], oxIn];
+      const oc = pipe(oxP, rD, duct); valve(oc, 0.82, rD);
+      for (let i = 1; i <= 3; i++) { const y = yO0 - 0.01 + (yA + 0.01 - yO0 + 0.01) * i / 4; strut([xo + rD * 0.6, y, 0], [-R + 0.002, y, 0], 0.0028); strut([xo, y, -0.006], [-R * Math.cos(0.12), y, -R * Math.sin(0.12)], 0.0022); } // standoffs
+      // the fuel duct: from the lower dome through the truss
+      const f0 = dome(R, bot, 0.5, 1, 0.75, 0), fuIn = cryo ? [0.067, -0.296, 0] : [0.014, -0.286, 0];
+      const fc = pipe([f0, [f0[0] + 0.004, f0[1] - 0.02, 0], [0.085, -0.24, 0], [fuIn[0] + 0.006, fuIn[1] + 0.016, 0], fuIn], rF, duct); valve(fc, 0.6, rF);
+      if (cryo) { // the turbopumps beside the chamber (fuel at +x, oxidizer at −x), their discharge ducts into the injector dome
+        for (const s of [1, -1]) {
+          const x = s * 0.06, y = -0.312;
+          add(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.013, 0.03, 16), M.metal), x, y, 0);
+          add(new THREE.Mesh(new THREE.TorusGeometry(0.0135, 0.0048, 8, 20).rotateX(Math.PI / 2), M.valve), x, y + 0.006, 0); // the volute
+          add(new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.011, 0.012, 14), M.valve), x, y - 0.019, 0); // the turbine
+          pipe([[x, y + 0.016, 0], [x - s * 0.006, -0.288, 0], [s * 0.024, -0.286, 0], [s * 0.012, -0.291, 0]], 0.0042, M.line);
+          strut([x - s * 0.012, y, 0], [s * 0.026, y - 0.004, 0], 0.0025); // its mount on the chamber
+        }
+        pipe([[0.06, -0.327, 0], [0.05, -0.335, 0.015], [0.0, -0.326, 0.028], [-0.05, -0.335, 0.015], [-0.06, -0.327, 0]], 0.0028, M.line, false); // the turbine drive (hydrogen) line
+      } else { // pressure-fed: the bipropellant valve block on the injector, helium bottles and their regulator on the truss
+        add(new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.012, 0.022), M.valve), 0, -0.287, 0);
+        for (const z of [0.082, -0.082]) {
+          sphere(0.027, [0.0, -0.238, z], M.copv);
+          strut([0, -0.238 + 0.02, z * 0.82], [0, yA - 0.004, z * 1.2], 0.0024); strut([0, -0.262, z * 0.85], [0, yG, z * 0.25], 0.0024);
+        }
+        pipe([[0.0, -0.238, 0.055], [0.03, -0.235, 0.03], [0.05, -0.215, 0.012], [f0[0] - 0.02, f0[1] - 0.006, 0.006]], 0.0022, M.line, false);
+        add(new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.01, 0.012), M.metal), 0.03, -0.235, 0.03);
+      }
+      craftG.rcsAt = [R, 0.405, R, bot + dh + 0.02];
     } else if (ty === 'hyb') {
-      shell(tankPts(0.12, 0.1, 0.48), M.oxTank); liquid('ox', M.oxL, 0.12, 0.1, 0.48, 0.5);
-      shell(tankPts(0.125, -0.36, 0.07, 0.25), M.caseC); fill('grainA', M.fuel, 0.115, -0.33, 0.04); fill('grainB', M.fuel, 0.115, -0.33, 0.04); port('port', 0.115, -0.33, 0.04);
-      g.add(tube([[0.0, 0.1, 0.0], [0.0, 0.085, 0.0], [0.0, 0.075, 0.0]], 0.01, M.line)); // the oxidizer feed and its valve
-      add(new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.02, 14), M.valve), 0, 0.087, 0);
-      const ep = engineProfile({ rc: 0.06, rt: 0.022, re: 0.085, yc0: -0.352, Lc: 0.004, Lv: 0.03 });
-      M.nozAbl = T('nozAbl', { vt: ep.vt }); shell(ep.pts, M.nozAbl); exitR = 0.085;
+      // A hybrid stage: the nitrous oxide tank (composite overwrap) under a forward skirt, an interstage skirt hiding the
+      // feed with its main oxidizer valve, the motor case with bolted forward and aft flanges (pre- and post-combustion
+      // chambers in its domes), the grain and its port; the ablative nozzle on an aft closure
+      const R = 0.12;
+      shell(tankPts(R, 0.1, 0.47), M.oxTank); liquid('ox', M.oxL, R, 0.1, 0.47, 0.5);
+      shell([[R + 0.002, 0.43], [R + 0.002, 0.492]], M.skirt); band(R - 0.012, 0.492, 0.012, 0.016);
+      const rc = 0.125, cT = 0.03, cB = -0.36, kc = 0.3;
+      shell([[R + 0.004, cT - kc * rc + 0.008], [R + 0.004, 0.1 + 0.5 * R - 0.008]], M.skirt); // interstage
+      band(R + 0.004, 0.1 + 0.5 * R - 0.008, 0.008, 0.005);
+      const fc = pipe([[0, 0.1, 0], [0, 0.07, 0], [0, cT + 0.004, 0]], 0.009, M.line); valve(fc, 0.5, 0.009);
+      shell(tankPts(rc, cB, cT, kc), M.caseC); fill('grainA', M.fuel, 0.115, -0.33, -0.005); fill('grainB', M.fuel, 0.115, -0.33, -0.005); port('port', 0.115, -0.33, -0.005);
+      band(rc, cT - kc * rc, 0.012, 0.006, M.valve); band(rc, cB + kc * rc, 0.012, 0.006, M.valve); // the case's bolted flanges
+      for (let i = 0; i < 16; i++) { const a = i / 16 * 2 * Math.PI; for (const y of [cT - kc * rc, cB + kc * rc]) add(new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.006, 0.006), M.metal), Math.cos(a) * (rc + 0.0065), y, Math.sin(a) * (rc + 0.0065)); } // bolt heads
+      band(0.056, cB + 0.004, 0.014, 0.012, M.metal); // the aft closure
+      const ep = engineProfile({ rc: 0.058, rt: 0.022, re: 0.088, yc0: -0.357, Lc: 0.004, Lv: 0.03 });
+      M.nozAbl = T('nozAbl', { vt: ep.vt }); shell(ep.pts, M.nozAbl); exitR = 0.088;
+      craftG.rcsAt = [R, 0.4, rc, -0.25];
     } else if (ty === 'sol') {
-      shell(tankPts(0.15, -0.38, 0.45, 0.6), M.caseC); fill('grainA', M.fuel, 0.14, -0.3, 0.38); fill('grainB', M.fuel, 0.14, -0.3, 0.38); port('port', 0.14, -0.3, 0.38);
-      const ep = engineProfile({ rc: 0.07, rt: 0.025, re: 0.095, yc0: -0.37, Lc: 0.004, Lv: 0.035 });
-      M.nozAbl = T('nozAbl', { vt: ep.vt }); shell(ep.pts, M.nozAbl); exitR = 0.095;
+      // A solid kick motor after the STAR 48: a near-spherical case with a short cylinder, attach rings at the dome
+      // joints, the payload attach fitting and its ring on the forward dome, the igniter boss, the long submerged nozzle
+      // (carbon exit cone) on its aft flange; the cutaway's grain fills the case round its bore (an outline, the port a
+      // clip in the shader), so it follows the domes
+      const rc = 0.21, cB = -0.2, cT = 0.3, kc = 0.92, j1 = cT - kc * rc, j0 = cB + kc * rc;
+      shell(tankPts(rc, cB, cT, kc), M.caseC); grainFill('grain', M.fuel, rc - 0.008, cB + 0.008, cT - 0.008, kc); port('port', rc - 0.008, cB + 0.008, cT - 0.008, kc);
+      band(rc, j1, 0.012, 0.006, M.valve); band(rc, j0, 0.012, 0.006, M.valve);
+      shell([[0.105, cT - 0.012], [0.098, cT + 0.03], [0.092, cT + 0.062]], M.skirt); band(0.08, cT + 0.062, 0.01, 0.018); // payload attach fitting
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.024, 0.02, 14), M.valve), 0, cT + 0.004, 0); // the igniter boss
+      band(0.062, cB + 0.004, 0.014, 0.016, M.metal); // the nozzle's aft flange
+      const ep = engineProfile({ rc: 0.07, rt: 0.03, re: 0.135, yc0: -0.17, Lc: 0.004, Lv: 0.035 });
+      M.nozAbl = T('nozAbl', { vt: ep.vt }); shell(ep.pts, M.nozAbl); exitR = 0.135;
+      craftG.rcsAt = [0.1, cT + 0.035, 0.075, cB - 0.02];
     } else {
-      shell(tankPts(0.2, -0.05, 0.37, 1), M.oxTank); liquid('fuel', M.fuelL, 0.2, -0.05, 0.37, 1);
-      shell([[0.16, -0.25], [0.16, -0.05]], M.metal);
-      for (const [x, z] of [[0.12, 0.12], [-0.12, 0.12], [0.12, -0.12], [-0.12, -0.12]]) { const t = new THREE.Mesh(lathe(bellPts(0.012, 0.03, -0.25, -0.33), false), M.nozzle); t.position.set(x, 0, z); g.add(t); }
+      // A monopropellant craft after a small probe's hydrazine system: the spherical propellant tank (its diaphragm's
+      // liquid in the cutaway) on a girth ring and four legs, the equipment deck, a helium pressurant bottle (composite)
+      // with its regulator and line to the tank's gas port, the propellant line from the tank's outlet through a filter
+      // and a latch valve into the manifold ring, and four canted thrusters under the deck (valve, thermal standoff,
+      // catalyst bed with heater bands, bell); their plumes along their axes
+      const R = 0.19, yc = 0.155, yD = -0.135;
+      shell(tankPts(R, yc - R, yc + R, 1), M.oxTank); liquid('fuel', M.fuelL, R, yc - R, yc + R, 1);
+      band(R, yc, 0.014, 0.008, M.valve); // girth ring
+      for (let i = 0; i < 4; i++) { const a = (i + 0.5) / 4 * 2 * Math.PI, c = Math.cos(a), s = Math.sin(a); strut([c * (R + 0.006), yc - 0.004, s * (R + 0.006)], [c * 0.235, yD + 0.012, s * 0.235], 0.0055); strut([c * (R + 0.006), yc - 0.004, s * (R + 0.006)], [Math.cos(a + 0.5) * 0.2, yD + 0.012, Math.sin(a + 0.5) * 0.2], 0.0035); }
+      shell([[0.0, yD - 0.013], [0.255, yD - 0.013], [0.255, yD + 0.012], [0.0, yD + 0.012]], M.deck); // the deck
+      const pP = [0.185, yD + 0.072, 0.0];
+      sphere(0.06, pP, M.copv); // the pressurant bottle
+      add(new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.014, 0.018), M.valve), pP[0], pP[1] + 0.07, 0); // regulator
+      const gas = dome(R, yc + R, 1, -1, 0.35, 0);
+      const gc = pipe([[pP[0], pP[1] + 0.058, 0], [pP[0], pP[1] + 0.078, 0], [0.205, yc, 0.0], [0.19 * Math.sin(0.8) + 0.015, yc + 0.19 * Math.cos(0.8) + 0.01, 0], gas], 0.0035, M.line);
+      valve(gc, 0.25, 0.0035);
+      const out = [0, yc - R, 0], pc = pipe([out, [0, yc - R - 0.03, 0], [0, yD + 0.035, 0]], 0.0055, M.line);
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.026, 12), M.metal), 0, yc - R - 0.03, 0); // filter
+      valve(pc, 0.8, 0.0055); // latch valve
+      add(new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.004, 6, 40).rotateX(Math.PI / 2), M.line), 0, yD + 0.022, 0); // manifold ring
+      pipe([[0, yD + 0.035, 0], [0.04, yD + 0.025, 0], [0.15, yD + 0.022, 0]], 0.0035, M.line, false);
+      const cant = 10 * Math.PI / 180, thr = [];
+      for (let i = 0; i < 4; i++) {
+        const a = (i + 0.5) / 4 * 2 * Math.PI, c = Math.cos(a), s = Math.sin(a), tg = new THREE.Group();
+        tg.position.set(c * 0.15, yD - 0.013, s * 0.15);
+        tg.quaternion.setFromUnitVectors(_nY, new THREE.Vector3(c * Math.sin(cant), -Math.cos(cant), s * Math.sin(cant)));
+        const part = (geo, mat, y) => { const m = new THREE.Mesh(geo, mat); m.position.y = y; tg.add(m); };
+        part(new THREE.CylinderGeometry(0.013, 0.013, 0.02, 14), M.valve, -0.01); // the valve
+        part(new THREE.CylinderGeometry(0.0035, 0.0035, 0.018, 8), M.line, -0.028); // thermal standoff
+        part(new THREE.CylinderGeometry(0.011, 0.011, 0.03, 14), M.metal, -0.051); // catalyst bed
+        for (const y of [-0.042, -0.058]) part(new THREE.TorusGeometry(0.0115, 0.0018, 6, 18).rotateX(Math.PI / 2), M.valve, y); // heater bands
+        const bell = new THREE.Mesh(lathe(bellPts(0.0075, 0.024, -0.066, -0.115), false), M.nozzle); tg.add(bell);
+        g.add(tg); tg.updateMatrix();
+        thr.push({ p: new THREE.Vector3(0, -0.115, 0).applyMatrix4(tg.matrix), d: new THREE.Vector3(0, -1, 0).applyQuaternion(tg.quaternion) });
+        strut([c * 0.15, yD + 0.022, s * 0.15], [c * 0.15, yD + 0.012, s * 0.15], 0.0035, M.line);
+      }
+      craftG.thr = thr; exitR = 0.024;
+      craftG.rcsAt = [R + 0.006, yc + 0.02, 0.255, yD];
     }
     craftG.exitR = exitR;
     // the RCS (2026-11-16): four quads round the body near the nose and four near the tail ([radius, y nose, y tail]),
     // each a block with a nozzle pointing out and a small puff along its exhaust; a nozzle's torque on the craft
     // p × (−e) picks which fire for a turn (js/fly.js flyRcs: a pair at the nose and the opposite pair at the tail)
-    const RQ = craftG.rcsAt || { liq: [0.12, 0.4, -0.15], hyb: [0.12, 0.4, -0.28], sol: [0.15, 0.33, -0.27], mono: [0.2, 0.2, -0.12] }[ty] || [0.12, 0.4, -0.15], rcs = [];
-    for (const y of [RQ[1], RQ[2]]) for (const [cx, cz] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
-      const r = RQ[0] + 0.012, e = new THREE.Vector3(cx, 0, cz), p = new THREE.Vector3(cx * r, y, cz * r);
+    const RQ = craftG.rcsAt || [0.12, 0.4, 0.12, -0.15], rcs = [];
+    for (const [rq, y] of [[RQ[0], RQ[1]], [RQ[2], RQ[3]]]) for (const [cx, cz] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+      const r = rq + 0.012, e = new THREE.Vector3(cx, 0, cz), p = new THREE.Vector3(cx * r, y, cz * r);
       add(new THREE.Mesh(rcsBlock, M.valve), p.x, y, p.z);
       const nz = add(new THREE.Mesh(rcsNoz, M.nozzle), cx * (r + 0.019), y, cz * (r + 0.019)); nz.quaternion.setFromUnitVectors(_Y, e);
       const pm = plumeMesh(2, false); pm.position.set(cx * (r + 0.025), y, cz * (r + 0.025)); pm.quaternion.setFromUnitVectors(_nY, e); g.add(pm);
@@ -897,7 +1035,11 @@ export function create(canvas, opts) {
       let ri, ro;
       if (craftG.ty === 'hyb') { ri = st.port || 0; ro = 1; } else if (craftG.grain === 'rod') { ri = 0; ro = 1 - 0.6 * (st.web || 0); } else { ri = 0.5 + 0.5 * (st.web || 0); ro = 1; }
       const w = (ro - ri) * f.r;
-      if (f.wall) { m.visible = ri > 0.01 || craftG.grain === 'rod'; const rr = craftG.grain === 'rod' ? ro : ri; m.scale.set(rr * f.r, len, rr * f.r); m.position.set(0, (f.y0 + f.y1) / 2, 0); continue; }
+      if (f.grainO) { const U = m.material.uniforms; U.uPort.value = ri > 0.001 ? ri * f.r : -1; U.uRod.value = craftG.grain === 'rod' ? ro * f.r : 1e9; m.visible = w > 1e-4; continue; }
+      if (f.wall) {
+        m.visible = ri > 0.01 || craftG.grain === 'rod'; const rr = (craftG.grain === 'rod' ? ro : ri) * f.r, dy = f.k * f.r * (1 - Math.sqrt(Math.max(0, 1 - (rr / f.r) ** 2))); // within the domes
+        m.scale.set(rr, Math.max(1e-4, len - 2 * dy), rr); m.position.set(0, (f.y0 + f.y1) / 2, 0); continue;
+      }
       m.visible = w > 1e-4; m.scale.set(1, len, craftG.grain === 'rod' && craftG.ty === 'sol' ? 2 * ro * f.r : w);
       const zc = craftG.grain === 'rod' && craftG.ty === 'sol' ? 0 : (name === 'grainA' ? 1 : -1) * (ri * f.r + w / 2);
       m.position.set(0.001, (f.y0 + f.y1) / 2, zc);
@@ -917,10 +1059,10 @@ export function create(canvas, opts) {
     const pl = o.plume || { I: 0 }, on = pl.I > 0.002, mono = craftG.plumes.length > 1;
     craftG.plumes.forEach((p, i) => {
       p.visible = on; if (!on) return;
-      const U = p.userData.mat.uniforms, len = mono ? pl.len * 0.3 : pl.len, r0 = mono ? 0.03 : craftG.exitR || 0.095;
+      const U = p.userData.mat.uniforms, len = mono ? pl.len * 0.3 : pl.len, r0 = mono ? 0.024 : craftG.exitR || 0.095;
       U.uCore.value.set(pl.core); U.uBody.value.set(pl.body); U.uI.value = pl.I; U.uT.value = pl.t || 0; U.uSimple.value = pl.simple ? 1 : 0;
       U.uLen.value = len; U.uR0.value = r0 * 0.9; U.uR1.value = r0 + len * 0.3;
-      if (mono) { const q = [[0.12, 0.12], [-0.12, 0.12], [0.12, -0.12], [-0.12, -0.12]][i]; p.position.set(q[0], -0.33, q[1]); } else p.position.set(0, -0.5, 0);
+      if (mono && craftG.thr) { const q = craftG.thr[i]; p.position.copy(q.p); p.quaternion.setFromUnitVectors(_nY, q.d); } else p.position.set(0, -0.5, 0);
       const d = p.userData.disc; if (d) { const D = d.material.uniforms; D.uCore.value.set(pl.core); D.uI.value = pl.I; D.uR.value = r0 * 0.95; }
     });
   }

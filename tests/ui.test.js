@@ -1324,7 +1324,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(['foam(', 'quiltA(', 'alu(', 'carbon(', 'case(', 'nozLiq(', 'nozAbl('].every(k => paint.includes(k)) && !/#[0-9a-f]{6}['"]/i.test(paint.replace(/'#ffffff'/g, '')) && v3.includes('new THREE.CanvasTexture(cv)') && v3.includes("document.createElement('canvas')"), 'craft textures: painted canvases from the theme\'s colours');
   assert.ok(v3.includes("oxTank: T(cryo ? 'foam' : prop === 'n2o_htpb' ? 'carbon' : fin), fuelTank: T(prop === 'lox_lh2' ? 'foam' : prop === 'lox_rp1' ? 'alu' : fin)") && v3.includes("caseC: T(ty === 'sol' ? 'case' : 'carbon')") && v3.includes('M.nozLiq') && v3.includes('M.nozAbl'), 'craft textures: finishes by propellant and type');
   assert.ok(v3.includes('uv.setY(k, rev ? 1 - cum[k % np] / tot : cum[k % np] / tot)') && v3.includes('gl_FrontFacing ? base * l + sp : uBack * 0.38') && v3.includes('pow(max(dot(n, H), 0.0), 28.0)'), 'craft textures: by length along the profile, outsides textured and lit, insides plain');
-  assert.ok(m3.includes('engTanks(en.s, rho)') && m3.includes('fo = V ? V.ox / (V.ox + V.fuel) : 0.5') && v3.includes('const span = 0.67, lo = Math.max(0.15, Math.min(span - 0.15, span * (fo > 0 ? fo : 0.5)))'), 'craft: a liquid\'s tanks as long as their volumes in 3D');
+  assert.ok(m3.includes('engTanks(en.s, rho)') && m3.includes('fo = V ? V.ox / (V.ox + V.fuel) : 0.5') && v3.includes('const lo = Math.max(0.16, Math.min(span - 0.16, span * (fo > 0 ? fo : 0.5)))'), 'craft: a liquid\'s tanks as long as their volumes in 3D');
   // the cutaway fixed to the body (2026-11-15): the cut faces the local vertical (before: the frame's Z), never the camera; the
   // craft call's fields all live (none behind a comment)
   const cc = m3.slice(m3.indexOf('V3.craft({ show: true'), m3.indexOf('// the trail after capture')); // the call, in craftDraw (Phase 19d: shared with free flight)
@@ -1424,7 +1424,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const v3 = read('js/view3d.js'), ui = read('js/engine-ui.js');
   const prof = v3.slice(v3.indexOf('function engineProfile(o)'), v3.indexOf('// a tube along points'));
   assert.ok(prof.includes('0.5 - 0.5 * Math.cos(Math.PI * f)') && prof.includes('f / (f + 0.04)') && prof.includes('vt: cum[it] / tot') && v3.includes("M.nozLiq = T('nozLiq', { vt: ep.vt, ve: ep.ve });") && v3.includes("M.nozAbl = T('nozAbl', { vt: ep.vt });"), 'engine: one continuous profile, the heat tint at its throat');
-  assert.ok(v3.includes('new THREE.TubeGeometry(') && v3.includes('// the gimbal block') && v3.includes('// helium bottles') && v3.includes('const pump = cryo') && v3.includes('// valves'), 'engine: gimbal, feed lines, valves, turbopump or pressurant bottles');
+  assert.ok(v3.includes('new THREE.TubeGeometry(') && v3.includes('// gimbal block') && v3.includes('// pressure-fed: the bipropellant valve block on the injector, helium bottles') && v3.includes('if (cryo) { // the turbopumps') && v3.includes('const valve = (cv, u, r'), 'engine: gimbal, feed lines, valves, turbopump or pressurant bottles');
   assert.ok(v3.includes("const TANK_FIN = 'quiltA';") && v3.includes('function quilt(') && !v3.includes('  mli(') && !v3.includes("'mli'"), 'tanks: silver-grey quilted insulation, no gold foil');
   assert.ok(v3.includes('if (vY > uClip) discard;') && v3.includes('m.material.uniforms.uClip.value = f.y0 + f.r * engTankLevel(k, len / f.r, f.k);') && v3.includes('new THREE.ShapeGeometry(sh, 4)'), 'cutaway 3D: the liquid in the tank\'s outline, its level by volume');
   assert.ok(ui.includes('r * engTankLevel(level, (x1 - x0) / r, 1)') && ui.includes('r * engTankLevel(st.fuel, 2, 1)') && ui.includes('// one continuous outline (2026-11-15)'), 'cutaway 2D: levels by volume, one nozzle outline');
@@ -1706,6 +1706,24 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const cl = {}; require('vm').runInNewContext(read('js/app.js').slice(read('js/app.js').indexOf('const unit3 = '), read('js/app.js').indexOf('\n', read('js/app.js').indexOf('const unit3 = '))) + m3.slice(m3.indexOf('function craftLocal('), m3.indexOf('// the trail after capture')) + ';this.f = craftLocal;', cl);
   const q = cl.f([0, 0, 1], [1, 0, 0], [0.4, 1, 0]), qn = cl.f([1, 0, 0], [1, 0, 0], [0.4, 1, 0]);
   assert.ok(Math.abs(q[0]) < 1e-12 && Math.abs(q[1]) < 1e-12 && Math.abs(q[2] + 1) < 1e-12 && Math.abs(qn[1] - 1) < 1e-12, 'turn: a direction in the model\'s axes');
+}
+// 61) The craft models, redone (2026-11-16): a liquid stage with forward and intertank skirts over the domes, an aft ring
+// and an 8-strut truss to the gimbal, gimbal actuators, the oxidizer duct out of the upper tank's aft dome down the fuel
+// tank on standoffs into its pump (or the valve block), the fuel duct through the truss, flanges and valves on the
+// ducts, turbopumps (cryogenic) or helium bottles; the hybrid's interstage, main valve and bolted flanges; a STAR-like
+// solid (near-spherical case, attach rings, payload fitting, long nozzle) whose cut grain follows the domes (the bore
+// and a rod's outside clipped in the shader); a monopropellant craft (spherical tank on a girth ring and legs, deck,
+// pressurant bottle, regulator and gas line, filter, latch valve, manifold, four canted thrusters with catalyst beds,
+// plumes along their axes); a rebuilt model leaves whichever scene held the old one (free flight's map too).
+{
+  const v3 = read('js/view3d.js'), b = v3.slice(v3.indexOf('function craftBuild('), v3.indexOf('// o: { show, p (metres)'));
+  assert.ok(b.includes('// intertank') && b.includes('// forward skirt, payload interface ring') && /for \(let i = 0; i < 8; i\+\+\) \{ const a0 = /.test(b) && b.includes('// gimbal actuators (pitch, yaw)'), 'models: liquid stage structure (skirts, truss, actuators)');
+  assert.ok(b.includes('const oc = pipe(oxP, rD, duct); valve(oc, 0.82, rD);') && b.includes('// standoffs') && b.includes("'centripetal'") && b.includes('new THREE.TorusGeometry(r * 1.35, r * 0.45, 6, 16), M.valve'), 'models: the ducts routed, with flanges, valves and standoffs');
+  assert.ok(b.includes('// interstage') && b.includes("// the case's bolted flanges") && b.includes('// bolt heads') && b.includes('// the aft closure'), 'models: the hybrid');
+  assert.ok(b.includes("grainFill('grain', M.fuel, rc - 0.008, cB + 0.008, cT - 0.008, kc)") && b.includes('// payload attach fitting') && b.includes('// the igniter boss') && v3.includes('if (abs(vZ) < uPort || abs(vZ) > uRod) discard;') && v3.includes('U.uPort.value = ri > 0.001 ? ri * f.r : -1;'), 'models: the solid, its grain following the domes');
+  assert.ok(['// girth ring', '// the deck', '// the pressurant bottle', '// regulator', '// filter', '// latch valve', '// manifold ring', '// catalyst bed', '// heater bands', '// thermal standoff'].every(k => b.includes(k)) && b.includes('const cant = 10 * Math.PI / 180') && v3.includes('p.quaternion.setFromUnitVectors(_nY, q.d);'), 'models: the monopropellant craft, canted thrusters and their plumes');
+  assert.ok(b.includes('if (craftG.group.parent) craftG.group.parent.remove(craftG.group);') && !b.includes('roots.sim.remove(craftG.group)'), 'models: a rebuilt model replaces the old one in any scene');
+  assert.ok(["skirt(", "deck("].every(k => v3.slice(v3.indexOf('const PAINT = {'), v3.indexOf('const TEXC = new Map();')).includes(k)), 'models: skirt and deck textures');
 }
 // the encoder itself (an ES module): a real GIF
 (async () => {
