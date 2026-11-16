@@ -579,7 +579,7 @@ function craftDraw(set, p, ax, side, L, sun, en, k, dist, rcs) {
   // held down (half the length and 30 % of the brightness within PLUME_NEAR[0] lengths, full from PLUME_NEAR[1]), so it
   // reads as the nozzle's flame and does not fill the screen with an orange glow
   const nq = plumeNear(dist / L);
-  V3.craft({ show: true, set, p, axis: ax, side, L, sun, cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,
+  V3.craft({ show: true, set, p, axis: ax, side, L, sun, cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st, sol: en.E.type === 'sol' ? solShape(en.E, en.s) : null,
     col: { metal: COL.dim, nozzle: COL.faint, fuel: COL.burn, ox: COL.cyan, // fuel and oxidizer as the engine window's charts
       tex: { ink: COL.ink, dim: COL.dim, faint: COL.faint, solid: COL.solid, accent: COL.accent, warn: COL.warn, burn: COL.burn, bad: COL.bad, orbit: COL.orbit } },
     rcs: rcs ? { a: craftLocal(rcs.a, ax, side), k: rcs.k, core: COL.ink, body: COL.dim } : null,

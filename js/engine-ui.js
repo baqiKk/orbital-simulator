@@ -449,8 +449,13 @@ function engSchematic(cv, s, st, E, phase, pl = st.Fk, o = {}) {
     label(_('eng.sch.grain', { r: nf1.format(st.port * 100) }), a + 2, my - G - 7);
     engine(0.8, 0.8, 0, 0.9, 9, 20);
   } else if (E.type === 'sol') {
-    const a = X(0.03), b = X(0.8), G = 30, g = SOL_GRAIN_VIEW[E.grain] || SOL_GRAIN_VIEW.bates, [ri, ro] = g(st.web);
-    x.fillStyle = col.solid; x.fillRect(a, my - G - 3, b - a, 2 * G + 6);
+    // the 3D model's proportions (solShape): the domed case, the grain clipped to its inside, the nozzle out of its aft end
+    const S = solShape(E, s), Dp = Math.min(76, (w - 16) / (S.caseLD + S.noz)), R = Dp / 2, kr = S.k * R, G = R - 3;
+    const a = X(0) + 2, b = a + S.caseLD * Dp, g = SOL_GRAIN_VIEW[E.grain] || SOL_GRAIN_VIEW.bates, [ri, ro] = g(st.web), f = px => (px - 6) / (w - 12);
+    const caseP = (r, k) => { x.beginPath(); x.moveTo(a + k, my - r); x.lineTo(b - k, my - r); x.ellipse(b - k, my, k, r, 0, -Math.PI / 2, Math.PI / 2); x.lineTo(a + k, my + r); x.ellipse(a + k, my, k, r, 0, Math.PI / 2, Math.PI * 1.5); x.closePath(); };
+    engine(f(b - 1), f(b - 1), 0, f(b + S.noz * Dp), Math.max(2.5, S.thr * Dp / 2), S.exit * Dp / 2);
+    caseP(R, kr); x.fillStyle = col.solid; x.fill();
+    x.save(); caseP(G, Math.max(1, kr - 3)); x.clip();
     if (st.on) { // the flame in what has burnt away: the core (BATES, tube) or around the rod
       x.fillStyle = col.flame; x.globalAlpha = 0.2 + 0.3 * st.Fk;
       if (ri > 0) x.fillRect(a, my - ri * G, b - a, 2 * ri * G); else { x.fillRect(a, my - G, b - a, (1 - ro) * G); x.fillRect(a, my + ro * G, b - a, (1 - ro) * G); }
@@ -458,9 +463,9 @@ function engSchematic(cv, s, st, E, phase, pl = st.Fk, o = {}) {
     }
     x.fillStyle = col.fuel; x.globalAlpha = 0.85;
     if (ro > ri) { x.fillRect(a, my - ro * G, b - a, (ro - ri) * G); x.fillRect(a, my + ri * G, b - a, (ro - ri) * G); }
-    x.globalAlpha = 1; x.strokeStyle = col.metal; x.strokeRect(a, my - G - 3, b - a, 2 * G + 6);
-    label(_('eng.sch.web', { p: Math.round(st.web * 100) }), a + 2, my - G - 7);
-    engine(0.8, 0.8, 0, 0.92, 8, 22);
+    x.restore(); x.globalAlpha = 1; caseP(R, kr); x.strokeStyle = col.metal; x.stroke();
+    x.lineWidth = 2.4; for (const xr of [a + kr, b - kr]) for (const sg of [-1, 1]) { x.beginPath(); x.moveTo(xr, my + sg * (R - 2)); x.lineTo(xr, my + sg * (R + 2)); x.stroke(); } x.lineWidth = 1.2; // the attach rings, on the case's edge
+    label(_('eng.sch.web', { p: Math.round(st.web * 100) }), a + 2, my - R - 7);
   } else {
     const cx = X(0.16), r = 30;
     x.save(); x.beginPath(); x.arc(cx, my, r, 0, 6.2832); x.clip(); x.fillStyle = col.fuel; x.globalAlpha = 0.85; const fh = r * engTankLevel(st.fuel, 2, 1); x.fillRect(cx + r - fh, my - r, fh, 2 * r); x.restore(); // a sphere: by volume
@@ -469,6 +474,19 @@ function engSchematic(cv, s, st, E, phase, pl = st.Fk, o = {}) {
     feed([[0.16 + 30 / (w - 12), my], [0.56, my]], col.fuel);
     engine(0.56, 0.64, 7, 0.74, 4, 10);
   }
+}
+// The solid motor's shape (2026-11-16), shared by the 3D model (js/view3d.js craft o.sol) and the cutaway, in motor
+// diameters: a ready-made motor with published dimensions (js/engines.js dim, the STAR 48B: short and round) keeps its
+// overall length over diameter and its exit's and throat's share of the diameter (the split between case and nozzle is
+// schematic: a submerged nozzle sticking out by SOL_NOZ_REAL, near-hemispherical domes); any other solid is a domed
+// cylinder whose case L/D grows with its propellant (1.5 at 100 kg, 2.5 at 10 t, 3 from 100 t), elliptical domes, attach
+// rings and a nozzle. Returns { caseLD, k (dome height over radius), noz (the nozzle out of the case), exit, thr }.
+const SOL_NOZ_REAL = 0.55;
+function solShape(E, s) {
+  const p = E && E.id && E.id.startsWith('p:') ? ENGINES.find(q => q.id === E.id.slice(2)) : null, d = p && p.dim;
+  if (d) return { caseLD: Math.max(0.9, d.L / d.D - SOL_NOZ_REAL), k: 0.8, noz: SOL_NOZ_REAL, exit: d.De / d.D, thr: d.Dt / d.D, real: true };
+  const mp = s && s.mp > 0 ? s.mp : E && E.mp > 0 ? E.mp : 1000;
+  return { caseLD: Math.max(1.5, Math.min(3, 1.5 + 0.5 * Math.log10(Math.max(1, mp) / 100))), k: 0.5, noz: 0.5, exit: 0.55, thr: 0.12, real: false };
 }
 // the solid's grain in the cutaway: inner and outer radius over the casing's at the web burnt (as core.js SOL_GRAIN)
 const SOL_GRAIN_VIEW = { bates: w => [0.5 + 0.5 * w, 1], tube: w => [0.5 + 0.5 * w, 1], rod: w => [0, 1 - 0.6 * w] };

@@ -5,7 +5,9 @@
 //
 // ENGINES: { id, type: 'liq' | 'hyb' | 'sol' | 'mono', prop: PROPS key, F (N, vacuum; mean for hybrid and solid),
 // isp (s, vacuum; mean), of (oxidizer/fuel by mass; liquid and hybrid), mp, md (kg: a load to start from; from the
-// vehicle named, else as noted), veh (js/vehicles.js id the masses come from), hyb / sol (the model's own inputs), ex
+// vehicle named, else as noted), dim (solids with published dimensions, drawing only: { D diameter, L length, Dt throat,
+// De exit } m),
+// veh (js/vehicles.js id the masses come from), hyb / sol (the model's own inputs), ex
 // (true: an example design, not a real engine) }.
 //
 // rl10    RL10A-4-2 (Centaur, single engine): thrust 99.2 kN and Isp 450.5 s from the ULA Atlas V Launch Services
@@ -26,6 +28,8 @@
 //         lbm → 2,009.96 kg, "Burnout 257.8" lbm → 116.94 kg (the motor alone: the payload adds to the dry mass);
 //         also "Burn time/action time, sec 84.1/85.2", "Total impulse, lbf-sec 1,303,700", "Maximum thrust, lbf
 //         17,490", propellant TP-H-3340. Grain: BATES-like near-neutral profile (the catalog's curve is not modelled).
+//         Dimensions (the same page, 2026-11-16; only for the drawing, dim): "Motor diameter, in. 49.0", "Motor length,
+//         in. 80.0", "Initial throat diameter, in. 3.98", "Exit diameter, in. 29.5" (× 0.0254 m).
 // hyb     An example N2O/HTPB hybrid, not a real engine (ex): thrust, Isp, O/F, masses and port radius are example
 //         design values to start from. Only the regression law is sourced (PROPS n2o_htpb).
 const ENGINES = [
@@ -33,7 +37,7 @@ const ENGINES = [
   { id: 'aj10', type: 'liq', prop: 'nto_a50', F: 91188.5, isp: 314.5, of: 24389.10 / 15252.70, veh: 'csm', src: ['a11pk', 'aj10', 'aoh'] },
   { id: 's400', type: 'liq', prop: 'nto_mmh', F: 420, isp: 318, of: 1.65, veh: 'mex', src: ['s400'] },
   { id: 'n2h4', type: 'mono', prop: 'n2h4', F: 22, isp: 230, veh: 'lp', src: ['lpNssdca', 'cht20'] },
-  { id: 'star48', type: 'sol', prop: 'apcp', F: 15430 * 4.4482216, isp: 292.1, mp: 4431.2 * 0.45359237, md: 257.8 * 0.45359237, sol: { grain: 'bates' }, src: ['ngcat'] },
+  { id: 'star48', type: 'sol', prop: 'apcp', F: 15430 * 4.4482216, isp: 292.1, mp: 4431.2 * 0.45359237, md: 257.8 * 0.45359237, sol: { grain: 'bates' }, dim: { D: 49.0 * 0.0254, L: 80.0 * 0.0254, Dt: 3.98 * 0.0254, De: 29.5 * 0.0254 }, src: ['ngcat'] },
   { id: 'hyb', type: 'hyb', prop: 'n2o_htpb', F: 5000, isp: 250, of: 6.5, mp: 300, md: 150, hyb: { r0: 0.03 }, ex: true, src: ['doran'] },
 ];
 // Propellants: plume class for Phase 18c (blue: hydrogen, pale blue-violet; orange: kerosene, orange-yellow; pink:

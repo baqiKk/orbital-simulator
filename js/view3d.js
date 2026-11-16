@@ -789,7 +789,7 @@ export function create(canvas, opts) {
   // the textures) }; prop: the propellant (the tanks' finish: foam on cryogenic ones, gold foil on storables, bare metal
   // for RP-1, a composite case for a hybrid's nitrous oxide); fo: the oxidizer tank's share of a liquid engine's tank
   // length (their volumes)
-  function craftBuild(ty, grain, col, prop, fo) {
+  function craftBuild(ty, grain, col, prop, fo, sol) {
     if (craftG.group) { if (craftG.group.parent) craftG.group.parent.remove(craftG.group); /* a mission's set or free flight's map */ craftG.group.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry && ![quad, halfCyl, plumeHull, rcsBlock, rcsNoz].includes(o.geometry)) o.geometry.dispose(); }); }
     const g = new THREE.Group(); g.visible = false;
     const C = col.tex, cryo = /^lox/.test(prop || ''), T = (k, o) => craftMat(col.metal, false, k, o ? { ...C, ...o } : C, k === 'foam' ? 0.06 : k.startsWith('quilt') ? 0.18 : 0.25);
@@ -920,19 +920,23 @@ export function create(canvas, opts) {
       M.nozAbl = T('nozAbl', { vt: ep.vt }); shell(ep.pts, M.nozAbl); exitR = 0.088;
       craftG.rcsAt = [R, 0.4, rc, -0.25];
     } else if (ty === 'sol') {
-      // A solid kick motor after the STAR 48: a near-spherical case with a short cylinder, attach rings at the dome
-      // joints, the payload attach fitting and its ring on the forward dome, the igniter boss, the long submerged nozzle
-      // (carbon exit cone) on its aft flange; the cutaway's grain fills the case round its bore (an outline, the port a
-      // clip in the shader), so it follows the domes
-      const rc = 0.21, cB = -0.2, cT = 0.3, kc = 0.92, j1 = cT - kc * rc, j0 = cB + kc * rc;
+      // A solid motor in its own proportions (js/engine-ui.js solShape, 2026-11-16: a ready-made one with published
+      // dimensions keeps them, the STAR 48B short and round; any other a domed cylinder, its L/D by its propellant): the
+      // case with attach rings at the dome joints, the payload attach fitting and its ring on the forward dome, the
+      // igniter boss, the submerged nozzle (carbon exit cone) on its aft flange out to the exit at −0.5; the cutaway's
+      // grain fills the case round its bore (an outline, the port a clip in the shader), so it follows the domes
+      const S = sol || { caseLD: 2, k: 0.5, noz: 0.5, exit: 0.55, thr: 0.12 }, Dm = 0.94 / (S.caseLD + S.noz), rc = Dm / 2, kc = S.k;
+      const cT = 0.44, cB = cT - S.caseLD * Dm, j1 = cT - kc * rc, j0 = cB + kc * rc;
       shell(tankPts(rc, cB, cT, kc), M.caseC); grainFill('grain', M.fuel, rc - 0.008, cB + 0.008, cT - 0.008, kc); port('port', rc - 0.008, cB + 0.008, cT - 0.008, kc);
       band(rc, j1, 0.012, 0.006, M.valve); band(rc, j0, 0.012, 0.006, M.valve);
-      shell([[0.105, cT - 0.012], [0.098, cT + 0.03], [0.092, cT + 0.062]], M.skirt); band(0.08, cT + 0.062, 0.01, 0.018); // payload attach fitting
-      add(new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.024, 0.02, 14), M.valve), 0, cT + 0.004, 0); // the igniter boss
-      band(0.062, cB + 0.004, 0.014, 0.016, M.metal); // the nozzle's aft flange
-      const ep = engineProfile({ rc: 0.07, rt: 0.03, re: 0.135, yc0: -0.17, Lc: 0.004, Lv: 0.035 });
-      M.nozAbl = T('nozAbl', { vt: ep.vt }); shell(ep.pts, M.nozAbl); exitR = 0.135;
-      craftG.rcsAt = [0.1, cT + 0.035, 0.075, cB - 0.02];
+      const pr = Math.min(0.105, rc * 0.5), py = cT - kc * rc * (1 - Math.sqrt(1 - (pr / rc) ** 2)); // where the fitting meets the dome
+      shell([[pr, py], [pr * 0.93, cT + 0.025], [pr * 0.88, cT + 0.05]], M.skirt); band(pr * 0.76, cT + 0.05, 0.01, pr * 0.17); // payload attach fitting
+      add(new THREE.Mesh(new THREE.CylinderGeometry(pr * 0.19, pr * 0.23, 0.02, 14), M.valve), 0, cT + 0.004, 0); // the igniter boss
+      const rt = Math.max(0.008, S.thr * rc), re = S.exit * rc, ne = Math.min(rc * 0.6, Math.max(rt * 2.2, re * 0.55)); // throat, exit, the nozzle's entrance
+      band(ne * 0.9, cB + 0.004, 0.014, 0.016, M.metal); // the nozzle's aft flange
+      const ep = engineProfile({ rc: ne, rt, re, yc0: cB + 0.03, Lc: 0.004, Lv: Math.max(0.02, (ne - rt) * 1.2) });
+      M.nozAbl = T('nozAbl', { vt: ep.vt }); shell(ep.pts, M.nozAbl); exitR = re;
+      craftG.rcsAt = [pr * 0.95, cT + 0.035, ne * 0.9, cB - 0.012];
     } else {
       // A monopropellant craft after a small probe's hydrazine system: the spherical propellant tank (its diaphragm's
       // liquid in the cutaway) on a girth ring and four legs, the equipment deck, a helium pressurant bottle (composite)
@@ -996,8 +1000,9 @@ export function create(canvas, opts) {
   const _cx = new THREE.Vector3(), _cy = new THREE.Vector3(), _cz = new THREE.Vector3(), _cm = new THREE.Matrix4();
   function craft(o) {
     if (!o.show) { if (craftG.group) craftG.group.visible = false; return; }
-    const fo = Math.round((o.fo || 0.5) * 100) / 100, key = [o.type, o.grain, o.prop, fo, o.col.metal, o.col.fuel, o.col.ox, o.col.nozzle].join('|');
-    if (craftG.key !== key) { craftBuild(o.type, o.grain, o.col, o.prop, fo); craftG.key = key; }
+    const fo = Math.round((o.fo || 0.5) * 100) / 100, sh = o.sol ? [o.sol.caseLD, o.sol.k, o.sol.noz, o.sol.exit, o.sol.thr].map(v => Math.round(v * 100) / 100) : null;
+    const key = [o.type, o.grain, o.prop, fo, sh, o.col.metal, o.col.fuel, o.col.ox, o.col.nozzle].join('|');
+    if (craftG.key !== key) { craftBuild(o.type, o.grain, o.col, o.prop, fo, o.sol); craftG.key = key; }
     const g = craftG.group, L = o.L * KM, st = o.st || {}, root = roots[o.set || 'sim'];
     if (g.parent !== root) root.add(g); // a mission's view or free flight's map (Phase 19d)
     g.visible = true; g.scale.setScalar(L); g.position.set((o.p[0] - T[0]) * KM, (o.p[1] - T[1]) * KM, (o.p[2] - T[2]) * KM); // after view(): T is this frame's

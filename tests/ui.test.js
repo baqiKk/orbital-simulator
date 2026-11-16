@@ -1749,6 +1749,21 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(css.includes('.fn-flow li.done::before{content:"✓"') && css.includes('.fn-flow li.cur::before{') && css.includes('.fn-next:not(.primary){color:var(--accent)!important}') && css.includes('@media (prefers-reduced-motion:no-preference){.fn-next{animation:'), 'target steps: ticked, current, the next button marked (still with reduced motion)');
   assert.ok(fl.includes("'fly.tip.auto', 'fly.tip.flow']") && DICT['fly.tip.flow'].includes('1 Transfer penceresi → 2 Düğümleri koy → 3 Düğüme hızlandır → 4 Otomatik ateşle → 5 Düzeltme öner') && fl.includes('flyTipDid(5); });'), 'target steps: in "Nasıl uçulur?"');
 }
+// 64) The solid motor's shape (2026-11-16): from the engine and its propellant (js/engine-ui.js solShape): the STAR 48B
+// keeps its published proportions (NG catalog: diameter 49.0 in, length 80.0 in, throat 3.98 in, exit 29.5 in), short
+// and round; any other solid is a domed cylinder whose case L/D grows with its propellant within 1.5 … 3; the 3D model
+// and the engine window's cutaway both use it.
+{
+  const ui = read('js/engine-ui.js'), v3 = read('js/view3d.js'), m3 = read('js/mode3d.js'), vm2 = require('vm'), c = {};
+  vm2.createContext(c); vm2.runInContext(read('js/engines.js') + ui.slice(ui.indexOf('const SOL_NOZ_REAL'), ui.indexOf("// the solid's grain in the cutaway")) + ';this.f = solShape; this.E = ENGINES;', c);
+  const d = c.E.find(e => e.id === 'star48').dim, in2m = 0.0254;
+  assert.ok(Math.abs(d.D - 49.0 * in2m) < 1e-12 && Math.abs(d.L - 80.0 * in2m) < 1e-12 && Math.abs(d.Dt - 3.98 * in2m) < 1e-12 && Math.abs(d.De - 29.5 * in2m) < 1e-12 && read('js/engines.js').includes('"Motor diameter, in. 49.0", "Motor length,'), 'solid shape: the STAR 48B\'s dimensions as published');
+  const st = c.f({ id: 'p:star48' });
+  assert.ok(Math.abs(st.caseLD + st.noz - 80 / 49) < 1e-12 && Math.abs(st.exit - 29.5 / 49) < 1e-12 && Math.abs(st.thr - 3.98 / 49) < 1e-12 && st.real, `solid shape: the STAR 48B overall ${(st.caseLD + st.noz).toFixed(2)} diameters long, its exit ${st.exit.toFixed(2)} of it`);
+  const lds = [10, 100, 1000, 1e4, 1e5, 1e6].map(mp => c.f({ id: '', mp }).caseLD);
+  assert.ok(lds.every(v => v >= 1.5 && v <= 3) && lds.every((v, i) => !i || v >= lds[i - 1]) && lds[5] === 3 && lds[1] === 1.5 && c.f({ id: '', mp: 1e4 }).k === 0.5, `solid shape: a domed cylinder, case L/D ${lds.map(v => v.toFixed(2)).join(' → ')} with the propellant`);
+  assert.ok(m3.includes("sol: en.E.type === 'sol' ? solShape(en.E, en.s) : null,") && v3.includes('const S = sol || {') && v3.includes('Dm = 0.94 / (S.caseLD + S.noz)') && v3.includes('o.sol ? [o.sol.caseLD,') && ui.includes('const S = solShape(E, s), Dp = Math.min(76, (w - 16) / (S.caseLD + S.noz))'), 'solid shape: the 3D model (rebuilt when it changes) and the cutaway share it');
+}
 // the encoder itself (an ES module): a real GIF
 (async () => {
   const G = await import(require('url').pathToFileURL(path.join(__dirname, '..', 'js', 'rec-worker.mjs')).href);
