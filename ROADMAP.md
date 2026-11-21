@@ -372,6 +372,79 @@ Kararlar: gerçek model, gezegenler arası dahil (19e), basit model sonra; uçu�
 
 - Dönüş hızı (2026-11-17): pro → retro 1×'te 16 s idi. Artık 180° dönüş aracın kütlesine göre 3 s (küçük sonda, 300 kg) ile 4 s (büyük kademe, 30 t) arası (core.js `slewParams(T)`: dörtte bir hızlanma, yarı süzülme, dörtte bir fren), oyun zamanında (10×'te on kat hızlı; ateşleme hız sınırı ayrı); panelde "Hızlı dönüş" (varsayılan kapalı, kaydedilir) ≈ 1 s. Tarayıcıda: RL10 kademesi (23 t) 3,8 s, 22 N hidrazin sondası 2,9 s, hızlı 1,0 s, 10×'te kademe 0,31 s gerçek zaman; RCS püfleri sürüyor. Testler: core.test.js dönüş hızı, ui.test.js 65, duman testinde dönüş aracın süresi içinde ve hızlı dönüş ≈ 1 s.
 
+## Faz 20 — Kolay kullanım (yayın hazırlığı)
+Geri bildirim (2026-11-21): serbest uçuş ve motor kontrolleri karışık, yakın görünüm ile genel görünüm iki ayrı dünya; yayından önce küçük pürüzler ve "ne değişti?" bilgisi.
+
+### Faz 20A — Doğrudan düzeltmeler ✅ tamamlandı (2026-11-21)
+1. Motor sesi: itki maddesi bitince yumuşakça kesilir; düzey o anki itkiyle orantılı (gaz artınca artar, gaz sıfırken ses yok).
+2. Kesit yönü: araç yerel dikeyden değil yandan, gövde ekseni boyunca (itki eksenine paralel bir düzlemle) kesilir; varsayılan yakın görünümde kesik yüz kameraya dönük.
+3. Yörünge çizim çözünürlüğü: örnekleme uyarlamalı (nokta sayısı yörüngenin ekrandaki boyutuyla, periapsis çevresinde sık; ekranda piksel hatası ölçütü), hiçbir yakınlıkta köşe yok; 2B ve 3B.
+4. Yakın görünümde yörünge çizgisi aracın tam merkezinden geçer, kameraya yakın kısmı söner, ileride ince ve soluk bir "yol".
+5. Açılış: Satürn'e daha yakın kadraj (Satürn ve halkalar sol yarıda, sağda Güneş, sol kenarda Samanyolu; halkaların tamamına yakını kadrajda; nefes alan kamera ve Güneş kuralı korunur); manzarada hiçbir pencere açık gelmez; halkalara düşen gezegen gölgesi yalnızca halka diskinin üstünde; yakın kadrajda uydu yörünge çizgileri gizli.
+6. Mevcut görev göstergesi: sol üstte (sol çubuğun yanında) görev etiketi ve evre satırı; üst ortadaki kip başlığı yalnızca geçici düğmelere kalır.
+7. "Kendin uç" girişleri: sihirbazın ilk adımında ve başlangıç kartında tek adımda cisim seçimi (alçak dairesel yörünge, doğrudan serbest uçuş; irtifa/eğim isteğe bağlı); motor penceresinde "Kendin uç" (o motorla, cisim seçici).
+8. Güncelleme notları ("Yenilikler"): js/changelog.js (sürüm, tarih, Türkçe/İngilizce maddeler, isteğe bağlı görsel), v0.9 ile başlar; yeni sürüm bir kez gösterilir (görülen sürüm saklanır, karşılamayla çakışmaz), altta "Sürüm notları" bağlantısı ve okunmamış noktası, sürüm numarası Model penceresinde.
+
+Sonuç:
+1. Ses: düzey itkinin tepeye oranından (prefs.js `engSound`: sıfır itkide 0, kazanç ∝ k^0,7, alçak geçiren 55 → 205 Hz); sıfıra iniş hiç atlanmıyor (eskiden 0,01'den küçük adım yok sayılıyor, son kısık düzey asılı kalabiliyordu), bırakma 0,15 s; serbest uçuş duraklatılınca sessiz; eğrili motorlarda itki eğrisi (`FREE.fq`). Tarayıcıda: gaz %30 → kazanç 0,38 / 99 Hz, %100 → 0,90 / 204 Hz, duraklatınca ve yakıt bitince ≈ 1 s içinde 0.
+2. Kesit: app.js `cutSide` = burun × yerel dikey (yörünge normali boyunca); `apprAim` kesik yüze bakar; serbest uçuşta kesit açılınca kamera da döner (önceden dönmüyordu).
+3. Çizim: core.js `conicGeom` / `conicPos` / `conicU` / `conicArc`, `ringAt` (eşit anomalide örneklenmiş elipsin ve afin görüntülerinin tam ara noktası), `hermAt`, `curveAdapt` (ekranda kiriş > 0,35 px ise ikiye böl, yalnızca ekrana uzanan parçalar, kamera düzlemini kesen parça da). Oskülatör yörünge, serbest uçuş tahmini (konik parça koniğin kendisinden; N-cisim parçası hızlarıyla Hermite; `flyRefine` artık süpürülen açıyla örnekler ve hız kaydeder), manevra halkaları, görev elipsleri, harita yörüngeleri; 2B ve 3B. 3B statik halkalar kirişleri görünür olana kadar yüklendiği gibi, sonra uyarlamalı kopya (`ring3`); dinamik çizgilerin float32 orijini göz. e = 0,46'lık yörüngede periapsise 10 000× yaklaşınca en büyük sapma < 0,6 px; eşit zamanlı eski örnekleme aynı görünümde > 20 px. Haritada 9 uyarlamalı halka kare başına ≈ 0,2 ms.
+4. Yol: mode3d.js `road3`: yakında aracın kendi çizgileri tamamen söner, yerine aracın kendi durumundan geçen konik (tam merkezden), ince, eklemeli, kameraya yakın kısmı ve uçları sönük; görevde ve serbest uçuşta.
+5. Açılış: halka yarıçapı yüksekliğin %38'i (eskiden %20), geniş ekranda genişliğin en çok %21,5'i (halkalar kadrajda); kamera halka yarıçapının ≈ 2,7 katı uzakta; 36. test yeni sınırla (> 2,4) geçiyor, salınım ve Güneş kuralı aynen. Manzara tüm açık pencereleri kenara alır. Gölgede halkanın seyrek kısımları gökyüzünü örtmez (globe.js `ringShade`). 2B'de açılış kadrajında uydu yörüngeleri soluk (3B'de zaten yok).
+6. Etiket: `#missionTag` (`missionTag`, `tagDur`, `tagPlace`), pencereler altından başlar, boş alan engeli, telefonda kontrollerin altında; üst orta yalnızca manzara seçici ve "Satürn'e dön".
+7. "Kendin uç": fly.js `flyStartAt` / `flyBodies` / `flyPick`; başlangıç ekranı `#startFly`, sihirbazın dördüncü kartı `#wzFly`, motor penceresi `#engFly` + `#engFlyBody`; son cisim hatırlanır. Ek: serbest uçuşta logodan açılan başlangıç ekranında yapılan seçim önce uçuştan çıkar (önceden uçuş paneli manzarada kalıyordu).
+8. Sürüm notları: js/changelog.js, `#notes` penceresi, `#notesToast`, `#notesBtn` (sol çubuğun altında "v0.9"), Model penceresi ve başlangıç ekranı bağlantıları; görsel `img/changelog/0.9.jpg` (tools/changelog/shot.js). CLAUDE.md'ye kural eklendi.
+Testler: core.test.js 40; ui.test.js 48, 50 güncellendi, 66–69 yeni; duman testi "Kendin uç" önce cismi seçer. Ekran görüntüleri tarayıcıda (masaüstü ve 375 px).
+
+### Faz 20B — Kamera ve öğretici (plan, onay bekliyor)
+Geri bildirim: serbest uçuş ve motor kontrolleri karışık; "araca yaklaş" ile genel görünüm iki ayrı dünya; düğüm koymak için araçtan uzaklaşmak gerekiyor ve yakın görünümden tekerlekle uzaklaşma doğal değil.
+
+**1. Tek kamera, üç durak.** Kamera tek bir sürekli durumdur: hedef (araç / cisim / serbest nokta), uzaklık d (logaritmik), yön (yaw, yükseklik) ve çerçeve. Üç adlı durak bu sürekliliğin bölgeleridir, ayrı kipler değil:
+- **Araç** (d < 40 L, L = aracın boyu): hedef araç, çerçeve aracın yerel çerçevesi (bugünkü `camLocal`), yol `road3`, ızgara ve diğer çizgiler sönük.
+- **Yörünge** (40 L … 3 r_ap; r_ap baskın cisim etrafındaki yörüngenin uzak ucu): hedef araçtan baskın cismin merkezine doğru kayar, çerçeve yerelden eylemsize karışır (`camRebase` ile, ekran sıçramaz), yörünge ve düğümler tam.
+- **Harita** (d > 3 r_ap ya da etki küresinin dışı): hedef baskın cisim → onun ebeveyni → Güneş; görevde 'sim' kümesinden 'map' kümesine geçiş kısa bir çapraz soluklaşmayla (serbest uçuş zaten 'map' kümesinde).
+Geçiş bölgelerinde hedef ve çerçeve log d'nin smoothstep'iyle karışır (iki durak arasında d'nin bir dekadı); tekerlek yalnızca d'yi değiştirir, gerisi d'den türetilir — böylece tekerlekle araçtan haritaya ve geri kesintisiz gidilir. "Araca yaklaş" bu sürekliliğin bir ucu: "Araç" durağına yumuşak uçuş (`flyTo`); APPR'nin ayrı kip mantığı (katlanan pencereler, `apprLeave`) durağa bağlanır: Araç'ta pencereler katlanır, Yörünge'ye çıkınca açılır.
+Durum makinesi DOM'suz (prefs.js `camStops(d, L, rAp, soi)` → durak, karışım ağırlıkları; `camBlend` hedef/çerçeve karışımı) ve test edilir.
+
+**2. Giriş.**
+- Fare: sol sürükleme hedefin etrafında döndürür (her durakta); tekerlek d (imlecin yönüne doğru değil, hedefe; Harita'da imlece); sağ/orta sürükleme yalnızca Harita'da kaydırır (hedef serbest nokta olur), Araç/Yörünge'de döndürür; çift tıklama: cisim/araç hedef olur (en yakın durağa uçar); yörüngeye ya da yola tıklama her durakta düğüm koyar (Araç'ta da: yakın görünümde yol ve düğüm işaretleri isabet listesinde, tutamaçlar aracın boyuna ölçekli).
+- Dokunma: tek parmak döndür, iki parmak kıstır = d, iki parmak kaydır yalnızca Harita'da; çift dokunma = çift tıklama.
+- Klavye: V Araç ↔ Yörünge, M Harita ↔ önceki durak, + / − yakınlaştır, oklar döndür, Home durağın varsayılan açısı, Esc serbest hedeften araca.
+- Gösterge: sol altta (motor panelinin üstünde; telefonda kontrol çubuğunda) küçük üç parçalı seçici "Araç · Yörünge · Harita", o anki durak vurgulu, geçişte ilerleme çizgisi; tıklama o durağa uçar; ipucunda kısayol.
+
+**3. Etkileşimli öğretici** (`FLY_TIPS`, `TOUR` ve `apprTip`'in yerine). Adım motoru: her adım { vurgulanan öğe (seçici ya da 3B noktası: araç, yörünge, düğüm tutamacı), metin, bekleme koşulu (olay: `camStop`, `nodeAdded`, `throttle`, `burnEnd`, yörünge koşulu), atlanabilir }. Vurgu: öğenin çevresinde halka + karartma, yanında balon ("Geri", "Atla", "Görevden çık"); koşul gerçekleşince kendiliğinden sonraki adım. İlerleme `PREF_KEYS.tut`; "Nasıl uçulur?" yerine "Görevler" listesi (bitenler işaretli).
+- G1 "İlk bakış" (1 dk): sürükleyip döndür → tekerlekle Yörünge'ye çık → M ile Harita → V ile araca dön.
+- G2 "İlk yanman: apogee'yi 1000 km'ye çıkar": yörüngeye tıkla (düğüm) → prograd tutamacını sürükle (balon apogee'yi canlı söyler) → "Düğüme hızlandır" → otomatik ateşleme → sonuç apogee 1000 ± 50 km ise başarı (değilse "düzelt" adımı).
+- G3 "Gazı elle kullan": yön kilidi prograd, W ile gaz, S ile kes; apogee'yi 2000 km'ye çıkar.
+- G4 "Ay'a git": hedef Ay → Transfer penceresi → Düğümleri koy → hızlandır → ateşle → yol düzeltmesi → Ay'ın etki küresine giriş başarı.
+- G5 (isteğe bağlı) "Ay yörüngesine gir": perilune'da retro düğüm, kapalı yörünge başarı.
+
+**4. Sade varsayılan ekran.** Serbest uçuş paneli varsayılan: zaman satırı, büyük gaz kaydırıcısı (Tam / Kes), durum (irtifa, hız, apogee/perigee), "Düğüm ekle" ve hedef seçici; "Gelişmiş ▸" altında yön kilitleri, otomatik ateşleme, hızlı dönüş, motor seçici ve ayrıntıları, kesit (açık/kapalı hatırlanır, `PREF_KEYS.flyAdv`). Motor paneli varsayılan mini şerit. Uzman düzeni hepsini açık gösterir.
+
+**5. Taslaklar.**
+Masaüstü (1440 × 900):
+```
+┌─────┬───────────────────────────────────────────────────────────────┐
+│logo │ [Serbest uçuş · Dünya yörüngesi (400 km)]      [2B|3B][Takip][⚙]│
+│ ☰   │ [Süzülme · düğüm: 12 dk]                                       │
+│ ↗   │                                                               │
+│ ⚙   │                  ( araç / yörünge / harita )        ┌─────────┐│
+│     │                                                     │ Zaman ▸ ││
+│     │   ╭ G2 · 2/5 ─────────────────╮                     │ Gaz ███ ││
+│     │   │ Yörüngeye tıkla: düğüm koy │ ← vurgu halkası     │ Durum   ││
+│     │   ╰ Geri  Atla ───────────────╯                     │ Düğüm + ││
+│     │                                                     │Gelişmiş▸││
+│ v0.9│ [Araç · Yörünge · Harita]  [motor mini]             └─────────┘│
+└─────┴───────────────────────────────────────────────────────────────┘
+```
+Telefon (390 × 844): üstte kontrol çubuğu ve altında etiket; ortada görünüm; görünümün altında "Araç · Yörünge · Harita" seçici; altta katlı panel (zaman + gaz tek satır, yukarı çekince durum ve düğüm); öğretici balonu panelin üstünde, vurgu halkası görünümde; alt sekme çubuğu.
+
+**6. Testler.** prefs.js `camStops` / `camBlend` (sınırlar, süreklilik: d'de küçük adım → hedef ve yönde küçük değişim, durak sırası monoton, geri dönüşte aynı); öğretici adım motoru (koşul → sonraki adım, atla / geri, ilerleme kaydı, bozuk kayıt); ui.test.js eski ipuçlarının kalktığı, kısayollar, gösterge; duman testi: tekerlekle Araç → Yörünge → Harita → Araç (her karede hedef sıçraması < eşik, durak sırası), V / M, yakın görünümde yola tıklayınca düğüm, G2 baştan sona betikle (masaüstü ve telefon), sade panelde "Gelişmiş" açılır ve hatırlanır; duman testi 3B ve 2B.
+
+**7. Commit sırası.** (1) `camStops` / `camBlend` + testler; (2) serbest uçuşta sürekli tekerlek (Araç ↔ Yörünge: hedef ve çerçeve karışımı); (3) Yörünge ↔ Harita ve görevde aynı kamera ('sim' ↔ 'map' geçişi); (4) giriş ve kısayollar, yakın görünümde isabet ve düğüm; (5) gösterge, APPR'nin duraklara bağlanması; (6) öğretici motoru ve vurgu; (7) G1–G4 (G5 isteğe bağlı), eski ipuçlarının kaldırılması; (8) sade panel; (9) changelog v0.10, CLAUDE.md, duman testi, push.
+
+**Kararını beklediğim noktalar:** (a) Görevde Harita durağı şimdilik 'sim' → 'map' çapraz soluklaşmayla mı (önerim; hızlı ve güvenli) yoksa iki kümenin birleştirilmesiyle mi (daha pürüzsüz, çok daha büyük iş)? (b) Öğretici yalnızca serbest uçuşta mı (önerim), yoksa görev/tasarım kısa turu da bu motora mı taşınsın? (c) G5 bu fazda mı?
+
 ## Notlar
 - Hibrit OTV hazır aracı: itki, Isp, kütle ve tek ateşleme süresini birlikte veren yayımlanmış birincil bir kaynak bulununca eklenecek. Yayımlanmamış şirket verileri kullanılmayacak.
 
