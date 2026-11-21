@@ -818,7 +818,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 {
   const css = read('css/style.css'), app = read('js/app.js');
   assert.ok(css.includes('.stage{grid-column:1;grid-row:1;height:calc(100vh - 54px - env(safe-area-inset-bottom,0px));height:calc(100dvh - 54px - env(safe-area-inset-bottom,0px))') && !css.includes('.stage{height:84vh'), 'phones: the view down to the rail');
-  assert.ok(app.includes("function tlRoom() { const tl = $('#timeline').getBoundingClientRect(); $('#wins').style.setProperty('--tl-h', (tl.height ?") && app.includes("new ResizeObserver(() => clampWins()).observe($('#ctrls'))"), 'windows: no timeline room while it is hidden; they follow the controls');
+  assert.ok(app.includes("function tlRoom() { const tl = $('#timeline').getBoundingClientRect(); $('#wins').style.setProperty('--tl-h', (tl.height ?") && app.includes("const o = new ResizeObserver(() => clampWins()); o.observe($('#ctrls')); o.observe($('#missionTag'));"), 'windows: no timeline room while it is hidden; they follow the controls (and the label at the top left)');
 }
 
 // 25) View controls, simple by default: the bar holds 2D / 3D, "follow" and the view menu; the menu the frames (plain
@@ -1851,6 +1851,17 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     assert.ok(m3.includes('function road3(set, g, u0, anchor, k)') && m3.includes("V3.dyn(set, 'road', cap, { color: '#ffffff', vertexColors: true, additive: true, width: 1.2 });") && m3.includes('ss((dc / Dc - 0.45) / 0.5)'), 'road: additive, faded near the camera');
     assert.ok(m3.includes("V3.fadeSet('sim', nk, OWN3, nk);") && m3.includes("road3('sim', g, g ? conicU(g, q.r) : 0,") && fl.includes("V3.fadeSet('map', nk, FLY_OWN, nk);") && fl.includes("road3('map', g, g ? conicU(g, r) : 0, an, 1 - nk);"), 'road: the own lines give way to it in missions and in free flight');
     assert.ok(v3.includes("f = id === 'road' ? 1 : own ? F.kOwn : F.k;"), 'road: not faded by the near fade');
+  }
+  // 67) The label at the top left (2026-11-21, Phase 20A-6): what is on screen and its phase, by the rail; the top middle
+  // keeps only the scene's switch and the way back (hidden without them); the windows' default spots at the top left start
+  // below the label; an obstacle for the free area; on a phone under the view controls
+  {
+    const app = read('js/app.js'), css = read('css/style.css');
+    assert.ok(html.includes('id="missionTag"') && html.includes('id="mtTitle"') && html.includes('id="mtPhase"') && ['tag.scene', 'tag.sceneFree', 'tag.map', 'tag.transfer', 'tag.man', 'tag.fly', 'tag.flyOpen', 'tag.burnDep', 'tag.burnCap', 'tag.burnN', 'tag.coast', 'tag.coastTo', 'tag.flyBurn', 'tag.flyNode'].every(has), 'tag: markup and texts');
+    assert.ok(app.includes('modeChip(); missionTag(now);') && app.includes("$('#modeChip').classList.toggle('none', !back && !sc);") && css.includes('.mode-chip.none{display:none}') || css.includes('.mode-chip.none'), 'tag: the top middle only for what comes and goes');
+    assert.ok(app.includes("case 'mission': return [m, top];") && app.includes("$('#modeChip'), $('#missionTag'), $('#liveBar')]") && app.includes('function tagPlace()'), 'tag: windows below it, an obstacle, placed on a phone');
+    const sb = { _: k => k }; require('vm').runInNewContext(app.slice(app.indexOf('function tagDur('), app.indexOf('function missionTag(')) + ';this.d = tagDur;', sb);
+    assert.ok(sb.d(2 * 86400 + 4 * 3600 + 120).startsWith('2 unit.d') && sb.d(4812).startsWith('1 unit.h') && sb.d(12) === '12 unit.s', 'tag: the time to come in its two largest units');
   }
   console.log('OK — all UI tests passed');
 })().catch(e => { console.error(e); process.exit(1); });

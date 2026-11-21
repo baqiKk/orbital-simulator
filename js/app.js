@@ -1205,7 +1205,7 @@ function measureFree() {
   const sr = stage.getBoundingClientRect(), gap = 12;
   const rel = el => { const r = el.getBoundingClientRect(); return { x0: r.left - sr.left, x1: r.right - sr.left, y0: r.top - sr.top, y1: r.bottom - sr.top }; };
   const shown = el => !el.hidden && el.getClientRects().length > 0;
-  const hud = [...$('#ctrls').children, $('#readout'), $('#engPanel'), $('#flyNode'), $('#timeline'), $('#caption'), $('#modeChip'), $('#liveBar')].filter(shown).map(rel);
+  const hud = [...$('#ctrls').children, $('#readout'), $('#engPanel'), $('#flyNode'), $('#timeline'), $('#caption'), $('#modeChip'), $('#missionTag'), $('#liveBar')].filter(shown).map(rel);
   const wins = floating() ? [...document.querySelectorAll('.win:not([hidden])')].filter(shown).map(rel) : [];
   const rects = freeRects(W, H, [...hud, ...wins], gap);
   // too little room left between the windows: let them overlap the plot instead (HUD still counts)
@@ -1786,7 +1786,7 @@ function guideShow(t, now) {
 function guidePlace() {
   const g = $('#guide'); if (g.hidden) return;
   const st = $('#stage').getBoundingClientRect(), b = el => el && el.getClientRects().length ? el.getBoundingClientRect().bottom - st.top : 0;
-  g.style.top = Math.round(Math.max(b($('#modeChip')), VW.phone.matches ? b($('#ctrls')) : 0) + 6) + 'px';
+  g.style.top = Math.round(Math.max(b($('#modeChip')), VW.phone.matches ? Math.max(b($('#ctrls')), b($('#missionTag'))) : 0) + 6) + 'px';
 }
 addEventListener('resize', guidePlace);
 const OSC_PTS = new Float64Array(3 * 200), OSC_R = [0, 0, 0], OSC_V = [0, 0, 0];
@@ -2769,9 +2769,67 @@ function modeChip() {
   const sc = SCENE.on && !SCENE.free; // the scene's own switch (Saturn / Earth–Moon)
   const key = t + '|' + back + '|' + sc; if (key === modeChip.k) return; modeChip.k = key; $('#wcScene').hidden = !sc;
   $('#modeText').textContent = t; const bb = $('#modeBack'); bb.hidden = !back; if (back) bb.textContent = _(back);
-  INS = null;
+  $('#modeChip').classList.toggle('none', !back && !sc); // the title lives in the label at the top left (missionTag)
+  INS = null; MT.at = 0;
 }
 $('#modeBack').addEventListener('click', () => { if (SCENE.on) { sceneSet(SCENE.kind); needFit = true; } });
+// The label at the top left (2026-11-21, Phase 20A-6): what is on screen — "Dünya → Ay · Serbest dönüş", "Dünya ·
+// 600 → 1300 km", "Serbest uçuş · Dünya yörüngesi (400 km)", "Manzara · Satürn" — and under it the phase ("Kalkış
+// yanması", "Süzülme · Ay perilune: 2 g 4 sa", "Ateşleme · gaz %60"). The top middle keeps only what comes and goes
+// (modeChip). Written four times a second, only when it changes; an obstacle for the free area.
+const MT = { at: 0, k: '' };
+const tagOrbit = (rp, ra) => (ra - rp < 0.02 * (rp + ra) ? _('tag.orbit', { h: nf0.format((rp + ra) / 2e3) }) : _('tag.orbitE', { p: nf0.format(rp / 1e3), a: nf0.format(ra / 1e3) }));
+// a time to come, the two largest units: "2 g 4 sa", "1 sa 20 dk", "4 dk 12 s", "12 s"
+function tagDur(sec) {
+  const s = Math.max(0, Math.round(sec)), d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), r = s % 60, u = k => _('unit.' + k);
+  return d ? `${d} ${u('d')} ${h} ${u('h')}` : h ? `${h} ${u('h')} ${m} ${u('min')}` : m ? `${m} ${u('min')} ${r} ${u('s')}` : `${r} ${u('s')}`;
+}
+function missionTag(now) {
+  if (now - MT.at < 250) return; MT.at = now;
+  let t = '', ph = '', burn = false;
+  const sceneName = () => _(SCENE.kind === 'earth' ? 'wc.earth' : SCENE.kind === 'tour' ? 'wc.tour' : 'wc.saturn');
+  if (SCENE.on) t = _(SCENE.free ? 'tag.sceneFree' : 'tag.scene', { name: sceneName() });
+  else if (FREE.on && FREE.st) {
+    const s = FREE.st, P = mapSys.P, V = mapSys.V; states(mapSys, s.t, P, V); const b = domBody(mapSys, P, s.r[0], s.r[1], s.r[2]);
+    const r = [0, 1, 2].map(j => s.r[j] - P[3 * b + j]), v = [0, 1, 2].map(j => s.v[j] - V[3 * b + j]), el = rv2el(mapSys.mu[b], r, v), R = mapSys.R[b], body = _('body.' + MAPK[b]);
+    t = el.e < 1 && el.a > 0 && el.ra < (Number.isFinite(mapSys.soi[b]) ? mapSys.soi[b] : Infinity) ? (el.rp < R ? _('tag.flyFall', { body }) : _('tag.fly', { body, o: tagOrbit(el.rp - R, el.ra - R) })) : _('tag.flyOpen', { body });
+    const e = FREE.eng, nd = FREE.nodes.find(q => q.t > s.t);
+    if (FREE.paused) ph = _('tag.paused');
+    else if (FREE.fire > 0) { burn = true; ph = FREE.burn ? _('tag.flyAuto') : _('tag.flyBurn', { p: Math.round((e ? e.thr : 1) * 100) }); }
+    else if (FREE.att && FREE.att.want && !FREE.att.ok) ph = _('tag.flyTurn', { a: Math.round((FREE.att.err || 0) * 180 / Math.PI) });
+    else ph = nd ? _('tag.flyNode', { d: tagDur(nd.t - s.t) }) : _('tag.coast');
+  }
+  else if (MAP.on) t = _('tag.map');
+  else if (S.bodies[0]) {
+    const A = S.bodies[0].name, B = S.bodies[1] ? S.bodies[1].name : '';
+    if (S.kind === 'man' && MAN && MAN.o0) {
+      const Re = MAN.Re || (S.bodies[0].radius || 0), o0 = tagOrbit(MAN.o0.rp - Re, MAN.o0.ra - Re);
+      t = MAN.free ? _('tag.manFree', { a: A, o0 }) : MAN.burn ? _('tag.manBurn', { a: A, o0 }) : _('tag.man', { a: A, o0, o1: MAN.o1 ? tagOrbit(MAN.o1.rp - Re, MAN.o1.ra - Re) : '' });
+    } else t = _('tag.transfer', { a: A, b: B, mode: _('wz.arr.' + (S.M.mode === 'capture' ? 'capture' : S.M.mode === 'flyby' ? 'flyby' : 'free')) });
+    // the phase: a burn under way, else the next event and the time to it
+    if (C && simR) {
+      const tn = tNowG, ext = S.u >= 1 && C.orbit, en = ext ? null : engNow(tn), nb = en && en.m ? en.m.burns.length : 0;
+      if (en && en.on && en.j >= 0) { burn = true; ph = S.kind === 'man' ? _('tag.burnN', { n: en.j + 1, N: nb }) : _(en.j === 0 ? 'tag.burnDep' : 'tag.burnCap'); }
+      else if (ext) ph = _('tag.inOrbit', { body: S.bodies[C.orbit.body] ? S.bodies[C.orbit.body].name : A });
+      else {
+        const nx = (C.markers || []).filter(m => m.t > tn + 1e-6 && (m.type === 'burn' || m.type === 'peri' || m.type === 'aero' || m.type === 'impact')).sort((a, b) => a.t - b.t)[0];
+        const nb2 = en && en.m ? en.m.burns.map(q => engWin(q)[0]).find(a => a > tn + 1e-6) : undefined;
+        const what = nb2 != null && (!nx || nb2 <= nx.t + 1) ? [_('tag.nextBurn'), nb2]
+          : nx ? [nx.type === 'impact' ? _('tag.surf', { body: S.bodies[nx.body] ? S.bodies[nx.body].name : '' }) : nx.type === 'burn' ? _('tag.nextBurn') : _('tag.peri', { body: S.bodies[nx.body || 0] ? S.bodies[nx.body || 0].name : '', peri: peri(nx.body || 0) }), nx.t] : null;
+        ph = what ? _('tag.coastTo', { what: what[0], d: tagDur(what[1] - tn) }) : S.u >= 1 ? _('tag.done') : _('tag.coast');
+      }
+    }
+  }
+  const k = t + '|' + ph + '|' + burn; if (k === MT.k) return; MT.k = k;
+  const el = $('#missionTag'); el.hidden = !t; $('#mtTitle').textContent = t; const p = $('#mtPhase'); p.hidden = !ph; p.textContent = ph; el.classList.toggle('burn', burn);
+  INS = null; tagPlace();
+}
+// a phone: under the view controls (the bar holds the top); a larger screen: the top left (CSS)
+function tagPlace() {
+  const g = $('#missionTag'), st = $('#stage').getBoundingClientRect(), c = $('#ctrls');
+  g.style.top = VW.phone.matches && c.getClientRects().length ? Math.round(c.getBoundingClientRect().bottom - st.top + 6) + 'px' : '';
+}
+addEventListener('resize', tagPlace);
 // The live bar (Phase 16a), under the mode title. In the scene: "● CANLI · date time UTC" or the date, the rate, "Şimdiye
 // dön"; a line that makes real time felt (the way the Earth went since the page opened; with the Earth and the Moon, the
 // Moon's distance and the next full or new moon); once, a note that real motion cannot be seen. In a mission's map: the
@@ -2809,7 +2867,7 @@ function liveTick() {
 function livePlace() {
   const g = $('#liveBar'); if (g.hidden) return;
   const st = $('#stage').getBoundingClientRect(), b = el => el && el.getClientRects().length ? el.getBoundingClientRect().bottom - st.top : 0;
-  g.style.top = Math.round(Math.max(b($('#modeChip')), VW.phone.matches ? b($('#ctrls')) : 0) + 6) + 'px';
+  g.style.top = Math.round(Math.max(b($('#modeChip')), VW.phone.matches ? Math.max(b($('#ctrls')), b($('#missionTag'))) : 0) + 6) + 'px';
 }
 addEventListener('resize', livePlace);
 function liveSet(o) {
@@ -3430,7 +3488,7 @@ function drawBody(now, once) {
     }
   }
   const glow = Q.glow && !lowQ;
-  HITS = []; CAPTION.length = 0; modeChip();
+  HITS = []; CAPTION.length = 0; modeChip(); missionTag(now);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   const v3 = is3d(); // 3D: the WebGL canvas below draws the scene, this one only the overlay
   if (SCENE.wait) { ctx.fillStyle = COL.void; ctx.fillRect(0, 0, W, H); if (!once) requestAnimationFrame(draw); return; } // first-run question open
@@ -3825,9 +3883,10 @@ function defaultWinPos(id, el) {
   const box = $('#wins'), cw = box.clientWidth, ch = box.clientHeight, m = 12, w = el.offsetWidth;
   const cssW = k => parseFloat(getComputedStyle(winEl(k)).width) || 0;
   const below = $('#ctrls').getBoundingClientRect().bottom - box.getBoundingClientRect().top + 10;
+  const tg = $('#missionTag'), top = tg.getClientRects().length ? Math.max(m, tg.getBoundingClientRect().bottom - box.getBoundingClientRect().top + 8) : m; // under the label (Phase 20A-6)
   switch (id) {
-    case 'mission': return [m, m];
-    case 'bodies': case 'transfer': return [m + cssW('mission') + 10, m];
+    case 'mission': return [m, top];
+    case 'bodies': case 'transfer': return [m + cssW('mission') + 10, top];
     case 'results': return [cw - w - m, below];
     case 'overview': return [cw - w - m - (WINS.results.open && floating() ? winEl('results').offsetWidth + 10 : 0), below];
     case 'gloss': return [cw - w - m - cssW('results') - 10, below];
@@ -3852,7 +3911,7 @@ function placeWin(id) {
 }
 function clampWins() { for (const id of WIN_IDS) placeWin(id); INS = null; }
 // the view controls change height (the map's scale, 3D's buttons): windows in their default spots move with them
-if (typeof ResizeObserver === 'function') new ResizeObserver(() => clampWins()).observe($('#ctrls'));
+if (typeof ResizeObserver === 'function') { const o = new ResizeObserver(() => clampWins()); o.observe($('#ctrls')); o.observe($('#missionTag')); } // (and the label at the top left: the windows below it)
 function applyWin(id) {
   const st = WINS[id], el = winEl(id), cb = el.querySelector('[data-act=collapse]');
   el.hidden = !st.open;
