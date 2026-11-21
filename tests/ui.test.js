@@ -1328,7 +1328,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   // the cutaway fixed to the body (2026-11-15): the cut faces the local vertical (before: the frame's Z), never the camera; the
   // craft call's fields all live (none behind a comment)
   const cc = m3.slice(m3.indexOf('V3.craft({ show: true'), m3.indexOf('// the trail after capture')); // the call, in craftDraw (Phase 19d: shared with free flight)
-  assert.ok(m3.includes("craftDraw('sim', CR3, ax, acrossUp(ax, craftUp3(tNow, craft, ext)), L, sun, en, ext ? 0 : en.pl, CAM3.sim.dist);") && cc.includes('show: true, set, p, axis: ax, side, L, sun,') && cc.includes('cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,') && !cc.split('\n')[0].includes('//') && v3.includes('const sd = o.side || [0, 0, 1];') && !v3.includes('add(camera.position).normalize();'), 'cutaway: fixed to the body');
+  assert.ok(m3.includes("craftDraw('sim', CR3, ax, cutSide(ax, craftUp3(tNow, craft, ext)), L, sun, en, ext ? 0 : en.pl, CAM3.sim.dist);") && cc.includes('show: true, set, p, axis: ax, side, L, sun,') && cc.includes('cut: CRAFT.cut, type: en.E.type, grain: en.E.grain, prop: en.E.prop, fo, st: en.st,') && !cc.split('\n')[0].includes('//') && v3.includes('const sd = o.side || [0, 0, 1];') && !v3.includes('add(camera.position).normalize();'), 'cutaway: fixed to the body');
   // approaching the craft
   assert.ok(html.includes('id="apprBtn"') && html.includes('id="cutBtn"') && html.includes('id="engAppr"') && html.includes('id="engCut"') && html.includes('id="apprTip"') && ['appr.btn', 'appr.tip', 'appr.hint', 'appr.hintTouch', 'cut.btn', 'cut.tip', 'eng.play'].every(has), 'approach: the buttons, the hint, the words');
   assert.ok(app.includes("if (dbl && (FREE.on || (!MAP.on && C)) && ((tgt && tgt.kind === 'c') || onPath)) { sceneTouch(); apprSet(true); return; }") && app.includes('if (dbl && !tgt && APPR.on) { apprSet(false); return; }') && app.includes("if (e.key === 'a' || e.key === 'A') apprSet(!APPR.on);") && app.includes("e.key === 'Escape' && APPR.on"), 'approach: double tap on the craft or its path, empty space back, A, Esc');
@@ -1492,7 +1492,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   // the aim itself (sandboxed): the craft across the view, the camera above and behind, the local vertical up on screen
   const sb = { Math, APPR_K: 0.45, APPR_EL: 85 * Math.PI / 180, FOV3: 45, W: 1440, H: 900, CRAFT: { L: 3, cut: false }, APPR: { aim: null }, FLY: {}, reduceMotion: false, flyTo() {}, insets: () => ({ l: 0, r: 0, t: 100, b: 250 }) };
   require('vm').runInNewContext('const clamp = (x, a, b) => Math.min(b, Math.max(a, x));' + app.slice(app.indexOf('const unit3 = '), app.indexOf('\n', app.indexOf('const unit3 = '))) + m3.slice(m3.indexOf('const CB = {'), m3.indexOf('// screen position of view-frame point p')) +
-    app.slice(app.indexOf('function apprBox()'), app.indexOf('// while close: the craft stays')) + ';this.aim = apprAim; this.cb = camBasis;', sb);
+    app.slice(app.indexOf('function apprBox()'), app.indexOf('// while close: the craft stays')) + ';this.aim = apprAim; this.cb = camBasis; this.cutSide = cutSide;', sb);
   const ax = [1, 0, 0], vert = [0, 0.6, 0.8], c = { t: [0, 0, 0], yaw: 0, elev: 0, dist: 1, roll: 0, fov: 45 };
   sb.aim(c, ax, vert, [0, -1, 0]);
   const B = sb.cb(c), dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2], vu = vert.map((v, k) => v - dot(vert, B.d) * B.d[k]);
@@ -1501,8 +1501,21 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(dot(B.u, vu) / Math.hypot(...vu) > 0.99, 'approach: the local vertical up on screen');
   assert.ok(Math.abs(lpx / 1440 - 0.45) < 0.02 && c.cx === 720 && c.cy === 100 + 550 / 2, `approach: the craft ${(lpx / 1440 * 100).toFixed(0)} % of the free area, in its middle`);
   sb.CRAFT.cut = true; sb.aim(c, ax, vert, [0, -1, 0]);
-  assert.ok(dot(sb.cb(c).d, vert) > 0.85, 'approach: with the cutaway, onto its face (up)');
-  assert.ok(m3.includes('acrossUp(ax, craftUp3(tNow, craft, ext))') && app.includes("if (APPR.on && is3d() && !APPR.aim) APPR.aim = flyFrom();"), 'approach: the cut faces the local vertical; toggling it turns the camera');
+  const sdC = sb.cutSide(ax, vert); assert.ok(dot(sb.cb(c).d, sdC) > 0.75 && Math.abs(dot(sdC, vert)) < 1e-9, 'approach: with the cutaway, onto its face (sideways, 2026-11-21)');
+  assert.ok(m3.includes('cutSide(ax, craftUp3(tNow, craft, ext))') && app.includes("if (APPR.on && is3d() && !APPR.aim) { if (FREE.on) FREE.aim = flyFrom(); else APPR.aim = flyFrom(); }"), 'approach: the cut faces sideways; toggling it turns the camera');
+  // 2026-11-21 (Phase 20A-2): the cut plane holds the body axis, its face square to the nose and to the local vertical
+  // (before: it looked up, the cut seen from above); the approach looks onto it
+  {
+    const sbC = {}; require('vm').runInNewContext(app.slice(app.indexOf('const unit3 = '), app.indexOf(String.fromCharCode(10), app.indexOf('const unit3 = '))) + app.slice(app.indexOf('function acrossUp('), app.indexOf('// 3D, the first frame after')) + ';this.cs = cutSide;', sbC);
+    const dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+    for (const [ax, up] of [[[1, 0, 0], [0, 0, 1]], [[0.6, 0.8, 0], [0.3, -0.2, 0.93]], [[0, 0, 1], [0, 0, 1]]]) {
+      const s = sbC.cs(ax, up);
+      assert.ok(Math.abs(Math.hypot(...s) - 1) < 1e-9 && Math.abs(dot(s, ax)) < 1e-9 && Math.abs(dot(s, up) - dot(ax, up) * 0) < 1 && Math.abs(dot(s, sbC.cs(ax, up))) > 0.999, 'cutaway: a unit side square to the axis');
+    }
+    const s1 = sbC.cs([1, 0, 0], [0, 0, 1]);
+    assert.ok(Math.abs(dot(s1, [0, 0, 1])) < 1e-12 && Math.abs(Math.abs(s1[1]) - 1) < 1e-12, 'cutaway: the face looks sideways (not up)');
+    assert.ok(app.includes('let w = cutSide(ax, vert);') && app.includes('if (!CRAFT.cut && dot(w, sun) < 0)') && !app.includes('CRAFT.cut ? up.map('), 'cutaway: the approach looks onto its face');
+  }
   assert.ok(m3.includes('function close3(p, o, R)') && m3.includes('behind3(BP3, 3 * b, b) || close3(BP3, 3 * b, sys.R[b])') && m3.includes('close3(pos, 3 * i, mapSys.R[i])') && app.includes('if (!h || h.r > 60) return;'), 'approach: no label, hit or ring on a body seen from close');
   assert.ok(m3.includes("const td = !ext && lpx < 14 ? thrustNow(tNow, craft) : null;") && m3.includes('vl > 1e-6 && lpx < 14'), 'approach: no arrows over the model');
   const ctxL = {}; require('vm').runInNewContext(gl.slice(gl.indexOf('function nightFade('), gl.indexOf('function globeLook(')) + ';this.f = nightLow;', ctxL);
@@ -1576,7 +1589,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     ['pro', 'retro', 'radOut', 'radIn', 'nor', 'anti'].every(k => has('fn.lock.' + k) && has('fn.lockS.' + k)), 'engine: the controls and their words');
   assert.ok(["e.key === 'w' || e.key === 'W'", "e.key === 's' || e.key === 'S'", "e.key === 'z' || e.key === 'Z'", "e.key === 'x' || e.key === 'X'"].every(k => fl.includes(k)), 'engine: the throttle keys');
   assert.ok(app.includes('if (FREE.on) flyEngPanel(); else engPanelTick(') && !css.includes('html[data-fly] #engPanel') && fl.includes("engSchematic(engEl('epSch'), s, st, e.E,"), 'engine: the engine panel in free flight');
-  assert.ok(m3.includes("if (FREE.on) flyCraft3(c); else V3.craft({ show: false });") && v3.includes("root = roots[o.set || 'sim'];") && v3.includes('craftG.group.parent !== roots[set]') && fl.includes("craftDraw('map', p, ax, acrossUp(ax, up), L, sun,"), 'engine: the 3D model in the map\'s set');
+  assert.ok(m3.includes("if (FREE.on) flyCraft3(c); else V3.craft({ show: false });") && v3.includes("root = roots[o.set || 'sim'];") && v3.includes('craftG.group.parent !== roots[set]') && fl.includes("craftDraw('map', p, ax, cutSide(ax, up), L, sun,"), 'engine: the 3D model in the map\'s set');
   assert.ok(app.includes('if (FREE.on) { flyAppr(on); return; }') && m3.includes('if (FREE.on && FREE.appr) flyApprCam(c);') && m3.includes('return FREE.appr ? CRAFT.L * 0.9 :') && fl.includes('apprAim(c, ax, unit3(r) || [0, 0, 1], sun)'), 'engine: "Araca yaklaş" and the double click in free flight');
   assert.ok(fl.includes("flyTips(readPref(LS, PREF_KEYS.flyTips) ? -1 : 0);") && fl.includes("flyEl('flyHow').addEventListener('click', () => flyTips(0));") && fl.includes("else if (FREE.on) writePref(LS, PREF_KEYS.flyTips, '1');") && css.includes('.fly-help{position:absolute'), 'engine: the hints once, skippable, "Nasıl uçulur?" always');
   assert.ok(app.includes("cv.addEventListener('mousedown', e => { if (e.detail > 1) e.preventDefault(); });"), 'a double click selects no text');

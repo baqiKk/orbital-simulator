@@ -1387,15 +1387,22 @@ function acrossUp(ax, v) {
   }
   return [0, 0, 1];
 }
+// The cutaway's side (2026-11-21, Phase 20A-2): the cut plane holds the body axis, and its open face looks sideways —
+// square to the nose and to the local vertical (ax × up: along the orbit's normal for a craft flying prograde) — not
+// up as before (the cut seen from above); the side stays with the body as it turns, and the approach looks at it
+function cutSide(ax, v) {
+  const up = acrossUp(ax, v);
+  return unit3([ax[1] * up[2] - ax[2] * up[1], ax[2] * up[0] - ax[0] * up[2], ax[0] * up[1] - ax[1] * up[0]]) || [1, 0, 0];
+}
 // 3D, the first frame after "Araca yaklaş" (frame set; the nose ax, the local vertical vert and the Sun's direction sun
 // in frame axes): the camera's direction, roll (the local vertical up on screen, so a low orbit shows the horizon below
 // the craft), distance and principal point, then the smooth move from where it was (APPR.aim)
 function apprAim(c, ax, vert, sun) {
   const dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2], up = acrossUp(ax, vert);
-  let w = [ax[1] * up[2] - ax[2] * up[1], ax[2] * up[0] - ax[0] * up[2], ax[0] * up[1] - ax[1] * up[0]];
-  if (dot(w, sun) < 0) w = w.map(v => -v); // the lit side
-  // across the axis, a little from above (with the cutaway: onto its face, which looks up) and a little from behind
-  const d = unit3(CRAFT.cut ? up.map((u, k) => 0.9 * u + 0.3 * w[k] - 0.3 * ax[k]) : w.map((v, k) => 0.85 * v + 0.42 * up[k] - 0.3 * ax[k]));
+  let w = cutSide(ax, vert);
+  if (!CRAFT.cut && dot(w, sun) < 0) w = w.map(v => -v); // the lit side (with the cutaway: its open face, cutSide)
+  // across the axis, a little from above and a little from behind (the cut's face, which looks sideways, towards us)
+  const d = unit3(w.map((v, k) => 0.85 * v + 0.42 * up[k] - 0.3 * ax[k]));
   // in the camera's local frame (mode3d.js camLocal: its up is the local vertical, so no roll is needed), else the view frame's
   const dl = c.lb ? c.lb.map(e => dot(e, d)) : d;
   c.elev = clamp(Math.asin(clamp(dl[2], -1, 1)), -APPR_EL, APPR_EL); c.yaw = Math.atan2(dl[0], -dl[1]); c.roll = 0; c.fov = FOV3; c.yawT = null;
@@ -1439,7 +1446,7 @@ function apprSync() { for (const id of ['#apprBtn', '#engAppr', '#epAppr']) $(id
 function cutToggle() {
   CRAFT.cut = !CRAFT.cut; apprSync();
   if (CRAFT.cut && !is3d()) { if (!$('#engPanel').hidden) epFold(false, true); else setWin('engine', { open: true, collapsed: false }); }
-  if (APPR.on && is3d() && !APPR.aim) APPR.aim = flyFrom(); // close: turn to the cut face (or back to the side view)
+  if (APPR.on && is3d() && !APPR.aim) { if (FREE.on) FREE.aim = flyFrom(); else APPR.aim = flyFrom(); } // close: turn to the cut face (or back to the side view; free flight aims through FREE.aim)
 }
 for (const id of ['#apprBtn', '#engAppr', '#epAppr']) $(id).addEventListener('click', () => apprSet(!APPR.on));
 for (const id of ['#cutBtn', '#engCut', '#epCut']) $(id).addEventListener('click', cutToggle);

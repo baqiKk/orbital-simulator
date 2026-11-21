@@ -700,7 +700,7 @@ function flyCraft3(c) {
   if (FREE.appr) apprWatch(lpx); // zoomed out by hand: back to the map's view (app.js)
   if (!(lpx > 6)) { V3.craft({ show: false }); return; }
   const st = engStOf(e.s, e.tau, FREE.fire > 0);
-  craftDraw('map', p, ax, acrossUp(ax, up), L, sun, { E: e.E, s: e.s, st, plume: (PROPS[e.E.prop] || {}).plume || 'amber' }, FREE.pl, c.dist, flyRcs(1 / 60));
+  craftDraw('map', p, ax, cutSide(ax, up), L, sun, { E: e.E, s: e.s, st, plume: (PROPS[e.E.prop] || {}).plume || 'amber' }, FREE.pl, c.dist, flyRcs(1 / 60));
 }
 // 3D, close to the craft (mode3d.js drawMap3, before the camera is set): the camera in the craft's local frame about the
 // dominant body (mode3d.js camLocal), on the craft, aimed the first frame (app.js apprAim), then kept in the free area

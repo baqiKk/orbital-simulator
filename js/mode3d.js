@@ -564,7 +564,7 @@ function craft3(tNow, craft, ext, sunIdx) {
   if (sunIdx >= 0) { const v = [BP3[3 * sunIdx] - CR3[0], BP3[3 * sunIdx + 1] - CR3[1], BP3[3 * sunIdx + 2] - CR3[2]], l = Math.hypot(...v) || 1; sun = v.map(q => q / l); }
   // the cut faces up, the local vertical across the nose (2026-11-15; fixed to the orbit, not to the camera; before: the
   // frame's Z), so from the default close view it looks at the camera and the body below shows behind it
-  craftDraw('sim', CR3, ax, acrossUp(ax, craftUp3(tNow, craft, ext)), L, sun, en, ext ? 0 : en.pl, CAM3.sim.dist);
+  craftDraw('sim', CR3, ax, cutSide(ax, craftUp3(tNow, craft, ext)), L, sun, en, ext ? 0 : en.pl, CAM3.sim.dist);
   return lpx;
 }
 // the model's call (a mission's view and free flight's map, set): at p, nose ax, cut side, length L, the Sun's direction
