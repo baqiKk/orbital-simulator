@@ -347,7 +347,9 @@ function watch(page, errs) {
     await page.goto(base + 'index.html', { waitUntil: 'load' }).catch(e => errs.push('goto: ' + e.message));
     await page.waitForTimeout(1500);
     await step('"Kendin uç" on the start screen', async () => {
-      await page.click('#startCards [data-go="fly"]'); await page.waitForTimeout(1500);
+      // (2026-11-21) the body first: the Earth's card (its default orbit) starts the flight
+      await page.click('#startCards [data-go="fly"]'); await page.waitForSelector('#startFlyPick .fly-b[data-k="earth"]');
+      await page.click('#startFlyPick .fly-b[data-k="earth"]'); await page.waitForFunction(() => FREE.on && FREE.tb >= 0, null, { timeout: 8000 });
       const q = await page.evaluate(() => ({ on: FREE.on, body: MAPK[FREE.tb], fold: document.querySelector('#flyNode').classList.contains('fold') }));
       if (!q.on || q.body !== 'earth' || !q.fold) throw new Error(JSON.stringify(q));
     });

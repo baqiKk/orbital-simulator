@@ -291,7 +291,14 @@ function wzCheckShow() {
 }
 
 // ----- events -----
-wzEl('wzPick').addEventListener('click', e => { const c = e.target.closest('.wiz-card'); if (c) wzPick(c.dataset.path); });
+wzEl('wzPick').addEventListener('click', e => { const c = e.target.closest('.wiz-card'); if (!c) return; if (c.dataset.path === 'fly') wzFly(true); else wzPick(c.dataset.path); });
+// "Kendin uç" (Phase 20A-7): one step, the body (js/fly.js flyPick); the flight starts at once
+function wzFly(on) {
+  wzEl('wzFly').hidden = !on; wzEl('wzPick').hidden = on;
+  if (on) flyPick(wzEl('wzFlyPick'), (k, o) => { wzFly(false); if (SCENE.on) sceneEnd(false); flyStartAt(k, o); });
+  else wzEl('wzPick').querySelector('.wiz-card[data-path="fly"]').focus();
+}
+wzEl('wzFlyBack').addEventListener('click', () => wzFly(false));
 wzEl('wzBack').addEventListener('click', () => { WZ.path = ''; wzShow(); wzEl('wzPick').querySelector('.wiz-card').focus(); });
 wzEl('wzEx').addEventListener('click', e => {
   const b = e.target.closest('[data-ex]'); if (!b) return;

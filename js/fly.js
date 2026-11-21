@@ -84,12 +84,58 @@ function flyEnterState(q) {
 function flyEnter() { if (REC.busy) return; $('#recPanel').hidden = true; const q = flyFromMission(); if (q) flyEnterState(q); }
 // "Kendin uç" (the start screen; Phase 19f): a fresh flight in a 400 km Earth orbit inclined 51.6° to the equator (the
 // station's), now, on the Centaur upper stage (RL10, full)
-function flyStartLEO() {
-  if (REC.busy) return;
-  const mu = BODIES.earth.gm * 1e9, r = BODIES.earth.radius * 1e3 + 400e3, v = Math.sqrt(mu / r), i = 51.6 * Math.PI / 180, e = OBLIQUITY;
-  const eq = [[r, 0, 0], [0, v * Math.cos(i), v * Math.sin(i)]], ecl = p => [p[0], Math.cos(e) * p[1] + Math.sin(e) * p[2], -Math.sin(e) * p[1] + Math.cos(e) * p[2]]; // equator → ecliptic
-  const E = engPreset('rl10'), sp = engSpecOf(E);
-  flyEnterState({ t: utcToDays(Date.now()) * DAY, key: 'earth', r: ecl(eq[0]), v: ecl(eq[1]), m: sp.m0, eng: { E, tau: 0, auto: true, lock: 'pro' } });
+function flyStartLEO() { return flyStartAt('earth'); }
+// "Kendin uç" anywhere (2026-11-21, Phase 20A-7): a low circular orbit about body key, now, with engine E (a full Centaur /
+// RL10 by default). The altitude by body (FLY_ALT, km; else 12 % of the radius, at least 20 km), the inclination to its
+// equator (FLY_INC; 0 elsewhere), the equator from its IAU pole (globe.js bodyAxes; a locked moon: its orbit's plane),
+// the orbit starting at the equator's ascending node on the ecliptic. Only bodies whose orbit lies well inside their
+// sphere of influence are offered (flyBodies). o: { alt (km), inc (°), E }
+const FLY_ALT = { earth: 400, moon: 100, mars: 300, venus: 300, mercury: 200, jupiter: 8000, saturn: 6000, uranus: 4000, neptune: 4000, titan: 1500, io: 150, europa: 100, ganymede: 100, callisto: 100 };
+const FLY_INC = { earth: 51.6 }, FLY_FIRST = ['earth', 'moon', 'mars'];
+const flyAltOf = key => { const i = MAPK.indexOf(key); return FLY_ALT[key] || Math.max(20, Math.round(0.12 * mapSys.R[i] / 1e3)); };
+function flyBodies() {
+  const ok = MAPK.filter((k, i) => i !== MSUN && BODIES[k] && (mapSys.R[i] + flyAltOf(k) * 1e3) < (Number.isFinite(mapSys.soi[i]) ? mapSys.soi[i] / 3 : Infinity));
+  return [...FLY_FIRST.filter(k => ok.includes(k)), ...ok.filter(k => !FLY_FIRST.includes(k))];
+}
+function flyStartAt(key, o = {}) {
+  if (REC.busy) return false;
+  const i = MAPK.indexOf(key); if (i < 0 || i === MSUN) return false;
+  const t = utcToDays(Date.now()) * DAY, P = mapSys.P, V = mapSys.V; states(mapSys, t, P, V);
+  const R = mapSys.R[i], alt = Number.isFinite(o.alt) && o.alt > 0 ? o.alt : flyAltOf(key), r = R + alt * 1e3;
+  if (Number.isFinite(mapSys.soi[i]) && r > mapSys.soi[i] / 2) return false;
+  const inc = (Number.isFinite(o.inc) ? Math.max(0, Math.min(180, o.inc)) : FLY_INC[key] || 0) * Math.PI / 180, v = Math.sqrt(mapSys.mu[i] / r);
+  const F = bodyAxes(key, t, P, V, i, MPAR[i], new Array(9));
+  let z = F && Number.isFinite(F[2]) ? unit3([F[2], F[5], F[8]]) : null; if (!z) z = [0, 0, 1];
+  const x = unit3([-z[1], z[0], 0]) || [1, 0, 0], y = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]]; // the ascending node, then 90° on in the equator
+  const E = o.E ? { ...o.E } : engPreset('rl10'), sp = engSpecOf(E); if (!sp || sp.error) return false;
+  writePref(FLY_LS, PREF_KEYS.flyBody, key);
+  return flyEnterState({ t, key, r: x.map(c => c * r), v: [0, 1, 2].map(k => v * (Math.cos(inc) * y[k] + Math.sin(inc) * z[k])), m: sp.m0, eng: { E, tau: 0, auto: true, lock: 'pro' } });
+}
+const flyLastBody = () => { const k = readPref(FLY_LS, PREF_KEYS.flyBody); return k && flyBodies().includes(k) ? k : 'earth'; };
+// The body picker (the start screen's "Kendin uç", the wizard's): the first bodies as buttons (their default altitude),
+// the rest in a list, optional altitude and inclination; a pick starts the flight at once (go(key, o) after the caller's
+// own closing). The last body used is marked.
+function flyPick(el, go) {
+  if (!el.dataset.made) {
+    const ks = flyBodies(), first = ks.filter(k => FLY_FIRST.includes(k)), rest = ks.filter(k => !FLY_FIRST.includes(k));
+    el.innerHTML = '<div class="fly-pick-b">' + first.map(k => '<button type="button" class="start-card fly-b" data-k="' + k + '" data-last="' + esc(_('start.last')) + '"><b>' + esc(_('body.' + k)) + '</b><span>' + esc(_('fly.at', { h: nf0.format(flyAltOf(k)) })) + '</span></button>').join('') + '</div>'
+      + '<label class="field fly-other"><span>' + esc(_('fly.other')) + '</span><select><option value="">' + esc(_('fly.otherPick')) + '</option>' + rest.map(k => '<option value="' + k + '">' + esc(_('body.' + k)) + ' · ' + esc(_('fly.at', { h: nf0.format(flyAltOf(k)) })) + '</option>').join('') + '</select></label>'
+      + '<details class="fly-opt"><summary>' + esc(_('fly.opt')) + '</summary><div class="grid2"><label class="field"><span>' + esc(_('fly.alt')) + '</span><input type="text" inputmode="decimal" class="fly-alt" placeholder="' + esc(_('fly.def')) + '"></label><label class="field"><span>' + esc(_('fly.inc')) + '</span><input type="text" inputmode="decimal" class="fly-inc" placeholder="' + esc(_('fly.def')) + '"></label></div><p class="fly-err" role="alert" hidden></p></details>';
+    const num = s => { const v = parseFloat(String(s).replace(',', '.')); return Number.isFinite(v) ? v : undefined; };
+    const pick = k => {
+      const o = { alt: num(el.querySelector('.fly-alt').value), inc: num(el.querySelector('.fly-inc').value) }, err = el.querySelector('.fly-err');
+      const i = MAPK.indexOf(k), rr = mapSys.R[i] + (o.alt || flyAltOf(k)) * 1e3;
+      if ((o.alt != null && !(o.alt > 0)) || (Number.isFinite(mapSys.soi[i]) && rr > mapSys.soi[i] / 2)) { err.hidden = false; err.textContent = _('fly.badAlt', { body: _('body.' + k) }); el.querySelector('.fly-opt').open = true; return; }
+      err.hidden = true; go(k, o);
+    };
+    el.addEventListener('click', e => { const b = e.target.closest('.fly-b'); if (b) pick(b.dataset.k); });
+    el.querySelector('.fly-other select').addEventListener('change', e => { if (e.target.value) pick(e.target.value); });
+    el.dataset.made = '1';
+  }
+  const last = flyLastBody();
+  for (const b of el.querySelectorAll('.fly-b')) b.classList.toggle('last', b.dataset.k === last);
+  el.querySelector('.fly-other select').value = '';
+  (el.querySelector('.fly-b.last') || el.querySelector('.fly-b')).focus();
 }
 function flyExit() {
   flyAppr(false); flyTips(-1);

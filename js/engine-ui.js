@@ -139,7 +139,7 @@ function engCompute() {
   const pr = PROPS[E.prop] || {}, ws = s.error ? [] : engChecks(s, { cea: pr.cea && CEA[pr.cea] ? engCea(CEA[pr.cea]) : null }), wl = engEl('engWarn');
   const fmtW = (k, p) => _(k, { of: nf2.format(p.of || 0), a: nf2.format(p.a || 0), b: nf2.format(p.b || 0), isp: nf1.format(p.isp || 0), max: nf1.format(p.max || 0), k: nf1.format(p.k || 0), ld: nf1.format(p.ld || 0), tw: NF(3).format(p.tw || 0), t: fmtBurn(p.t || 0) });
   wl.innerHTML = ws.map(q => `<li>${esc(fmtW(q.key, q.p))}</li>`).join(''); wl.hidden = !ws.length;
-  engEl('engApply').disabled = !!s.error;
+  engEl('engApply').disabled = !!s.error; engEl('engFly').disabled = !!s.error;
   engEl('engNote').textContent = ENGW.linked ? _('eng.linked') : S.M && S.M.eng ? _('eng.unlinked') : '';
   if (s.error) { out.innerHTML = ''; engChart(null); engEl('engBurns').innerHTML = ''; engSchematic(engEl('engSch'), engSpecOf(ENG_DEF), engState(engSpecOf(ENG_DEF), 0), ENG_DEF, 0); return; }
   const bi = s.type === 'liq' || s.type === 'hyb', g = v => NF(2).format(v / G0);
@@ -608,7 +608,19 @@ for (const f of ENG_NUM) engEl('eng-' + f).addEventListener('input', e => {
 engEl('engPlay').addEventListener('click', () => { ENGW.play = ENGW.play ? 0 : performance.now(); engEl('engPlay').setAttribute('aria-pressed', String(!!ENGW.play)); engTick(true); });
 // in free flight the button changes the flying craft's engine (js/fly.js flySetEngine), never starts a mission
 engEl('engApply').addEventListener('click', () => { if (!ENGW.s || ENGW.s.error) return; if (FREE.on) flySetEngine({ ...ENGW.E }); else engApply({ ...ENGW.E }); });
-function engApplyLabel() { const b = engEl('engApply'), k = FREE.on ? 'eng.applyFly' : 'eng.apply'; b.dataset.i18n = k; b.textContent = _(k); }
+function engApplyLabel() { const b = engEl('engApply'), k = FREE.on ? 'eng.applyFly' : 'eng.apply'; b.dataset.i18n = k; b.textContent = _(k); engFlyList(); }
+// "Kendin uç" with the engine on the bench (Phase 20A-7): free flight about the chosen body (js/fly.js flyStartAt); in
+// free flight the button above applies the engine to the flying craft instead, and this one hides (CSS)
+function engFlyList() {
+  const s = engEl('engFlyBody'); // (runs only once app.js and fly.js are in: the window's opening, free flight's entry and exit)
+  if (!s.options.length) s.innerHTML = flyBodies().map(k => '<option value="' + k + '">' + esc(_('body.' + k)) + '</option>').join('');
+  s.value = flyLastBody();
+}
+engEl('engFly').addEventListener('click', () => {
+  if (!ENGW.s || ENGW.s.error || FREE.on) return;
+  if (SCENE.on) sceneEnd(false);
+  if (flyStartAt(engEl('engFlyBody').value || 'earth', { E: { ...ENGW.E } }) !== false) setWin('engine', { open: true, collapsed: true });
+});
 engEl('engSave').addEventListener('click', () => {
   const name = (engEl('eng-name').value.trim() || _('eng.auto', { n: SAVED_ENG.length + 1 })).slice(0, 40), q = { ...ENGW.E, name };
   delete q.id;

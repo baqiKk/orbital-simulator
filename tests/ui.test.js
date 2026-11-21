@@ -1625,7 +1625,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
 {
   const fl = read('js/fly.js'), app = read('js/app.js'), wz = read('js/wizard.js'), css = read('css/style.css'), ids = ['em_free'];
   assert.ok(P.parseStart('fly', ids) === 'fly' && html.includes('data-go="fly"') && has('start.fly') && has('start.flyD'), 'finished: the start card');
-  assert.ok(app.includes("else if (go === 'fly') { APP.mode = 'scene'; flyStartLEO(); }") && app.includes("else if (st === 'fly') { APP.mode = 'scene'; bootFly = true; }") && app.includes('else if (bootFly) flyStartLEO();') && fl.includes("const E = engPreset('rl10'), sp = engSpecOf(E);") && fl.includes('i = 51.6 * Math.PI / 180'), 'finished: the start card flies, a reload too');
+  assert.ok(app.includes("if (go === 'fly') { $('#startCards').hidden = true; $('#startFly').hidden = false; flyPick(") && app.includes("else if (st === 'fly') { APP.mode = 'scene'; bootFly = true; }") && app.includes('else if (bootFly) flyStartAt(flyLastBody());') && fl.includes("const E = o.E ? { ...o.E } : engPreset('rl10'), sp = engSpecOf(E);") && fl.includes('const FLY_INC = { earth: 51.6 }'), 'finished: the start card flies (the body first, 2026-11-21), a reload too');
   assert.ok((wz.match(/data-wr="fly"/g) || []).length === 3 && wz.includes("else if (w === 'fly') flyEnter();") && has('wz.r.fly') && has('wz.r.flyTip'), 'finished: from the wizard\'s result cards');
   assert.ok(html.includes('id="fnTop"') && html.includes('id="fnMain"') && fl.includes("flyFold(matchMedia('(max-width: 560px)').matches);") && css.includes('.fly-node.fold .fn-main{display:none}') && css.includes('.fly-node:not(.fold) .fn-main{max-height:38vh}') && css.includes('.fn-main{display:flex;flex-direction:column;gap:0;min-height:0;overflow:auto') && css.includes('.fn-time .fly-warp{display:contents}') && ['fn.fold', 'fn.sum', 'fn.sumNone', 'fn.sumTgt'].every(has), 'finished: the panel folds, phones');
   assert.ok(app.includes("S.model === 'real' && !REC.busy; if ($('#flyGo').hidden === fg)") && fl.includes("function flyEnter() { if (REC.busy) return;"), 'finished: no free flight while recording');
@@ -1862,6 +1862,18 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     assert.ok(app.includes("case 'mission': return [m, top];") && app.includes("$('#modeChip'), $('#missionTag'), $('#liveBar')]") && app.includes('function tagPlace()'), 'tag: windows below it, an obstacle, placed on a phone');
     const sb = { _: k => k }; require('vm').runInNewContext(app.slice(app.indexOf('function tagDur('), app.indexOf('function missionTag(')) + ';this.d = tagDur;', sb);
     assert.ok(sb.d(2 * 86400 + 4 * 3600 + 120).startsWith('2 unit.d') && sb.d(4812).startsWith('1 unit.h') && sb.d(12) === '12 unit.s', 'tag: the time to come in its two largest units');
+  }
+  // 68) "Kendin uç" anywhere (2026-11-21, Phase 20A-7): the start card and the wizard's first step pick a body in one step
+  // (js/fly.js flyPick: the Earth, the Moon, Mars as cards, the rest in a list, optional altitude and inclination) and fly
+  // at once from a low circular orbit (flyStartAt: the altitude by body, the equator from the IAU pole, only bodies whose
+  // orbit lies well inside their sphere); the engine window flies its engine ("Kendin uç" and a body list, hidden in
+  // free flight where its apply button serves the flying craft); the last body is remembered
+  {
+    const fl = read('js/fly.js'), wz = read('js/wizard.js'), eu = read('js/engine-ui.js'), app = read('js/app.js'), css = read('css/style.css');
+    assert.ok(html.includes('id="startFly"') && html.includes('id="startFlyPick"') && html.includes('data-path="fly"') && html.includes('id="wzFlyPick"') && html.includes('id="engFly"') && html.includes('id="engFlyBody"') && ['fly.pickD', 'fly.at', 'fly.other', 'fly.opt', 'fly.alt', 'fly.inc', 'fly.badAlt', 'wz.fly', 'wz.flyD', 'eng.fly', 'eng.flyTip', 'eng.flyBody'].every(has), 'kendin uç: markup and texts');
+    assert.ok(fl.includes('function flyStartAt(key, o = {})') && fl.includes("const FLY_FIRST = ['earth', 'moon', 'mars']") || fl.includes("FLY_FIRST = ['earth', 'moon', 'mars']"), 'kendin uç: the start');
+    assert.ok(fl.includes('mapSys.soi[i] / 3') && fl.includes('const F = bodyAxes(key, t, P, V, i, MPAR[i], new Array(9));') && fl.includes('writePref(FLY_LS, PREF_KEYS.flyBody, key);') && P.PREF_KEYS.flyBody, 'kendin uç: bodies whose orbit fits, the equator from the pole, the body remembered');
+    assert.ok(wz.includes("if (c.dataset.path === 'fly') wzFly(true); else wzPick(c.dataset.path);") && eu.includes("flyStartAt(engEl('engFlyBody').value || 'earth', { E: { ...ENGW.E } })") && css.includes('html[data-fly] .eng-fly{display:none}'), 'kendin uç: the wizard and the engine window');
   }
   console.log('OK — all UI tests passed');
 })().catch(e => { console.error(e); process.exit(1); });

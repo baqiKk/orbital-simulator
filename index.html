@@ -234,6 +234,12 @@
             <button type="button" class="wiz-card" data-path="orbit"><b data-i18n="wz.orbit"></b><span data-i18n="wz.orbitD"></span></button>
             <button type="button" class="wiz-card" data-path="go"><b data-i18n="wz.go"></b><span data-i18n="wz.goD"></span></button>
             <button type="button" class="wiz-card" data-path="free"><b data-i18n="wz.free"></b><span data-i18n="wz.freeD"></span></button>
+            <button type="button" class="wiz-card" data-path="fly"><b data-i18n="wz.fly"></b><span data-i18n="wz.flyD"></span></button>
+          </div>
+          <div class="wiz-fly" id="wzFly" hidden>
+            <button type="button" class="link wiz-back" id="wzFlyBack" data-i18n="wz.back"></button>
+            <p class="wz-d" data-i18n="fly.pickD"></p>
+            <div class="fly-pick" id="wzFlyPick"></div>
           </div>
           <div class="wiz-form" id="wzForm" hidden>
             <button type="button" class="link wiz-back" id="wzBack" data-i18n="wz.back"></button>
@@ -495,7 +501,7 @@
         <div class="eng-chart"><canvas id="engCv" aria-hidden="true"></canvas><canvas id="engCvP" aria-hidden="true"></canvas></div>
         <small class="mv-hint" id="engChartNote" aria-live="polite"></small>
         <table class="eng-burns" id="engBurns"></table>
-        <div class="eng-act"><button type="button" class="btn primary sm" id="engApply" data-i18n="eng.apply"></button><input type="text" id="eng-name" data-i18n-placeholder="eng.namePh" data-i18n-aria-label="eng.namePh" autocomplete="off"><button type="button" class="btn sm" id="engSave" data-i18n="eng.save"></button><button type="button" class="ghost" id="engDel" data-i18n="eng.del" hidden></button></div>
+        <div class="eng-act"><button type="button" class="btn primary sm" id="engApply" data-i18n="eng.apply"></button><span class="eng-fly" id="engFlyW"><button type="button" class="btn sm" id="engFly" data-i18n="eng.fly" data-i18n-title="eng.flyTip"></button><select id="engFlyBody" data-i18n-aria-label="eng.flyBody"></select></span><input type="text" id="eng-name" data-i18n-placeholder="eng.namePh" data-i18n-aria-label="eng.namePh" autocomplete="off"><button type="button" class="btn sm" id="engSave" data-i18n="eng.save"></button><button type="button" class="ghost" id="engDel" data-i18n="eng.del" hidden></button></div>
         <small class="mv-hint" id="engNote" role="status"></small>
       </div>
     </section>
@@ -549,6 +555,11 @@
       <button type="button" class="start-card" data-go="design" data-i18n-data-last="start.last"><b data-i18n="start.design"></b><span data-i18n="start.designD"></span></button>
       <button type="button" class="start-card" data-go="fly" data-i18n-data-last="start.last"><b data-i18n="start.fly"></b><span data-i18n="start.flyD"></span></button>
       <a class="start-card" href="kabin.html" id="wcCabin" data-go="cabin"><b data-i18n="start.cabin"></b><span data-i18n="start.cabinD"></span></a>
+    </div>
+    <div class="start-fly" id="startFly" hidden>
+      <p class="start-flyq" data-i18n="fly.pickD"></p>
+      <div class="fly-pick" id="startFlyPick"></div>
+      <button type="button" class="link start-back" id="startFlyBack" data-i18n="start.back"></button>
     </div>
     <div class="start-cards" id="startMis" hidden>
       <button type="button" class="start-card" data-sc="em_free" data-i18n-data-last="start.last"><b data-i18n="start.moon"></b><span data-i18n="start.moonD"></span></button>

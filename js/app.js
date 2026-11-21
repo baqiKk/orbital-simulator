@@ -2996,12 +2996,14 @@ $('#startCards').addEventListener('click', e => {
   const c = e.target.closest('.start-card'); if (!c) return;
   const go = c.dataset.go;
   if (go === 'mission') { $('#startCards').hidden = true; $('#startMis').hidden = false; ($('#startMis .start-card.last') || $('#startMis .start-card')).focus(); return; }
+  if (go === 'fly') { $('#startCards').hidden = true; $('#startFly').hidden = false; flyPick($('#startFlyPick'), (k, o) => { writePref(LS, PREF_KEYS.start, 'fly'); startClose(); APP.mode = 'scene'; flyStartAt(k, o); }); return; } // the body first (Phase 20A-7)
   if (go === 'cabin') { writePref(LS, PREF_KEYS.start, 'scene'); return; } // the link (toCabin) goes on
   writePref(LS, PREF_KEYS.start, go); startClose();
-  if (go === 'design') startDesign(); else if (go === 'fly') { APP.mode = 'scene'; flyStartLEO(); } else startScene();
+  if (go === 'design') startDesign(); else startScene();
 });
 $('#startMis').addEventListener('click', e => { const c = e.target.closest('[data-sc]'); if (c) startMission(c.dataset.sc); });
 $('#startBack').addEventListener('click', () => { $('#startMis').hidden = true; $('#startCards').hidden = false; $('#startCards .start-card').focus(); });
+$('#startFlyBack').addEventListener('click', () => { $('#startFly').hidden = true; $('#startCards').hidden = false; $('#startCards .start-card[data-go="fly"]').focus(); });
 $('#start').addEventListener('pointerdown', e => { if (e.target === $('#start')) { startClose(); startScene(); } });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#start').hidden) { e.stopPropagation(); startClose(); startScene(); } }, true);
 $('#startBtn').addEventListener('click', () => startOpen(parseStart(readPref(LS, PREF_KEYS.start), SCENARIOS.map(s => s.id))));
@@ -4192,6 +4194,6 @@ else {
 }
 if (location.hash === '#kaynakca') setWin('credits', { open: true, collapsed: false }); // the cabin's sound panel links here
 if (flyRestore()) startClose(); // a free flight in this session comes back (js/fly.js)
-else if (bootFly) flyStartLEO();
+else if (bootFly) flyStartAt(flyLastBody());
 $('#flyGo').addEventListener('click', () => flyEnter());
 requestAnimationFrame(t => { last = t; draw(t); });
