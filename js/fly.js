@@ -169,14 +169,38 @@ function flyPath() {
 // the first index of a segment's points at or after time t
 function flyIdx(g, t) { if (g.ts[g.n - 1] < t) return g.n; let lo = 0, hi = g.n - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (g.ts[m] < t) lo = m + 1; else hi = m; } return lo; }
 const flyAfter = g => FREE.nodes.length > 0 && g.t0 >= FREE.nodes[0].t - 1e-3; // after the first node: the planned orbit
-// 2D: the path's segments (each about its body, drawn where that body is now) and the trail
+// A segment of the path from time t on as a curve for app.js adaptStroke2 / adaptLine3 (2026-11-21, Phase 20A-3): a
+// patched-conic segment by its conic's anomaly (core.js conicGeom / conicArc: exact, any zoom, through the craft), an
+// N-body refined one through its samples' velocities (core.js hermAt); null when nothing is left. map(q, out): a point
+// relative to the segment's body into the view's coordinates. { n, pos }
+function flySegCurve(g, t, map) {
+  const ta = Math.max(t, g.t0); if (!(g.t1 > ta)) return null;
+  const q = [0, 0, 0];
+  if (g.r0 && g.v0) { // a conic
+    const cg = g.cg || (g.cg = conicGeom(mapSys.mu[g.b], g.r0, g.v0)); if (!cg) return null;
+    const [u0, u1] = conicArc(cg, g.r0, g.v0, g.t0, ta, g.t1), n = conicPieces(cg, u0, u1);
+    return { n, pos: (x, out) => map(conicPos(cg, u0 + (u1 - u0) * x / n, q), out) };
+  }
+  const k0 = Math.max(0, flyIdx(g, ta) - 1); if (g.n - k0 < 2) return null;
+  const f0 = Math.max(0, Math.min(1, (ta - g.ts[k0]) / ((g.ts[k0 + 1] - g.ts[k0]) || 1))), N = g.n - 1 - k0, span = N - f0;
+  return { n: N, pos: (x, out) => {
+    const s = k0 + f0 + span * x / N, i = Math.min(g.n - 2, Math.floor(s)), f = s - i;
+    if (g.vs) hermAt(g.pts, g.vs, g.ts, i, f, q); else for (let j = 0; j < 3; j++) q[j] = g.pts[3 * i + j] + (g.pts[3 * i + 3 + j] - g.pts[3 * i + j]) * f;
+    return map(q, out);
+  } };
+}
+// 2D: the path's segments (each about its body, drawn where that body is now; adaptive, Phase 20A-3) and the trail
 function flyLines2(b) {
   states(mapSys, FREE.st.t, MP, MV);
   const o = [0, 0, 0], line = (pts, k0, n, bb) => { ctx.beginPath(); for (let k = k0; k < n; k++) { flyMapAt(bb, pts[3 * k], pts[3 * k + 1], pts[3 * k + 2], o); mapXY(o[0], o[1], o); const x = sx(o[0]), y = sy(o[1]); k > k0 ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); };
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   const pa = flyPath(), t = FREE.st.t;
   ctx.setLineDash(pa.prov ? [6, 5] : []); ctx.lineWidth = 1.4;
-  for (const g of pa.segs) { const k0 = Math.max(0, flyIdx(g, t) - 1); if (g.n - k0 < 2) continue; ctx.strokeStyle = hexA(flyAfter(g) ? COL.cyan : COL.traj, pa.prov ? 0.45 : 0.8); line(g.pts, k0, g.n, g.b); }
+  for (const g of pa.segs) {
+    const cv = flySegCurve(g, t, (q, out) => { flyMapAt(g.b, q[0], q[1], q[2], out); mapXY(out[0], out[1], out); out[2] = 0; return out; });
+    if (!cv) continue;
+    ctx.strokeStyle = hexA(flyAfter(g) ? COL.cyan : COL.traj, pa.prov ? 0.45 : 0.8); adaptStroke2(cv.n, cv.pos, false);
+  }
   ctx.setLineDash([]);
   const n = Math.min(FREE.tn, TRAIL_N); if (n > 1) {
     const T = new Float64Array(3 * n); for (let i = 0; i < n; i++) { const k = (FREE.tn - n + i) % TRAIL_N; T.set(FREE.trail.subarray(3 * k, 3 * k + 3), 3 * i); }
@@ -194,17 +218,31 @@ function flyLines3(b) {
     for (let k = k0; ; k += step) { if (k > n - 1) k = n - 1; flyMapAt(bb, pts[3 * k], pts[3 * k + 1], pts[3 * k + 2], o); mapXYZ(o[0], o[1], o[2], o); B[3 * m] = o[0]; B[3 * m + 1] = o[1]; B[3 * m + 2] = o[2]; m++; if (k === n - 1) break; }
     return m;
   };
-  const pa = flyPath(), t = FREE.st.t, segs = pa.segs.filter(g => flyIdx(g, t) < g.n);
+  // the segments: adaptive on screen (app.js adaptLine3, Phase 20A-3); the provisional path dashed by screen length
+  const pa = flyPath(), t = FREE.st.t, segs = pa.segs.filter(g => g.t1 > t);
   for (let k = 0; k < FLY_LINES; k++) {
-    const g = segs[k]; if (!g) { V3.dynHide('map', 'flyP' + k); continue; }
-    const m = put(g.pts, Math.max(0, flyIdx(g, t) - 1), g.n, g.b), c = linRGB(flyAfter(g) ? COL.cyan : COL.traj);
+    const g = segs[k], cv = g && flySegCurve(g, t, (q, out) => { flyMapAt(g.b, q[0], q[1], q[2], out); return mapXYZ(out[0], out[1], out[2], out); });
+    if (!cv) { V3.dynHide('map', 'flyP' + k); continue; }
+    const ao = curveAdapt(cv.n, cv.pos, SCR3, adaptOpt(), ADP.o3), m = ao.m;
+    if (m < 2) { V3.dynHide('map', 'flyP' + k); continue; }
+    const c = linRGB(flyAfter(g) ? COL.cyan : COL.traj);
+    if (FLY3.col.length < 3 * m) FLY3.col = new Float32Array(6 * m);
     for (let i = 0; i < m; i++) FLY3.col.set(c, 3 * i);
-    V3.dynOpacity('map', 'flyP' + k, pa.prov ? 0.45 : 0.85);
-    V3.dynSet('map', 'flyP' + k, B, m, FLY3.col, pa.prov ? 3 : 0);
+    let cap = FLY_CAP; while (cap < m) cap *= 2;
+    V3.dyn('map', 'flyP' + k, cap, { color: '#ffffff', opacity: 0.8, width: 1.5, vertexColors: true }); V3.dynOpacity('map', 'flyP' + k, pa.prov ? 0.45 : 0.85);
+    V3.dynSet('map', 'flyP' + k, ao.p, m, FLY3.col, pa.prov ? flyDash(ao) : 0, CB.e);
   }
   const n = Math.min(FREE.tn, TRAIL_N);
   if (n > 1) { const T = new Float64Array(3 * n); for (let i = 0; i < n; i++) { const k = (FREE.tn - n + i) % TRAIL_N; T.set(FREE.trail.subarray(3 * k, 3 * k + 3), 3 * i); } V3.dynSet('map', 'flyTrail', B, put(T, 0, n, b, TRAIL_N + 2), null); }
   else V3.dynHide('map', 'flyTrail');
+}
+// an adaptive line's dashes by screen length (6 px on, 5 off, as in 2D): per-segment gap flags for view3d.js dynSet
+const FLY_DASH = { f: new Uint8Array(1024) };
+function flyDash(o) {
+  if (FLY_DASH.f.length < o.m) FLY_DASH.f = new Uint8Array(2 * o.m);
+  let L = 0; const s = o.s;
+  for (let j = 0; j + 1 < o.m; j++) { const d = Math.hypot(s[2 * j + 2] - s[2 * j], s[2 * j + 3] - s[2 * j + 1]); if (!Number.isFinite(d)) { FLY_DASH.f[j] = 0; continue; } FLY_DASH.f[j] = (L + d / 2) % 11 > 6 ? 1 : 0; L += d; }
+  return FLY_DASH.f;
 }
 // the craft's marker (2D: map coordinates; 3D: projected after the map's camera is set)
 function flyMark(b, v3) {

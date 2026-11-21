@@ -437,13 +437,15 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   V3.lineSet('sim', 'pathB', null, true); V3.lineUpTo('sim', 'pathB', pathIdx); V3.lineGlow('sim', 'pathB', glow);
   if (!ext) V3.dynSet('sim', 'conn', [C.f3[3 * pathIdx], C.f3[3 * pathIdx + 1], C.f3[3 * pathIdx + 2], CR3[0], CR3[1], CR3[2]], 2, null);
   else V3.dynHide('sim', 'conn');
+  ringsBegin('sim');
   for (let b = 0; b < N; b++) {
     V3.lineSet('sim', 'trk' + b, null, S.tracks);
     const p = sys.parent[b];
-    if (C.ell3[b]) V3.lineSet('sim', 'ell' + b, [BP3[3 * p], BP3[3 * p + 1], BP3[3 * p + 2]], true);
+    if (C.ell3[b]) ring3('sim', 'ell' + b, C.ell3[b], [BP3[3 * p], BP3[3 * p + 1], BP3[3 * p + 2]], true, { color: S.bodies[b].color, opacity: 0.22, width: 1 });
   }
   if (C.orbit && C.orbit.ring) { const b = 3 * C.orbit.body; V3.lineSet('sim', 'park', [BP3[b], BP3[b + 1], BP3[b + 2]], ext, ROT9); }
-  for (let g = 0; g < C.ring3.length; g++) V3.lineSet('sim', 'ring' + g, [BP3[0], BP3[1], BP3[2]], true);
+  for (let g = 0; g < C.ring3.length; g++) ring3('sim', 'ring' + g, C.ring3[g], [BP3[0], BP3[1], BP3[2]], true, { color: C.rings[g].col, opacity: C.rings[g].a, width: 1, dash: !!C.rings[g].dash });
+  ringsEnd('sim');
   (C.burnIdx || []).forEach(([i0, i1], g) => { if (i1 > i0) { V3.lineSet('sim', 'burn' + g, null, pathIdx > i0); V3.lineUpTo('sim', 'burn' + g, Math.min(i1, pathIdx) - i0); } });
   V3.lineSet('sim', 'gamma', null, V3S.grid);
   if (ext) trail3(); else V3.dynHide('sim', 'trail');
@@ -608,15 +610,34 @@ function trail3() {
 }
 // the osculating orbit (app.js OSCF) about its body, frame coordinates
 let OSC3 = null;
+// A static closed ring (Phase 20A-3: the mission's orbit ellipses, the maneuver rings, the map's orbits; p: K points
+// evenly in an angle on an ellipse, relative to anchor or absolute): drawn as uploaded while its chords stay within
+// ADAPT_TOL px on screen (their sag a·(2π/K)²/8 at the nearest distance from the eye), else hidden for an adaptive copy
+// 'a' + id (app.js adaptLine3, core.js ringAt: exact between the samples) — so only a close view pays for it. Rings
+// not drawn in a frame lose their copy (ringsBegin / ringsEnd).
+const RING3 = { r: new WeakMap(), on: { sim: new Set(), map: new Set() }, was: { sim: new Set(), map: new Set() } };
+function ringsBegin(set) { const t = RING3.was[set]; RING3.was[set] = RING3.on[set]; RING3.on[set] = t; t.clear(); }
+function ringsEnd(set) { for (const id of RING3.was[set]) if (!RING3.on[set].has(id)) V3.dynHide(set, 'a' + id); }
+function ring3(set, id, p, anchor, show, opts) {
+  if (!show || !p) { V3.lineSet(set, id, anchor, false); return; }
+  const K = p.length / 3;
+  let rm = RING3.r.get(p);
+  if (rm == null) { rm = 0; for (let k = 0; k < K; k++) rm = Math.max(rm, Math.hypot(p[3 * k], p[3 * k + 1], p[3 * k + 2])); RING3.r.set(p, rm); }
+  const e = CB.e, ox = anchor ? anchor[0] : 0, oy = anchor ? anchor[1] : 0, oz = anchor ? anchor[2] : 0;
+  const D = Math.max(1e-4 * rm, Math.hypot(e[0] - ox, e[1] - oy, e[2] - oz) - rm), d = 2 * Math.PI / K, err = rm * d * d / 8 * CB.f / D;
+  if (err <= ADAPT_TOL || (set === 'map' && MAP.log)) { V3.lineSet(set, id, anchor, true); return; }
+  V3.lineSet(set, id, anchor, false); RING3.on[set].add(id);
+  const o = adaptLine3(set, 'a' + id, K, (x, out) => { const i = Math.min(K - 1, Math.floor(x)); ringAt(p, K, i, x - i, out); out[0] += ox; out[1] += oy; out[2] += oz; return out; }, opts);
+  if (opts.dash && o.m > 1) V3.dynSet(set, 'a' + id, o.p, o.m, null, flyDash(o), CB.e);
+}
 function osc3() {
   const o = OSCF; if (!o) { V3.dynHide('sim', 'osc'); return; }
-  const n = o.c.n, m = n + (o.c.closed ? 1 : 0), X = FP.X, Y = FP.Y, Z = FP.Z, p = o.pts, b = 3 * o.b;
-  if (!OSC3 || OSC3.length < 3 * m) OSC3 = new Float64Array(3 * 201);
-  for (let j = 0; j < m; j++) {
-    const k = 3 * (j % n), x = p[k], y = p[k + 1], z = p[k + 2];
-    OSC3[3 * j] = BP3[b] + x * X[0] + y * X[1] + z * X[2]; OSC3[3 * j + 1] = BP3[b + 1] + x * Y[0] + y * Y[1] + z * Y[2]; OSC3[3 * j + 2] = BP3[b + 2] + x * Z[0] + y * Z[1] + z * Z[2];
-  }
-  V3.dynSet('sim', 'osc', OSC3, m, null);
+  // the conic itself, split on screen (app.js adaptLine3, Phase 20A-3): smooth at any zoom, through the craft up close
+  const X = FP.X, Y = FP.Y, Z = FP.Z, b = 3 * o.b, g = o.g, [u0, u1] = o.span, n = conicPieces(g, u0, u1), q = [0, 0, 0];
+  adaptLine3('sim', 'osc', n, (x, out) => {
+    conicPos(g, u0 + (u1 - u0) * x / n, q);
+    out[0] = BP3[b] + q[0] * X[0] + q[1] * X[1] + q[2] * X[2]; out[1] = BP3[b + 1] + q[0] * Y[0] + q[1] * Y[1] + q[2] * Y[2]; out[2] = BP3[b + 2] + q[0] * Z[0] + q[1] * Z[1] + q[2] * Z[2]; return out;
+  }, { color: COL.traj, opacity: 0.42, width: 1.3 });
 }
 // ascending (▲) / descending (▼) node mark
 function nodeMark(x, y, asc, col) {
@@ -675,7 +696,8 @@ function mapOrbits3(T) {
     const p = orbitPath(mapSys, i, T, K), moon = isMoon(i);
     if (!moon) for (let k = 0; k < K; k++) p.set(mapXYZ(p[3 * k], p[3 * k + 1], p[3 * k + 2], o), 3 * k);
     const k = MAPK[i], hi = k === keyA || k === keyB;
-    V3.line('map', 'orb' + i, p, K, { color: BODIES[k].color, opacity: hi ? 0.5 : moon ? 0.18 : 0.28, width: 1, closed: true });
+    MAP3.orbO[i] = { color: BODIES[k].color, opacity: hi ? 0.5 : moon ? 0.18 : 0.28, width: 1 }; MAP3.orbP[i] = p; // for ring3's adaptive copy
+    V3.line('map', 'orb' + i, p, K, { ...MAP3.orbO[i], closed: true });
     if (!moon) planeNodes(p, K, true, MAP3.nodes, i);
   }
 }
@@ -700,7 +722,7 @@ let MPOS3 = null;
 function drawMap3(T, glow, craft, tNow, pathIdx) {
   V3.setActive('map');
   if (!MAP3) {
-    MAP3 = { orbKey: '', trajC: null, nodes: [], caps: new Float64Array(mapSys.N).fill(Infinity) };
+    MAP3 = { orbKey: '', trajC: null, nodes: [], caps: new Float64Array(mapSys.N).fill(Infinity), orbP: [], orbO: [] };
     V3.bodies('map', MAPK.map((k, i) => ({ color: i === MSUN ? '#fff3d6' : BODIES[k].color, sun: i === MSUN })));
     sky3();
     states(mapSys, MAP.today, MP, MV);
@@ -730,7 +752,7 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
   const keyA = S.bodies[0] && S.bodies[0].key, keyB = S.bodies[1] && S.bodies[1].key, moonsOn = MAP.moons && !MAP.log;
   // a moon is shown (linear scale only) once its orbit is a few pixels across
   const scr = [], rpx = new Float64Array(N), show = new Uint8Array(N), shot = SCENE.on && !SCENE.free && SCENE.kind === 'saturn';
-  OCC.length = 0;
+  OCC.length = 0; ringsBegin('map');
   for (let i = 0; i < N; i++) {
     proj3(pos, PJ, 3 * i); scr.push([PJ[0], PJ[1], PJ[2]]);
     const moon = isMoon(i), p = MPAR[i];
@@ -745,8 +767,9 @@ function drawMap3(T, glow, craft, tNow, pathIdx) {
     V3.body('map', i, [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], r, i === MSUN ? null : [-pos[3 * i] / l, -pos[3 * i + 1] / l, -pos[3 * i + 2] / l], !!show[i], o);
     if (show[i]) OCC.push([pos[3 * i], pos[3 * i + 1], pos[3 * i + 2], r, i]);
     if (show[i] && i !== MSUN && PJ[2] > 0) { const e = CB.e, vx = e[0] - pos[3 * i], vy = e[1] - pos[3 * i + 1], vz = e[2] - pos[3 * i + 2]; skyLit(PJ[0], PJ[1], rpx[i], -(pos[3 * i] * vx + pos[3 * i + 1] * vy + pos[3 * i + 2] * vz) / (l * (Math.hypot(vx, vy, vz) || 1)), MAPK[i], !!BODIES[MAPK[i]].rings); }
-    if (mapSys.orb[i]) V3.lineSet('map', 'orb' + i, moon ? [pos[3 * p], pos[3 * p + 1], pos[3 * p + 2]] : null, !!show[i] && (moon ? !shot : !SCENE.on)); // the opening shot: no lines
+    if (mapSys.orb[i]) ring3('map', 'orb' + i, MAP3.orbP[i], moon ? [pos[3 * p], pos[3 * p + 1], pos[3 * p + 2]] : null, !!show[i] && (moon ? !shot : !SCENE.on), MAP3.orbO[i]); // the opening shot: no lines
   }
+  ringsEnd('map');
   if (tr && craft) { V3.lineSet('map', 'traj', null, true); V3.lineSet('map', 'trajB', null, true); V3.lineUpTo('map', 'trajB', pathIdx); }
   grid3(c, V3S.grid && !MAP.log && !SCENE.on); // the opening scene stays clean: no grid, no node marks
   sky3();

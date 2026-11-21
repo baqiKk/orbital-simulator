@@ -1815,18 +1815,55 @@ function oscFrame(tNow, craft, ext) {
   if (!c.closed) CAPTION.push(_('osc.escape', { body: S.bodies[b].name, v: nf2.format(c.vinf / 1e3) }));
   else if (S.kind !== 'man' && sys.N > 1) CAPTION.push(_('osc.about', { body: S.bodies[b].name }));
   if (m || turn) CAPTION.push(_('osc.morph'));
-  return { b, c, pts: OSC_PTS };
+  const g = conicGeom(sys.mu[b], OSC_R, OSC_V), span = g && conicSpan(g, S.kind === 'man' ? 30 * rn : rMax); // the drawing (Phase 20A-3)
+  if (!span) return null;
+  return { b, c, pts: OSC_PTS, g, span };
 }
-// 2D: about body b's screen position (bpos: frame coordinates of the bodies)
+// Adaptive orbit lines (2026-11-21, Phase 20A-3): a line is a function of a parameter — a conic's anomaly (core.js
+// conicGeom / conicPos), an evenly-sampled ellipse interpolated exactly (ringAt), a sampled path through its
+// velocities (hermAt) — split on screen until no chord leaves the curve by more than ADAPT_TOL px (core.js curveAdapt):
+// no corners at any zoom, the close view's line through the craft itself, the work only where the line is in sight.
+// 2D strokes the screen points; 3D writes the points into a dynamic line whose float32 origin is the eye.
+const ADAPT_TOL = 0.35, ADP = { opt: { W: 0, H: 0, tol: ADAPT_TOL }, o2: {}, o3: {} };
+function adaptOpt() { ADP.opt.W = W; ADP.opt.H = H; return ADP.opt; }
+// 2D: stroke the curve over parameters [0, n] (pos writes its frame point x, y in o[0], o[1]) as one path (style set by the caller)
+const SCR2 = (p, s) => { s[0] = sx(p[0]); s[1] = sy(p[1]); return true; };
+// (scr: another projection, e.g. ID2 when pos writes screen points already)
+const ID2 = (p, s) => { s[0] = p[0]; s[1] = p[1]; return true; };
+function adaptStroke2(n, pos, closed, scr = SCR2) {
+  const o = curveAdapt(n, pos, scr, adaptOpt(), ADP.o2), s = o.s;
+  ctx.beginPath(); ctx.moveTo(s[0], s[1]); for (let i = 1; i < o.m; i++) ctx.lineTo(s[2 * i], s[2 * i + 1]);
+  if (closed) ctx.closePath();
+  ctx.stroke(); return o;
+}
+// 3D: the curve's points (frame coordinates; pos writes them) into dynamic line id of set (made or grown as needed)
+const SCR3 = (p, s) => { proj3(p, PJ); s[0] = PJ[0]; s[1] = PJ[1]; return PJ[2] > 0; };
+function adaptLine3(set, id, n, pos, opts, colors, dash) {
+  const o = curveAdapt(n, pos, SCR3, adaptOpt(), ADP.o3);
+  if (o.m < 2) { V3.dynHide(set, id); return o; }
+  let cap = 512; while (cap < o.m) cap *= 2;
+  V3.dyn(set, id, cap, opts); V3.dynSet(set, id, o.p, o.m, colors || null, dash || 0, CB.e);
+  return o;
+}
+// 2D: a closed ring of K points evenly in an angle on an ellipse, 2 per point in the view plane (e), about the screen
+// point (cx0, cy0) at sc px per metre (y up): exact between the samples (core.js ringAt), adaptive (Phase 20A-3)
+function ringStroke2(e, cx0, cy0, sc) {
+  const K = e.length / 2, q = [0, 0];
+  adaptStroke2(K, (x, out) => { const i = Math.min(K - 1, Math.floor(x)); ringAt(e, K, i, x - i, q, 2); out[0] = cx0 + q[0] * sc; out[1] = cy0 - q[1] * sc; out[2] = 0; return out; }, true, ID2);
+}
+// a conic's anomalies to draw: an ellipse whole, an open branch out to rMax (core.js conicGeom kinds)
+function conicSpan(g, rMax) {
+  if (g.kind === 'E') return [0, 2 * Math.PI];
+  const L = g.kind === 'H' ? Math.acosh(Math.max(1, (1 + rMax / -g.a) / g.e)) : Math.sqrt(Math.max(0, 2 * rMax / g.p - 1));
+  return L > 0 ? [-L, L] : null;
+}
+// pieces for an anomaly span: about 64 a revolution (an open branch by its length in anomaly), at least 8
+const conicPieces = (g, u0, u1) => Math.max(8, Math.ceil((u1 - u0) / (g.kind === 'E' ? 2 * Math.PI / 64 : 0.1)));
+// 2D: about body b's screen position (bpos: frame coordinates of the bodies); the conic itself, adaptive (Phase 20A-3)
 function drawOsc2(o, bpos) {
-  const X = FP.X, Y = FP.Y, p = o.pts, cx = bpos[o.b][0], cy = bpos[o.b][1], n = o.c.n;
-  ctx.strokeStyle = hexA(COL.traj, SLOW.morph ? 0.75 : 0.42); ctx.lineWidth = 1.2; ctx.beginPath();
-  for (let k = 0; k < n; k++) {
-    const x = sx(cx + p[3 * k] * X[0] + p[3 * k + 1] * X[1] + p[3 * k + 2] * X[2]), y = sy(cy + p[3 * k] * Y[0] + p[3 * k + 1] * Y[1] + p[3 * k + 2] * Y[2]);
-    k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-  }
-  if (o.c.closed) ctx.closePath();
-  ctx.stroke();
+  const X = FP.X, Y = FP.Y, cx = bpos[o.b][0], cy = bpos[o.b][1], g = o.g, [u0, u1] = o.span, n = conicPieces(g, u0, u1), q = [0, 0, 0];
+  ctx.strokeStyle = hexA(COL.traj, SLOW.morph ? 0.75 : 0.42); ctx.lineWidth = 1.2;
+  adaptStroke2(n, (x, out) => { conicPos(g, u0 + (u1 - u0) * x / n, q); out[0] = cx + q[0] * X[0] + q[1] * X[1] + q[2] * X[2]; out[1] = cy + q[0] * Y[0] + q[1] * Y[1] + q[2] * Y[2]; out[2] = 0; return out; }, o.c.closed);
 }
 // Slow motion (2026-11-14). While the engine fires (a finite burn; an impulsive burn's own length on the engine,
 // centred on its moment: engine-ui.js engFires) time runs through one warp (prefs.js slowRho): a burn of T s lasts
@@ -3082,9 +3119,7 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
     const p = MPAR[i], cx0 = isMoon(i) ? sx(pos[2 * p]) : sx(0), cy0 = isMoon(i) ? sy(pos[2 * p + 1]) : sy(0);
     const k = MAPK[i], hi = k === keyA || k === keyB;
     ctx.strokeStyle = hexA(BODIES[k].color, hi ? 0.5 : isMoon(i) ? 0.18 : 0.26);
-    ctx.beginPath();
-    for (let j = 0; j < e.length; j += 2) { const x = cx0 + e[j] * sc, y = cy0 - e[j + 1] * sc; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-    ctx.closePath(); ctx.stroke();
+    ringStroke2(e, cx0, cy0, sc); // adaptive (Phase 20A-3)
   }
   // craft path (real model)
   if (tr && craft) {
@@ -3481,10 +3516,8 @@ function drawBody(now, once) {
           if (dc - ro > diag / 2 || (ell ? r * 0.7 : r) - dc > diag / 2) continue; // entirely off-screen
           ctx.setLineDash(r < 1500 ? [3, 5] : []);
           ctx.strokeStyle = hexA(S.bodies[b].color, r < 1500 ? 0.2 : 0.12);
-          ctx.beginPath();
-          if (ell) { for (let k = 0; k < ell.length; k += 2) { const x = cx0 + ell[k] * cam.scale, y = cy0 - ell[k + 1] * cam.scale; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.closePath(); }
-          else ctx.arc(cx0, cy0, r, 0, 6.2832);
-          ctx.stroke();
+          if (ell) ringStroke2(ell, cx0, cy0, cam.scale); // adaptive (Phase 20A-3)
+          else { ctx.beginPath(); ctx.arc(cx0, cy0, r, 0, 6.2832); ctx.stroke(); }
         }
         ctx.setLineDash([]);
       }
@@ -3492,9 +3525,7 @@ function drawBody(now, once) {
       for (let g = 0; g < C.ring2.length; g++) {
         const e = C.ring2[g], st = C.rings[g], cx0 = sx(bpos[0][0]), cy0 = sy(bpos[0][1]), s = cam.scale;
         ctx.strokeStyle = hexA(st.col, st.a); ctx.lineWidth = 1; ctx.setLineDash(st.dash ? [5, 5] : []);
-        ctx.beginPath();
-        for (let k = 0; k < e.length; k += 2) { const x = cx0 + e[k] * s, y = cy0 - e[k + 1] * s; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-        ctx.closePath(); ctx.stroke();
+        ringStroke2(e, cx0, cy0, s); // adaptive (Phase 20A-3)
       }
       ctx.setLineDash([]);
       // body tracks over the mission

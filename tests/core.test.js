@@ -1520,3 +1520,75 @@ console.log('OK — all core tests passed');
   }
   console.log('engines ok');
 }
+
+// 40) Drawing curves (2026-11-21, Phase 20A-3): an orbit line smooth at any zoom. conicGeom / conicPos / conicU give a
+// conic by its anomaly (ellipse, hyperbola, parabola) through the state itself; conicArc the anomalies of a time span
+// (one revolution at most); ringAt interpolates an evenly-sampled ellipse exactly (and its affine images); curveAdapt
+// splits where the screen midpoint leaves the chord (fraction of a pixel), only in sight, and keeps a huge orbit seen
+// from close smooth with few points; flyRefine samples by the angle swept and carries velocities (its Hermite curve stays
+// on the orbit through an eccentric orbit's periapsis).
+{
+  const mu = 3.986004418e14, d3 = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  for (const [r, v, kind] of [[[7e6, 0, 0], [0, 9500, 800], 'E'], [[7e6, 1e5, 0], [0, 11500, 900], 'H'], [[6.7e6, 0, 0], [0, Math.sqrt(2 * mu / 6.7e6), 0], 'D']]) {
+    const g = C.conicGeom(mu, r, v), u = C.conicU(g, r), p = C.conicPos(g, u, [0, 0, 0]);
+    assert.ok(g.kind === kind && d3(p, r) < 1e-3, `curves: the ${kind} conic passes through its state (${d3(p, r).toExponential(1)} m)`);
+    // the arc over 20 minutes ends where the two-body state does
+    const S = new Float64Array(6); C.uniStep(mu, r, v, 1200, S);
+    const [ua, ub] = C.conicArc(g, r, v, 0, 0, 1200), pe = C.conicPos(g, ub, [0, 0, 0]);
+    assert.ok(Math.abs(ua - u) < 1e-9 && ub > ua && d3(pe, [S[0], S[1], S[2]]) < 1e-2, `curves: the ${kind} arc ends at the two-body state`);
+  }
+  const g = C.conicGeom(mu, [7e6, 0, 0], [0, 9500, 800]), P = 2 * Math.PI / g.n, arc = C.conicArc(g, [7e6, 0, 0], [0, 9500, 800], 0, 0, 3.5 * P);
+  assert.ok(Math.abs(arc[1] - arc[0] - 2 * Math.PI) < 1e-12, 'curves: an ellipse arc at most one revolution');
+  const half = C.conicArc(g, [7e6, 0, 0], [0, 9500, 800], 0, 0.25 * P, 0.75 * P);
+  assert.ok(half[1] > half[0] && half[1] - half[0] < 2 * Math.PI, 'curves: an arc across the apoapsis unwraps forwards');
+  // ringAt: exact between samples of an even-in-E ellipse, and of its image under a linear map (the view plane)
+  const K = 24, ring = new Float64Array(3 * K); for (let k = 0; k < K; k++) C.conicPos(g, 2 * Math.PI * k / K, ring.subarray(3 * k));
+  let worst = 0; for (let k = 0; k < K; k++) for (const f of [0.1, 0.5, 0.93]) worst = Math.max(worst, d3(C.ringAt(ring, K, k, f, [0, 0, 0]), C.conicPos(g, 2 * Math.PI * (k + f) / K, [0, 0, 0])));
+  const L = [0.3, -1.2, 0.5, 0.8, 0.1, -0.4, 0.2, 0.6, 1.1], lin = q => [L[0] * q[0] + L[1] * q[1] + L[2] * q[2], L[3] * q[0] + L[4] * q[1] + L[5] * q[2], L[6] * q[0] + L[7] * q[1] + L[8] * q[2]];
+  const img = new Float64Array(3 * K); for (let k = 0; k < K; k++) img.set(lin(ring.subarray(3 * k, 3 * k + 3)), 3 * k);
+  const wi = d3(C.ringAt(img, K, 5, 0.42, [0, 0, 0]), lin(C.conicPos(g, 2 * Math.PI * 5.42 / K, [0, 0, 0])));
+  assert.ok(worst < 1e-3 && wi < 1e-3, `curves: ringAt exact between samples (${worst.toExponential(1)} m), also in a linear image`);
+  // curveAdapt: a flat view (1 px = s m) of the ellipse; every drawn chord within the tolerance of the true curve,
+  // corners nowhere; zoomed 10 000× near the periapsis the points stay few and the line passes through the craft
+  const view = (s, cx, cy) => (p, o) => { o[0] = (p[0] - cx) / s + 400; o[1] = (p[1] - cy) / s + 300; return true; };
+  const chordErr = (out, s, cx, cy) => { // the largest distance (px) from the true curve's points to the drawn polyline, in sight
+    let w = 0; const sc = view(s, cx, cy), q = [0, 0], pp = [0, 0, 0];
+    for (let k = 0; k < 4000; k++) {
+      sc(C.conicPos(g, 2 * Math.PI * k / 4000, pp), q); if (q[0] < 0 || q[0] > 800 || q[1] < 0 || q[1] > 600) continue;
+      let best = Infinity;
+      for (let i = 0; i + 1 < out.m; i++) {
+        const ax = out.s[2 * i], ay = out.s[2 * i + 1], ex = out.s[2 * i + 2] - ax, ey = out.s[2 * i + 3] - ay, L2 = ex * ex + ey * ey;
+        const t = L2 > 0 ? Math.max(0, Math.min(1, ((q[0] - ax) * ex + (q[1] - ay) * ey) / L2)) : 0; best = Math.min(best, Math.hypot(q[0] - ax - t * ex, q[1] - ay - t * ey));
+      }
+      w = Math.max(w, best);
+    }
+    return w;
+  };
+  const out = {}, pos = (x, o) => C.conicPos(g, 2 * Math.PI * x / 32, o), opt = { W: 800, H: 600, tol: 0.3 };
+  const far = view(3e4, -4e6, 0); C.curveAdapt(32, pos, far, opt, out);
+  const nFar = out.m, eFar = chordErr(out, 3e4, -4e6, 0);
+  const rp = C.conicPos(g, 0, [0, 0, 0]), near = view(3, rp[0], rp[1]); C.curveAdapt(32, pos, near, opt, out);
+  const eNear = chordErr(out, 3, rp[0], rp[1]);
+  assert.ok(eFar < 0.6 && eNear < 0.6, `curves: no chord farther than ${Math.max(eFar, eNear).toFixed(2)} px from the orbit, whole (${nFar} points) and 10 000× closer at the periapsis (${out.m} points)`);
+  assert.ok(out.m < 1500, 'curves: a close view refines only what is in sight');
+  // naive equal-time sampling (K = 120 a revolution) of the same view misses the curve by many pixels at the periapsis
+  const naive = { m: 120, s: new Float64Array(240) }; const S6 = new Float64Array(6);
+  for (let k = 0; k < 120; k++) { C.uniStep(mu, [7e6, 0, 0], [0, 9500, 800], P * (k + 0.5) / 120, S6); near([S6[0], S6[1], S6[2]], naive.s.subarray(2 * k)); }
+  assert.ok(chordErr(naive, 3, rp[0], rp[1]) > 20, 'curves: (the equal-time polygon it replaces is far off up close)');
+  // behind the camera: a perspective view with the eye on the orbit; the near side refined, no point lost
+  const persp = (p, o) => { const z = p[1] + 1e5; if (z <= 0) return false; o[0] = 400 + 600 * (p[0] - 7e6) / z; o[1] = 300 + 600 * p[2] / z; return true; };
+  C.curveAdapt(32, pos, persp, opt, out);
+  assert.ok(out.m >= 33 && out.m < 20000, `curves: a perspective view through the orbit (${out.m} points)`);
+  // flyRefine: velocities, and the angle swept per sample small through an e = 0.9 periapsis (Hermite stays on the orbit)
+  const sy2 = realSys(['earth']), rP = 6771e3, vP = Math.sqrt(mu * (1 + 0.9) / rP);
+  const rf = C.flyRefine(sy2, 0, [rP, 0, 0], [0, vP, 0], { until: 4 * 3600, K: 160 }), sg = rf.segs[0];
+  let dmax = 0, herr = 0;
+  for (let i = 0; i + 1 < sg.n; i++) {
+    const a = sg.pts.subarray(3 * i, 3 * i + 3), b = sg.pts.subarray(3 * i + 3, 3 * i + 6), ang = Math.acos(Math.min(1, (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / Math.hypot(...a) / Math.hypot(...b)));
+    dmax = Math.max(dmax, ang);
+    const m = C.hermAt(sg.pts, sg.vs, sg.ts, i, 0.5, [0, 0, 0]); C.uniStep(mu, [rP, 0, 0], [0, vP, 0], 0.5 * (sg.ts[i] + sg.ts[i + 1]), S6);
+    herr = Math.max(herr, d3(m, [S6[0], S6[1], S6[2]]));
+  }
+  assert.ok(sg.vs && sg.vs.length === sg.pts.length && dmax < 2 * Math.PI / 160 * 1.05 && herr < 50, `curves: flyRefine by the angle swept (${(dmax * 180 / Math.PI).toFixed(2)}° at most), its Hermite curve within ${herr.toFixed(1)} m`);
+  console.log('curves ok');
+}

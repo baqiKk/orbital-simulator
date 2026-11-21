@@ -2503,19 +2503,22 @@ function flyRefine(s, t0, r0, v0, opt = {}) {
   const st = { t: t0, r: [...r0], v: [...v0], m: 1, h: 10 }, segs = [];
   s.P = s.P || new Float64Array(3 * s.N); s.V = s.V || new Float64Array(3 * s.N);
   let cur = null, ni = 0, total = 0;
-  const close = end => { if (cur && cur.ts.length > 1) segs.push({ b: cur.b, t0: cur.ts[0], t1: cur.ts[cur.ts.length - 1], n: cur.ts.length, pts: Float64Array.from(cur.pts), ts: Float64Array.from(cur.ts), end }); cur = null; };
+  const close = end => { if (cur && cur.ts.length > 1) segs.push({ b: cur.b, t0: cur.ts[0], t1: cur.ts[cur.ts.length - 1], n: cur.ts.length, pts: Float64Array.from(cur.pts), vs: Float64Array.from(cur.vs), ts: Float64Array.from(cur.ts), end }); cur = null; };
   const rel = () => { states(s, st.t, s.P, s.V); const b = domBody(s, s.P, st.r[0], st.r[1], st.r[2]); return { b, r: [0, 1, 2].map(j => st.r[j] - s.P[3 * b + j]), v: [0, 1, 2].map(j => st.v[j] - s.V[3 * b + j]) }; };
   const push = q => {
     if (cur && cur.b !== q.b) close('soi');
-    if (!cur) cur = { b: q.b, pts: [], ts: [] };
-    cur.pts.push(q.r[0], q.r[1], q.r[2]); cur.ts.push(st.t); total++;
+    if (!cur) cur = { b: q.b, pts: [], vs: [], ts: [] };
+    cur.pts.push(q.r[0], q.r[1], q.r[2]); cur.vs.push(q.v[0], q.v[1], q.v[2]); cur.ts.push(st.t); total++;
   };
   let q = rel(); push(q);
   while (st.t < until - 1e-6 && total < maxPts) {
     const el = rv2el(s.mu[q.b], q.r, q.v), rn = Math.hypot(...q.r), vn = Math.hypot(...q.v);
     // the samples: K a revolution (at most 8 K up to the next node or the end, as the prediction), or an eighth of r/v
     const nodeT = ni < nodes.length ? nodes[ni].t : Infinity, span = Math.min(nodeT, until) - st.t;
-    const h = el.e < 1 && el.a > 0 ? Math.max(2 * Math.PI * Math.sqrt(el.a ** 3 / s.mu[q.b]) / K, span / (8 * K)) : Math.max(1, rn / Math.max(vn, 1) / 8, span / (8 * K));
+    // (2026-11-21) and no more than 2π/K of the angle swept about the body (r²/|r × v| per radian): an eccentric orbit's
+    // periapsis is sampled as finely as its slow apoapsis, so the drawing's Hermite curve (vs) stays on it
+    const hn = Math.hypot(q.r[1] * q.v[2] - q.r[2] * q.v[1], q.r[2] * q.v[0] - q.r[0] * q.v[2], q.r[0] * q.v[1] - q.r[1] * q.v[0]), ang = hn > 0 ? 2 * Math.PI / K * rn * rn / hn : Infinity;
+    const h = Math.min(ang, el.e < 1 && el.a > 0 ? Math.max(2 * Math.PI * Math.sqrt(el.a ** 3 / s.mu[q.b]) / K, span / (8 * K)) : Math.max(1, rn / Math.max(vn, 1) / 8, span / (8 * K)));
     const next = Math.min(st.t + h, nodeT, until);
     const res = flyAdvance(s, st, next - st.t, { tol: opt.tol || 1e-9, maxSteps: 20000 });
     if (res.done <= 0) break;
@@ -2782,7 +2785,121 @@ function flyClosest(s, pred, c) {
   return best;
 }
 
+// ----- Drawing curves (2026-11-21, Phase 20A-3) -----
+// An orbit line drawn from a fixed number of samples turns into a polygon once it is large on screen (a large or
+// flattened orbit, a close view: the chord passes kilometres beside the craft). These keep any zoom smooth: the line
+// is a function of a parameter (a conic's anomaly, or the samples interpolated exactly), split where its screen
+// midpoint leaves the screen chord by more than a fraction of a pixel. Pure geometry, no DOM (2D and 3D share it).
+// Conic geometry of a state (r, v about μ; any axes): the orbit's basis P (periapsis), Q (90° on), its shape, and the
+// anomaly kind: E (ellipse: x = a(cos E − e), y = b sin E), H (hyperbola: x = |a|(e − cosh H), y = b sinh H,
+// b = |a|√(e²−1)), D (parabola, Barker: x = p(1 − D²)/2, y = p·D). null for a radial state.
+function conicGeom(mu, r, v) {
+  const rn = Math.hypot(r[0], r[1], r[2]), v2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2], rv = r[0] * v[0] + r[1] * v[1] + r[2] * v[2];
+  const h = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]], hn = Math.hypot(h[0], h[1], h[2]);
+  if (!(hn > 1e-9 * rn * Math.sqrt(v2))) return null;
+  const ev = [0, 1, 2].map(j => ((v2 - mu / rn) * r[j] - rv * v[j]) / mu), e = Math.hypot(ev[0], ev[1], ev[2]), p = hn * hn / mu;
+  const P = e > 1e-9 ? ev.map(q => q / e) : r.map(q => q / rn), hu = h.map(q => q / hn);
+  const Q = [hu[1] * P[2] - hu[2] * P[1], hu[2] * P[0] - hu[0] * P[2], hu[0] * P[1] - hu[1] * P[0]];
+  const kind = e < 1 - 1e-6 ? 'E' : e > 1 + 1e-6 ? 'H' : 'D', a = kind === 'D' ? Infinity : p / (1 - e * e);
+  const b = kind === 'E' ? a * Math.sqrt(1 - e * e) : kind === 'H' ? -a * Math.sqrt(e * e - 1) : p;
+  return { mu, P, Q, e, p, a, b, kind, n: kind === 'E' ? Math.sqrt(mu / (a * a * a)) : kind === 'H' ? Math.sqrt(mu / (-a * a * a)) : 0 };
+}
+// the point at anomaly u (relative to the body, the state's axes)
+function conicPos(g, u, out) {
+  let x, y;
+  if (g.kind === 'E') { x = g.a * (Math.cos(u) - g.e); y = g.b * Math.sin(u); }
+  else if (g.kind === 'H') { x = -g.a * (g.e - Math.cosh(u)); y = g.b * Math.sinh(u); }
+  else { x = 0.5 * g.p * (1 - u * u); y = g.p * u; }
+  for (let j = 0; j < 3; j++) out[j] = x * g.P[j] + y * g.Q[j];
+  return out;
+}
+// the anomaly of a point r of the conic
+function conicU(g, r) {
+  const x = r[0] * g.P[0] + r[1] * g.P[1] + r[2] * g.P[2], y = r[0] * g.Q[0] + r[1] * g.Q[1] + r[2] * g.Q[2];
+  if (g.kind === 'E') return Math.atan2(y / g.b, x / g.a + g.e);
+  if (g.kind === 'H') return Math.asinh(y / g.b);
+  return y / g.p;
+}
+// the mean anomaly of anomaly u (ellipse: M = E − e sin E; hyperbola: e sinh H − H; parabola: D + D³/3)
+const conicM = (g, u) => (g.kind === 'E' ? u - g.e * Math.sin(u) : g.kind === 'H' ? g.e * Math.sinh(u) - u : u + u * u * u / 3);
+// the anomalies [ua, ub] of the arc from time ta to tb (s) along the conic of the state (r0, v0) at t0; ub ≥ ua, an
+// ellipse at most one revolution (more would only retrace it)
+function conicArc(g, r0, v0, t0, ta, tb) {
+  const S = new Float64Array(6), at = t => { uniStep(g.mu, r0, v0, t - t0, S); return conicU(g, [S[0], S[1], S[2]]); };
+  const ua = at(ta);
+  let ub = at(tb);
+  if (g.kind === 'E') {
+    const want = conicM(g, ua) + g.n * (tb - ta);
+    ub += 2 * Math.PI * Math.round((want - conicM(g, ub)) / (2 * Math.PI));
+    if (ub - ua > 2 * Math.PI) ub = ua + 2 * Math.PI;
+  }
+  return [ua, Math.max(ua, ub)];
+}
+// The point at fraction f between samples i and i + 1 of a closed curve of K points sampled evenly in an angle on an
+// ellipse (its eccentric anomaly: orbitPath, the maneuver rings, conicPoints) or on any affine image of one (the view
+// plane, the 3D frame): exact. The ellipse through p(i−1), p(i), p(i+1) is C + A cos φ + B sin φ with the samples at
+// φ = −Δ, 0, Δ (Δ = 2π/K): C = (p(i+1) + p(i−1) − 2 cos Δ · p(i)) / (2 (1 − cos Δ)), B = (p(i+1) − p(i−1)) / (2 sin Δ).
+// dim: values per point (3, or 2 for a view plane's points)
+function ringAt(p, K, i, f, out, dim = 3) {
+  const d = 2 * Math.PI / K, c = Math.cos(d), s = Math.sin(d), k0 = ((i % K) + K) % K, km = dim * ((k0 + K - 1) % K), k = dim * k0, kp = dim * ((k0 + 1) % K);
+  const ph = f * d, cp = Math.cos(ph), sp = Math.sin(ph);
+  for (let j = 0; j < dim; j++) {
+    const C = (p[kp + j] + p[km + j] - 2 * c * p[k + j]) / (2 * (1 - c)), B = (p[kp + j] - p[km + j]) / (2 * s);
+    out[j] = C + (p[k + j] - C) * cp + B * sp;
+  }
+  return out;
+}
+// cubic Hermite between samples i and i + 1 (positions pts, velocities vs, times ts; 3 per point) at fraction f
+function hermAt(pts, vs, ts, i, f, out) {
+  const h = ts[i + 1] - ts[i], f2 = f * f, f3 = f2 * f, h00 = 2 * f3 - 3 * f2 + 1, h10 = f3 - 2 * f2 + f, h01 = -2 * f3 + 3 * f2, h11 = f3 - f2;
+  for (let j = 0; j < 3; j++) out[j] = h00 * pts[3 * i + j] + h10 * h * vs[3 * i + j] + h01 * pts[3 * i + 3 + j] + h11 * h * vs[3 * i + 3 + j];
+  return out;
+}
+// Adaptive tessellation for drawing: the curve over parameters [0, n] (pos(x, o) writes its world point at x) in n
+// pieces first, each split in two while its screen midpoint (scr(p, s) writes the screen point in px, false behind the
+// camera) lies more than opt.tol px (0.3) from the screen chord, skipped where the piece cannot reach the screen
+// (opt.W × opt.H, opt.margin px round it: a close view of a huge orbit costs only the part in sight), down to opt.depth
+// levels (18), within opt.cap points; a piece crossing the camera's plane is split opt.behind levels (10) so its near
+// end stays smooth. out: { p: world points (3 each), s: screen points (2 each), m: their count }, grown and reused.
+function curveAdapt(n, pos, scr, opt, out) {
+  const tol = opt.tol || 0.3, W = opt.W, H = opt.H, mg = opt.margin == null ? 24 : opt.margin, maxD = opt.depth || 18, cap = opt.cap || 20000, beh = opt.behind == null ? 10 : opt.behind;
+  if (!out.p) { out.p = new Float64Array(3 * 256); out.s = new Float64Array(2 * 256); }
+  if (!out.M) { out.M = []; out.SM = []; for (let d = 0; d <= 64; d++) { out.M.push(new Float64Array(3)); out.SM.push(new Float64Array(2)); } }
+  out.m = 0;
+  const put = (P, Sp) => {
+    if (out.m * 3 + 3 > out.p.length) { const np = new Float64Array(out.p.length * 2), ns = new Float64Array(out.s.length * 2); np.set(out.p); ns.set(out.s); out.p = np; out.s = ns; }
+    out.p[3 * out.m] = P[0]; out.p[3 * out.m + 1] = P[1]; out.p[3 * out.m + 2] = P[2]; out.s[2 * out.m] = Sp[0]; out.s[2 * out.m + 1] = Sp[1]; out.m++;
+  };
+  const sub = (a, b, A, sA, vA, B, sB, vB, d) => {
+    if (d < maxD && out.m < cap) {
+      const M = out.M[d], SM = out.SM[d], mid = 0.5 * (a + b); pos(mid, M); const vM = scr(M, SM);
+      let split;
+      if (vA && vB && vM) {
+        const ex = sB[0] - sA[0], ey = sB[1] - sA[1], L2 = ex * ex + ey * ey, qx = SM[0] - sA[0], qy = SM[1] - sA[1];
+        const t = L2 > 0 ? Math.max(0, Math.min(1, (qx * ex + qy * ey) / L2)) : 0, err = Math.hypot(qx - t * ex, qy - t * ey), pad = 2 * err + mg;
+        split = err > tol && Math.max(sA[0], sB[0], SM[0]) + pad > 0 && Math.min(sA[0], sB[0], SM[0]) - pad < W && Math.max(sA[1], sB[1], SM[1]) + pad > 0 && Math.min(sA[1], sB[1], SM[1]) - pad < H;
+      } else split = (vA || vB || vM) && d < beh;
+      if (split) {
+        const Mc = [M[0], M[1], M[2]], Sc = [SM[0], SM[1]];
+        sub(a, mid, A, sA, vA, Mc, Sc, vM, d + 1);
+        sub(mid, b, Mc, Sc, vM, B, sB, vB, d + 1);
+        return;
+      }
+    }
+    put(B, sB);
+  };
+  const A = [0, 0, 0], sA = [0, 0], B = [0, 0, 0], sB = [0, 0];
+  pos(0, A); let vA = scr(A, sA); put(A, sA);
+  for (let i = 0; i < n; i++) {
+    pos(i + 1, B); const vB = scr(B, sB);
+    sub(i, i + 1, [A[0], A[1], A[2]], [sA[0], sA[1]], vA, [B[0], B[1], B[2]], [sB[0], sB[1]], vB, 0);
+    A[0] = B[0]; A[1] = B[1]; A[2] = B[2]; sA[0] = sB[0]; sA[1] = sB[1]; vA = vB;
+  }
+  return out;
+}
+
 if (typeof module !== 'undefined') module.exports = {
+  conicGeom, conicPos, conicU, conicM, conicArc, ringAt, hermAt, curveAdapt,
   stumpff, uniStep, nodeFrame, nodeDv, dvLocal, FLY_WARPS, SLEW, slewParams, slewTime, slewStep, flyWarpMax, flyDeriv, flyAdvance, flyPredict, flyRefine, flyWindow, flyHArr, flyCorrect, flyClosest,
   G, DAY, AU, JYR, OBLIQUITY, utcToDays, daysToUtc, clockAt, clockSet, keplerE, laplaceFrame, bodyFrame, orbitElements, orbitState, orbitPath,
   buildSystem, defaultOrbitRadius, states, missionChain, missionPlane, planeBasis, simulate, hohmannGuess, autoDuration, optimize, residuals,

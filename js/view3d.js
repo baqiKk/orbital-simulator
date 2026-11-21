@@ -676,14 +676,17 @@ export function create(canvas, opts) {
     return d;
   }
   // pts: metres, 3 per point (n points); colors: linear RGB per point or null; dash (optional, Phase 19c): segments per
-  // dash, every other run of dash segments left out (a provisional path: the free flight's patched prediction)
-  function dynSet(set, id, pts, n, colors, dash) {
+  // dash, every other run of dash segments left out (a provisional path: the free flight's patched prediction); org
+  // (optional, 2026-11-21): the float32 offsets' origin (the eye for an adaptive line: its fine part is near the camera),
+  // else the first point
+  function dynSet(set, id, pts, n, colors, dash, org) {
     const d = dyns[set].get(id); if (!d) return;
     n = Math.min(n, d.cap);
     if (n < 2) { d.line.visible = false; return; }
-    d.o[0] = pts[0]; d.o[1] = pts[1]; d.o[2] = pts[2];
+    const O = org || pts; d.o[0] = O[0]; d.o[1] = O[1]; d.o[2] = O[2];
     const A = d.geo.attributes.instanceStart.data, a = A.array;
-    for (let j = 0; j < n - 1; j++) { const gap = dash > 0 && Math.floor(j / dash) % 2 === 1; for (let q = 0; q < 2; q++) for (let c = 0; c < 3; c++) a[6 * j + 3 * q + c] = (pts[3 * (j + (gap ? 0 : q)) + c] - d.o[c]) * KM; }
+    const fl = dash && typeof dash === 'object'; // per-segment gap flags (an adaptive line's dashes by screen length)
+    for (let j = 0; j < n - 1; j++) { const gap = fl ? !!dash[j] : dash > 0 && Math.floor(j / dash) % 2 === 1; for (let q = 0; q < 2; q++) for (let c = 0; c < 3; c++) a[6 * j + 3 * q + c] = (pts[3 * (j + (gap ? 0 : q)) + c] - d.o[c]) * KM; }
     A.needsUpdate = true;
     if (colors && d.geo.attributes.instanceColorStart) {
       const B = d.geo.attributes.instanceColorStart.data, b = B.array;
