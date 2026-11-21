@@ -45,7 +45,7 @@ function saStart() {
   const es = c.createBufferSource(), e1 = saLow(c, 85), e2 = saLow(c, 85), bp = c.createBiquadFilter(), bgn = c.createGain(), eo = c.createGain();
   es.buffer = buf; es.loop = true; es.playbackRate.value = 0.7; bp.type = 'bandpass'; bp.frequency.value = 45; bp.Q.value = 1.2; bgn.gain.value = 1.4; eo.gain.value = 1.6;
   es.connect(e1); e1.connect(e2); e2.connect(eo); eo.connect(eg); es.connect(bp); bp.connect(bgn); bgn.connect(eg); es.start();
-  SA.eng = eg;
+  SA.eng = eg; SA.ef = [e1, e2];
   saApply();
 }
 // the recordings: one <audio> element through the graph, the list in turn (webm, else mp3)
@@ -72,12 +72,16 @@ function saApply() {
   if (s.on && SA.ctx.state === 'suspended' && !document.hidden) SA.ctx.resume();
 }
 function saSave() { writePref(SA_LS, PREF_KEYS.simAudio, JSON.stringify(SA.set)); saApply(); }
-// per frame: the engine's level (0 … 1: the plume's strength times the camera's closeness), eased in the audio clock
+// per frame: the engine's level (0 … 1: the thrust now over the peak — throttle, curve, nothing once the propellant is
+// out — times the camera's closeness), through prefs.js engSound: silent at zero thrust (always reached: a change to
+// zero is never skipped), louder and brighter with the throttle, eased in the audio clock
 function simAudioTick(level) {
   if (!SA.eng) return;
-  const v = SA.set.on && SA.set.eng ? Math.max(0, Math.min(1, level)) : 0;
-  if (Math.abs(v - SA.lvl) < 0.01) return;
-  SA.lvl = v; SA.eng.gain.setTargetAtTime(0.9 * v, SA.ctx.currentTime, v > 0.01 ? 0.12 : 0.18);
+  const q = engSound(SA.set.on && SA.set.eng ? level : 0), v = q.on ? Math.max(0, Math.min(1, level)) : 0;
+  if (v === SA.lvl || (v > 0 && SA.lvl > 0 && Math.abs(v - SA.lvl) < 0.01)) return;
+  const t = SA.ctx.currentTime, tc = v > SA.lvl ? ENG_SND.att : ENG_SND.rel;
+  SA.lvl = v; SA.eng.gain.cancelScheduledValues(t); SA.eng.gain.setTargetAtTime(q.gain, t, tc);
+  for (const f of SA.ef) f.frequency.setTargetAtTime(q.cut, t, tc);
 }
 // the first gesture starts it (if on)
 for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, function first() { saStart(); removeEventListener('pointerdown', first, true); removeEventListener('keydown', first, true); }, true);

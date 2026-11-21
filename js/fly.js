@@ -561,7 +561,7 @@ function flyStep(dt, b) {
   }
   if (!(adv > 0)) { FREE.fire = th ? FREE.fire : 0; if (FREE.burn) flyBurnEnd(false); return; }
   const m0 = s.m, r = flyAdvance(mapSys, s, adv, { rails: !th && FREE.warp >= RAILS_W, thrust: th, maxSteps: 4000 });
-  FREE.fire = th ? th.k : 0; FREE.fdir = th ? FREE.fdirNow : null;
+  FREE.fire = th ? th.k : 0; FREE.fq = th ? th.fq : FREE.fq; FREE.fdir = th ? FREE.fdirNow : null;
   if (th) e.tau = Math.min(e.s.tb, e.tau + (m0 - s.m) / e.s.mdot); // the engine's clock by the propellant it used
   if (FREE.burn) {
     const B = FREE.burn, got = e.s.ve * Math.log(B.m0 / s.m);
@@ -598,7 +598,7 @@ function flyThrust(b) {
     };
     dir(s.t, [...s.r, ...s.v]);
   }
-  return { F, mdot, dir, mDry: e.s.md, k };
+  return { F, mdot, dir, mDry: e.s.md, k, fq: e.s.curve ? (q.F || e.s.F) / Math.max(...e.s.curve.F) : 1 }; // fq: a curve's thrust now over its peak (the rumble)
 }
 function flyThr(k) { const e = FREE.eng; if (!e) return; e.thr = Math.max(0, Math.min(1, Math.round(k * 10) / 10)); flyLockSync(); }
 function flyLockSync() {

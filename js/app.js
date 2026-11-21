@@ -1632,10 +1632,11 @@ function frameEnd() {
   engTick(); // the engine charts' playhead (O(1); js/engine-ui.js, loaded before this file)
   const fg = !FREE.on && !SCENE.on && !!C && S.model === 'real' && !REC.busy; if ($('#flyGo').hidden === fg) $('#flyGo').hidden = !fg; // free flight from here (js/fly.js; not while a recording draws the mission)
   if (FREE.on) flyEngPanel(); else engPanelTick(tNowG, !!(C && simR && !MAP.on && !SCENE.on && !REC.busy)); // the engine panel (shown only with engine burns; free flight: its engine)
-  // the engine rumble (js/sim-audio.js): while playing, the plume's strength times the camera's closeness to the craft
-  // (3D: following it, gone by NEAR3's far end; 2D: in the close view)
+  // the engine rumble (js/sim-audio.js): while playing, the thrust now over the peak (the plume's strength: the throttle,
+  // the curve, nothing once the propellant is out, eased at ignition and cut) times the camera's closeness to the craft
+  // (3D: following it, gone by NEAR3's far end; 2D: in the close view); free flight: close to the craft and not paused
   const near = !C || !simR || MAP.on || SCENE.on || !S.playing ? 0 : is3d() ? (S.follow === 'craft' ? 1 - nearFade3(CAM3.sim.dist) : 0) : APPR.on ? 1 : 0;
-  simAudioTick(FREE.on ? (FREE.appr ? FREE.pl : 0) : near > 0 ? engNow(tNowG).pl * near : 0);
+  simAudioTick(FREE.on ? (FREE.appr && !FREE.paused ? FREE.pl * (FREE.fq || 1) : 0) : near > 0 ? engNow(tNowG).pl * near : 0);
   const n = focusName();
   if (n !== focusTxt) { focusTxt = n; $('#focusName').textContent = n; $('#focusTag').hidden = !n; $('#followTxt').textContent = _('vw.followOn', { name: n || _('fo.free') }); $('#followX').hidden = !n; INS = null; }
   const h = hoverPt && !ptrs.size ? hitAt(hoverPt.x, hoverPt.y, HIT_PX.mouse) : null;

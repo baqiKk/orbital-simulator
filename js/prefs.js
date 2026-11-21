@@ -252,6 +252,16 @@ function parseFlySnap(raw, now = Date.now()) {
 // 0 … 1 (default 0.18), the engine rumble effect, the ambience ('deep' drone or 'rec' the NASA recordings); each field
 // falls back on its own
 const SIM_AUDIO = { on: true, vol: 0.18, eng: true, kind: 'deep' }; // 2026-11-15: half the volume it started at (0.35); saved settings keep theirs
+// The engine rumble's level by thrust (2026-11-21): k the thrust now over the engine's peak (the throttle, the curve,
+// 0 once the propellant is out); none at all at zero thrust, louder and brighter as the throttle opens (gain ∝ k^0.7 so
+// a low throttle is still heard; the low-pass opens from 55 to 205 Hz), eased by the audio clock (attack 0.12 s,
+// release 0.15 s: a cut or the last propellant fades in a few tenths of a second, never hangs on)
+const ENG_SND = { off: 0.004, gain: 0.9, exp: 0.7, f0: 55, f1: 150, att: 0.12, rel: 0.15 };
+function engSound(k) {
+  const v = Number.isFinite(k) ? Math.max(0, Math.min(1, k)) : 0;
+  if (v <= ENG_SND.off) return { gain: 0, cut: ENG_SND.f0, on: false };
+  return { gain: ENG_SND.gain * Math.pow(v, ENG_SND.exp), cut: ENG_SND.f0 + ENG_SND.f1 * v, on: true };
+}
 function parseSimAudio(raw) {
   let o = null; try { o = JSON.parse(raw); } catch (e) { /* default */ }
   if (!o || typeof o !== 'object') return { ...SIM_AUDIO };
@@ -610,4 +620,4 @@ function saturnShot(sat, sun, pole, box, o = {}) {
     side: [c.g, c.k], phase: ang(e, s), lit: c.lit, milky: c.mw, sway: { k: K, ke: KE, az: A * K, el: sw.el * KE, dist: o.sway ? sw.dist : 0 }, fit: [K, KE, yk0] };
 }
 
-if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, auto3dFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, parseEngines, ENG_KINDS, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha, SLOW_W, burnShow, slowFires, slowRho, slowAdvance, playAdvance, fireAt, rampLen, rampRate, SIM_AUDIO, parseSimAudio, parseFlySnap, FLY_NODES_MAX };
+if (typeof module !== 'undefined') module.exports = { SAT_SHOT, saturnShot, milkyBright, shotBasis, WIZ_EX, startShow, sceneParam, OPEN_TOUR, OPEN_TOUR_S, tourDirs, tourAt, zoomPan, PREF_OLD, autoMode, autoModeFrames, auto3dFrames, parseStart, SNAP_MAX_MS, parseSimSnap, CAB_NOISE, CAB_AUDIO, parseCabAudio, CAB_SAVER_AUTO, parseCabSaver, CAB_PAN, cabPanRange, cabRubber, cabSkyBox, cabDpr, cabMemEstimate, CAB_TIERS, cabTierMax, cabTier, cabCrop, cabGlassCam, CAB_WIN, CAB_CAT_X, CAB_PAWS_Y, CAB_ROOM, cabProject, cabUnproject, cabGlassOutline, cabClipY, cabLightPatch, cabDiscCover, PREF_KEYS, VIEW_MODES, WIN_IDS, railPressed, readPref, writePref, clearPref, startupMode, skyGainOf, parseVehicles, parseEngines, ENG_KINDS, defaultWins, parseWins, clampWin, freeRects, bestRect, TRAIL_REVS, TRAIL_FADE, trailAlpha, SLOW_W, burnShow, slowFires, slowRho, slowAdvance, playAdvance, fireAt, rampLen, rampRate, SIM_AUDIO, parseSimAudio, ENG_SND, engSound, parseFlySnap, FLY_NODES_MAX };

@@ -1460,7 +1460,13 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const img = { img: { naturalWidth: 4096 } };
   assert.ok(ctxN.f(1000, img) === 1 && ctxN.f(4000, img) === 0 && ctxN.f(2600, img) > 0 && ctxN.f(2600, img) < 1 && ctxN.f(9e5, null) === 1 && gl.includes('* uLayers.y *'), 'city lights: fade when magnified');
   assert.ok(['sndBtn', 'sndPop', 'sndOn', 'sndVol', 'sndEng'].every(id => html.includes('id="' + id + '"')) && ['snd.btn', 'snd.title', 'snd.on', 'snd.vol', 'snd.eng', 'snd.engTip', 'snd.note'].every(has), 'sound: the button and its panel');
-  assert.ok(app.includes("simAudioTick(FREE.on ? (FREE.appr ? FREE.pl : 0) : near > 0 ? engNow(tNowG).pl * near : 0);") && app.includes('!S.playing ? 0 :') && !cab.includes('sim-audio.js'), 'sound: the rumble by thrust and closeness, while playing; not on the cabin page');
+  assert.ok(app.includes("simAudioTick(FREE.on ? (FREE.appr && !FREE.paused ? FREE.pl * (FREE.fq || 1) : 0) : near > 0 ? engNow(tNowG).pl * near : 0);") && app.includes('!S.playing ? 0 :') && !cab.includes('sim-audio.js'), 'sound: the rumble by thrust and closeness, while playing (free flight: not paused); not on the cabin page');
+  // 2026-11-21 (Phase 20A-1): the level by thrust — silent at zero, louder and brighter with the throttle, a change to zero
+  // never skipped (before, a step under 0.01 was ignored and the last faint level could hang on), a short release
+  const z = P.engSound(0), lo = P.engSound(0.2), hi = P.engSound(1);
+  assert.ok(z.gain === 0 && !z.on && P.engSound(NaN).gain === 0 && P.engSound(-1).gain === 0 && P.engSound(0.003).gain === 0, 'engine sound: none at zero thrust');
+  assert.ok(lo.gain > 0 && hi.gain > lo.gain && hi.cut > lo.cut && P.engSound(0.5).gain > lo.gain && hi.gain <= 0.9 + 1e-12, 'engine sound: rises with the throttle (level and brightness)');
+  assert.ok(sa.includes('engSound(') && sa.includes('if (v === SA.lvl ||') && sa.includes('ENG_SND.rel') && P.ENG_SND.rel <= 0.2 && read('js/fly.js').includes('FREE.fq = th ? th.fq : FREE.fq;'), 'engine sound: always reaches zero, fades quickly, the thrust of a curve counts');
 }
 // 49) Free flight, the mode (Phase 19b, js/fly.js): entered from the mission's moment (real model; "Serbest uçuş" by the
 // timeline), flown in the map's system (N-body below 1000×, on rails above), drawn on the map view with its prediction,
