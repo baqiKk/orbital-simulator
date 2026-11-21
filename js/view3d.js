@@ -594,7 +594,8 @@ export function create(canvas, opts) {
   // (k: 0 hides them; the ids in own, the craft's own path, by kOwn and thinner) on top of each material's own opacity.
   const FADE = { sim: { k: 1, own: new Set(), kOwn: 1 }, map: { k: 1, own: new Set(), kOwn: 1 } };
   function fadeApply(set, id, m) {
-    const F = FADE[set], own = F.own.has(id), f = own ? F.kOwn : F.k;
+    // 'road' (the close view's own line, Phase 20A-4) fades in by itself: neither the near fade nor the own set's
+    const F = FADE[set], own = F.own.has(id), f = id === 'road' ? 1 : own ? F.kOwn : F.k;
     m.opacity = m.userData.base * f; m.linewidth = m.userData.w * (own ? 0.55 + 0.45 * F.kOwn : 1); m.visible = f > 0.004;
   }
   function fadeSet(set, k, own, kOwn) {

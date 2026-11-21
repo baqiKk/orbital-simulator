@@ -454,7 +454,8 @@ function draw3d(tNow, craft, craft2, t2, pathIdx, ext, glow) {
   // gone within NEAR3[0] m, back by NEAR3[1] m, smooth in its logarithm), the craft's own path down to a faint thin line;
   // the bodies, the Sun and the sky stay. Zooming out brings everything back the same way.
   const nk = S.follow === 'craft' ? nearFade3(c.dist) : 1;
-  V3.fadeSet('sim', nk, OWN3, 0.1 + 0.9 * nk);
+  V3.fadeSet('sim', nk, OWN3, nk); // the craft's own lines too (2026-11-21: the road takes their place up close)
+  if (nk < 1) { const q = craftRV3(tNow, craft, ext), b3 = 3 * q.b, g = conicGeom(sys.mu[q.b], q.r, q.v); road3('sim', g, g ? conicU(g, q.r) : 0, [BP3[b3], BP3[b3 + 1], BP3[b3 + 2]], 1 - nk); } else V3.dynHide('sim', 'road');
   grid3(c, V3S.grid, nk);
   // the Sun: in the mission, or (real model) far away along its direction from the first body
   const gl3 = sunIdx >= 0 ? glare3([BP3[3 * sunIdx], BP3[3 * sunIdx + 1], BP3[3 * sunIdx + 2]], false, rpx[sunIdx], sunIdx)
@@ -629,6 +630,30 @@ function ring3(set, id, p, anchor, show, opts) {
   V3.lineSet(set, id, anchor, false); RING3.on[set].add(id);
   const o = adaptLine3(set, 'a' + id, K, (x, out) => { const i = Math.min(K - 1, Math.floor(x)); ringAt(p, K, i, x - i, out); out[0] += ox; out[1] += oy; out[2] += oz; return out; }, opts);
   if (opts.dash && o.m > 1) V3.dynSet(set, 'a' + id, o.p, o.m, null, flyDash(o), CB.e);
+}
+// The road (2026-11-21, Phase 20A-4): close to the craft its own lines (the sampled path, whose chords pass beside the
+// model; the conic; the trail) fade out entirely and one line takes their place: the craft's osculating conic through
+// its own state (exactly through the model's centre), a little behind it and a quarter turn ahead, thin and faint,
+// additive so its vertex colours fade it — out near the camera (the part behind the craft that passes the eye) and at
+// its ends; k (0 … 1) the close view's share (1 − nearFade3). g: core.js conicGeom in frame axes about the body at
+// anchor; u0 the craft's anomaly. Free flight draws it the same way in the map's set (js/fly.js flyCraft3).
+const ROAD = { o: {}, col: new Float32Array(3 * 1024), k: 0.42, ahead: 0.25, behind: 0.04 };
+function road3(set, g, u0, anchor, k) {
+  if (!(k > 0.004) || !g) { V3.dynHide(set, 'road'); return; }
+  const T = 2 * Math.PI, a = g.kind === 'E' ? [u0 - ROAD.behind * T, u0 + ROAD.ahead * T] : [u0 - 0.15, u0 + 1.5], n = Math.max(16, Math.ceil((a[1] - a[0]) / (T / 128))), q = [0, 0, 0];
+  const o = curveAdapt(n, (x, out) => { conicPos(g, a[0] + (a[1] - a[0]) * x / n, q); out[0] = anchor[0] + q[0]; out[1] = anchor[1] + q[1]; out[2] = anchor[2] + q[2]; return out; }, SCR3, adaptOpt(), ROAD.o);
+  if (o.m < 2) { V3.dynHide(set, 'road'); return; }
+  if (ROAD.col.length < 3 * o.m) ROAD.col = new Float32Array(6 * o.m);
+  conicPos(g, u0, q); const c0 = [anchor[0] + q[0], anchor[1] + q[1], anchor[2] + q[2]], e = CB.e, Dc = Math.max(1, Math.hypot(c0[0] - e[0], c0[1] - e[1], c0[2] - e[2]));
+  const col = linRGB(COL.traj), ss = x => { const y = Math.max(0, Math.min(1, x)); return y * y * (3 - 2 * y); };
+  for (let i = 0; i < o.m; i++) {
+    const p = o.p, dc = Math.hypot(p[3 * i] - e[0], p[3 * i + 1] - e[1], p[3 * i + 2] - e[2]), t = i / (o.m - 1);
+    const f = ROAD.k * k * ss((dc / Dc - 0.45) / 0.5) * ss(t / 0.04) * ss((1 - t) / 0.35);
+    ROAD.col[3 * i] = col[0] * f; ROAD.col[3 * i + 1] = col[1] * f; ROAD.col[3 * i + 2] = col[2] * f;
+  }
+  let cap = 1024; while (cap < o.m) cap *= 2;
+  V3.dyn(set, 'road', cap, { color: '#ffffff', vertexColors: true, additive: true, width: 1.2 });
+  V3.dynSet(set, 'road', o.p, o.m, ROAD.col, 0, e);
 }
 function osc3() {
   const o = OSCF; if (!o) { V3.dynHide('sim', 'osc'); return; }

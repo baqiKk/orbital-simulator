@@ -733,7 +733,9 @@ function flyCraft3(c) {
   const up = unit3(r) || [0, 0, 1], ax = flyNose() || unit3(v) || [1, 0, 0], sun = unit3(p.map(x => -x)) || [1, 0, 0];
   const L = CRAFT.L = craftLen({ m0: s.m });
   // close to the craft the map's lines fade as in a mission (its own path kept, faint)
-  const nk = FREE.appr ? nearFade3(c.dist) : 1; V3.fadeSet('map', nk, FLY_OWN, 0.15 + 0.85 * nk); if (FREE.appr) grid3(c, false);
+  const nk = FREE.appr ? nearFade3(c.dist) : 1; V3.fadeSet('map', nk, FLY_OWN, nk); if (FREE.appr) grid3(c, false);
+  // up close the road (mode3d.js road3, Phase 20A-4): the conic through the craft, thin and faint, out near the camera
+  if (nk < 1 && !MAP.log) { const g = conicGeom(mapSys.mu[b], r, v), an = flyMapAt(b, 0, 0, 0, [0, 0, 0]); mapXYZ(an[0], an[1], an[2], an); road3('map', g, g ? conicU(g, r) : 0, an, 1 - nk); } else V3.dynHide('map', 'road');
   proj3(p, PJ); const lpx = FREE.lpx = PJ[2] > 0 ? L * CB.f / PJ[2] : 0;
   if (FREE.appr) apprWatch(lpx); // zoomed out by hand: back to the map's view (app.js)
   if (!(lpx > 6)) { V3.craft({ show: false }); return; }
@@ -773,7 +775,7 @@ function flyAppr(on) {
     const p = FREE.apprPrev; FREE.apprPrev = null; FREE.appr = false; APPR.on = false; FREE.aim = null; FREE.lpx = 0;
     c.lb = null; c.lbFrom = null; c.yawT = null; // back in the view frame's axes (flyTo re-expresses the start)
     if (p) { Object.assign(cam, p.cam); Object.assign(c, { ...p.c, t: [...p.c.t] }); MAP.follow = FREE.tb >= 0 ? FREE.tb : p.follow; }
-    if (V3) V3.fadeSet('map', 1, FLY_OWN, 1);
+    if (V3) { V3.fadeSet('map', 1, FLY_OWN, 1); V3.dynHide('map', 'road'); }
     flyTo(a);
   }
   apprSync();

@@ -1436,7 +1436,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   const m3 = read('js/mode3d.js'), v3 = read('js/view3d.js'), ctx = {};
   require('vm').runInNewContext(m3.slice(m3.indexOf('const NEAR3 = '), m3.indexOf('// grid spacing for the camera distance')) + ';this.f = nearFade3;', ctx);
   assert.ok(ctx.f(100) === 0 && ctx.f(2e3) === 0 && ctx.f(8e4) === 1 && ctx.f(1e7) === 1 && ctx.f(1e4) > 0 && ctx.f(1e4) < ctx.f(3e4), 'close view: the fade by distance');
-  assert.ok(m3.includes("const nk = S.follow === 'craft' ? nearFade3(c.dist) : 1;") && m3.includes("V3.fadeSet('sim', nk, OWN3, 0.1 + 0.9 * nk);") && m3.includes('grid3(c, V3S.grid, nk);') && m3.includes("OWN3 = new Set(['path', 'pathB', 'osc', 'conn', 'trail', 'park'])"), 'close view: lines and grid fade, the own path faint');
+  assert.ok(m3.includes("const nk = S.follow === 'craft' ? nearFade3(c.dist) : 1;") && m3.includes("V3.fadeSet('sim', nk, OWN3, nk);") && m3.includes('grid3(c, V3S.grid, nk);') && m3.includes("OWN3 = new Set(['path', 'pathB', 'osc', 'conn', 'trail', 'park'])"), 'close view: lines and grid fade, the own path faint');
   assert.ok(v3.includes('m.opacity = m.userData.base * f;') && v3.includes("h.mats[0].userData.base = opacity; fadeApply(set, id, h.mats[0]);"), 'close view: on top of each line\'s opacity');
 }
 // 48) Sound on the simulator page (2026-11-15, js/sim-audio.js): no files (generated hum and engine rumble), Web Audio
@@ -1843,5 +1843,14 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(pd.dither && a1.every((v, i) => v === a2[i]), 'gif: ordered dithering, steady from frame to frame');
   const flat = frame(0).map((v, i) => (i % 4 === 3 ? 255 : [3, 5, 7][i % 4])), pn = G.gifPalette([flat], { fixed });
   assert.ok(new Set(G.gifIndex(pn, flat, w)).size === 1 && !pn.dither, 'gif: no dithering by default, the plain void one entry');
+// 66) The close view's road (2026-11-21, Phase 20A-4): up close the craft's own lines fade out entirely and one line takes
+  // their place, the osculating conic through the craft's own state (exactly through the model's centre), thin, faint and
+  // additive, its vertex colours out near the camera and at its ends; the near fade does not touch it; mission and free flight
+  {
+    const m3 = read('js/mode3d.js'), fl = read('js/fly.js'), v3 = read('js/view3d.js');
+    assert.ok(m3.includes('function road3(set, g, u0, anchor, k)') && m3.includes("V3.dyn(set, 'road', cap, { color: '#ffffff', vertexColors: true, additive: true, width: 1.2 });") && m3.includes('ss((dc / Dc - 0.45) / 0.5)'), 'road: additive, faded near the camera');
+    assert.ok(m3.includes("V3.fadeSet('sim', nk, OWN3, nk);") && m3.includes("road3('sim', g, g ? conicU(g, q.r) : 0,") && fl.includes("V3.fadeSet('map', nk, FLY_OWN, nk);") && fl.includes("road3('map', g, g ? conicU(g, r) : 0, an, 1 - nk);"), 'road: the own lines give way to it in missions and in free flight');
+    assert.ok(v3.includes("f = id === 'road' ? 1 : own ? F.kOwn : F.k;"), 'road: not faded by the near fade');
+  }
   console.log('OK — all UI tests passed');
 })().catch(e => { console.error(e); process.exit(1); });
