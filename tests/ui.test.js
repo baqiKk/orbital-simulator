@@ -898,7 +898,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
   assert.ok(page.includes('<html lang="tr">') && page.includes('id="followBtn"') && page.includes('id="followMenu"') && page.includes('id="followX"') && has('vw.followOn'), 'follow control');
   assert.ok(app.includes("vwPut($('#followSeg'), $('#followMenu'))") && app.includes("$('#followTxt').textContent = _('vw.followOn', { name: n || _('fo.free') })") && css.includes('html:not(.ui-expert) #focusTag,html:not(.ui-expert) .vw-follow>.lbl,html.ui-expert #followCtl{display:none}'), 'one control, the old ones in the expert layout');
   for (const rule of css.split('}')) if (/text-transform:uppercase/.test(rule) && /overflow:hidden/.test(rule) && /\/1[ ;]/.test(rule)) assert.ok(/padding:3px 0/.test(rule) || /padding:\s*3px/.test(rule), 'dots cut: ' + rule.trim().slice(0, 50));
-  assert.ok(app.includes("for (const id of ['mission', 'results', 'overview']) if (WINS[id].open) { SCENE.hide.add(id);"), 'scene: the overview aside');
+  assert.ok(app.includes("for (const id of WIN_IDS) if (WINS[id].open) { SCENE.hide.add(id);"), 'scene: every open window aside (2026-11-21: Gök cisimleri too)');
   assert.ok(css.includes('.vw-btn{display:inline-flex;align-items:center;gap:7px}'), 'view button: icon and text apart');
 }
 // 31) Cabin pans on iPhone, fast ones too: the glide, the stretch, the spring back and the return only translate (no
@@ -1051,7 +1051,7 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
       assert.ok(ph > 100 && ph < 140 && Math.abs(ph - o.phase) < 1e-6, `${tag}: the Sun behind Saturn (phase ${ph.toFixed(1)}°)`);
       assert.ok(o.e[2] > Math.sin(3 * Math.PI / 180) && o.e[2] < Math.sin(15 * Math.PI / 180), `${tag}: the camera a little above the ecliptic`);
       assert.ok(inB(o.x, o.y) && inB(o.sun[0], o.sun[1]), `${tag}: Saturn and the Sun in frame (${o.sun.map(v => v.toFixed(0))})`);
-      assert.ok(o.fov >= P.SAT_SHOT.fovMin && o.fov <= P.SAT_SHOT.fovMax && o.dist > 3 * R, `${tag}: field of view ${o.fov.toFixed(1)}°`);
+      assert.ok(o.fov >= P.SAT_SHOT.fovMin && o.fov <= P.SAT_SHOT.fovMax && o.dist > 2.4 * R, `${tag}: field of view ${o.fov.toFixed(1)}°, the camera ${(o.dist / R).toFixed(1)} ring radii out (2026-11-21: closer)`);
       if (box.w > box.h) assert.ok(o.roll === 0, `${tag}: the ecliptic level on a wide screen`);
       if (iso.startsWith('2026') && box.w > box.h) assert.ok(o.milky > 0.05, `${tag}: the Milky Way in frame (${o.milky.toFixed(3)})`);
       // no sway: the same place at any time

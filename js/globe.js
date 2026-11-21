@@ -222,7 +222,12 @@ vec4 ringShade(float x, vec3 s, vec3 v, float sh) {
   }
   float cs = dot(-s, v), hg = 0.51 / pow(1.49 - 1.4 * cs, 1.5);
   vec3 L = alb * 2.0 * f * mix(1.0, hg, smoothstep(0.990, 0.993, x));
-  return vec4(L * sh, 1.0 - exp(-tau / mu));
+  // in the planet's shadow (2026-11-21, Phase 20A-5) only the ring itself darkens: its sparse parts (gaps, the dust out to
+  // the F ring), seen at a grazing angle, would otherwise cover the sky behind as a hard dark wedge, where in sunlight
+  // their own glow hides it
+  float a = 1.0 - exp(-tau / mu);
+  if (sh < 1.0) a *= mix(smoothstep(0.05, 0.4, tau), 1.0, sh);
+  return vec4(L * sh, a);
 }
 // relief: height (body radii) at uv, the mip level matching the screen footprint, normal from the heights, and the
 // light left after the terrain towards the Sun (horizon angle against the Sun's elevation, the Sun's disc as penumbra)

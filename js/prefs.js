@@ -520,7 +520,7 @@ function tourAt(T, P, D) {
 // (roll, focal length, Saturn's place) stays; it is composed at the swing's widest Sun–Saturn separation, so the Sun
 // only moves inwards from there, and the swing is scaled down (sway.k for the azimuth, the height and distance apart)
 // until the Sun stays in frame and the phase within phaseLim all along it.
-const SAT_SHOT = { phase: 132, phaseTall: 135, elev: 8, ring: 0.2, ringTall: 0.34, fovMin: 40, fovMax: 85, phaseLim: [120, 140],
+const SAT_SHOT = { phase: 132, phaseTall: 135, elev: 8, ring: 0.38, ringW: 0.215, ringTall: 0.37, fovMin: 40, fovMax: 85, phaseLim: [120, 140],
   sway: { az: 6, azTall: 5, el: 2.5, dist: 0.04, taz: 52, tel: 44, tdist: 58, k: [1, 0.8, 0.6, 0.4, 0.2, 0] } };
 const D2R_ = Math.PI / 180;
 // galactic axes in the J2000 ecliptic (IAU: north pole RA 192.85948°, Dec +27.12825°; centre RA 266.40510°, Dec −28.93617°)
@@ -559,7 +559,9 @@ function shotEye(s, ph, el, g, da = 0, de = 0) {
 // { k, ke (the azimuth's and the height's scales), az, el (deg), dist (share) amplitudes }, fit (to pass back as o.fit) }.
 function saturnShot(sat, sun, pole, box, o = {}) {
   const P = SAT_SHOT, s = v3n([sun[0] - sat[0], sun[1] - sat[1], sun[2] - sat[2]]), tall = box.h > box.w * 1.05;
-  const ph0 = tall ? P.phaseTall : P.phase, ring = (tall ? P.ringTall : P.ring) * Math.min(box.w, box.h);
+  // the rings' radius on screen (2026-11-21: closer, Saturn and its rings fill the left or right half): on a wide screen no
+  // more than Saturn's room to the nearer edge allows (0.26 of the width, less a margin for the perspective), so the rings stay in frame
+  const ph0 = tall ? P.phaseTall : P.phase, ring = tall ? P.ringTall * Math.min(box.w, box.h) : Math.min(P.ring * Math.min(box.w, box.h), P.ringW * box.w);
   const compose = (g, k, yk, da = 0) => {
     const d = shotEye(s, ph0, P.elev, g, da), B0 = shotBasis(d, 0), dep = -dot3(s, B0.d), x = dot3(s, B0.r) / dep, y = dot3(s, B0.u) / dep;
     const tg = Math.hypot(x, y), a0 = Math.atan2(y, x), side = x >= 0 ? 1 : -1;

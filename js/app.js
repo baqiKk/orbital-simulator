@@ -2731,7 +2731,9 @@ function sceneSet(kind, o = {}) {
 // the mission's readout, timeline and windows step aside (from the first-run question on)
 function sceneAside() {
   document.documentElement.dataset.scene = '';
-  for (const id of ['mission', 'results', 'overview']) if (WINS[id].open) { SCENE.hide.add(id); winEl(id).classList.add('scene-hide'); }
+  // every open window (2026-11-21: a saved layout's "Gök cisimleri" and the rest opened over the scene too); a rail icon
+  // brings one back (sceneUnhide)
+  for (const id of WIN_IDS) if (WINS[id].open) { SCENE.hide.add(id); winEl(id).classList.add('scene-hide'); }
   INS = null; railSync();
 }
 function sceneStart(free) {
@@ -3118,7 +3120,8 @@ function drawMap(T, glow, craft, tNow, pathIdx) {
     const e = orb.paths[i]; if (!e || !showBody(i) || (SCENE.on && !isMoon(i))) continue;
     const p = MPAR[i], cx0 = isMoon(i) ? sx(pos[2 * p]) : sx(0), cy0 = isMoon(i) ? sy(pos[2 * p + 1]) : sy(0);
     const k = MAPK[i], hi = k === keyA || k === keyB;
-    ctx.strokeStyle = hexA(BODIES[k].color, hi ? 0.5 : isMoon(i) ? 0.18 : 0.26);
+    // the opening shot (not once the view moved): the moons' orbits faint, the close frame would be crowded (2026-11-21)
+    ctx.strokeStyle = hexA(BODIES[k].color, (hi ? 0.5 : isMoon(i) ? 0.18 : 0.26) * (SCENE.on && !SCENE.free ? 0.35 : 1));
     ringStroke2(e, cx0, cy0, sc); // adaptive (Phase 20A-3)
   }
   // craft path (real model)
