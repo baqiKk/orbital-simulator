@@ -41,6 +41,7 @@
     <button class="rail-btn rail-more" type="button" id="railMore" aria-expanded="false" aria-controls="railMoreList" data-i18n-aria-label="rail.more" data-i18n-data-label="rail.more"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="10" r="1.3" class="fill"/><circle cx="10" cy="10" r="1.3" class="fill"/><circle cx="15" cy="10" r="1.3" class="fill"/></svg></button>
     <div class="rail-more-list glass" id="railMoreList" hidden></div>
     <span class="rail-sp"></span>
+    <button class="rail-btn rail-ver" type="button" id="notesBtn" data-i18n-aria-label="notes.link" data-i18n-data-label="rail.notes" data-i18n-title="notes.link"><span class="rv-t" id="notesBtnT"></span><i class="rv-dot" hidden></i></button>
     <button class="rail-btn" type="button" id="resetWins" data-i18n-aria-label="win.reset" data-i18n-data-label="rail.reset" data-i18n-title="win.reset"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6"/><rect x="11" y="3" width="6" height="6"/><rect x="3" y="11" width="6" height="6"/><path d="M11.5 14a3 3 0 1 0 1-2.2" class="thin"/><path d="M11.4 10.6v2h2" class="thin"/></svg></button>
   </nav>
 
@@ -516,6 +517,7 @@
     <section class="win" id="w-model" data-win="model" aria-labelledby="wt-model" hidden>
       <header class="win-h"><h2 id="wt-model" data-i18n="win.model"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
       <div class="win-b model">
+        <p class="model-ver"><span id="modelVer"></span> · <button type="button" class="link" id="modelNotes"><span data-i18n="notes.link"></span><i class="rv-dot" hidden></i></button></p>
         <details class="adv" open>
           <summary data-i18n="about.h">Hakkında</summary>
           <p data-i18n="about.p1">Yörünge Transfer Simülatörü, tarayıcıda çalışan ücretsiz bir uzay yolculuğu simülatörüdür. İki ile dört gök cismi seçersiniz, bir kalkış yanması tanımlarsınız; araç yolu hesaplanır ve video gibi oynatılır. Kurulum gerekmez, tüm hesap tarayıcınızda yapılır.</p>
@@ -546,6 +548,13 @@
   </div>
 </div>
 
+<div class="notes" id="notes" hidden>
+  <div class="notes-in glass" role="dialog" aria-modal="true" aria-labelledby="notesT">
+    <header class="notes-h"><h2 id="notesT" data-i18n="notes.title"></h2><button class="wbtn" type="button" id="notesX" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+    <div class="notes-b" id="notesB"></div>
+  </div>
+</div>
+<div class="notes-toast glass" id="notesToast" role="status" hidden><span id="notesToastT"></span><button type="button" class="btn sm primary" id="notesToastGo" data-i18n="notes.show"></button><button class="wbtn" type="button" id="notesToastX" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></div>
 <div class="start" id="start" hidden>
   <div class="start-in glass" role="dialog" aria-modal="true" aria-labelledby="startT">
     <h2 id="startT" data-i18n="start.title"></h2>
@@ -566,7 +575,7 @@
       <button type="button" class="start-card" data-sc="r_e_mars" data-i18n-data-last="start.last"><b data-i18n="start.mars"></b><span data-i18n="start.marsD"></span></button>
       <button type="button" class="link start-back" id="startBack" data-i18n="start.back"></button>
     </div>
-    <p class="start-foot" data-i18n="start.foot"></p>
+    <p class="start-foot"><span data-i18n="start.foot"></span> <button type="button" class="link" id="startNotes"><span data-i18n="notes.link"></span><i class="rv-dot" hidden></i></button></p>
   </div>
 </div>
 <div class="tour glass" id="tour" role="dialog" aria-live="polite" hidden>
@@ -587,6 +596,7 @@
 </div>
 <script src="js/i18n.js"></script>
 <script src="js/prefs.js"></script>
+<script src="js/changelog.js"></script>
 <script src="js/bodies.js"></script>
 <script src="js/vehicles.js"></script>
 <script src="js/engines.js"></script>

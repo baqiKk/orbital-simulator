@@ -62,6 +62,12 @@ a.rail-btn{text-decoration:none}
 a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
 .rail-btn[aria-pressed=true]::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:2px;background:var(--accent)}
 .rail-sp{flex:1}
+/* the version at the rail's foot (Phase 20A-8): "v0.9", a dot while a version's notes are unread */
+.rail-ver .rv-t{font:600 10px/1 var(--f-mono);letter-spacing:.02em;color:var(--faint)}
+.rail-ver:hover .rv-t,.rail-ver:focus-visible .rv-t{color:var(--ink)}
+.rv-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-left:4px;vertical-align:middle}
+.rv-dot[hidden]{display:none}
+.rail-ver .rv-dot{position:absolute;top:10px;right:8px;margin:0}
 
 /* ---------- stage & HUD ---------- */
 .stage{grid-column:2;grid-row:1;position:relative;overflow:hidden;background:var(--void);min-width:0}
@@ -596,6 +602,27 @@ html:not(.ui-expert) #focusTag,html:not(.ui-expert) .vw-follow>.lbl,html.ui-expe
 .start-card b{font:600 14px/1.2 var(--f-disp);letter-spacing:.03em;color:var(--ink)}
 .start-card:hover,.start-card:focus-visible{border-color:var(--accent);color:var(--ink);background:var(--raise)}
 .start-card.last{border-color:var(--line3)}
+/* release notes (Phase 20A-8, js/changelog.js): the latest version large with its date, "Yeni" and its picture; the
+   older ones a plain list below */
+.notes{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:color-mix(in srgb,var(--void) 55%,transparent)}
+.notes-in{width:min(560px,100%);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line2)}
+.notes-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.notes-h h2{margin:0;font:600 12px/1 var(--f-disp);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.notes-b{overflow:auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:14px}
+.nt-top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.nt-ver{font:600 34px/1 var(--f-disp);letter-spacing:.02em;color:var(--ink)}
+.nt-new{padding:2px 7px;font:600 10px/1.4 var(--f-disp);letter-spacing:.1em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent)}
+.nt-date{color:var(--dim);font:400 12px/1 var(--f-mono)}
+.nt-img{display:block;width:100%;height:auto;border:1px solid var(--line)}
+.nt-items{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--ink);font-size:13px;line-height:1.45}
+.nt-more .nt-ver{font-size:20px}
+.nt-old h3{margin:4px 0 6px;font:600 11px/1 var(--f-disp);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.nt-old ul{margin:0;padding-left:18px;color:var(--dim);font-size:12px;line-height:1.45}
+.nt-old b{color:var(--ink);font-weight:600}
+.notes-toast{position:fixed;z-index:55;left:50%;bottom:86px;transform:translateX(-50%);max-width:min(560px,calc(100vw - 24px));display:flex;align-items:center;gap:10px;padding:8px 8px 8px 12px;font-size:12.5px;color:var(--ink);background:var(--panel);border:1px solid var(--line3)}
+.notes-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.model-ver{color:var(--dim);font:400 12px/1.4 var(--f-mono)}
+@media (max-width:560px){.nt-ver{font-size:28px}.notes-toast{bottom:76px}}
 /* "Kendin uç" (Phase 20A-7, js/fly.js flyPick): the first bodies as cards, the rest in a list, optional altitude/inclination */
 .start-fly{display:flex;flex-direction:column;gap:9px}
 .start-flyq{margin:0;color:var(--dim);font-size:12.5px;line-height:1.4}

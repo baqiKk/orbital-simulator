@@ -1875,5 +1875,26 @@ assert.deepStrictEqual(P.clampWin(100, 100, 1200, 900, 1000, 800), [0, 0]);
     assert.ok(fl.includes('mapSys.soi[i] / 3') && fl.includes('const F = bodyAxes(key, t, P, V, i, MPAR[i], new Array(9));') && fl.includes('writePref(FLY_LS, PREF_KEYS.flyBody, key);') && P.PREF_KEYS.flyBody, 'kendin uç: bodies whose orbit fits, the equator from the pole, the body remembered');
     assert.ok(wz.includes("if (c.dataset.path === 'fly') wzFly(true); else wzPick(c.dataset.path);") && eu.includes("flyStartAt(engEl('engFlyBody').value || 'earth', { E: { ...ENGW.E } })") && css.includes('html[data-fly] .eng-fly{display:none}'), 'kendin uç: the wizard and the engine window');
   }
+  // 69) Release notes, "Yenilikler" (2026-11-21, Phase 20A-8): one file (js/changelog.js: version, date, tr / en items, a
+  // picture made from the site); versions compared as numbers; the notice once per new version after the welcome, to a
+  // returning visitor only (a first visit: the dot); the window (latest large with "Yeni", its picture; older ones a plain
+  // list); the version at the rail's foot (on a phone in "Diğer"), in the Model window and on the start screen; a start
+  // choice made during free flight leaves the flight first
+  {
+    const N = require('../js/changelog.js'), app = read('js/app.js'), fs = require('fs'), path = require('path');
+    assert.ok(N.verCmp('0.10', '0.9') > 0 && N.verCmp('1.0', '1') === 0 && N.verCmp('0.9', '0.9.1') < 0 && N.NOTES_LAST === N.CHANGELOG[0].v, 'notes: versions compared as numbers');
+    const L = [{ v: '1.1' }, { v: '1.0' }, { v: '0.9' }];
+    assert.deepStrictEqual(N.notesUnseen(L, '0.9').map(x => x.v), ['1.1', '1.0'], 'notes: only the unseen versions');
+    assert.ok(N.notesUnseen(L, null).length === 3 && N.notesUnseen(L, '1.1').length === 0, 'notes: none seen, all unseen');
+    assert.ok(N.notesToast(L, null, true) && !N.notesToast(L, null, false) && N.notesToast(L, '1.0', false) && !N.notesToast(L, '1.1', true), 'notes: the notice once per version, to returning visitors');
+    for (const x of N.CHANGELOG) {
+      assert.ok(/^\d+\.\d+(\.\d+)?$/.test(x.v) && !isNaN(Date.parse(x.date)) && x.tr.length >= 3 && x.tr.length <= 6 && x.en.length === x.tr.length, `notes: v${x.v} has a date and 3–6 items in both languages`);
+      const f = x.img && path.join(__dirname, '..', x.img);
+      if (x.img) assert.ok(fs.existsSync(f) && x.alt && x.alt.tr && x.alt.en && x.size && fs.statSync(f).size < 300e3, `notes: the picture of v${x.v} exists, small, with alt text`);
+    }
+    assert.ok(html.indexOf('js/prefs.js') < html.indexOf('js/changelog.js') && html.indexOf('js/changelog.js') < html.indexOf('js/app.js') && ['notesBtn', 'notes', 'notesB', 'notesToast', 'startNotes', 'modelNotes', 'modelVer'].every(id => html.includes('id="' + id + '"')) && ['notes.title', 'notes.link', 'notes.new', 'notes.old', 'notes.ver', 'notes.toast', 'notes.show', 'rail.notes'].every(has), 'notes: markup, texts, the file before app.js');
+    assert.ok(app.includes("$('#notesToast').hidden = false;") && app.includes("function startClose() { $('#start').hidden = true; notesLater(600); }") && app.includes("$('#notesBtn'), $('#resetWins')]") && P.PREF_KEYS.notesRead && P.PREF_KEYS.notesShown, 'notes: after the welcome, saved, in Diğer on a phone');
+    assert.ok(app.includes("function startScene() { if (FREE.on) flyExit();") && app.includes("function startMission(id) { if (FREE.on) flyExit();"), 'start: a choice during free flight leaves the flight');
+  }
   console.log('OK — all UI tests passed');
 })().catch(e => { console.error(e); process.exit(1); });

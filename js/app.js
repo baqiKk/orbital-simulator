@@ -2978,20 +2978,66 @@ $('#wcScene').addEventListener('click', e => { const b = e.target.closest('butto
 const APP = { mode: '' }; // 'scene' | 'mission' | 'design': what the viewer chose (the mode title follows it)
 // last: the remembered choice ('scene', 'design', 'mission:<id>'): its card is marked ("Son seçimin") and focused
 function startOpen(last) {
-  $('#start').hidden = false; $('#startCards').hidden = false; $('#startMis').hidden = true;
+  $('#start').hidden = false; $('#startCards').hidden = false; $('#startMis').hidden = true; $('#startFly').hidden = true;
   const go = last ? last.split(':')[0] : '', sc = last && last.startsWith('mission:') ? last.slice(8) : '';
   for (const c of document.querySelectorAll('#start .start-card')) c.classList.toggle('last', !!go && (c.dataset.go === go || (!!sc && c.dataset.sc === sc)));
   ($('#startCards .start-card.last') || $('#startCards .start-card')).focus({ preventScroll: true });
 }
-function startClose() { $('#start').hidden = true; }
-function startScene() { APP.mode = 'scene'; if (!SCENE.on) sceneStart(); }
+function startClose() { $('#start').hidden = true; notesLater(600); }
+// ===== Release notes, "Yenilikler" (2026-11-21, Phase 20A-8; js/changelog.js) =====
+// The window: the latest version large (number, date, "Yeni", its picture, its items), then any other version not read
+// yet, then the older ones as a plain list. A new version is noticed once, after the welcome, by someone who used the site
+// before (a small notice; prefs: notesShown); a first visit gets only the dot by the links (rail foot "v0.9", the start
+// screen, the Model window) until the notes are read (notesRead).
+const NOTES = { read: readPref(LS, PREF_KEYS.notesRead), shown: readPref(LS, PREF_KEYS.notesShown), returning: !!(readPref(LS, PREF_KEYS.start) || readPref(LS, PREF_KEYS.wins) || readPref(LS, PREF_KEYS.mode) || readPref(LS, PREF_KEYS.simAudio)), timer: 0, due: 0 };
+const NOTES_DATE = new Intl.DateTimeFormat(DICT['meta.locale'], { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' });
+const notesOf = x => x[LANG] || x.tr;
+function notesDot() {
+  const un = notesUnseen(CHANGELOG, NOTES.read).length > 0;
+  for (const d of document.querySelectorAll('.rv-dot')) d.hidden = !un;
+  $('#notesBtnT').textContent = 'v' + NOTES_LAST; $('#modelVer').textContent = _('notes.ver', { v: NOTES_LAST });
+}
+function notesRender() {
+  const un = new Set(notesUnseen(CHANGELOG, NOTES.read).map(x => x.v)), date = x => NOTES_DATE.format(Date.parse(x.date + 'T12:00:00Z'));
+  const block = (x, big) => '<article class="nt' + (big ? '' : ' nt-more') + '"><div class="nt-top"><span class="nt-ver">v' + esc(x.v) + '</span>' + (un.has(x.v) ? '<span class="nt-new">' + esc(_('notes.new')) + '</span>' : '') + '<time class="nt-date" datetime="' + esc(x.date) + '">' + esc(date(x)) + '</time></div>'
+    + (big && x.img ? '<img class="nt-img" src="' + esc(x.img) + '" alt="' + esc(notesOf(x.alt || {}) || '') + '" loading="lazy" width="' + (x.size ? x.size[0] : 16) + '" height="' + (x.size ? x.size[1] : 9) + '">' : '')
+    + '<ul class="nt-items">' + notesOf(x).map(s => '<li>' + esc(s) + '</li>').join('') + '</ul></article>';
+  const [top, ...rest] = CHANGELOG, more = rest.filter(x => un.has(x.v)), old = rest.filter(x => !un.has(x.v));
+  $('#notesB').innerHTML = block(top, true) + more.map(x => block(x, false)).join('')
+    + (old.length ? '<section class="nt-old"><h3>' + esc(_('notes.old')) + '</h3><ul>' + old.map(x => '<li><b>v' + esc(x.v) + '</b> · ' + esc(date(x)) + ' — ' + notesOf(x).map(esc).join(' ') + '</li>').join('') + '</ul></section>' : '');
+}
+function notesOpen(open = true) {
+  const n = $('#notes');
+  if (open) {
+    notesRender(); n.hidden = false; $('#notesX').focus(); notesToastHide();
+    NOTES.read = NOTES_LAST; writePref(LS, PREF_KEYS.notesRead, NOTES_LAST); notesDot();
+  } else if (!n.hidden) n.hidden = true;
+}
+function notesToastHide() { $('#notesToast').hidden = true; clearTimeout(NOTES.timer); }
+// after the welcome (the start screen closed, or none shown): the notice, once per version
+function notesLater(ms) { clearTimeout(NOTES.due); NOTES.due = setTimeout(notesMaybe, ms); }
+function notesMaybe() {
+  if (!$('#start').hidden || !$('#notes').hidden || REC.busy || !notesToast(CHANGELOG, NOTES.shown, NOTES.returning)) return;
+  NOTES.shown = NOTES_LAST; writePref(LS, PREF_KEYS.notesShown, NOTES_LAST);
+  $('#notesToastT').textContent = _('notes.toast', { v: NOTES_LAST, first: notesOf(CHANGELOG[0])[0] });
+  $('#notesToast').hidden = false; NOTES.timer = setTimeout(notesToastHide, 14000);
+}
+for (const id of ['#notesBtn', '#startNotes', '#modelNotes', '#notesToastGo']) $(id).addEventListener('click', () => notesOpen(true));
+$('#notesX').addEventListener('click', () => notesOpen(false));
+$('#notesToastX').addEventListener('click', notesToastHide);
+$('#notes').addEventListener('pointerdown', e => { if (e.target === $('#notes')) notesOpen(false); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#notes').hidden) { e.stopPropagation(); notesOpen(false); } }, true);
+notesDot();
+// (2026-11-21) a choice on the start screen, reopened from the logo during free flight, leaves the flight first
+function startScene() { if (FREE.on) flyExit(); APP.mode = 'scene'; if (!SCENE.on) sceneStart(); }
 function startDesign() {
+  if (FREE.on) flyExit();
   APP.mode = 'design';
   if (SCENE.on) sceneEnd(true);
   for (const id of ['mission', 'results']) setWin(id, { open: true, collapsed: false });
   setTimeout(tourStart, 700); // offered once
 }
-function startMission(id) { APP.mode = 'mission'; writePref(LS, PREF_KEYS.start, 'mission:' + id); loadScenario(id); startClose(); }
+function startMission(id) { if (FREE.on) flyExit(); APP.mode = 'mission'; writePref(LS, PREF_KEYS.start, 'mission:' + id); loadScenario(id); startClose(); }
 $('#startCards').addEventListener('click', e => {
   const c = e.target.closest('.start-card'); if (!c) return;
   const go = c.dataset.go;
@@ -3012,7 +3058,7 @@ $('#startBtn').addEventListener('click', () => startOpen(parseStart(readPref(LS,
 // rail) so the names never shrink or get cut. The buttons are moved, the rail's own click handler still serves them.
 const RAIL = { more: ['bodies', 'transfer', 'engine', 'gloss', 'model', 'credits'], phone: matchMedia('(max-width: 860px)'), homes: new Map() };
 function railLayout() {
-  const list = $('#railMoreList'), btns = [...RAIL.more.map(id => railBtn(id)), $('#resetWins')];
+  const list = $('#railMoreList'), btns = [...RAIL.more.map(id => railBtn(id)), $('#notesBtn'), $('#resetWins')];
   for (const b of btns) { if (!RAIL.homes.has(b)) { const m = document.createComment('rail'); b.before(m); RAIL.homes.set(b, m); } }
   if (RAIL.phone.matches) for (const b of btns) list.appendChild(b); else { for (const b of btns) RAIL.homes.get(b).after(b); railMore(false); }
 }
@@ -4194,6 +4240,7 @@ else {
 }
 if (location.hash === '#kaynakca') setWin('credits', { open: true, collapsed: false }); // the cabin's sound panel links here
 if (flyRestore()) startClose(); // a free flight in this session comes back (js/fly.js)
+if ($('#start').hidden) notesLater(1500); // the release notes' notice (Phase 20A-8): after the welcome, else soon
 else if (bootFly) flyStartAt(flyLastBody());
 $('#flyGo').addEventListener('click', () => flyEnter());
 requestAnimationFrame(t => { last = t; draw(t); });
