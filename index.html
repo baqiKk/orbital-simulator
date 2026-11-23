@@ -1,10 +1,636 @@
 <!doctype html>
+<html lang="tr">
+<head>
 <meta charset="utf-8">
-<title>Yörünge Transfer Simülatörü taşındı</title>
-<link rel="canonical" href="https://orbitsim.pages.dev/">
-<meta name="robots" content="noindex">
-<script>
-  var p = location.pathname.replace(/^\/orbital-simulator/, '') || '/';
-  location.replace('https://orbitsim.pages.dev' + p + location.search + location.hash);
-</script>
-<p>Site taşındı: <a href="https://orbitsim.pages.dev/">orbitsim.pages.dev</a></p>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" data-i18n-content="meta.description" content="Tarayıcıda çalışan yörünge transfer simülatörü: Dünya–Ay serbest dönüş, Dünya–Mars Hohmann transferi ve daha fazlası.">
+<meta property="og:title" data-i18n-content="meta.title" content="Yörünge Transfer Simülatörü">
+<meta property="og:description" data-i18n-content="meta.description" content="Tarayıcıda çalışan yörünge transfer simülatörü: Dünya–Ay serbest dönüş, Dünya–Mars Hohmann transferi ve daha fazlası.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://baqikk.github.io/orbital-simulator/">
+<link rel="canonical" href="https://baqikk.github.io/orbital-simulator/">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Yörünge Transfer Simülatörü","description":"Tarayıcıda çalışan yörünge transfer simülatörü: Dünya–Ay serbest dönüş, Dünya–Mars Hohmann transferi ve daha fazlası.","url":"https://baqikk.github.io/orbital-simulator/","applicationCategory":"EducationalApplication","operatingSystem":"Any (web browser)","inLanguage":"tr","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"TRY"}}</script>
+<meta name="theme-color" content="#05080b">
+<title>Yörünge Transfer Simülatörü</title>
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<!-- 3D mode only: js/view3d.js imports Three.js through these names; nothing is fetched until it is picked -->
+<script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }</script>
+</head>
+<body>
+<h1 class="sr" data-i18n="ui.title">Yörünge Transfer Simülatörü</h1>
+<div class="app">
+  <nav class="rail" data-i18n-aria-label="ui.rail">
+    <button class="rail-mark" type="button" id="startBtn" data-i18n-aria-label="start.reopen" data-i18n-title="start.reopen"><svg viewBox="0 0 20 20" aria-hidden="true"><ellipse cx="10" cy="10" rx="8.5" ry="4" transform="rotate(-24 10 10)"/><circle cx="10" cy="10" r="2.4" class="fill"/><circle cx="17" cy="6.6" r="1.3" class="fill acc"/></svg></button>
+    <button class="rail-btn" type="button" data-win="mission" data-i18n-aria-label="win.mission" data-i18n-data-label="rail.mission" data-i18n-title="win.mission" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="14.5" r="2"/><path d="M6.6 13.2C9 8.5 12.5 5.6 17 4.5"/><path d="M13.6 3.4 17 4.5l-1.6 3.1"/></svg></button>
+    <button class="rail-btn" type="button" data-win="bodies" data-i18n-aria-label="win.bodies" data-i18n-data-label="rail.bodies" data-i18n-title="win.bodies" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="11.5" r="4.6"/><circle cx="15.6" cy="5" r="1.8"/><path d="M2.5 13.6c3.4 1.6 8.7 1 12.6-1.6" class="thin"/></svg></button>
+    <button class="rail-btn" type="button" data-win="results" data-i18n-aria-label="win.results" data-i18n-data-label="rail.results" data-i18n-title="win.results" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4.5h14M3 8.5h14M3 12.5h14M3 16.5h8"/><path d="M8 2.5v16" class="thin"/></svg></button>
+    <button class="rail-btn" type="button" data-win="overview" data-i18n-aria-label="win.overview" data-i18n-data-label="rail.overview" data-i18n-title="win.overview" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4.5" cy="4.5" r="2" class="fill"/><path d="M4.5 7v9M4.5 10.5h3.5M4.5 15.5h3.5" class="thin"/><path d="M10.5 10.5h6.5M10.5 15.5h6.5M8 4.5h9"/></svg></button>
+    <button class="rail-btn" type="button" data-win="transfer" data-i18n-aria-label="win.transfer" data-i18n-data-label="rail.transfer" data-i18n-title="win.transfer" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 2.5v14.5h14.5" class="thin"/><ellipse cx="11" cy="9.5" rx="5" ry="3.2" transform="rotate(-32 11 9.5)"/><ellipse cx="11" cy="9.5" rx="1.7" ry="1.1" transform="rotate(-32 11 9.5)" class="fill"/></svg></button>
+    <button class="rail-btn" type="button" data-win="engine" data-i18n-aria-label="win.engine" data-i18n-data-label="rail.engine" data-i18n-title="win.engine" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 1.5h6v3.1l-1.7 2.3v.3C12.5 8.5 14.9 11 15.4 14.6H4.6C5.1 11 7.5 8.5 8.7 7.2v-.3L7 4.6z"/><path class="acc" d="M6.8 15.6h6.4L10 19.6z"/></svg></button>
+    <button class="rail-btn" type="button" data-win="gloss" data-i18n-aria-label="win.gloss" data-i18n-data-label="rail.gloss" data-i18n-title="win.gloss" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h5a2 2 0 0 1 2 2v10.5a2 2 0 0 0-2-2H3z"/><path d="M17 4h-5a2 2 0 0 0-2 2v10.5a2 2 0 0 1 2-2h5z"/></svg></button>
+    <button class="rail-btn" type="button" data-win="model" data-i18n-aria-label="win.model" data-i18n-data-label="rail.model" data-i18n-title="win.model" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 17 6.5v7L10 17.5 3 13.5v-7z"/><path d="M10 10v7.5M10 10l7-3.5M10 10 3 6.5" class="thin"/></svg></button>
+    <button class="rail-btn" type="button" data-win="credits" data-i18n-aria-label="win.credits" data-i18n-data-label="rail.credits" data-i18n-title="win.credits" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h7.5L16 6v11.5H5z"/><path d="M12.5 2.5V6H16" class="thin"/><path d="M7.5 9.5h6M7.5 12.5h6M7.5 15h4" class="thin"/></svg></button>
+    <a class="rail-btn rail-cabin" href="kabin.html" id="railCabin" data-i18n-aria-label="ui.cabin" data-i18n-data-label="rail.cabin" data-i18n-title="ui.cabin"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.4 5.7h7.2c-.4 1.7-1.5 2.4-1.5 3.5 0 1.3 1.4 2.3 1.3 4.2-.1 1.8-1.3 2.6-3.4 2.6s-3.3-.8-3.4-2.6c-.1-1.9 1.3-2.9 1.3-4.2 0-1.1-1.1-1.8-1.5-3.5z" class="fill acc"/><path d="M6 3c.4 3.4 1.9 4.5 1.9 6.2 0 1.4-1.5 2.4-1.3 4.4.2 1.8 1.4 2.6 3.4 2.6s3.2-.8 3.4-2.6c.2-2-1.3-3-1.3-4.4 0-1.7 1.5-2.8 1.9-6.2z"/><path d="M3.5 17.8h13" class="thin"/></svg><span class="rail-beta" data-i18n="ui.betaTag"></span></a>
+    <button class="rail-btn rail-more" type="button" id="railMore" aria-expanded="false" aria-controls="railMoreList" data-i18n-aria-label="rail.more" data-i18n-data-label="rail.more"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="10" r="1.3" class="fill"/><circle cx="10" cy="10" r="1.3" class="fill"/><circle cx="15" cy="10" r="1.3" class="fill"/></svg></button>
+    <div class="rail-more-list glass" id="railMoreList" hidden></div>
+    <span class="rail-sp"></span>
+    <button class="rail-btn rail-ver" type="button" id="notesBtn" data-i18n-aria-label="notes.link" data-i18n-data-label="rail.notes" data-i18n-title="notes.link"><span class="rv-t" id="notesBtnT"></span><i class="rv-dot" hidden></i></button>
+    <button class="rail-btn" type="button" id="resetWins" data-i18n-aria-label="win.reset" data-i18n-data-label="rail.reset" data-i18n-title="win.reset"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6"/><rect x="11" y="3" width="6" height="6"/><rect x="3" y="11" width="6" height="6"/><path d="M11.5 14a3 3 0 1 0 1-2.2" class="thin"/><path d="M11.4 10.6v2h2" class="thin"/></svg></button>
+  </nav>
+
+  <main class="stage" id="stage">
+    <canvas id="gl" aria-hidden="true" hidden></canvas>
+    <canvas id="cv" data-i18n-aria-label="ui.canvas"></canvas>
+    <div class="cam-fade" id="camFade" aria-hidden="true"></div>
+    <div class="msg" id="msg" hidden></div>
+    <div class="mission-tag glass" id="missionTag" role="status" aria-live="off"><b id="mtTitle"></b><span id="mtPhase" hidden></span></div>
+    <div class="mode-chip glass" id="modeChip"><span id="modeText" hidden></span><div class="seg chip-scene" id="wcScene" role="group" data-i18n-aria-label="wc.sceneAria" hidden><button type="button" data-v="saturn" data-i18n="wc.saturn"></button><button type="button" data-v="earth" data-i18n="wc.earth"></button><button type="button" data-v="tour" data-i18n="wc.tour"></button></div><button type="button" class="link" id="modeBack" hidden></button></div>
+    <div class="glass livebar" id="liveBar" role="group" data-i18n-aria-label="live.aria" hidden>
+      <div class="live-row"><span class="live-dot" id="liveDot" aria-hidden="true"></span><span class="live-time" id="liveText" aria-live="off"></span>
+        <select id="liveRate" data-i18n-aria-label="live.rate">
+          <option value="live" data-i18n="live.live"></option><option value="60" data-i18n="live.r60"></option><option value="600" data-i18n="live.r600"></option><option value="3600" data-i18n="live.r3600"></option><option value="86400" data-i18n="live.r86400"></option><option value="864000" data-i18n="live.r864000"></option>
+        </select>
+        <button type="button" class="link" id="liveNow" data-i18n="live.now" hidden></button>
+        <button type="button" class="link" id="liveMap" data-i18n="live.map" data-i18n-title="live.mapTip" hidden></button>
+      </div>
+      <div class="live-sub" id="liveSub" hidden></div>
+    </div>
+    <div class="fly-help" id="flyHelp" hidden><button class="link fly-how" type="button" id="flyHow" aria-expanded="false" aria-controls="tutList" data-i18n="tut.list"></button><div class="glass tut-list" id="tutList" hidden></div><div class="glass fly-tip fly-note" id="flyNote" role="status" aria-live="polite" hidden></div></div>
+    <div class="tut-ring" id="tutRing" aria-hidden="true" hidden></div>
+    <div class="glass tut-box" id="tutBox" role="status" aria-live="polite" hidden><div class="tut-h"><b id="tutT"></b><span id="tutN"></span></div><p id="tutText"></p><div class="tut-act" id="tutAct"><button class="link" type="button" id="tutBack" data-i18n="tut.back"></button><button class="link" type="button" id="tutSkip" data-i18n="tut.skip"></button><button class="link" type="button" id="tutQuit" data-i18n="tut.quit"></button></div><div class="tut-act" id="tutMore" hidden><button class="btn sm primary" type="button" data-i18n="tut.list"></button></div></div>
+    <div class="glass guide" id="guide" role="status" aria-live="polite" hidden><span id="guideText"></span><button class="btn sm primary" type="button" id="guideGo" data-i18n="guide.go" hidden></button></div>
+    <div class="hud-top">
+      <div class="ctrls" id="ctrls">
+        <div class="ctrl-bar" id="ctrlBar">
+          <div class="seg" id="dimSeg" role="group" data-i18n-aria-label="vw.dimAria"><button type="button" data-v="2d" data-i18n="vw.2d"></button><button type="button" data-v="3d" data-i18n="vw.3d"></button></div>
+          <div class="vw-follow" id="vwFollow"><span class="lbl" data-i18n="vw.follow"></span><div class="follow-ctl" id="followCtl"><button class="ghost follow-btn" id="followBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="followMenu"><span id="followTxt"></span><span class="vw-caret" aria-hidden="true">▾</span></button><button class="ghost follow-x" id="followX" type="button" data-i18n-aria-label="focus.release" data-i18n-title="focus.release" hidden><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button><div class="glass follow-menu" id="followMenu" hidden><div class="follow-map" id="followMap" hidden></div></div></div></div>
+          <div class="vw-row"><div class="snd-wrap"><button class="ghost snd-btn" id="sndBtn" type="button" aria-pressed="true" aria-expanded="false" aria-controls="sndPop" data-i18n-title="snd.btn" data-i18n-aria-label="snd.btn"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z"/><path class="w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.3 5.2c2.2 2.8 2.2 6.8 0 9.6"/><path class="x" d="M13.2 7.5l4.5 5M17.7 7.5l-4.5 5"/></svg></button>
+            <div class="glass snd-pop" id="sndPop" role="dialog" data-i18n-aria-label="snd.title" hidden>
+              <label class="chk"><input type="checkbox" id="sndOn"><span data-i18n="snd.on"></span></label>
+              <div class="seg snd-kind" id="sndKind" role="group" data-i18n-aria-label="snd.kind"><button type="button" data-v="deep" data-i18n="snd.deep"></button><button type="button" data-v="rec" data-i18n="snd.rec"></button></div>
+              <label class="snd-vol"><span data-i18n="snd.vol"></span><input type="range" id="sndVol" min="0" max="100" step="1"></label>
+              <label class="chk" data-i18n-title="snd.engTip"><input type="checkbox" id="sndEng"><span data-i18n="snd.eng"></span></label>
+              <p class="snd-note" data-i18n="snd.note"></p>
+            </div></div>
+          <button class="ghost vw-btn" id="viewBtn" type="button" aria-expanded="false" aria-controls="viewMenu" data-i18n-title="vw.menu"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14"/><circle cx="7" cy="6" r="1.6"/><circle cx="13" cy="10" r="1.6"/><circle cx="8" cy="14" r="1.6"/></svg><span data-i18n="vw.menu"></span><span class="vw-caret" aria-hidden="true">▾</span></button></div>
+        </div>
+        <div class="seg vmode" id="viewMode" role="group" data-i18n-aria-label="mode.aria">
+          <button type="button" data-v="low" data-i18n="mode.low"></button>
+          <button type="button" data-v="normal" data-i18n="mode.normal"></button>
+          <button type="button" data-v="3d" data-i18n-title="mode.3dTip"><span data-i18n="mode.3d"></span><em id="v3em" data-i18n="mode.loading" hidden></em></button>
+        </div>
+        <div class="seg" id="frameSeg" role="group" data-i18n-aria-label="ui.frameAria"></div>
+        <div class="seg" id="mapSeg" role="group" data-i18n-aria-label="map.scaleAria" hidden>
+          <button type="button" data-v="lin" data-i18n="map.lin"></button>
+          <button type="button" data-v="log" data-i18n="map.log"></button>
+        </div>
+        <div class="seg" id="sizeSeg" role="group" data-i18n-aria-label="v3.sizeAria" hidden>
+          <button type="button" data-v="real" data-i18n="v3.sizeReal" data-i18n-title="v3.sizeRealTip"></button>
+          <button type="button" data-v="big" data-i18n="v3.sizeBig" data-i18n-title="v3.sizeBigTip"></button>
+        </div>
+        <div class="row">
+          <div class="seg" id="followSeg" role="group" data-i18n-aria-label="ui.followAria"></div>
+          <button class="ghost" id="mapBtn" type="button" aria-pressed="false" data-i18n="map.toggle" data-i18n-title="map.toggleTip"></button>
+          <button class="ghost" id="fit" type="button" data-i18n="ui.fit"></button>
+          <button class="ghost" id="topView" type="button" data-i18n="v3.top" data-i18n-title="v3.topTip" hidden></button>
+        </div>
+        <div class="glass focus-tag" id="focusTag" hidden><span class="lbl" data-i18n="focus.tag"></span><b id="focusName"></b><button type="button" class="ibtn x" id="focusOff" data-i18n-aria-label="focus.release" data-i18n-title="focus.release"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></div>
+        <div class="glass view-menu" id="viewMenu" role="dialog" data-i18n-aria-label="vw.menu" hidden>
+          <div class="vm-sec" data-slot="bar"></div>
+          <div class="vm-sec"><h4 data-i18n="vw.frame"></h4><div data-slot="frame"></div><p class="vm-note" id="frameNote"></p><button class="link" type="button" id="frameGloss" data-i18n="vw.frameGloss"></button></div>
+          <div class="vm-sec"><h4 data-i18n="vw.camera"></h4><div class="vm-row" data-slot="cam"></div></div>
+          <div class="vm-sec"><h4 data-i18n="vw.show"></h4><div data-slot="toggles"></div></div>
+          <div class="vm-sec"><h4 data-i18n="vw.quality"></h4><div class="seg" id="qualSeg" role="group" data-i18n-aria-label="vw.quality"><button type="button" data-v="low" data-i18n="vw.low"></button><button type="button" data-v="normal" data-i18n="vw.normal"></button></div><p class="vm-note" data-i18n="vw.lowNote"></p></div>
+          <label class="chk vm-expert"><input type="checkbox" id="expertUi"><span data-i18n="vw.expert"></span></label>
+        </div>
+        <div class="glass toggles">
+          <label class="chk" id="mapMoonsWrap" hidden><input type="checkbox" id="tMoons" checked><span data-i18n="map.moons"></span></label>
+          <label class="chk" id="tSoiWrap"><input type="checkbox" id="tSoi"><span data-i18n="ui.soi"></span></label>
+          <label class="chk" id="tTracksWrap"><input type="checkbox" id="tTracks" checked><span data-i18n="ui.tracks"></span></label>
+          <label class="chk" id="tGridWrap" hidden><input type="checkbox" id="tGrid" checked><span data-i18n="v3.grid"></span></label>
+          <label class="chk" id="tOscWrap" data-i18n-title="ui.oscTip"><input type="checkbox" id="tOsc" checked><span data-i18n="ui.osc"></span></label>
+          <label class="chk sky" id="tSkyWrap" data-i18n-title="ui.skyTip"><span data-i18n="ui.sky"></span><input type="range" id="tSky" min="0" max="200" step="5" value="100" data-i18n-aria-label="ui.skyTip"></label>
+        </div>
+      </div>
+    </div>
+    <div class="hud-bot" id="hudBot">
+      <div class="hud-row">
+      <div class="hud-left">
+        <div class="cam-stops glass" id="camStops" role="group" data-i18n-aria-label="cam.aria" hidden>
+          <button type="button" data-i="0" aria-pressed="false" data-i18n="cam.craft" data-i18n-title="cam.craftTip"></button><button type="button" data-i="1" aria-pressed="false" data-i18n="cam.orbit" data-i18n-title="cam.orbitTip"></button><button type="button" data-i="2" aria-pressed="false" data-i18n="cam.map" data-i18n-title="cam.mapTip"></button>
+          <i class="cs-bar" aria-hidden="true"><b id="csBar"></b></i>
+        </div>
+        <div class="caption" id="caption" hidden></div>
+      </div>
+      <section class="glass eng-panel" id="engPanel" data-i18n-aria-label="ep.aria" hidden>
+        <button type="button" class="ep-h" id="epTog" aria-expanded="true" aria-controls="epBody"><span class="ep-st" id="epState"></span><span class="ep-next" id="epNext"></span><svg class="ep-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5 5 3.5 8 6.5"/></svg></button>
+        <div class="ep-body" id="epBody"><canvas class="ep-sch" id="epSch" aria-hidden="true"></canvas>
+          <dl class="ep-stats"><div><dt data-i18n="ep.dv"></dt><dd id="epDv">—</dd></div><div><dt data-i18n="ep.F"></dt><dd id="epF">—</dd></div></dl></div>
+        <div class="ep-bars"><div class="ep-bar ox" id="epOx"><span class="ep-l"></span><span class="ep-t"><i></i></span><b></b></div><div class="ep-bar fuel" id="epFuel"><span class="ep-l"></span><span class="ep-t"><i></i></span><b></b></div></div>
+        <div class="ep-btns"><button type="button" class="ghost" id="epAppr" aria-pressed="false" data-i18n="appr.btn" data-i18n-title="appr.tip"></button><button type="button" class="ghost" id="epCut" aria-pressed="false" data-i18n="cut.btn" data-i18n-title="cut.tip"></button></div>
+      </section>
+      <section class="glass fly-node" id="flyNode" data-i18n-aria-label="fn.aria" hidden>
+        <div class="fn-head"><button type="button" class="fn-top" id="fnTop" aria-expanded="true" aria-controls="fnMain" data-i18n-title="fn.fold"><span id="fnSum"></span><svg class="ep-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5 5 3.5l3 3"/></svg></button><button type="button" class="ghost fn-exit" id="flyExit" data-i18n="fly.exit" data-i18n-title="fly.exitTip"></button></div>
+        <div class="fn-time" role="toolbar" data-i18n-aria-label="fly.bar">
+          <button class="play" id="flyPause" type="button"></button>
+          <div class="seg fly-warp" id="flyWarp" role="group" data-i18n-aria-label="fly.warp"></div>
+          <button type="button" class="ghost" id="flyNow" data-i18n="fly.now" data-i18n-title="fly.nowTip"></button>
+        </div>
+        <div class="fly-info"><span id="flyDate"></span><span id="flyBody"></span></div>
+        <div class="fn-main" id="fnMain">
+        <section class="fn-g fn-geng" aria-labelledby="fnGEng">
+          <h3 class="fn-gh" id="fnGEng" data-i18n="fn.gEng"></h3>
+          <label class="fn-eng fn-adv"><span data-i18n="fn.eng"></span><select id="fnEng" data-i18n-aria-label="fn.engAria"></select></label>
+          <div class="fn-engslot" id="fnEngSlot"></div>
+          <div class="fn-man"><span class="fn-ml" data-i18n="fn.thrL"></span><button type="button" class="ghost fn-tb" id="fnThrDn" data-i18n-aria-label="fn.thrDn" data-i18n-title="fn.thrDn">−</button><span class="fn-thrbar" aria-hidden="true"><i id="fnThrBar"></i></span><span class="fn-thr" id="fnThr" data-i18n-title="fn.thrTip"></span><button type="button" class="ghost fn-tb" id="fnThrUp" data-i18n-aria-label="fn.thrUp" data-i18n-title="fn.thrUp">+</button><button type="button" class="ghost fn-tb" id="fnThrFull" data-i18n="fn.thrFull" data-i18n-title="fn.thrFullTip"></button><button type="button" class="ghost fn-tb" id="fnThrCut" data-i18n="fn.thrCut" data-i18n-title="fn.thrCutTip"></button></div>
+          <div class="fn-dir fn-adv"><span class="fn-ml" data-i18n="fn.dirL"></span><div class="seg fn-lock" id="fnLock" role="group" data-i18n-aria-label="fn.lockAria"></div></div>
+          <div class="fn-b fn-adv"><label class="chk" data-i18n-title="fn.autoTip"><input type="checkbox" id="fnAuto" checked><span data-i18n="fn.auto"></span></label><label class="chk" data-i18n-title="fn.fastTip"><input type="checkbox" id="fnFast"><span data-i18n="fn.fast"></span></label></div>
+          <div class="fn-attrow"><span class="fn-att" id="fnAtt" role="status" aria-live="polite"></span></div>
+          <div class="fn-orb" id="fnOrb"></div>
+          <div class="fn-simple"><button type="button" class="ghost" id="fnAdd" data-i18n="fn.add" data-i18n-title="fn.addTip"></button><button type="button" class="link fn-advb" id="fnAdv" aria-expanded="false" data-i18n="fn.adv"></button></div>
+        </section>
+        <section class="fn-g fn-gtgt" aria-labelledby="fnGTgt">
+          <h3 class="fn-gh" id="fnGTgt" data-i18n="fn.gTgt"></h3>
+          <div class="fn-tgt"><label><select id="fnTgt" data-i18n-aria-label="fn.tgt"></select></label><button type="button" class="ghost" id="fnWin" data-i18n="fn.win" data-i18n-title="fn.winTip" disabled></button></div>
+          <ol class="fn-flow" id="fnFlow" data-i18n-aria-label="fn.flowAria" hidden><li data-k="1"></li><li data-k="2"></li><li data-k="3"></li><li data-k="4"></li><li data-k="5"></li></ol>
+          <div class="fn-tgtinfo" id="fnTgtInfo"></div>
+          <div class="fn-win"><span id="fnWinInfo"></span><button type="button" class="btn sm primary" id="fnWinGo" data-i18n="fn.winGo" hidden></button></div>
+          <div class="fn-cor" id="fnCorRow" hidden><button type="button" class="ghost" id="fnCor" data-i18n="fn.cor" data-i18n-title="fn.corTip"></button><span id="fnCorInfo"></span><button type="button" class="btn sm primary" id="fnCorGo" data-i18n="fn.corGo" hidden></button></div>
+        </section>
+        <section class="fn-g fn-gnode" aria-labelledby="fnGNode">
+          <h3 class="fn-gh" id="fnGNode"><span data-i18n="fn.gNode"></span><span class="fn-ghb"><button type="button" class="ghost" id="fnUndo" data-i18n-title="fn.undoTip" data-i18n-aria-label="fn.undoTip">↶</button><button type="button" class="ghost" id="fnDel" data-i18n="fn.del"></button></span></h3>
+          <p class="fn-hint" id="fnHint"></p>
+          <div class="fn-body" id="fnBody" hidden>
+            <div class="fn-h"><button type="button" class="ghost fn-nav" id="fnPrev" data-i18n-aria-label="fn.prev">‹</button><b id="fnTitle"></b><button type="button" class="ghost fn-nav" id="fnNext" data-i18n-aria-label="fn.next">›</button><span id="fnIn"></span></div>
+            <div class="fn-f">
+              <label class="pro"><span data-i18n="fn.pro"></span><input type="number" id="fnPro" step="1" inputmode="decimal"></label>
+              <label class="rad"><span data-i18n="fn.rad"></span><input type="number" id="fnRad" step="1" inputmode="decimal"></label>
+              <label class="nor"><span data-i18n="fn.nor"></span><input type="number" id="fnNor" step="1" inputmode="decimal"></label>
+            </div>
+            <div class="fn-tot" id="fnTot"></div>
+            <div class="fn-after" id="fnAfter"></div>
+            <div class="fn-prov" id="fnProv"></div>
+            <div class="fn-burn" id="fnBurn"></div>
+            <div class="fn-warn" id="fnWarn" role="alert"></div>
+            <p class="fn-tip" data-i18n="fn.tip"></p>
+            <button type="button" class="ghost fn-warpbtn" id="fnWarp" data-i18n="fn.warp" data-i18n-title="fn.warpTip"></button>
+          </div>
+        </section>
+        </div>
+      </section>
+      <div class="glass readout" id="readout">
+        <div class="big" id="r-t" data-i18n="ui.tplusInit"></div>
+        <div class="date" id="r-date" hidden></div>
+        <span class="lbl" id="r-l1"></span><b id="r-v1">—</b>
+        <span class="lbl" id="r-l2"></span><b id="r-v2">—</b>
+        <span class="lbl" id="r-l3"></span><b id="r-v3">—</b>
+        <span class="lbl" id="r-l4" hidden></span><b id="r-v4" hidden>—</b>
+      </div>
+      </div>
+      <div class="glass timeline" id="timeline">
+        <button class="play" id="play" type="button"></button>
+        <div class="tl-time"><span id="tplus" data-i18n="ui.tplusInit"></span><span id="tend">/ —</span><span class="slowtag" id="slowTag" hidden></span></div>
+        <div class="scrub"><input type="range" id="scrub" min="0" max="10000" value="0" data-i18n-aria-label="ui.scrub"><div class="ticks" id="ticks"></div></div>
+        <div class="tl-opts">
+          <select id="speed" data-i18n-aria-label="ui.speed">
+            <optgroup data-i18n-label="speed.rel">
+              <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
+            </optgroup>
+            <optgroup data-i18n-label="speed.real">
+              <option value="r1" data-i18n="speed.r1"></option><option value="r2">2×</option><option value="r5">5×</option><option value="r10">10×</option><option value="r20">20×</option><option value="r30">30×</option><option value="r60">60×</option>
+              <option value="r3600" data-i18n="speed.1h"></option><option value="r21600" data-i18n="speed.6h"></option><option value="r86400" data-i18n="speed.1d"></option><option value="r864000" data-i18n="speed.10d"></option><option value="r2592000" data-i18n="speed.30d"></option>
+            </optgroup>
+          </select>
+          <label class="chk" data-i18n-title="ui.focusTip"><input type="checkbox" id="focus" checked><span data-i18n="ui.focus"></span></label>
+          <label class="chk" data-i18n-title="ui.loopTip"><input type="checkbox" id="loop"><span data-i18n="ui.loop"></span></label>
+          <label class="chk" data-i18n-title="ui.slowTip"><input type="checkbox" id="slow" checked><span data-i18n="ui.slow"></span></label>
+          <label class="chk" id="evStopWrap" data-i18n-title="ui.evStopTip" hidden><input type="checkbox" id="evStop"><span data-i18n="ui.evStop"></span></label>
+          <button type="button" class="ghost fly-go" id="flyGo" data-i18n="fly.go" data-i18n-title="fly.goTip" hidden></button><button type="button" class="ghost appr-btn" id="apprBtn" aria-pressed="false" data-i18n-title="appr.tip" data-i18n="appr.btn"></button><button type="button" class="ghost cut-btn" id="cutBtn" aria-pressed="false" data-i18n-title="cut.tip" data-i18n="cut.btn"></button><button type="button" class="ghost rec-btn" id="recBtn" data-i18n-title="rec.tip" aria-controls="recPanel"><svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="3.2"/></svg><span data-i18n="rec.btn"></span></button>
+        </div>
+        <div class="appr-tip glass" id="apprTip" role="status" hidden></div>
+        <div class="glass rec-panel" id="recPanel" role="dialog" aria-labelledby="recT" hidden>
+          <div class="rec-h"><h3 id="recT" data-i18n="rec.title"></h3><button type="button" class="ibtn x" id="recX" data-i18n-aria-label="rec.close" data-i18n-title="rec.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></div>
+          <div id="recSetup">
+            <div class="rec-row"><span data-i18n="rec.fmt"></span><div class="seg" id="recFmt" role="group" data-i18n-aria-label="rec.fmt"><button type="button" data-v="gif" data-i18n="rec.gif"></button><button type="button" data-v="video" data-i18n="rec.video"></button></div></div>
+            <p class="rec-note" id="recFmtNote"></p>
+            <div class="rec-row"><span data-i18n="rec.width"></span><div class="seg" id="recW" role="group" data-i18n-aria-label="rec.width"><button type="button" data-v="480">480</button><button type="button" data-v="720">720</button><button type="button" data-v="1080">1080</button></div></div>
+            <div class="rec-row"><span data-i18n="rec.fps"></span><div class="seg" id="recFps" role="group" data-i18n-aria-label="rec.fps"><button type="button" data-v="15">15</button><button type="button" data-v="24">24</button><button type="button" data-v="30">30</button></div></div>
+            <div class="rec-row" id="recQRow"><span data-i18n="rec.q"></span><div class="seg" id="recQ" role="group" data-i18n-aria-label="rec.q"><button type="button" data-v="high" data-i18n="rec.qHigh"></button><button type="button" data-v="std" data-i18n="rec.qStd"></button></div></div>
+            <div class="rec-row"><span data-i18n="rec.frame"></span><div class="seg" id="recFrame" role="group" data-i18n-aria-label="rec.frame"><button type="button" data-v="keep" data-i18n="rec.frameKeep" data-i18n-title="rec.frameKeepTip"></button><button type="button" data-v="fit" data-i18n="rec.frameFit" data-i18n-title="rec.frameFitTip"></button></div></div>
+            <label class="chk"><input type="checkbox" id="recTitle"><span data-i18n="rec.addTitle"></span></label>
+            <label class="chk" data-i18n-title="rec.skyTip"><input type="checkbox" id="recSky"><span data-i18n="rec.sky"></span></label>
+            <label class="chk" id="recDitherRow" data-i18n-title="rec.ditherTip"><input type="checkbox" id="recDither"><span data-i18n="rec.dither"></span></label>
+            <p class="rec-note warn" id="recNote" role="status"></p>
+            <button type="button" class="btn primary" id="recGo" data-i18n="rec.go"></button>
+          </div>
+          <div id="recProg" hidden><progress id="recBar" max="1" value="0"></progress><p class="rec-note" id="recMsg" role="status" aria-live="polite"></p><button type="button" class="btn" id="recCancel" data-i18n="rec.cancel"></button></div>
+          <div id="recDone" hidden><p id="recDoneMsg" role="status"></p><p class="rec-note warn" id="recDoneNote"></p><button type="button" class="btn primary" id="recSave"></button></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="wins" id="wins">
+    <section class="win" id="w-mission" data-win="mission" aria-labelledby="wt-mission" hidden>
+      <header class="win-h"><h2 id="wt-mission" data-i18n="win.mission"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b">
+        <div class="wiz" id="wiz">
+          <div class="wiz-pick" id="wzPick">
+            <p class="wiz-q" data-i18n="wz.q"></p>
+            <button type="button" class="wiz-card" data-path="orbit"><b data-i18n="wz.orbit"></b><span data-i18n="wz.orbitD"></span></button>
+            <button type="button" class="wiz-card" data-path="go"><b data-i18n="wz.go"></b><span data-i18n="wz.goD"></span></button>
+            <button type="button" class="wiz-card" data-path="free"><b data-i18n="wz.free"></b><span data-i18n="wz.freeD"></span></button>
+            <button type="button" class="wiz-card" data-path="fly"><b data-i18n="wz.fly"></b><span data-i18n="wz.flyD"></span></button>
+          </div>
+          <div class="wiz-fly" id="wzFly" hidden>
+            <button type="button" class="link wiz-back" id="wzFlyBack" data-i18n="wz.back"></button>
+            <p class="wz-d" data-i18n="fly.pickD"></p>
+            <div class="fly-pick" id="wzFlyPick"></div>
+          </div>
+          <div class="wiz-form" id="wzForm" hidden>
+            <button type="button" class="link wiz-back" id="wzBack" data-i18n="wz.back"></button>
+            <div class="wiz-ex" id="wzEx" role="group" data-i18n-aria-label="wz.ex"></div>
+            <div class="wiz-steps" id="wzSteps"></div>
+          </div>
+          <div class="wiz-res" id="wzRes" hidden></div>
+          <div class="wiz-foot" id="wzFoot" hidden>
+            <p class="wiz-err" id="wzErr" role="alert"></p>
+            <button type="button" class="btn primary wiz-go" id="wzGo" data-i18n="wz.goBtn"></button>
+          </div>
+          <button type="button" class="link wiz-expert" id="wzExpert" data-i18n="wz.expert"></button>
+        </div>
+        <button type="button" class="link wiz-simple" id="wzSimple" data-i18n="wz.simple"></button>
+        <details class="xsec" data-sec="mission" open><summary data-i18n="xs.mission"></summary><div class="xsec-b">
+          <div class="seg full" id="kindSeg" role="group" data-i18n-aria-label="ui.kind">
+            <button type="button" data-v="transfer" data-i18n="ui.kind.transfer" data-i18n-title="ui.kind.transferTip"></button>
+            <button type="button" data-v="man" data-i18n="ui.kind.man" data-i18n-title="ui.kind.manTip"></button>
+          </div>
+          <div class="seg full" id="modelSeg" role="group" data-i18n-aria-label="ui.model">
+            <button type="button" data-v="real" data-i18n="model.real" data-i18n-title="model.realTip"></button>
+            <button type="button" data-v="simple" data-i18n="model.simple" data-i18n-title="model.simpleTip"></button>
+          </div>
+          <label class="field row-field"><span data-i18n="ui.scenario"></span><select id="scenario"></select></label>
+          <p class="note" id="scNote"></p>
+          <div class="field" id="dateWrap" hidden><span id="lbl-date" data-i18n="ui.date"></span>
+            <div class="date-row"><input type="datetime-local" id="m-date" step="60" aria-labelledby="lbl-date"><button class="btn sm" type="button" id="m-now" data-i18n="ui.now" data-i18n-title="ui.nowTip"></button></div>
+            <small class="warn" id="dateWarn" hidden></small>
+          </div>
+        </div></details>
+        <div class="mvwrap" id="mvWrap" hidden>
+          <details class="xsec" data-sec="orbits" open><summary data-i18n="xs.orbits"></summary><div class="xsec-b">
+            <label class="field row-field"><span data-i18n="mv.body"></span><select id="mv-body"></select></label>
+            <fieldset class="mvbox">
+              <legend data-i18n="mv.start"></legend>
+              <div class="grid3">
+                <label class="field"><span id="lbl-hp0"></span><input type="number" id="mv-hp0" step="any" min="0"></label>
+                <label class="field"><span id="lbl-ha0"></span><input type="number" id="mv-ha0" step="any" min="0"></label>
+                <label class="field"><span data-i18n="mv.inc"></span><input type="number" id="mv-i0" step="any" min="0" max="180"></label>
+              </div>
+            </fieldset>
+            <fieldset class="mvbox" id="mvBurnBox" hidden>
+              <legend data-i18n="mv.burn"></legend>
+              <div class="seg full" id="mvAtSeg" role="group" data-i18n-aria-label="mv.at">
+                <button type="button" data-v="0" id="mvAt0"></button>
+                <button type="button" data-v="1" id="mvAt1"></button>
+              </div>
+              <div class="grid2">
+                <label class="field"><span data-i18n="mv.T"></span><input type="number" id="mv-T" step="any" min="0"></label>
+                <label class="field"><span data-i18n="mv.dir"></span><select id="mv-dir">
+                  <option value="pro" data-i18n="mv.dir.pro"></option><option value="retro" data-i18n="mv.dir.retro"></option>
+                  <option value="norm" data-i18n="mv.dir.norm"></option><option value="anti" data-i18n="mv.dir.anti"></option>
+                  <option value="out" data-i18n="mv.dir.out"></option><option value="in" data-i18n="mv.dir.in"></option>
+                </select></label>
+              </div>
+              <small class="mv-hint" id="mvBurnHint"></small>
+            </fieldset>
+            <fieldset class="mvbox" id="mvTargetBox">
+              <legend data-i18n="mv.target"></legend>
+              <div class="grid3">
+                <label class="field"><span id="lbl-hp1"></span><input type="number" id="mv-hp1" step="any" min="0"></label>
+                <label class="field"><span data-i18n="mv.ecc"></span><input type="number" id="mv-e1" step="any" min="0" max="0.99"></label>
+                <label class="field"><span data-i18n="mv.inc"></span><input type="number" id="mv-i1" step="any" min="0" max="180"></label>
+              </div>
+              <small class="mv-hint" id="mvHa"></small>
+            </fieldset>
+          </div></details>
+          <details class="xsec" data-sec="method" open><summary data-i18n="xs.method"></summary><div class="xsec-b">
+            <div class="field"><span data-i18n="mv.type"></span>
+              <div class="seg full" id="mvTypeSeg" role="group" data-i18n-aria-label="mv.type">
+                <button type="button" data-v="hohmann" data-i18n="mv.type.hohmann" data-i18n-title="mv.type.hohmannTip"></button>
+                <button type="button" data-v="bielliptic" data-i18n="mv.type.bielliptic" data-i18n-title="mv.type.biellipticTip"></button>
+                <button type="button" data-v="spiral" data-i18n="mv.type.spiral" data-i18n-title="mv.type.spiralTip"></button>
+                <button type="button" data-v="burn" data-i18n="mv.type.burn" data-i18n-title="mv.type.burnTip"></button>
+              </div>
+            </div>
+            <label class="field" id="mvRbWrap" hidden><span id="lbl-rb"></span><input type="number" id="mv-rb" step="any" min="0"></label>
+            <small class="mv-hint" id="mvSpiralHint" hidden></small>
+            <div class="field" id="mvPlaneWrap"><span data-i18n="mv.plane"></span>
+              <div class="seg full" id="mvPlaneSeg" role="group" data-i18n-aria-label="mv.plane">
+                <button type="button" data-v="comb" data-i18n="mv.plane.comb" data-i18n-title="mv.plane.combTip"></button>
+                <button type="button" data-v="sep" data-i18n="mv.plane.sep" data-i18n-title="mv.plane.sepTip"></button>
+              </div>
+            </div>
+          </div></details>
+          <details class="xsec" data-sec="vehicle"><summary data-i18n="xs.vehicle"></summary><div class="xsec-b">
+            <fieldset class="mvbox">
+              <label class="field row-field"><span data-i18n="mv.veh"></span><select id="mv-veh"></select></label>
+              <button type="button" class="link mv-eng" id="mvEng"></button>
+              <div class="seg full" id="mvThrSeg" role="group" data-i18n-aria-label="mv.thrust">
+                <button type="button" data-v="imp" data-i18n="mv.thrust.imp" data-i18n-title="mv.thrust.impTip"></button>
+                <button type="button" data-v="fin" data-i18n="mv.thrust.fin" data-i18n-title="mv.thrust.finTip"></button>
+              </div>
+              <div class="grid2">
+                <label class="field"><span data-i18n="mv.m0"></span><input type="number" id="mv-m0" step="any" min="0"></label>
+                <label class="field"><span data-i18n="mv.md"></span><input type="number" id="mv-md" step="any" min="0"></label>
+                <label class="field"><span data-i18n="mv.isp"></span><input type="number" id="mv-isp" step="any" min="0"></label>
+                <label class="field" id="mvFWrap"><span data-i18n="mv.F"></span><input type="number" id="mv-F" step="any" min="0"></label>
+              </div>
+              <div class="grid3" id="mvLimWrap">
+                <label class="field" data-i18n-title="mv.tMaxTip"><span data-i18n="mv.tMax"></span><input type="number" id="mv-tMax" step="any" min="0"></label>
+                <label class="field" data-i18n-title="mv.nMaxTip"><span data-i18n="mv.nMax"></span><input type="number" id="mv-nMax" step="1" min="0"></label>
+                <label class="field" data-i18n-title="mv.waitTip"><span data-i18n="mv.wait"></span><input type="number" id="mv-wait" step="any" min="0"></label>
+              </div>
+              <small class="mv-hint" id="mvLimHint" hidden></small>
+              <div class="veh-save">
+                <input type="text" id="mv-vname" maxlength="40" data-i18n-placeholder="mv.vname" data-i18n-aria-label="mv.vname">
+                <button class="btn sm" type="button" id="mvVehSave" data-i18n="mv.vsave"></button>
+                <button class="btn sm" type="button" id="mvVehDel" data-i18n="mv.vdel" hidden></button>
+              </div>
+              <div class="field" id="mvSteerWrap"><span data-i18n="mv.steer"></span>
+                <div class="seg full" id="mvSteerSeg" role="group" data-i18n-aria-label="mv.steer">
+                  <button type="button" data-v="local" data-i18n="mv.steer.local" data-i18n-title="mv.steer.localTip"></button>
+                  <button type="button" data-v="inertial" data-i18n="mv.steer.inertial" data-i18n-title="mv.steer.inertialTip"></button>
+                </div>
+              </div>
+              <small class="mv-hint" id="mvAvail"></small>
+              <small class="mv-hint" id="mvFinHint" hidden></small>
+            </fieldset>
+          </div></details>
+          <details class="xsec" data-sec="mvadv"><summary data-i18n="xs.adv"></summary><div class="xsec-b">
+            <div class="grid2 mv-row">
+              <label class="field" id="mvKWrap" data-i18n-title="mv.kTip"><span data-i18n="mv.k"></span><input type="number" id="mv-k" min="1" max="8" step="1"></label>
+              <label class="chk" data-i18n-title="mv.j2Tip"><input type="checkbox" id="mv-j2"><span data-i18n="mv.j2"></span></label>
+            </div>
+                <label class="field" data-i18n-title="mv.O0Tip"><span data-i18n="mv.O0"></span><input type="number" id="mv-O0" step="any"></label>
+          </div></details>
+        </div>
+        <div class="trwrap" id="trWrap">
+        <details class="xsec" data-sec="target" open><summary data-i18n="xs.target"></summary><div class="xsec-b">
+          <div class="field"><span data-i18n="ui.missionType"></span>
+            <div class="seg full" id="modeSeg" role="group" data-i18n-aria-label="ui.missionType">
+              <button type="button" data-v="flyby" data-i18n="ui.mode.flyby"></button>
+              <button type="button" data-v="capture" data-i18n="ui.mode.capture"></button>
+              <button type="button" data-v="free" data-i18n="ui.mode.free"></button>
+            </div>
+          </div>
+          <div class="aero" id="aeroWrap" hidden>
+            <label class="chk" data-i18n-title="ui.aeroTip"><input type="checkbox" id="m-aero"><span data-i18n="ui.aero"></span></label>
+            <label class="field" id="atmWrap" hidden><span data-i18n="ui.hAtm"></span><input type="number" id="m-hAtm" step="any" min="0"></label>
+            <small class="aero-hint" id="atmHint"></small>
+          </div>
+          <div class="grid2">
+            <label class="field"><span data-i18n="ui.park"></span><input type="number" id="m-h0" step="any"></label>
+            <label class="field"><span id="lbl-hB"></span><input type="number" id="m-hB" step="any"></label>
+            <label class="field" id="retWrap"><span id="lbl-hRet"></span><input type="number" id="m-hRet" step="any"></label>
+          </div>
+        </div></details>
+        <details class="xsec" data-sec="burn" open><summary data-i18n="xs.burn"></summary><div class="xsec-b">
+          <div class="field"><span id="lbl-theta" data-i18n="ui.theta"></span>
+            <div class="combo"><input type="range" id="m-theta-r" min="-180" max="180" step="0.01" data-i18n-aria-label="ui.thetaRange"><input type="number" id="m-theta" step="any" data-i18n-aria-label="ui.thetaNum"></div>
+          </div>
+          <div class="field"><span data-i18n="ui.dv"></span>
+            <div class="combo"><input type="range" id="m-dv-r" step="0.1" data-i18n-aria-label="ui.dvRange"><input type="number" id="m-dv" step="any" data-i18n-aria-label="ui.dvNum"></div>
+          </div>
+        </div></details>
+        <details class="xsec" data-sec="tradv"><summary data-i18n="xs.adv"></summary><div class="xsec-b">
+              <div class="field"><span data-i18n="ui.side"></span>
+                <div class="seg full" id="sideSeg" role="group" data-i18n-aria-label="ui.sideAria">
+                  <button type="button" data-v="0" data-i18n="ui.side.any"></button>
+                  <button type="button" data-v="1" data-i18n="ui.side.pro"></button>
+                  <button type="button" data-v="-1" data-i18n="ui.side.retro"></button>
+                </div>
+                <small id="sideHint" data-i18n="ui.sideHint"></small>
+              </div>
+              <div class="grid2">
+                <label class="field" id="t0Wrap"><span data-i18n="ui.t0"></span><input type="number" id="m-t0" step="any"></label>
+                <label class="field" id="betaWrap" hidden data-i18n-title="ui.betaTip"><span id="lbl-beta" data-i18n="ui.beta"></span><input type="number" id="m-beta" step="any" min="-90" max="90"></label>
+                <label class="field"><span data-i18n="ui.dur"></span><input type="number" id="m-dur" step="any" min="0.01"></label>
+              </div>
+              <label class="chk"><input type="checkbox" id="m-auto"><span data-i18n="ui.auto"></span></label>
+        </div></details>
+        <div class="actions">
+          <button class="btn" id="hohmann" type="button" data-i18n="ui.hohmann"></button>
+          <button class="btn primary" id="solve" type="button" data-i18n="ui.solve"></button>
+        </div>
+        </div>
+        <p class="status" id="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="win" id="w-bodies" data-win="bodies" aria-labelledby="wt-bodies" hidden>
+      <header class="win-h"><h2 id="wt-bodies" data-i18n="win.bodies"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b">
+        <div class="bodies" id="bodies"></div>
+        <button class="btn add" id="addBody" type="button" data-i18n="ui.addBody"></button>
+        <p class="err" id="err" hidden></p>
+      </div>
+    </section>
+
+    <section class="win" id="w-results" data-win="results" aria-labelledby="wt-results" hidden>
+      <header class="win-h"><h2 id="wt-results" data-i18n="win.results"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b">
+        <span class="chip warn" id="chip">—</span>
+        <table class="ov"><tbody id="res"></tbody></table>
+      </div>
+    </section>
+
+    <section class="win" id="w-overview" data-win="overview" aria-labelledby="wt-overview" hidden>
+      <header class="win-h"><h2 id="wt-overview" data-i18n="win.overview"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b">
+        <p class="note" data-i18n="ov.hint"></p>
+        <table class="otree">
+          <thead><tr><th scope="col" data-i18n="ov.body"></th><th scope="col" class="ot-d" data-i18n="ov.dist" data-i18n-title="ov.distTip"></th><th scope="col" class="ot-p" data-i18n="ov.dep"></th><th scope="col" class="ot-p" data-i18n="ov.tgt"></th></tr></thead>
+          <tbody id="ovBody"></tbody>
+        </table>
+        <p class="status" id="ovStatus" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="win" id="w-transfer" data-win="transfer" aria-labelledby="wt-transfer" hidden>
+      <header class="win-h"><h2 id="wt-transfer" data-i18n="win.transfer"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b">
+        <p class="note" id="pcPair"></p>
+        <div id="pcBody">
+          <div class="seg full" id="pcMetric" role="group" data-i18n-aria-label="pc.metricAria">
+            <button type="button" data-v="dv" data-i18n="pc.m.dv"></button>
+            <button type="button" data-v="c3" data-i18n="pc.m.c3"></button>
+            <button type="button" data-v="va" data-i18n="pc.m.va"></button>
+          </div>
+          <div class="pc-plot" id="pcPlot"><canvas id="pcCv" tabindex="0" data-i18n-aria-label="pc.canvas"></canvas></div>
+          <div class="pc-scale" aria-hidden="true"><span id="pcLo"></span><i id="pcRamp"></i><span id="pcHi"></span></div>
+          <table class="ov pc-info"><caption id="pcInfoCap"></caption><tbody id="pcInfo"></tbody></table>
+          <details class="adv">
+            <summary data-i18n="pc.range"></summary>
+            <div class="adv-b">
+              <div class="grid2">
+                <label class="field"><span data-i18n="pc.d0"></span><input id="pc-d0"></label>
+                <label class="field"><span data-i18n="pc.d1"></span><input id="pc-d1"></label>
+                <label class="field"><span data-i18n="pc.f0"></span><input type="number" id="pc-f0" step="any" min="0.01"></label>
+                <label class="field"><span data-i18n="pc.f1"></span><input type="number" id="pc-f1" step="any" min="0.01"></label>
+              </div>
+              <div class="pc-act">
+                <button class="btn sm" type="button" id="pcPrev" data-i18n="pc.prev"></button>
+                <button class="btn sm" type="button" id="pcNext" data-i18n="pc.next"></button>
+                <button class="btn sm" type="button" id="pcReset" data-i18n="pc.reset"></button>
+              </div>
+            </div>
+          </details>
+          <p class="note" data-i18n="pc.hint"></p>
+        </div>
+        <p class="status" id="pcStatus" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="win" id="w-engine" data-win="engine" aria-labelledby="wt-engine" hidden>
+      <header class="win-h"><h2 id="wt-engine" data-i18n="win.engine"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b eng">
+        <div class="eng-sch"><canvas id="engSch" role="img" data-i18n-aria-label="eng.schAria"></canvas></div>
+        <div class="eng-act"><button type="button" class="ghost" id="engPlay" aria-pressed="false" data-i18n="eng.play"></button><button type="button" class="ghost appr-btn" id="engAppr" aria-pressed="false" data-i18n="appr.btn"></button><button type="button" class="ghost cut-btn" id="engCut" aria-pressed="false" data-i18n="cut.btn"></button></div>
+        <div class="seg full" id="engType" role="group" data-i18n-aria-label="eng.type"><button type="button" data-v="liq" data-i18n="eng.t.liq"></button><button type="button" data-v="hyb" data-i18n="eng.t.hyb"></button><button type="button" data-v="sol" data-i18n="eng.t.sol"></button><button type="button" data-v="mono" data-i18n="eng.t.mono"></button></div>
+        <div class="eng-ask" id="engAsk" role="alertdialog" hidden><span data-i18n="eng.askType"></span><button type="button" class="btn primary sm" id="engAskYes" data-i18n="eng.askYes"></button><button type="button" class="btn sm" id="engAskNo" data-i18n="eng.askNo"></button></div>
+        <div class="grid2">
+          <label class="field"><span data-i18n="eng.preset"></span><select id="engPre"></select></label>
+          <label class="field"><span data-i18n="eng.prop"></span><select id="engProp"></select></label>
+        </div>
+        <div class="grid2"><label class="field"><span data-i18n="eng.F"></span><input type="text" inputmode="decimal" id="eng-F" autocomplete="off"></label><label class="field"><span data-i18n="eng.isp"></span><input type="text" inputmode="decimal" id="eng-isp" autocomplete="off"></label></div>
+        <div class="field" id="engPmW"><span data-i18n="eng.pm"></span><div class="seg full" id="engPm" role="group" data-i18n-aria-label="eng.pm"><button type="button" data-v="tot" data-i18n="eng.pm.tot"></button><button type="button" data-v="split" data-i18n="eng.pm.split"></button></div></div>
+        <div class="grid2"><label class="field" id="eng-ofW"><span data-i18n="eng.of"></span><input type="text" inputmode="decimal" id="eng-of" autocomplete="off"></label><label class="field" id="eng-mpW"><span data-i18n="eng.mp"></span><input type="text" inputmode="decimal" id="eng-mp" autocomplete="off"></label><label class="field" id="eng-mfW"><span data-i18n="eng.mf"></span><input type="text" inputmode="decimal" id="eng-mf" autocomplete="off"></label><label class="field" id="eng-moxW"><span data-i18n="eng.mox"></span><input type="text" inputmode="decimal" id="eng-mox" autocomplete="off"></label><label class="field"><span data-i18n="eng.md"></span><input type="text" inputmode="decimal" id="eng-md" autocomplete="off"></label></div>
+        <div class="field" id="engSolW"><span data-i18n="eng.grain"></span><div class="seg full" id="engGrain" role="group" data-i18n-aria-label="eng.grain"><button type="button" data-v="bates" data-i18n="eng.g.bates"></button><button type="button" data-v="tube" data-i18n="eng.g.tube"></button><button type="button" data-v="rod" data-i18n="eng.g.rod"></button></div></div>
+        <details class="adv" id="engHybW" open><summary data-i18n="eng.hybH"></summary><div class="adv-b"><label class="field"><span data-i18n="eng.r0"></span><input type="text" inputmode="decimal" id="eng-r0" autocomplete="off"></label><small class="mv-hint" id="engHybD"></small></div></details>
+        <small class="mv-hint warn" id="engErr" role="status" hidden></small>
+        <ul class="eng-warn" id="engWarn" role="status" hidden></ul>
+        <dl class="eng-out" id="engOut"></dl>
+        <div class="eng-chart"><canvas id="engCv" aria-hidden="true"></canvas><canvas id="engCvP" aria-hidden="true"></canvas></div>
+        <small class="mv-hint" id="engChartNote" aria-live="polite"></small>
+        <table class="eng-burns" id="engBurns"></table>
+        <div class="eng-act"><button type="button" class="btn primary sm" id="engApply" data-i18n="eng.apply"></button><span class="eng-fly" id="engFlyW"><button type="button" class="btn sm" id="engFly" data-i18n="eng.fly" data-i18n-title="eng.flyTip"></button><select id="engFlyBody" data-i18n-aria-label="eng.flyBody"></select></span><input type="text" id="eng-name" data-i18n-placeholder="eng.namePh" data-i18n-aria-label="eng.namePh" autocomplete="off"><button type="button" class="btn sm" id="engSave" data-i18n="eng.save"></button><button type="button" class="ghost" id="engDel" data-i18n="eng.del" hidden></button></div>
+        <small class="mv-hint" id="engNote" role="status"></small>
+      </div>
+    </section>
+    <section class="win" id="w-gloss" data-win="gloss" aria-labelledby="wt-gloss" hidden>
+      <header class="win-h"><h2 id="wt-gloss" data-i18n="win.gloss"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b gloss">
+        <input type="text" id="glossQ" data-i18n-placeholder="ui.glossPlaceholder" data-i18n-aria-label="ui.glossSearch" autocomplete="off">
+        <div class="gloss-body" id="glossBody"></div>
+      </div>
+    </section>
+
+    <section class="win" id="w-model" data-win="model" aria-labelledby="wt-model" hidden>
+      <header class="win-h"><h2 id="wt-model" data-i18n="win.model"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b model">
+        <p class="model-ver"><span id="modelVer"></span> · <button type="button" class="link" id="modelNotes"><span data-i18n="notes.link"></span><i class="rv-dot" hidden></i></button></p>
+        <p class="copy-note" data-i18n="copy"></p>
+        <details class="adv" open>
+          <summary data-i18n="about.h">Hakkında</summary>
+          <p data-i18n="about.p1">Yörünge Transfer Simülatörü, tarayıcıda çalışan ücretsiz bir uzay yolculuğu simülatörüdür. İki ile dört gök cismi seçersiniz, bir kalkış yanması tanımlarsınız; araç yolu hesaplanır ve video gibi oynatılır. Kurulum gerekmez, tüm hesap tarayıcınızda yapılır.</p>
+          <p data-i18n="about.p2">Gerçek güneş sistemi modeli, belirli bir tarihteki gezegen ve uydu konumlarını NASA JPL Kepler elemanlarından hesaplar (1800–2050). Basitleştirilmiş model ise dairesel ve düzlemsel yörüngelerle, kütle ve yarıçapı kendiniz girerek kavramları denemenizi sağlar. Fizik üç boyutludur; görünümü iki boyutlu izdüşüm ya da Three.js ile üç boyutlu olarak izleyebilirsiniz.</p>
+          <p data-i18n="about.p3">Hohmann transferi, iki dairesel yörünge arasındaki en az yakıtlı geçiştir. Lambert problemi, iki nokta arasında verilen sürede giden yörüngeyi bulur; simülatör bunu gezegenler arası transferler için kullanır ve kalkış tarihi ile yolculuk süresine göre Δv, C3 ve varış hızını gösteren porkchop grafiğini çizer. Grafikte bir noktaya tıklayınca yol, Güneş ve gezegenlerin çekimiyle N-cisim modelinde yeniden çözülür.</p>
+          <p data-i18n="about.p4">Hazır senaryolar arasında Dünya–Ay serbest dönüş yörüngesi (8 ve S biçimi), Ay yörüngesine giriş, 2026 penceresiyle Dünya–Mars, Dünya–Venüs ve Ganymede–Callisto transferi bulunur. Yakalama yanması, aerofren, yörünge noktaları (perigee, apogee, periapsis), Δv dökümü ve yakalamadan sonraki yörünge izi sonuç pencerelerinde gösterilir.</p>
+          <p data-i18n="about.p5">Yörünge manevrası görevinde tek bir gezegenin ya da Ay'ın etrafında yörünge değiştirilir: Hohmann ve bi-eliptik transfer, ayrı ya da birleşik eğim değişimi ve parçalı yanmalar. Başlangıç yörüngesi eliptik olabilir; Δv, transfer süresi ve roket denklemiyle yakıt kütlesi hesaplanır, isteğe bağlı J2 basıklığıyla düğüm gerilemesi ve Güneş eş zamanlı yörünge görülür.</p>
+        </details>
+        <p data-i18n="ui.model1"></p>
+        <p data-i18n="ui.model2"></p>
+        <p data-i18n="ui.model3"></p>
+        <p data-i18n="ui.model4"></p>
+        <p data-i18n="ui.model5"></p>
+        <p data-i18n="ui.model6"></p>
+        <p data-i18n="ui.model7"></p>
+        <p data-i18n="ui.model8"></p>
+        <p data-i18n="ui.model9"></p>
+        <p data-i18n="ui.model10"></p>
+        <p data-i18n="ui.model11"></p>
+        <p data-i18n="ui.model12"></p>
+        <p><button class="ghost" type="button" data-open="credits" data-i18n="cred.open"></button></p>
+      </div>
+    </section>
+    <section class="win" id="w-credits" data-win="credits" aria-labelledby="wt-credits" hidden>
+      <header class="win-h"><h2 id="wt-credits" data-i18n="win.credits"></h2><button class="wbtn" type="button" data-act="collapse"></button><button class="wbtn" type="button" data-act="close" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button></header>
+      <div class="win-b credits" id="credBody"></div>
+    </section>
+  </div>
+</div>
+
+<div class="notes" id="notes" hidden>
+  <div class="notes-in glass" role="dialog" aria-modal="true" aria-labelledby="notesT">
+    <header class="notes-h">
+      <div class="notes-hd"><h2 id="notesT"><span class="nh-k" data-i18n="notes.update"></span> <span class="nh-v" id="notesV"></span><span class="nt-new" id="notesNew" data-i18n="notes.new" hidden></span></h2><time class="nt-date" id="notesWhen"></time></div>
+      <button class="wbtn notes-x" type="button" id="notesX" data-i18n-aria-label="ui.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button>
+    </header>
+    <div class="notes-b" id="notesB"></div>
+    <footer class="notes-f"><button type="button" class="btn primary" id="notesOk" data-i18n="notes.ok"></button></footer>
+  </div>
+</div>
+<div class="start" id="start" hidden>
+  <div class="start-in glass" role="dialog" aria-modal="true" aria-labelledby="startT">
+    <h2 id="startT" data-i18n="start.title"></h2>
+    <div class="start-cards" id="startCards">
+      <button type="button" class="start-card" data-go="scene" data-i18n-data-last="start.last"><b data-i18n="start.scene"></b><span data-i18n="start.sceneD"></span></button>
+      <button type="button" class="start-card" data-go="mission" data-i18n-data-last="start.last"><b data-i18n="start.mission"></b><span data-i18n="start.missionD"></span></button>
+      <button type="button" class="start-card" data-go="design" data-i18n-data-last="start.last"><b data-i18n="start.design"></b><span data-i18n="start.designD"></span></button>
+      <button type="button" class="start-card" data-go="fly" data-i18n-data-last="start.last"><b data-i18n="start.fly"></b><span data-i18n="start.flyD"></span></button>
+      <a class="start-card" href="kabin.html" id="wcCabin" data-go="cabin"><b data-i18n="start.cabin"></b><span data-i18n="start.cabinD"></span></a>
+    </div>
+    <div class="start-fly" id="startFly" hidden>
+      <p class="start-flyq" data-i18n="fly.pickD"></p>
+      <div class="fly-pick" id="startFlyPick"></div>
+      <button type="button" class="link start-back" id="startFlyBack" data-i18n="start.back"></button>
+    </div>
+    <div class="start-cards" id="startMis" hidden>
+      <button type="button" class="start-card" data-sc="em_free" data-i18n-data-last="start.last"><b data-i18n="start.moon"></b><span data-i18n="start.moonD"></span></button>
+      <button type="button" class="start-card" data-sc="r_e_mars" data-i18n-data-last="start.last"><b data-i18n="start.mars"></b><span data-i18n="start.marsD"></span></button>
+      <button type="button" class="link start-back" id="startBack" data-i18n="start.back"></button>
+    </div>
+    <p class="start-foot"><span data-i18n="start.foot"></span> <button type="button" class="link" id="startNotes"><span data-i18n="notes.link"></span><i class="rv-dot" hidden></i></button> <span class="copy-note" data-i18n="copy.short"></span></p>
+  </div>
+</div>
+<div class="tour glass" id="tour" role="dialog" aria-live="polite" hidden>
+  <p id="tourText"></p>
+  <div class="tour-act"><span class="tour-n" id="tourN"></span><button class="btn sm" type="button" id="tourSkip" data-i18n="tour.skip"></button><button class="btn sm primary" type="button" id="tourNext"></button></div>
+</div>
+<div class="toast lite" id="liteTip" role="status" hidden>
+  <p><span id="liteText"></span> <button class="link" type="button" id="liteGo" data-i18n="lite.change"></button></p>
+  <button type="button" class="ibtn x lite-x" id="liteX" data-i18n-aria-label="perf.close" data-i18n-title="perf.close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg></button>
+</div>
+
+<div class="toast" id="perfTip" role="status" hidden>
+  <p id="perfText" data-i18n="perf.text"></p>
+  <div class="toast-act">
+    <button class="btn sm primary" type="button" id="perfGo" data-i18n="perf.switch"></button>
+    <button class="btn sm" type="button" id="perfX" data-i18n="perf.close"></button>
+  </div>
+</div>
+<script src="js/i18n.js"></script>
+<script src="js/prefs.js"></script>
+<script src="js/changelog.js"></script>
+<script src="js/bodies.js"></script>
+<script src="js/vehicles.js"></script>
+<script src="js/engines.js"></script>
+<script src="js/sounds.js"></script>
+<script id="core" src="js/core.js"></script>
+<script src="js/globe.js"></script>
+<script src="js/mode3d.js"></script>
+<script src="js/engine-ui.js"></script>
+<script src="js/sim-audio.js"></script>
+<script src="js/fly.js"></script>
+<script src="js/app.js"></script>
+<script src="js/wizard.js"></script>
+<script src="js/record.js"></script>
+</body>
+</html>

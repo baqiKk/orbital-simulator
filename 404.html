@@ -1,10 +1,64 @@
 <!doctype html>
+<html lang="tr">
+<head>
 <meta charset="utf-8">
-<title>Yörünge Transfer Simülatörü taşındı</title>
-<link rel="canonical" href="https://orbitsim.pages.dev/">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<script>
-  var p = location.pathname.replace(/^\/orbital-simulator/, '') || '/';
-  location.replace('https://orbitsim.pages.dev' + p + location.search + location.hash);
-</script>
-<p>Site taşındı: <a href="https://orbitsim.pages.dev/">orbitsim.pages.dev</a></p>
+<meta name="theme-color" content="#05080b">
+<title>Sayfa bulunamadı · Yörünge Transfer Simülatörü</title>
+<!-- The site's "not found" page (2026-11-22). Cloudflare Pages (and GitHub Pages) serve it with the status 404 for every
+     address the site does not have; without it Cloudflare would answer the home page with 200. It is served at any
+     depth (/tools/deploy/build.js, /a/b/c), so it is self-contained: no relative path to another file of the site (the
+     styles inline, the colours copied from the :root tokens of css/style.css, the icon a data: copy of favicon.svg),
+     only Google Fonts outside; the way home is the site's address from tools/deploy/site.json (tools/deploy/site-url.js
+     writes it). Turkish and English side by side: this page cannot load js/i18n.js (tests/ui.test.js 75). -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cstyle%3E@media (max-width:24px){.r{stroke-width:4}.g{stroke-width:7.5}.s2{display:none}}%3C/style%3E%3Crect width='64' height='64' rx='9' fill='%230b1116'/%3E%3Cg transform='rotate(-24 32 32)'%3E%3Cpath class='r' d='M5 32 A27 7.5 0 0 1 59 32' fill='none' stroke='%23ffb547' stroke-width='2.4' stroke-linecap='butt'/%3E%3C/g%3E%3Ccircle cx='32' cy='32' r='12.5' fill='%237cc4d8'/%3E%3Cpath d='M32 19.5 A12.5 12.5 0 0 0 32 44.5 L32 19.5Z' fill='%234c8da1'/%3E%3Cg transform='rotate(-24 32 32)'%3E%3Cpath class='g' d='M59 32 A27 7.5 0 0 1 5 32' fill='none' stroke='%230b1116' stroke-width='4.8'/%3E%3Cpath class='r' d='M59 32 A27 7.5 0 0 1 5 32' fill='none' stroke='%23ffb547' stroke-width='2.4' stroke-linecap='butt'/%3E%3Cpath d='M13.50 33.80 Q14.05 37.85 18.10 38.40 Q14.05 38.95 13.50 43.00 Q12.95 38.95 8.90 38.40 Q12.95 37.85 13.50 33.80 Z' fill='%23ffffff'/%3E%3C/g%3E%3Cpath class='s2' d='M51.00 12.00 Q51.36 14.64 54.00 15.00 Q51.36 15.36 51.00 18.00 Q50.64 15.36 48.00 15.00 Q50.64 14.64 51.00 12.00 Z' fill='%23d9e7eb'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --void:#030507; --bg:#05080b; --panel:rgba(8,12,16,.84); --line:rgba(140,196,212,.15); --line3:rgba(140,196,212,.5);
+  --ink:#d9e7eb; --dim:#86a0a8; --faint:#56696f; --accent:#ffb547; --accent-ink:#1b1305; --orbit:#7cc4d8;
+  --f-disp:"Chakra Petch","Segoe UI",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:16px;background:radial-gradient(ellipse at 50% 38%,color-mix(in srgb,var(--orbit) 7%,var(--bg)),var(--bg) 60%,var(--void));color:var(--ink);font:400 15px/1.55 var(--f-body)}
+.box{width:min(460px,100%);padding:32px 28px 28px;background:var(--panel);border:1px solid var(--line3);text-align:center}
+.mark{display:block;width:72px;height:72px;margin:0 auto 18px}
+.code{margin:0;font:500 13px/1 var(--f-mono);letter-spacing:.3em;color:var(--accent)}
+h1{margin:10px 0 0;font:600 28px/1.15 var(--f-disp);letter-spacing:.04em;text-transform:uppercase}
+.en-h{margin:6px 0 0;font:500 15px/1.3 var(--f-disp);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+p.t{margin:16px 0 0;color:var(--dim)}
+p.t + p.t{margin-top:4px;color:var(--faint);font-size:13.5px}
+.home{display:inline-block;margin-top:24px;padding:11px 18px;background:var(--accent);color:var(--accent-ink);font:600 12.5px/1 var(--f-disp);letter-spacing:.1em;text-transform:uppercase;text-decoration:none;border:1px solid var(--accent)}
+.home:hover,.home:focus-visible{filter:brightness(1.08);outline:2px solid var(--ink);outline-offset:2px}
+.home span{color:color-mix(in srgb,var(--accent-ink) 70%,var(--accent))}
+@media (max-width:400px){.box{padding:26px 18px 22px}h1{font-size:23px}}
+</style>
+</head>
+<body>
+<main class="box">
+<svg class="mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true">
+<rect width="64" height="64" rx="9" fill="#0b1116"/>
+<g transform="rotate(-24 32 32)"><path d="M5 32 A27 7.5 0 0 1 59 32" fill="none" stroke="#ffb547" stroke-width="2.4" stroke-linecap="butt"/></g>
+<circle cx="32" cy="32" r="12.5" fill="#7cc4d8"/>
+<path d="M32 19.5 A12.5 12.5 0 0 0 32 44.5 L32 19.5Z" fill="#4c8da1"/>
+<g transform="rotate(-24 32 32)">
+<path d="M59 32 A27 7.5 0 0 1 5 32" fill="none" stroke="#0b1116" stroke-width="4.8"/>
+<path d="M59 32 A27 7.5 0 0 1 5 32" fill="none" stroke="#ffb547" stroke-width="2.4" stroke-linecap="butt"/>
+<path d="M13.50 33.80 Q14.05 37.85 18.10 38.40 Q14.05 38.95 13.50 43.00 Q12.95 38.95 8.90 38.40 Q12.95 37.85 13.50 33.80 Z" fill="#ffffff"/></g>
+<path d="M51.00 12.00 Q51.36 14.64 54.00 15.00 Q51.36 15.36 51.00 18.00 Q50.64 15.36 48.00 15.00 Q50.64 14.64 51.00 12.00 Z" fill="#d9e7eb"/></svg>
+<p class="code">404</p>
+<h1>Sayfa bulunamadı</h1>
+<p class="en-h" lang="en">Page not found</p>
+<p class="t">Bu adres sitede yok: taşınmış ya da hiç olmamış olabilir.</p>
+<p class="t" lang="en">This address does not exist on the site: it may have moved, or never existed.</p>
+<a class="home" id="home" href="https://baqikk.github.io/orbital-simulator/">Ana sayfaya dön <span lang="en">· Home</span></a>
+</main>
+</body>
+</html>

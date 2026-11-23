@@ -1,0 +1,31 @@
+Yörünge Transfer Simülatörü
+Copyright (c) 2026 Ahmet Baki Kırışgil. All rights reserved.
+
+This is not open-source software. The source code, the texts, the interface, the cabin illustration and every other
+part of this project made by the author are protected by copyright. No licence is granted to copy, modify, publish,
+distribute, sublicense or sell them, in whole or in part, without the author's prior written permission. Using the
+public website in a browser is allowed; viewing its pages does not grant any of the rights above.
+
+Third-party components keep their own licences, which apply to them and not this notice:
+
+- vendor/three/        Three.js r186 — MIT licence (vendor/three/LICENSE, vendor/three/README.md)
+- vendor/gifenc/       gifenc 1.0.3, Matt DesLauriers — MIT licence (vendor/gifenc/LICENSE.md)
+- vendor/mp4-muxer/    mp4-muxer 5.2.2, Vanilagy — MIT licence (vendor/mp4-muxer/LICENSE)
+- vendor/webm-muxer/   webm-muxer 5.1.4, Vanilagy — MIT licence (vendor/webm-muxer/LICENSE)
+- audio/cabin/music/   music by HoliznaCC0 (CC0 1.0) and by TAD, Tsorthan Grove, migfus20, marcelofg55 and tcarisland
+                       (CC BY 4.0), converted and loudness-normalised only; titles, artists, sources and licences in
+                       js/sounds.js and on the site's Kaynakça (Sources) window
+- audio/cabin/space/   NASA / JPL recordings (the sound tracks of JPL animations); credits in js/sounds.js
+- img/planets/, img/sky/, img/cabin/earthrise.jpg
+                       real observation data and photographs (NASA, USGS, PDS, ESA and others); each file's source,
+                       credit line, licence or terms of use in js/bodies.js and on the Kaynakça window
+- Fonts                served by Google Fonts under their own licences (SIL Open Font License 1.1)
+
+The site is not affiliated with or endorsed by NASA or any other agency.
+
+---
+
+Türkçe özet: Bu proje açık kaynak değildir; yazarın ürettiği tüm kod, metin, arayüz ve kabin illüstrasyonu üzerindeki
+haklar saklıdır. İzin alınmadan kopyalanamaz, değiştirilemez, yayımlanamaz ve dağıtılamaz. Siteyi tarayıcıda kullanmak
+serbesttir. Üçüncü taraf bileşenler (yukarıdaki liste) kendi lisanslarına tabidir; ayrıntılar vendor/ klasörlerinde,
+js/bodies.js ve js/sounds.js yorumlarında ve sitenin Kaynakça penceresindedir.

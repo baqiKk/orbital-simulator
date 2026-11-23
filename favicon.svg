@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Site icon (original, flat): a planet, half lit, inside an amber orbit that passes behind it and in front of it, a
+     white four pointed spark (the craft) on the near side and a small star in the corner. Designed in conversation with
+     the site's author; geometry and colours are fixed: tile #0b1116 (icon-bg token), planet #7cc4d8 (orbit token) and
+     #4c8da1 (its night half, icon-shade token), orbit #ffb547 (accent token), star #d9e7eb (ink token). The near arc is cut out of the planet by a tile
+     coloured band. At tab size (24 px and below) the orbit and its cut grow bolder and the corner star goes. -->
+<style>@media (max-width:24px){.r{stroke-width:4}.g{stroke-width:7.5}.s2{display:none}}</style>
+<rect width="64" height="64" rx="9" fill="#0b1116"/>
+<g transform="rotate(-24 32 32)"><path class="r" d="M5 32 A27 7.5 0 0 1 59 32" fill="none" stroke="#ffb547" stroke-width="2.4" stroke-linecap="butt"/></g>
+<circle cx="32" cy="32" r="12.5" fill="#7cc4d8"/>
+<path d="M32 19.5 A12.5 12.5 0 0 0 32 44.5 L32 19.5Z" fill="#4c8da1"/>
+<g transform="rotate(-24 32 32)">
+<path class="g" d="M59 32 A27 7.5 0 0 1 5 32" fill="none" stroke="#0b1116" stroke-width="4.8"/>
+<path class="r" d="M59 32 A27 7.5 0 0 1 5 32" fill="none" stroke="#ffb547" stroke-width="2.4" stroke-linecap="butt"/>
+<path d="M13.50 33.80 Q14.05 37.85 18.10 38.40 Q14.05 38.95 13.50 43.00 Q12.95 38.95 8.90 38.40 Q12.95 37.85 13.50 33.80 Z" fill="#ffffff"/></g>
+<path class="s2" d="M51.00 12.00 Q51.36 14.64 54.00 15.00 Q51.36 15.36 51.00 18.00 Q50.64 15.36 48.00 15.00 Q50.64 14.64 51.00 12.00 Z" fill="#d9e7eb"/></svg>

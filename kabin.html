@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kabin · Yörünge Transfer Simülatörü</title>
+<meta name="description" data-i18n-content="kabin.description" content="Yörünge simülatörünün kabini: pomodoro ile çalışırken camın ardında gerçek bir uzay yolculuğu; masada saat ve çay, pervazda dışarıyı izleyen bir kedi.">
+<meta property="og:title" data-i18n-content="kabin.title" content="Kabin · Yörünge Transfer Simülatörü">
+<meta property="og:description" data-i18n-content="kabin.description" content="Yörünge simülatörünün kabini: pomodoro ile çalışırken camın ardında gerçek bir uzay yolculuğu; masada saat ve çay, pervazda dışarıyı izleyen bir kedi.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://baqikk.github.io/orbital-simulator/kabin.html">
+<link rel="canonical" href="https://baqikk.github.io/orbital-simulator/kabin.html">
+<meta name="theme-color" content="#161210">
+<link rel="icon" href="favicon-kabin-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="favicon-kabin.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon-kabin.png">
+<link rel="manifest" href="site.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Playpen+Sans:wght@400&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }</script>
+<!-- Phase 9: the cabin. Room and cat: illustration by Ahmet Baki Kırışgil (layers made by tools/cabin-art, see
+     js/bodies.js CABIN_SRC). Behind the glass: the site's own sky and planet images (globe.js). Poster photo: NASA
+     AS08-14-2383 (public domain). Handwriting: Playpen Sans (SIL OFL 1.1, Google Fonts). Phobos: Mars Express SRC global mosaic (DLR, USGS Astrogeology; public domain). Radio: HoliznaCC0 (CC0 1.0); space sounds: NASA/JPL-Caltech plasma-wave
+     recordings (see js/sounds.js). -->
+</head>
+<body class="k-page">
+<div class="k-root" id="kRoot">
+  <canvas id="kSpace" aria-hidden="true"></canvas>
+  <canvas id="kSpace3" aria-hidden="true" hidden></canvas>
+  <canvas id="kSpaceX" aria-hidden="true" hidden></canvas>
+  <canvas id="kMoveA" class="k-move" aria-hidden="true" hidden></canvas>
+  <div id="kStage" class="k-stage">
+    <div id="kGlow" class="k-glow"></div>
+    <div id="kRoomSlot"></div>
+    <div id="kShine" class="k-shine"></div>
+    <canvas id="kAqua" class="k-cv" aria-hidden="true"></canvas>
+    <div id="kPaper" class="k-paper"><svg id="kArt" class="k-svg" aria-hidden="true"></svg></div>
+    <canvas id="kSteam" class="k-cv" aria-hidden="true"></canvas>
+    <canvas id="kNight" class="k-night" aria-hidden="true"></canvas>
+    <canvas id="kSun" class="k-lit" aria-hidden="true"></canvas>
+    <div id="kCat" class="k-cat"><svg id="kWhisk" class="k-svg k-whisk" aria-hidden="true"></svg></div>
+  </div>
+  <canvas id="kMoveB" class="k-move" aria-hidden="true" hidden></canvas>
+  <div id="kTop" class="k-stage">
+    <div id="kEmit" class="k-emit"><svg id="kGlowArt" class="k-svg" aria-hidden="true"></svg><div id="kLed" class="k-led"></div></div>
+    <div id="kHits" class="k-hits"></div>
+  </div>
+</div>
+
+<header class="k-hud top">
+  <a class="ghost" href="index.html" id="kBack" data-i18n-aria-label="kab.backAria">← <span data-i18n="kab.back"></span></a>
+  <button type="button" class="ghost k-radio" id="kRadio" aria-haspopup="dialog" aria-expanded="false" aria-controls="kAudio" data-i18n-title="kab.audio.open"><span class="k-note" aria-hidden="true">♪</span><span id="kRadioT" class="k-radio-t"></span></button>
+  <button type="button" class="ghost k-skip" id="kSkip" data-i18n-aria-label="kab.audio.next" data-i18n-title="kab.audio.next" hidden><span aria-hidden="true">⏭</span></button>
+</header>
+<div id="kAudio" class="k-audio" role="dialog" data-i18n-aria-label="kab.audio.title" hidden>
+  <div class="k-audio-h"><span data-i18n="kab.audio.title"></span><button type="button" class="k-x" id="kAudioX" data-i18n-aria-label="kab.audio.close">×</button></div>
+  <div class="k-arow" data-k="music"><label class="chk"><input type="checkbox"><span data-i18n="kab.audio.music"></span></label><input type="range" min="0" max="100" data-i18n-aria-label="kab.audio.volMusic"></div>
+  <div class="k-arow" data-k="space"><label class="chk"><input type="checkbox"><span data-i18n="kab.audio.space"></span></label><input type="range" min="0" max="100" data-i18n-aria-label="kab.audio.volSpace"></div>
+  <div class="k-arow" data-k="hum"><label class="chk"><input type="checkbox"><span data-i18n="kab.audio.hum"></span></label><input type="range" min="0" max="100" data-i18n-aria-label="kab.audio.volHum"></div>
+  <div class="k-arow" data-k="noise"><label class="chk"><input type="checkbox"><span data-i18n="kab.audio.noise"></span></label><input type="range" min="0" max="100" data-i18n-aria-label="kab.audio.volNoise"></div>
+  <div class="seg k-noise" id="kNoise" role="group" data-i18n-aria-label="kab.audio.noiseType">
+    <button type="button" data-n="white" data-i18n="kab.audio.white"></button><button type="button" data-n="pink" data-i18n="kab.audio.pink"></button><button type="button" data-n="brown" data-i18n="kab.audio.brown"></button>
+  </div>
+  <div class="k-arow" data-k="chime"><label class="chk"><input type="checkbox"><span data-i18n="kab.audio.chime"></span></label><input type="range" min="0" max="100" data-i18n-aria-label="kab.audio.volChime"></div>
+  <label class="chk k-mute"><input type="checkbox" id="kMute"><span data-i18n="kab.audio.mute"></span></label>
+  <p class="k-acred"><span data-i18n="kab.audio.credit"></span> <a href="index.html#kaynakca" data-i18n="kab.audio.sources"></a></p>
+</div>
+<div id="kPomo" class="k-audio k-pomo" role="dialog" data-i18n-aria-label="kab.pomo.title" hidden>
+  <div class="k-audio-h"><span data-i18n="kab.pomo.title"></span><button type="button" class="k-x" id="kPomoX" data-i18n-aria-label="kab.audio.close">×</button></div>
+  <div class="k-pnow" aria-live="polite"><span id="kPomoPh" class="k-pph"></span><span id="kPomoT" class="k-pt"></span></div>
+  <p class="k-acred" id="kPomoLate" hidden></p>
+  <div class="k-pbtns"><button type="button" class="btn primary" id="kPomoGo"></button><button type="button" class="btn" id="kPomoSkip" data-i18n="kab.pomo.skip"></button><button type="button" class="btn" id="kPomoReset" data-i18n="kab.pomo.reset"></button></div>
+  <div class="seg" id="kPomoPre" role="group" data-i18n-aria-label="kab.pomo.preset">
+    <button type="button" data-p="p25" data-i18n="kab.pomo.p25"></button><button type="button" data-p="p50" data-i18n="kab.pomo.p50"></button><button type="button" data-p="p15" data-i18n="kab.pomo.p15"></button><button type="button" data-p="custom" data-i18n="kab.pomo.custom"></button>
+  </div>
+  <div class="k-pcus" id="kPomoCus" hidden>
+    <label class="field"><span data-i18n="kab.pomo.work"></span><input type="number" data-c="work" min="5" max="120" step="1"></label>
+    <label class="field"><span data-i18n="kab.pomo.short"></span><input type="number" data-c="short" min="1" max="60" step="1"></label>
+    <label class="field"><span data-i18n="kab.pomo.long"></span><input type="number" data-c="long" min="0" max="60" step="1"></label>
+    <label class="field"><span data-i18n="kab.pomo.every"></span><input type="number" data-c="every" min="2" max="8" step="1"></label>
+  </div>
+  <p class="k-acred" id="kPomoSum"></p>
+  <div class="k-pplan">
+    <label class="field"><span data-i18n="fp.plan"></span><select id="kPomoPlan"></select></label>
+    <button type="button" class="btn" id="kPomoReplan" data-i18n="fp.restart" hidden></button>
+  </div>
+  <p class="k-acred" id="kPomoPlanNote" data-i18n="fp.note"></p>
+  <p class="k-pstat" id="kPomoStat"><span id="kPomoDay"></span><span id="kPomoWeek"></span></p>
+  <label class="chk k-pchk"><input type="checkbox" id="kPomoAuto"><span data-i18n="kab.pomo.auto"></span></label>
+  <label class="chk k-pchk"><input type="checkbox" id="kPomoHud"><span data-i18n="kab.pomo.hud"></span></label>
+  <label class="chk k-pchk"><input type="checkbox" id="kPomoNotify"><span data-i18n="kab.pomo.notify"></span></label>
+  <p class="k-acred" id="kPomoNote" hidden></p>
+</div>
+<footer class="k-hud bot">
+  <div class="seg k-qual" id="kQual" role="group" data-i18n-aria-label="kab.q.label" data-i18n-title="kab.q.note"><span data-i18n="kab.q.label"></span><button type="button" data-q="low" data-i18n="kab.q.low"></button><button type="button" data-q="normal" data-i18n="kab.q.normal"></button></div>
+  <button type="button" class="ghost k-vbtn" id="kVista" aria-haspopup="dialog" aria-expanded="false" aria-controls="kVistaMenu"><span data-i18n="kab.vista.label"></span><b id="kVistaName"></b><span aria-hidden="true">▾</span></button>
+  <button type="button" class="ghost" id="kLamp" aria-pressed="false" data-i18n="kab.lampOff"></button>
+  <button type="button" class="ghost k-more" id="kMore" aria-expanded="false" data-i18n-aria-label="kab.more" data-i18n-title="kab.more">⋯</button>
+  <button type="button" class="btn primary" id="kGo" data-i18n="kab.toWindow"></button>
+</footer>
+<div id="kVistaMenu" class="k-audio k-vmenu" role="dialog" data-i18n-aria-label="kab.vista.title" hidden>
+  <div class="k-audio-h"><span data-i18n="kab.vista.title"></span><button type="button" class="k-x" id="kVistaX" data-i18n-aria-label="kab.audio.close">×</button></div>
+  <div class="k-vlist" id="kVistaList" role="group" data-i18n-aria-label="kab.vista.title"></div>
+  <div class="k-vlock" id="kVistaLock" hidden>
+    <p class="k-acred" data-i18n="kab.vista.flight"></p>
+    <div class="k-vask" id="kVistaAsk" hidden><span data-i18n="kab.vista.planAsk"></span><button type="button" class="btn primary" id="kVistaYes" data-i18n="kab.vista.planYes"></button><button type="button" class="btn" id="kVistaNo" data-i18n="kab.vista.endNo"></button></div>
+    <button type="button" class="btn" id="kPomoEnd" data-i18n="kab.vista.end"></button>
+    <div class="k-vask" id="kPomoAsk" hidden><span data-i18n="kab.vista.endAsk"></span><button type="button" class="btn primary" id="kPomoEndYes" data-i18n="kab.vista.endYes"></button><button type="button" class="btn" id="kPomoEndNo" data-i18n="kab.vista.endNo"></button></div>
+  </div>
+  <p class="k-acred" id="kVistaInfo"></p>
+  <div class="k-vsaver">
+    <button type="button" class="btn" id="kSaverGo" data-i18n="kab.saver.start"></button>
+    <label class="field"><span data-i18n="kab.saver.auto"></span><select id="kSaverAuto"></select></label>
+  </div>
+  <p class="k-acred" data-i18n="kab.saver.note"></p>
+</div>
+<div id="kFlight" class="k-flight" hidden>
+  <div class="k-fl1"><span id="kFlightL" class="k-fll"></span><span id="kFlightT" class="k-flt"></span></div>
+  <div class="k-flbar" id="kFlightBar" aria-hidden="true"></div>
+</div>
+<div id="kTip" class="k-tip" role="tooltip" hidden></div>
+<div id="kSafe" class="k-safe" role="status" hidden></div>
+<div id="kPanHint" class="k-panhint" aria-hidden="true" data-i18n="kab.panHint" hidden></div>
+<div id="kSaverHit" class="k-saverhit" aria-hidden="true" hidden></div>
+<div id="kSaverClock" class="k-saverclock" aria-hidden="true" hidden></div>
+
+<script src="js/i18n.js"></script>
+<script src="js/prefs.js"></script>
+<script src="js/bodies.js"></script>
+<script src="js/core.js"></script>
+<script src="js/globe.js"></script>
+<script src="js/sounds.js"></script>
+<script src="js/cabin-audio.js"></script>
+<script src="js/pomodoro.js"></script>
+<script src="js/flightplans.js"></script>
+<script src="js/flightdata.js"></script>
+<script src="js/vistas.js"></script>
+<script src="js/cabin.js"></script>
+</body>
+</html>
